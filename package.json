@@ -15,7 +15,7 @@
     "package": "node scripts/make-logo.js && node scripts/build-single.js && node scripts/package-zip.js",
     "package:itch": "node scripts/package-itch.js",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist --nojekyll -u \"strongdragon98-art <strongdragon98-art@users.noreply.github.com>\"",
+    "deploy": "gh-pages -d dist --nojekyll --remove \"assets/index-*\" -u \"strongdragon98-art <strongdragon98-art@users.noreply.github.com>\"",
     "make-pwa-icons": "node scripts/make-pwa-icons.js",
     "make-videos": "node scripts/make-videos.js",
     "make-fonts": "node scripts/make-fonts.js"
