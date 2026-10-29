@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-29T11:57:52.773Z",
+  "generated": "2026-10-29T12:25:41.863Z",
   "sources": {
     "spriteCollab": "https://raw.githubusercontent.com/PMDCollab/SpriteCollab/master",
     "pokeapi": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon",
@@ -973,6 +973,17 @@
       "icon": "sprites/meganium/pokeapi.png",
       "artwork": "sprites/meganium/artwork.png"
     },
+    "meganium-mega": {
+      "key": "meganium-mega",
+      "dex": "0154",
+      "form": "0001",
+      "role": "메가",
+      "animData": null,
+      "anims": {},
+      "portrait": "sprites/meganium-mega/portrait.png",
+      "icon": "sprites/meganium-mega/pokeapi.png",
+      "artwork": "sprites/meganium-mega/artwork.png"
+    },
     "cyndaquil": {
       "key": "cyndaquil",
       "dex": "0155",
@@ -1080,6 +1091,17 @@
       "portrait": "sprites/feraligatr/portrait.png",
       "icon": "sprites/feraligatr/pokeapi.png",
       "artwork": "sprites/feraligatr/artwork.png"
+    },
+    "feraligatr-mega": {
+      "key": "feraligatr-mega",
+      "dex": "0160",
+      "form": "0001",
+      "role": "메가",
+      "animData": null,
+      "anims": {},
+      "portrait": "sprites/feraligatr-mega/portrait.png",
+      "icon": "sprites/feraligatr-mega/pokeapi.png",
+      "artwork": "sprites/feraligatr-mega/artwork.png"
     },
     "treecko": {
       "key": "treecko",
@@ -1552,6 +1574,17 @@
       "icon": "sprites/emboar/pokeapi.png",
       "artwork": "sprites/emboar/artwork.png"
     },
+    "emboar-mega": {
+      "key": "emboar-mega",
+      "dex": "0500",
+      "form": "0001",
+      "role": "메가",
+      "animData": null,
+      "anims": {},
+      "portrait": "sprites/emboar-mega/portrait.png",
+      "icon": "sprites/emboar-mega/pokeapi.png",
+      "artwork": "sprites/emboar-mega/artwork.png"
+    },
     "oshawott": {
       "key": "oshawott",
       "dex": "0501",
@@ -1660,6 +1693,17 @@
       "icon": "sprites/chesnaught/pokeapi.png",
       "artwork": "sprites/chesnaught/artwork.png"
     },
+    "chesnaught-mega": {
+      "key": "chesnaught-mega",
+      "dex": "0652",
+      "form": "0001",
+      "role": "메가",
+      "animData": null,
+      "anims": {},
+      "portrait": "sprites/chesnaught-mega/portrait.png",
+      "icon": "sprites/chesnaught-mega/pokeapi.png",
+      "artwork": "sprites/chesnaught-mega/artwork.png"
+    },
     "fennekin": {
       "key": "fennekin",
       "dex": "0653",
@@ -1714,6 +1758,17 @@
       "portrait": "sprites/delphox/portrait.png",
       "icon": "sprites/delphox/pokeapi.png",
       "artwork": "sprites/delphox/artwork.png"
+    },
+    "delphox-mega": {
+      "key": "delphox-mega",
+      "dex": "0655",
+      "form": "0001",
+      "role": "메가",
+      "animData": null,
+      "anims": {},
+      "portrait": "sprites/delphox-mega/portrait.png",
+      "icon": "sprites/delphox-mega/pokeapi.png",
+      "artwork": "sprites/delphox-mega/artwork.png"
     },
     "froakie": {
       "key": "froakie",
@@ -1777,6 +1832,17 @@
       "portrait": "sprites/greninja-ash/portrait.png",
       "icon": "sprites/greninja-ash/pokeapi.png",
       "artwork": "sprites/greninja-ash/artwork.png"
+    },
+    "greninja-mega": {
+      "key": "greninja-mega",
+      "dex": "0658",
+      "form": "0002",
+      "role": "메가",
+      "animData": null,
+      "anims": {},
+      "portrait": "sprites/greninja-mega/portrait.png",
+      "icon": "sprites/greninja-mega/pokeapi.png",
+      "artwork": "sprites/greninja-mega/artwork.png"
     },
     "rowlet": {
       "key": "rowlet",
@@ -2459,6 +2525,17 @@
       "icon": "sprites/dragonite/pokeapi.png",
       "artwork": "sprites/dragonite/artwork.png"
     },
+    "dragonite-mega": {
+      "key": "dragonite-mega",
+      "dex": "0149",
+      "form": "0001",
+      "role": "메가",
+      "animData": null,
+      "anims": {},
+      "portrait": "sprites/dragonite-mega/portrait.png",
+      "icon": "sprites/dragonite-mega/pokeapi.png",
+      "artwork": "sprites/dragonite-mega/artwork.png"
+    },
     "magikarp": {
       "key": "magikarp",
       "dex": "0129",
@@ -2569,6 +2646,75 @@
       "icon": "sprites/scizor-mega/pokeapi.png",
       "artwork": "sprites/scizor-mega/artwork.png"
     },
+    "gible": {
+      "key": "gible",
+      "dex": "0443",
+      "form": null,
+      "role": "special",
+      "animData": "sprites/gible/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/gible/Walk-Anim.png",
+        "Attack": "sprites/gible/Attack-Anim.png",
+        "Shoot": "sprites/gible/Shoot-Anim.png",
+        "Hurt": "sprites/gible/Hurt-Anim.png",
+        "Idle": "sprites/gible/Idle-Anim.png",
+        "Strike": "sprites/gible/Attack-Anim.png"
+      },
+      "portrait": "sprites/gible/portrait.png",
+      "icon": "sprites/gible/pokeapi.png",
+      "artwork": "sprites/gible/artwork.png"
+    },
+    "gabite": {
+      "key": "gabite",
+      "dex": "0444",
+      "form": null,
+      "role": "special",
+      "animData": "sprites/gabite/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/gabite/Walk-Anim.png",
+        "Attack": "sprites/gabite/Attack-Anim.png",
+        "Shoot": "sprites/gabite/Shoot-Anim.png",
+        "Hurt": "sprites/gabite/Hurt-Anim.png",
+        "Idle": "sprites/gabite/Idle-Anim.png",
+        "Strike": "sprites/gabite/Attack-Anim.png"
+      },
+      "portrait": "sprites/gabite/portrait.png",
+      "icon": "sprites/gabite/pokeapi.png",
+      "artwork": "sprites/gabite/artwork.png"
+    },
+    "garchomp-mega-z": {
+      "key": "garchomp-mega-z",
+      "dex": "0445",
+      "form": "0002",
+      "role": "메가",
+      "animData": null,
+      "anims": {},
+      "portrait": "sprites/garchomp-mega-z/portrait.png",
+      "icon": "sprites/garchomp-mega-z/pokeapi.png",
+      "artwork": "sprites/garchomp-mega-z/artwork.png"
+    },
+    "raichu-mega-x": {
+      "key": "raichu-mega-x",
+      "dex": "0026",
+      "form": "0002",
+      "role": "메가",
+      "animData": null,
+      "anims": {},
+      "portrait": "sprites/raichu-mega-x/portrait.png",
+      "icon": "sprites/raichu-mega-x/pokeapi.png",
+      "artwork": "sprites/raichu-mega-x/artwork.png"
+    },
+    "raichu-mega-y": {
+      "key": "raichu-mega-y",
+      "dex": "0026",
+      "form": "0003",
+      "role": "메가",
+      "animData": null,
+      "anims": {},
+      "portrait": "sprites/raichu-mega-y/portrait.png",
+      "icon": "sprites/raichu-mega-y/pokeapi.png",
+      "artwork": "sprites/raichu-mega-y/artwork.png"
+    },
     "mewtwo-mega-x": {
       "key": "mewtwo-mega-x",
       "dex": "0150",
@@ -2613,6 +2759,93 @@
       "portrait": "sprites/rayquaza-mega/portrait.png",
       "icon": "sprites/rayquaza-mega/pokeapi.png",
       "artwork": "sprites/rayquaza-mega/artwork.png"
+    },
+    "latias-mega": {
+      "key": "latias-mega",
+      "dex": "0380",
+      "form": "0001",
+      "role": "메가",
+      "animData": "sprites/latias-mega/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/latias-mega/Walk-Anim.png",
+        "Attack": "sprites/latias-mega/Attack-Anim.png",
+        "Shoot": "sprites/latias-mega/Shoot-Anim.png",
+        "Hurt": "sprites/latias-mega/Hurt-Anim.png",
+        "Idle": "sprites/latias-mega/Idle-Anim.png",
+        "Strike": "sprites/latias-mega/Attack-Anim.png"
+      },
+      "portrait": "sprites/latias-mega/portrait.png",
+      "icon": "sprites/latias-mega/pokeapi.png",
+      "artwork": "sprites/latias-mega/artwork.png"
+    },
+    "latios-mega": {
+      "key": "latios-mega",
+      "dex": "0381",
+      "form": "0001",
+      "role": "메가",
+      "animData": "sprites/latios-mega/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/latios-mega/Walk-Anim.png",
+        "Attack": "sprites/latios-mega/Attack-Anim.png",
+        "Shoot": "sprites/latios-mega/Shoot-Anim.png",
+        "Hurt": "sprites/latios-mega/Hurt-Anim.png",
+        "Idle": "sprites/latios-mega/Idle-Anim.png",
+        "Strike": "sprites/latios-mega/Attack-Anim.png"
+      },
+      "portrait": "sprites/latios-mega/portrait.png",
+      "icon": "sprites/latios-mega/pokeapi.png",
+      "artwork": "sprites/latios-mega/artwork.png"
+    },
+    "dialga-origin": {
+      "key": "dialga-origin",
+      "dex": "0483",
+      "form": "0001",
+      "role": "메가",
+      "animData": "sprites/dialga-origin/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/dialga-origin/Walk-Anim.png",
+        "Attack": "sprites/dialga-origin/Attack-Anim.png",
+        "Hurt": "sprites/dialga-origin/Hurt-Anim.png",
+        "Idle": "sprites/dialga-origin/Idle-Anim.png",
+        "Strike": "sprites/dialga-origin/Attack-Anim.png"
+      },
+      "portrait": "sprites/dialga-origin/portrait.png",
+      "icon": "sprites/dialga-origin/pokeapi.png",
+      "artwork": "sprites/dialga-origin/artwork.png"
+    },
+    "palkia-origin": {
+      "key": "palkia-origin",
+      "dex": "0484",
+      "form": "0001",
+      "role": "메가",
+      "animData": "sprites/palkia-origin/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/palkia-origin/Walk-Anim.png",
+        "Attack": "sprites/palkia-origin/Attack-Anim.png",
+        "Hurt": "sprites/palkia-origin/Hurt-Anim.png",
+        "Idle": "sprites/palkia-origin/Idle-Anim.png",
+        "Strike": "sprites/palkia-origin/Attack-Anim.png"
+      },
+      "portrait": "sprites/palkia-origin/portrait.png",
+      "icon": "sprites/palkia-origin/pokeapi.png",
+      "artwork": "sprites/palkia-origin/artwork.png"
+    },
+    "darkrai-mega": {
+      "key": "darkrai-mega",
+      "dex": "0491",
+      "form": "0002",
+      "role": "메가",
+      "animData": "sprites/darkrai-mega/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/darkrai-mega/Walk-Anim.png",
+        "Attack": "sprites/darkrai-mega/Attack-Anim.png",
+        "Shoot": "sprites/darkrai-mega/Shoot-Anim.png",
+        "Hurt": "sprites/darkrai-mega/Hurt-Anim.png",
+        "Idle": "sprites/darkrai-mega/Idle-Anim.png"
+      },
+      "portrait": "sprites/darkrai-mega/portrait.png",
+      "icon": "sprites/darkrai-mega/pokeapi.png",
+      "artwork": "sprites/darkrai-mega/artwork.png"
     }
   },
   "icons": {
