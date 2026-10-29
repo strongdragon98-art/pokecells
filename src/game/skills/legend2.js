@@ -502,19 +502,14 @@ export const SKILL_IMPL = {
   },
 
   // ===== 기라티나 =====
+  // Z: 섀도다이브 · 차원 붕괴 — 앞 공간을 검붉은 차원 균열 3줄기로 할퀴고, 바닥을 따라 그림자 가시 + 암흑 번개가 5번 연달아 솟구친다
+  //  i: 연타 단계 (0·1 → 2 는 균열이 더 크고 가시가 더 높다) · 맞은 적은 반물질 파편에 휩싸여 잠깐 경직 · 묵직한 역경직과 흔들림
   shadow_claw(p, i) {
-    const m = p.mega.active;
-    if (i < 2) return { dur: .24, mm: .35, anim: 'Attack', ev: [[.07, () => { slashHit(p, { fwd: 14, w: 26, h: 22, mul: 1.05, type: 'ghost', crit: .2, color: 0x9a5aff, flipV: i === 1, thick: 5 }); p.scene.fx.embers(p.x + p.face * 16, p.y, [0x6a2aff, 0x2a0a3a], 4, { speed: 30 }); }]] };
-    return {
-      dur: .32, mm: .25, anim: 'Strike', ev: [[.1, () => {
-        slashHit(p, { fwd: 16, w: 34, h: 30, mul: 1.7, type: 'ghost', crit: .4, kbx: 240, color: 0xc08aff, arc: 17, thick: 7, status: m ? { curse: 4 } : {} });
-        for (const oy of [-8, 8]) p.scene.fx.slash(p.x + p.face * 10, p.y - 2 + oy, 15 * sizeMul(p), p.face, 0x6a2aff, { thick: 4 });
-        p.scene.fx.glow(p.x + p.face * 18, p.y, 22, 0x6a2aff, 220, .9);
-        Sfx.play('ghost'); Sfx.play('punch');
-      }]]
-    };
-  },
-  shadow_force(p) {
+    const sc = p.scene, m = p.mega.active, big = i === 2, f = p.face, s = sizeMul(p) * (big ? 1.15 : 1);
+    const ev = [[.05, () => giraRift(p, s, big, m, i)]];
+    for (let k = 0; k < 5; k++) ev.push([.13 + k * .055, () => giraSpike(p, f, k, s, big, m)]);
+    return { dur: .5, mm: .2, anim: big ? 'Strike' : 'Attack', lockFace: true, ev };
+  },  shadow_force(p) {
     const m = p.mega.active, sc = p.scene;
     const act = {
       dur: 1.25, mm: 1.15, anim: 'Walk', inv: 1.3,
@@ -651,3 +646,59 @@ export const SKILL_IMPL = {
     };
   }
 };
+
+// ---------------- 기라티나 차원 붕괴 (Z) ----------------
+const RIFT_DARK = 0x12020a, RIFT_RED = 0xff1a4a, RIFT_PURPLE = 0x9a3aff;
+// 반물질 파편: 맞은 적을 검붉은·보랏빛 조각이 감싼다
+function antimatter(sc, e) {
+  sc.fx.burst(e.x, e.y, [RIFT_DARK, RIFT_RED, RIFT_PURPLE, 0xffffff], 14, 90, { grav: 0, bounce: false, glow: true, life: .45 });
+  sc.fx.glow(e.x, e.y, 18, RIFT_RED, 200, .8);
+}
+// 차원 균열 3줄기 손톱 자국: 찢어진 틈(검은 심 · 붉은 가장자리 · 흰 열선)이 대각선으로 그어졌다가 닫힌다
+function giraRift(p, s, big, m, step) {
+  const sc = p.scene, f = p.face, cx = p.x + f * 30 * s, cy = p.y - 4, len = 44 * s, g = sc.add.graphics().setDepth(43);
+  const ga = sc.add.graphics().setDepth(42.9).setBlendMode(ADD);
+  const flip = step === 1 ? -1 : 1;
+  for (let k = 0; k < 3; k++) {
+    const ox = (k - 1) * 13 * s * f, oy = (k - 1) * 4 * s, x0 = cx + ox - f * len * .45, y0 = cy - len * .5 * flip + oy, x1 = cx + ox + f * len * .45, y1 = cy + len * .5 * flip + oy;
+    const nx = -(y1 - y0), ny = x1 - x0, nl = Math.hypot(nx, ny) || 1, w = (big ? 7 : 5) * s;
+    const tear = [];   // 가운데가 넓고 양 끝이 뾰족한 들쭉날쭉한 틈
+    for (let j = 0; j <= 8; j++) { const t = j / 8, bulge = Math.sin(t * Math.PI) * w * (.7 + Math.random() * .5); tear.push([x0 + (x1 - x0) * t + nx / nl * bulge, y0 + (y1 - y0) * t + ny / nl * bulge]); }
+    for (let j = 8; j >= 0; j--) { const t = j / 8, bulge = Math.sin(t * Math.PI) * w * (.7 + Math.random() * .5); tear.push([x0 + (x1 - x0) * t - nx / nl * bulge, y0 + (y1 - y0) * t - ny / nl * bulge]); }
+    const poly = (col, a, sc0) => { g.fillStyle(col, a); g.beginPath(); tear.forEach(([x, y], j) => { const X = cx + (x - cx) * sc0, Y = cy + (y - cy) * sc0; j ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath(); g.fillPath(); };
+    ga.lineStyle(w * 1.6, m ? 0xff3a7a : RIFT_RED, .55); ga.lineBetween(x0, y0, x1, y1);
+    ga.lineStyle(w * .9, RIFT_PURPLE, .7); ga.lineBetween(x0, y0, x1, y1);
+    poly(RIFT_DARK, 1, 1);
+    g.lineStyle(1.2, 0xffd0dc, .95); g.lineBetween(x0 + (x1 - x0) * .15, y0 + (y1 - y0) * .15, x0 + (x1 - x0) * .85, y0 + (y1 - y0) * .85);   // 흰 열선
+  }
+  for (const o of [g, ga]) { o.setScale(.2, 1); o.x = cx * .8; }   // 찢어지며 펼쳐진다 (가운데에서 바깥으로)
+  sc.tweens.add({ targets: [g, ga], scaleX: 1, x: 0, duration: 70, ease: 'Cubic.easeOut' });
+  sc.tweens.add({ targets: [g, ga], alpha: 0, delay: 200, duration: 260, onComplete: () => { g.destroy(); ga.destroy(); } });
+  const W = 64 * s, H = 50 * s;
+  sc.combat.hitRect({ x: cx - W / 2, y: cy - H / 2, w: W, h: H }, big ? 1.15 : .8, 'ghost', Object.assign({ kbx: 160, kby: -100, crit: .15, hs: big ? 95 : 70, stun: .22, onHit: e => antimatter(sc, e) }, m ? { curse: 4 } : {}));
+  sc.fx.glow(cx, cy, 34 * s, RIFT_RED, 240, .9);
+  sc.fx.burst(cx, cy, [RIFT_DARK, RIFT_RED, RIFT_PURPLE], 16, 120 * s, { grav: 0, bounce: false, glow: true, life: .4 });
+  sc.fx.shake(big ? .009 : .006, 160, 'hit');
+  Sfx.play('ghost'); Sfx.play('swing');
+}
+// 그림자 가시 k번째: 바닥에서 검붉은 가시가 솟고 위에서 암흑 번개가 내리꽂힌다 (가시마다 따로 맞는다 → 최대 5타)
+function giraSpike(p, f, k, s, big, m) {
+  const sc = p.scene, x = p.x + f * (34 + k * 24) * s, gy0 = sc.groundBelow(x, p.bottom - 8);
+  if (gy0 - p.bottom > 70 || sc.isSolidAt(x, p.y)) return;   // 낭떠러지 · 벽 너머엔 솟지 않는다
+  const gy = gy0, h = (44 + k * 7) * s * (big ? 1.25 : 1) * (m ? 1.15 : 1), w = 13 * s;
+  const g = sc.add.graphics().setDepth(41).setPosition(x, gy), ga = sc.add.graphics().setDepth(40.9).setPosition(x, gy).setBlendMode(ADD);
+  ga.fillStyle(m ? 0xff3a7a : RIFT_RED, .45); ga.fillTriangle(-w * 1.1, 0, w * 1.1, 0, 0, -h * 1.08);
+  g.fillStyle(RIFT_DARK, 1); g.fillTriangle(-w * .8, 0, w * .8, 0, 0, -h);
+  g.fillStyle(0x4a0a2a, 1); g.fillTriangle(-w * .8, 0, 0, 0, 0, -h);   // 한쪽 면은 어둡게 (입체)
+  g.fillStyle(RIFT_DARK, 1); for (const sx of [-1, 1]) g.fillTriangle(sx * w * .5, 0, sx * w * 1.25, 0, sx * w * .95, -h * .45);   // 곁가시
+  g.lineStyle(1, 0xff8aa0, .9); g.lineBetween(0, -h, w * .3, -h * .35);
+  g.setScale(1, 0); ga.setScale(1, 0);
+  sc.tweens.add({ targets: [g, ga], scaleY: 1, duration: 70, ease: 'Back.easeOut' });
+  sc.tweens.add({ targets: [g, ga], scaleY: 0, alpha: 0, delay: 260, duration: 180, ease: 'Quad.easeIn', onComplete: () => { g.destroy(); ga.destroy(); } });
+  lineFx(sc, x + (Math.random() - .5) * 20, gy - h - 46, x, gy - h * .6, k % 2 ? RIFT_PURPLE : RIFT_RED, { seg: 6, jag: 9, w: 2, ms: 200 });   // 암흑 번개
+  sc.combat.hitRect({ x: x - w, y: gy - h, w: w * 2, h }, big ? .42 : .32, 'ghost', Object.assign(Object.assign({ kbx: 60, kby: -170, hs: 45, onHit: e => antimatter(sc, e) }, k === 4 ? { stun: .3 } : {}), m ? { curse: 3 } : {}));
+  sc.fx.burst(x, gy - 2, [RIFT_DARK, 0x4a0a2a, RIFT_RED], 8, 80, { angle: -Math.PI / 2, spread: .9, up: 90, life: .4 });
+  sc.fx.glow(x, gy - h * .5, 20 * s, RIFT_RED, 200, .8);
+  sc.fx.shake(.004 + k * .0012, 90, 'hit');
+  if (k === 4) { sc.fx.ring(x, gy - h * .5, 30 * s, RIFT_PURPLE, 280); Sfx.play('boom'); } else Sfx.play('crack');
+}

@@ -322,6 +322,7 @@ export function buildChapter(ch, ci, retry = 0) {
   const loreLeft = ch.areas.map(a => [...(a.lore || [])]);
   const lore = (ai, x, g) => { const text = loreLeft[ai].shift(); if (text && freeCol(x, 1)) addProp({ kind: 'lore', x, g, text }, 1); };
   const altar = (ax, F) => { block(ax - 2, F - 1, 5, 1); block(ax - 1, F - 2, 3, 1); return F - 2; };
+  const altarWide = (ax, F) => { block(ax - 3, F - 1, 7, 1); block(ax - 2, F - 2, 5, 1); return F - 2; };   // 거대 기술머신 캡슐 받침 (5칸)
   const coverCells = new Map();   // 방 id → 흙 덮개 칸 (상처약·페이크 굴)
 
   for (const r of rooms) {
@@ -379,7 +380,7 @@ export function buildChapter(ch, ci, retry = 0) {
       if (area.gym || r.type === 'boss') for (const [x, h] of [[x0 + 1, 8], [x1 - 3, 9]]) addProp({ kind: 'pillar', x, g: r.F, h: Math.min(h, r.F - r.ty0 - 2), variant: ri(0, 2) }, 2);
       marks.push({ kind: r.type === 'boss' ? 'boss' : r.type === 'mini' ? 'mini' : 'hidden', x: mid, y: r.F, room: r });
     } else if (r.type === 'tm') {
-      const ax = (x0 + x1) >> 1, g = altar(ax, r.F);
+      const ax = (x0 + x1) >> 1, g = altarWide(ax, r.F);
       props.push({ kind: 'tm', x: ax, g });
       marks.push({ kind: 'tm', x: ax, y: g, room: r });
       setP(x0 + 3, r.F - 4, 4); setP(x1 - 7, r.F - 4, 4);

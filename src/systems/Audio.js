@@ -77,6 +77,14 @@ class AudioSys {
       case 'eshot': this.tone(500, .09, 'square', .03, -200); break;
       case 'clash': this.hiss(.07, .14, 3600, 0, 2); this.tone(1250, .06, 'square', .03, -700); break;   // 투사체끼리 부딪힘
       case 'select': this.tone(660, .05, 'square', .04); break;
+      // 기술머신 카드 등급별 뒤집기 (커먼 → 전설) · 캡슐 증기 · 전설 팡파르
+      case 'card_common': this.tone(880, .08, 'triangle', .05, 220); break;
+      case 'card_rare': this.arp([988, 1319, 1760], .045, 'triangle', .05); this.hiss(.1, .06, 5200, 0, 3); break;
+      case 'card_unique': this.tone(220, .3, 'sawtooth', .05, 440); this.arp([784, 1047, 1319, 1760], .06, 'square', .05); break;
+      case 'card_legend': this.tone(110, .9, 'sawtooth', .09, 220); this.arp([523, 659, 784, 1047, 1319, 1568, 2093], .07, 'square', .06);
+        this.arp([1047, 1568, 2093], .2, 'triangle', .05); this.tone(2093, .8, 'triangle', .04, 0, .55); this.hiss(.5, .14, 900, 0, 1); break;
+      case 'steam': this.hiss(.7, .2, 1400, 0, .6); this.hiss(.4, .1, 4200, .1, 2); this.tone(90, .35, 'sine', .08, 60); break;
+      case 'resonate': this.tone(196, .6, 'sine', .05, 98); this.tone(392, .5, 'triangle', .025, 196, .05); break;
       case 'type': this.tone(1500, .018, 'square', .012); break;
       case 'chain': this.hiss(.3, .12, 900, 0, 3); this.tone(120, .3, 'square', .05, -40); break;
       case 'thunder': this.hiss(.7, .3, 180); this.tone(60, .6, 'sawtooth', .12, -20); break;

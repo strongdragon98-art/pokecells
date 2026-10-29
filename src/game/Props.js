@@ -265,24 +265,47 @@ function dropSignArt(scene) {
   });
 }
 
-// 기술머신 제단: 룬이 새겨진 돌 받침 + 둥둥 떠서 도는 TM 디스크
+// 기술머신 제단 (Grand TM Shrine): 고대 실프주식회사 하이테크 캡슐 — 예전 제단의 2배가 넘는 크기
+//  바닥 홀로그램 마법진 · 금테 금속 받침 · 유리 배양관(안에서 황금·보랏빛 디스크와 에너지 코어가 떠서 맥동) · 위 뚜껑(작동하면 들린다)
 function tmArt(scene) {
-  const stone = 0x4a4858;
-  const altar = canvasTex(scene, 'prop:tm-altar', 26, 12, F => {
-    F(0, 4, 26, 8, shade(stone, .55)); F(1, 5, 24, 6, stone); F(1, 5, 24, 1, shade(stone, 1.6));
-    F(4, 0, 18, 5, shade(stone, .6)); F(5, 1, 16, 3, shade(stone, 1.2)); F(5, 1, 16, 1, shade(stone, 1.7));
-    for (const x of [4, 9, 16, 21]) F(x, 7, 2, 2, 0x8ad8ff);   // 빛나는 룬
-    F(12, 7, 2, 3, 0xbff0ff);
+  const steel = 0x3a3c52, dark = 0x1a1a2a, gold = 0xd8a63a, cyan = 0x6ae8ff;
+  const base = canvasTex(scene, 'prop:tm2-base', 72, 16, F => {
+    F(0, 6, 72, 10, shade(steel, .5)); F(2, 7, 68, 8, steel); F(2, 7, 68, 1, shade(steel, 1.7));      // 넓은 받침판
+    F(10, 0, 52, 7, shade(steel, .6)); F(11, 1, 50, 5, shade(steel, 1.15)); F(11, 1, 50, 1, shade(steel, 1.8));   // 윗단
+    F(2, 11, 68, 1, gold, .9); F(11, 5, 50, 1, gold, .8);                                                 // 금테
+    for (const x of [6, 14, 22, 30, 41, 49, 57, 65]) F(x, 12, 2, 2, cyan);                                // 빛나는 이음매
+    F(33, 2, 6, 3, cyan); F(34, 3, 4, 1, 0xffffff);                                                       // 가운데 동력 표시등
   });
-  const disc = canvasTex(scene, 'prop:tm-disc', 15, 15, (F, c) => {
-    const ring = (r, col) => { c.fillStyle = css(col); c.beginPath(); c.arc(7.5, 7.5, r, 0, Math.PI * 2); c.fill(); };
-    ring(7.5, 0x1a2440); ring(6.5, 0x7ab8ff); ring(5.2, 0xc8e4ff); ring(3, 0x5a8ad8); ring(1.6, 0x1a2440);
-    F(3, 3, 3, 1, 0xffffff); F(3, 4, 1, 2, 0xffffff);   // 반사광
-    F(9, 10, 3, 1, 0x2a4a90, .8);
+  const glass = canvasTex(scene, 'prop:tm2-glass', 34, 52, (F, c) => {   // 배양관 안쪽 (반투명 유리 + 아래서 차오르는 빛)
+    const gr = c.createLinearGradient(0, 0, 0, 52); gr.addColorStop(0, 'rgba(40,30,80,.55)'); gr.addColorStop(.7, 'rgba(70,40,130,.5)'); gr.addColorStop(1, 'rgba(150,90,255,.7)');
+    c.fillStyle = gr; c.fillRect(0, 0, 34, 52);
+    for (let y = 4; y < 52; y += 6) F(4 + (y * 7) % 22, y, 2, 2, 0xc8b0ff, .5);                       // 떠오르는 기포
   });
-  return { altar, disc };
-}
-// 샛길 갱도 옆 표지: TM 디스크 무늬 + 아래 화살표
+  const frame = canvasTex(scene, 'prop:tm2-frame', 42, 60, F => {   // 유리 앞 틀: 양옆 기둥 · 아래 고리 · 유리 반사광 (가운데는 비어 있다)
+    F(0, 0, 5, 60, shade(steel, .55)); F(1, 0, 3, 60, steel); F(1, 0, 1, 60, shade(steel, 1.7));
+    F(37, 0, 5, 60, shade(steel, .55)); F(38, 0, 3, 60, steel); F(40, 0, 1, 60, shade(steel, .4));
+    for (let y = 6; y < 54; y += 9) { F(2, y, 1, 4, cyan); F(39, y, 1, 4, cyan); }                       // 기둥의 표시등
+    F(0, 52, 42, 8, shade(steel, .5)); F(1, 53, 40, 6, steel); F(1, 53, 40, 1, shade(steel, 1.8)); F(1, 57, 40, 1, gold);   // 아래 고리
+    F(9, 4, 2, 40, 0xffffff, .28); F(12, 6, 1, 30, 0xffffff, .18); F(30, 10, 1, 36, 0xffffff, .12);      // 유리 반사광
+  });
+  const cap = canvasTex(scene, 'prop:tm2-cap', 46, 14, F => {   // 위 뚜껑 (작동하면 들려 열린다)
+    F(0, 4, 46, 10, shade(steel, .5)); F(1, 5, 44, 8, steel); F(1, 5, 44, 1, shade(steel, 1.8)); F(1, 10, 44, 1, gold);
+    F(10, 0, 26, 5, shade(steel, .6)); F(11, 1, 24, 3, shade(steel, 1.2)); F(20, 1, 6, 2, cyan); F(22, 0, 2, 1, 0xffffff);
+    for (const x of [4, 40]) F(x, 7, 2, 3, 0xff5a8a);                                                    // 붉은 경고등
+  });
+  const disc = canvasTex(scene, 'prop:tm2-disc', 21, 21, (F, c) => {   // 황금·보랏빛 기술 디스크
+    const ring = (r, col) => { c.fillStyle = css(col); c.beginPath(); c.arc(10.5, 10.5, r, 0, Math.PI * 2); c.fill(); };
+    ring(10.5, 0x3a1a08); ring(9.5, 0xffc84a); ring(8, 0xfff0b0); ring(6.2, 0x9a5aff); ring(4.2, 0xd8b0ff); ring(2.2, 0x2a0a3a);
+    F(4, 4, 4, 1, 0xffffff); F(4, 5, 1, 3, 0xffffff); F(13, 15, 4, 1, 0x7a3a10, .8);
+  });
+  const sigil = canvasTex(scene, 'prop:tm2-sigil', 96, 96, (F, c) => {   // 바닥 홀로그램 마법진 (눕혀서 쓴다)
+    c.strokeStyle = '#8ae8ff'; c.lineWidth = 2; c.beginPath(); c.arc(48, 48, 44, 0, Math.PI * 2); c.stroke();
+    c.lineWidth = 1; c.beginPath(); c.arc(48, 48, 36, 0, Math.PI * 2); c.stroke(); c.beginPath(); c.arc(48, 48, 22, 0, Math.PI * 2); c.stroke();
+    for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2, b = a + Math.PI * 2 / 3; c.beginPath(); c.moveTo(48 + Math.cos(a) * 36, 48 + Math.sin(a) * 36); c.lineTo(48 + Math.cos(b) * 36, 48 + Math.sin(b) * 36); c.stroke(); }
+    for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2; F(48 + Math.cos(a) * 40 - 1, 48 + Math.sin(a) * 40 - 1, 3, 3, k % 2 ? 0xffd25a : 0x8ae8ff); }
+  });
+  return { base, glass, frame, cap, disc, sigil };
+}// 샛길 갱도 옆 표지: TM 디스크 무늬 + 아래 화살표
 function sideSignArt(scene) {
   const m = 0x4a4a66;
   return canvasTex(scene, 'prop:sidesign', 20, 30, F => {
@@ -497,22 +520,27 @@ export class Props {
           break;
         }
         case 'signpost': this.lit(s.add.image(X + 8, Y + 1, signpostArt(s)).setOrigin(.5, 1).setDepth(7).setFlipX(Math.random() < .5)); break;
-        case 'tm': {   // 샛길 끝 제단 위에 둥둥 뜬 기술머신 (다가가 F / ↑ → 카드 3장 뒤집기)
+        case 'tm': {   // 샛길 끝의 거대 기술머신 캡슐 (다가가면 공명해 에너지 기둥이 솟고, F / ↑ 로 작동 → 캡슐이 열리며 카드 3장)
           const a = tmArt(s), x = X + 8;
-          this.lit(s.add.image(x, Y, a.altar).setOrigin(.5, 1).setDepth(6));
-          const beam = this.add(s.add.image(x, Y - 34, 'glow').setBlendMode(ADD).setTint(0x8ad8ff).setScale(.42, 2.4).setAlpha(.3).setDepth(6.1));
-          const halo = this.glow(x, Y - 24, 1, 0x9ad8ff, .55, 6.2);
-          const disc = this.add(s.add.image(x, Y - 24, a.disc).setDepth(6.4));
-          const l = this.light(x, Y - 24, 150, 0x8ac8ff, 1.9);
-          s.tweens.add({ targets: [disc, halo], y: '-=5', duration: 1300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-          s.tweens.add({ targets: disc, scaleX: { from: 1, to: .18 }, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });   // 동전처럼 천천히 돈다
-          this.pulses.push({ o: beam, base: .28, amp: .12, sp: 2.2 }, { o: halo, base: .5, amp: .2, sp: 3 });
-          const it = { kind: 'tm', pr, x, y: Y, range: 24, used: false, prompt: '[F 또는 ↑ : 기술머신 가동]', promptY: Y - 50, disc, halo, beam, lightObj: l };
+          const sigil = this.add(s.add.image(x, Y - 1, a.sigil).setBlendMode(ADD).setScale(1, .26).setAlpha(.55).setDepth(5.9));
+          this.lit(s.add.image(x, Y, a.base).setOrigin(.5, 1).setDepth(6));
+          const glass = this.add(s.add.image(x, Y - 16, a.glass).setOrigin(.5, 1).setDepth(6.05).setAlpha(.9));
+          const beam = this.add(s.add.image(x, Y - 70, 'glow').setBlendMode(ADD).setTint(0xb08aff).setScale(.5, 3).setAlpha(.14).setDepth(6.1));
+          const halo = this.glow(x, Y - 42, 1.1, 0x9a5aff, .55, 6.2);
+          const coreG = this.glow(x, Y - 42, .55, 0xffd25a, .7, 6.25);
+          const disc = this.add(s.add.image(x, Y - 42, a.disc).setDepth(6.3));
+          this.lit(s.add.image(x, Y - 14, a.frame).setOrigin(.5, 1).setDepth(6.5));
+          const cap = this.lit(s.add.image(x, Y - 73, a.cap).setOrigin(.5, 1).setDepth(6.6));
+          const l = this.light(x, Y - 42, 190, 0xb08aff, 2.1);
+          s.tweens.add({ targets: [disc, halo, coreG], y: '-=6', duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });   // 둥둥
+          s.tweens.add({ targets: disc, scaleX: { from: 1, to: .15 }, duration: 950, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });   // 천천히 돈다
+          s.tweens.add({ targets: coreG, scale: { from: .45, to: .7 }, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });   // 맥동
+          this.pulses.push({ o: halo, base: .5, amp: .2, sp: 3 }, { o: sigil, base: .45, amp: .2, sp: 1.6 });
+          const it = { kind: 'tm', pr, x, y: Y, range: 30, used: false, prompt: '[F 또는 ↑ : 기술머신 가동]', promptY: Y - 92, disc, halo, beam, core: coreG, cap, glass, sigil, lightObj: l, near: false };
           this.interacts.push(it);
           if (pr.used) this.markUsed(it);
           break;
-        }
-        case 'sidesign': {   // 마을 끝 샛길 갱도 옆 표지
+        }        case 'sidesign': {   // 마을 끝 샛길 갱도 옆 표지
           this.lit(s.add.image(X + 8, Y + 1, sideSignArt(s)).setOrigin(.5, 1).setDepth(7));
           const mark = this.glow(X + 8, Y - 22, .35, 0x9ad8ff, .5, 7.3);
           this.pulses.push({ o: mark, base: .35, amp: .25, sp: 2.5 });
@@ -693,7 +721,7 @@ export class Props {
     }
     // 맥동 (나무 균열 · 결계 · 로어 표지)
     for (const p of this.pulses) p.o.setAlpha(Math.max(0, p.base + Math.sin(t * p.sp) * p.amp));
-    for (const it of this.interacts) if (it.kind === 'tm' && !it.used && Math.random() < .14) this.s.fx.embers(it.x + (Math.random() - .5) * 18, it.y - 18 - Math.random() * 14, [0x9ad8ff, 0xffffff], 1, { speed: 12 });   // 기술머신 주변 빛 알갱이
+    for (const it of this.interacts) if (it.kind === 'tm' && !it.used) this.tmResonance(it, dt);
     // 지지직 깜빡임: 가끔 잠깐 꺼졌다 켜진다
     for (const f of this.flickers) {
       if (f.off > 0) { f.off -= dt; if (f.off <= 0) f.objs.forEach((o, i) => o.setAlpha(f.base[i])); if (f.light && f.off <= 0) f.light.setIntensity(f.lightK); continue; }
@@ -719,6 +747,35 @@ export class Props {
       f.y = f.home.y + Math.cos(t * f.sp * .8 + f.ph) * 14;
       f.setAlpha(.45 + Math.sin(t * 3 + f.ph * 3) * .4);
     }
+  }
+
+  // 기술머신 공명: 플레이어가 다가가면 에너지 기둥이 솟고 빛 알갱이가 늘어난다 (멀어지면 가라앉는다)
+  tmResonance(it, dt) {
+    const s = this.s, p = s.player, near = !!p && Math.abs(p.x - it.x) < 90 && Math.abs(p.bottom - it.y) < 70;
+    if (near !== it.near) {
+      it.near = near;
+      s.tweens.killTweensOf(it.beam);
+      s.tweens.add({ targets: it.beam, alpha: near ? .6 : .14, scaleX: near ? .8 : .5, scaleY: near ? 6 : 3, y: near ? it.y - 110 : it.y - 70, duration: near ? 500 : 700, ease: 'Cubic.easeOut' });
+      if (near) { Sfx.play('resonate'); s.fx.ring(it.x, it.y - 4, 40, 0x8ae8ff, 420); }
+      if (it.lightObj) it.lightObj.setIntensity(near ? 3 : 2.1);
+    }
+    if (Math.random() < (near ? .7 : .16)) s.fx.embers(it.x + (Math.random() - .5) * 30, it.y - 10 - Math.random() * (near ? 90 : 50), near ? [0xffd25a, 0xb08aff, 0xffffff] : [0x9ad8ff, 0xffffff], 1, { speed: near ? 40 : 12 });
+  }
+
+  // 기술머신 작동: 캡슐 뚜껑이 들리고 증기·빛을 뿜는다 → done() (카드 화면). 이미 연 캡슐은 바로
+  openTM(it, done) {
+    const s = this.s;
+    if (it.opened) { done(); return; }
+    it.opened = true;
+    Sfx.play('steam');
+    s.tweens.add({ targets: it.cap, y: it.y - 96, angle: -8, duration: 420, ease: 'Back.easeOut' });
+    s.tweens.add({ targets: it.glass, alpha: .35, duration: 300 });
+    for (const side of [-1, 1]) s.fx.burst(it.x + side * 18, it.y - 70, [0xe8e8f0, 0xffffff, 0xc8c8d8], 14, 90, { angle: -Math.PI / 2 + side * .7, spread: .5, up: 70, grav: -30, bounce: false, life: .9, size: 2 });
+    s.fx.burst(it.x, it.y - 74, [0xffd25a, 0xb08aff, 0xffffff], 26, 160, { up: 120, glow: true, life: .8 });
+    s.fx.glow(it.x, it.y - 50, 60, 0xffe8b0, 500, 1); s.fx.ring(it.x, it.y - 50, 50, 0xffd25a, 420);
+    s.cameras.main.flash(260, 255, 236, 200, true); s.fx.shake(.008, 260);
+    s.tweens.add({ targets: it.disc, y: it.y - 64, scale: 1.6, duration: 500, ease: 'Cubic.easeOut' });
+    s.time.delayedCall(650, done);
   }
 
   // 잿빛 태초마을: 화면 안에 잿가루가 천천히 흩날린다 (화면 위에서 떨어져 아래로 사라지면 다시 위로)
@@ -774,7 +831,9 @@ export class Props {
       if (it.lightObj) it.lightObj.setIntensity(.8);
     } else if (it.kind === 'tm') {   // 카드를 고르고 나면 디스크가 빛으로 흩어지고 제단이 식는다
       this.pulses = this.pulses.filter(q => q.o !== it.beam && q.o !== it.halo);
-      this.s.tweens.killTweensOf([it.disc, it.halo]);
+      this.s.tweens.killTweensOf([it.disc, it.halo, it.core, it.beam].filter(Boolean));
+      if (it.core) this.s.tweens.add({ targets: it.core, alpha: 0, duration: 500 });
+      if (it.cap) this.s.tweens.add({ targets: it.cap, y: it.y - 73, angle: 0, duration: 400 });
       this.s.tweens.add({ targets: it.disc, alpha: 0, scale: 1.8, duration: 500, onComplete: () => it.disc.setVisible(false) });
       this.s.tweens.add({ targets: [it.halo, it.beam], alpha: .06, duration: 700 });
       if (it.lightObj) it.lightObj.setIntensity(.4);

@@ -1,3 +1,5 @@
+import { perkMods } from '../game/Perks.js';
+
 // 런(한 판) 동안 유지되는 강화 아이템. 같은 아이템은 중첩된다.
 // icon: 그림을 못 받았을 때 쓰는 도트 아이콘(Textures.js) · art: 가방·HUD·땅에 떨어진 아이템에 보이는 본가(소드실드·스칼렛바이올렛) 가방 아이콘 이름
 //  (npm run fetch-items 가 public/assets/items/<id>.png 로 받는다). 게임 오리지널인 기술강화 코어는 뜻이 가까운 본가 도구 그림을 쓴다:
@@ -33,25 +35,26 @@ export const CONSUMABLES = {
 //  보스는 반드시 · 마을(포켓몬센터 옆) 자판기는 가끔(아니면 오렌열매) · 상자는 아주 가끔(아니면 오렌열매) · 야생 포켓몬은 안 떨어뜨림
 export const ITEM_DROP = { boss: 1, vending: .4, treasure: .2, chest: .08, wild: 0 };
 
-// 보유 아이템 → 계산된 보정치
-export function computeMods(items) {
-  const n = k => items[k] || 0;
+// 보유 아이템 + 기술머신 특성 카드(game/Perks.js) → 계산된 보정치
+//  특성 카드의 다른 값(pBurn·chain·dashBomb·sturdy …)은 그대로 실려 간다
+export function computeMods(items, perks) {
+  const n = k => items[k] || 0, pm = perkMods(perks);
   const typeBoost = {};
   for (const k of ITEM_KEYS) {
     const it = ITEMS[k];
     if (it.boostType) typeBoost[it.boostType] = (typeBoost[it.boostType] || 0) + .3 * n(k);
     if (it.boostType2) typeBoost[it.boostType2] = (typeBoost[it.boostType2] || 0) + .3 * n(k);
   }
-  return {
+  return Object.assign({ atkMul: 1, hpMul: 1, speedMul: 1, dashCdMul: 1, dashInvAdd: 0, extraJumps: 0, guard: 1, bandMul: 1, specsMul: 1, expMul: 1 }, pm, {
     typeBoost,
-    all: 1 + .3 * n('life_orb'),
-    orbCost: n('life_orb') > 0,
-    extraProj: n('core_multi'),
-    cdMul: Math.pow(.8, n('core_haste')),
-    sizeMul: 1 + .3 * n('core_giant'),
-    regen: .006 * n('leftovers'),
-    lifesteal: .06 * n('shell_bell'),
-    crit: .15 * n('razor_claw'),
-    swapCdMul: Math.pow(.6, n('quick_claw'))
-  };
+    all: (1 + .3 * n('life_orb')) * (pm.allMul || 1),
+    orbCost: n('life_orb') > 0 || !!pm.orbCost,
+    extraProj: n('core_multi') + (pm.extraProj || 0),
+    cdMul: Math.pow(.8, n('core_haste')) * (pm.cdMul || 1),
+    sizeMul: (1 + .3 * n('core_giant') + (pm.sizeAdd || 0)) * (pm.sizeMul || 1),
+    regen: .006 * n('leftovers') + (pm.regen || 0),
+    lifesteal: .06 * n('shell_bell') + (pm.lifesteal || 0),
+    crit: .15 * n('razor_claw') + (pm.crit || 0),
+    swapCdMul: Math.pow(.6, n('quick_claw')) * (pm.swapCdMul || 1)
+  });
 }

@@ -150,11 +150,12 @@ export class TouchControls {
 
   updateStick() {
     const s = this.state, st = this.stick;
-    if (!st) { s.left = s.right = s.up = s.down = false; return; }
+    if (!st) { s.left = s.right = s.up = s.down = s.downAim = false; return; }
     let dx = st.x - st.bx, dy = st.y - st.by;
     const d = Math.hypot(dx, dy), lim = this.stickR * 1.5;
     if (d > lim) { st.bx += dx * (1 - lim / d); st.by += dy * (1 - lim / d); dx = st.x - st.bx; dy = st.y - st.by; }   // 손가락을 따라 받침이 끌려온다
     s.left = dx < -8; s.right = dx > 8; s.up = dy < -16; s.down = dy > 14;
+    s.downAim = dy > 14 && dy >= Math.abs(dx);   // 하향 점프: 조이스틱이 아래쪽 ±45° 안 (대각선 아래로 걸으며 점프할 땐 보통 점프)
   }
 
   // 유리 원: 어두운 속 + 상아색 테두리 + 왼쪽 위 얇은 광택 (눌리면 밝아진다)

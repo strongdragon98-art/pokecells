@@ -30,6 +30,7 @@ import { Save } from '../systems/Save.js';
 import { RunSave, seeded, newSeed, snapshotWorld, applyWorld, snapshotPlayer, restorePlayer } from '../systems/RunSave.js';
 import { itemArt, shade } from '../systems/Textures.js';
 import { rollCards, applyCard } from '../data/tm.js';
+import { onKill as perkKill } from '../game/Perks.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[Math.floor(Math.random() * a.length)];
@@ -267,6 +268,7 @@ export default class GameScene extends Phaser.Scene {
     this.layers = [];
     this.covers = [];
     if (this.fx) this.fx.clearAll();   // 남은 파티클·파편은 풀로 돌려놓는다
+    this.tmOpening = false;
     this.dropStaleTweens();
   }
 
@@ -421,6 +423,7 @@ export default class GameScene extends Phaser.Scene {
       for (const f in t.pressed) if (t.pressed[f]) i[f] = true;
       t.pressed = {};
     }
+    i.downAim = b.down.isDown || !!(t && t.on !== false && t.downAim);   // 하향 점프 판정용 '아래' (키보드 ↓ · 조이스틱 아래 ±45°)
     if (JD(k.ESC) || JD(k.P)) this.togglePause();
     if (JD(b.map) || i.mapP) this.toggleOverlay('map');
     if (JD(b.bag) || i.invP) this.toggleOverlay('inv');
@@ -617,11 +620,19 @@ export default class GameScene extends Phaser.Scene {
 
   // ---------------- 기술머신: 카드 3장 뒤집기 → 1장 고르기 ----------------
   // 처음 가동할 때 지금 출전 중인 포켓몬에게 맞춘 카드 3장을 뽑아 제단에 묶어 둔다 (닫았다 다시 열어도 같은 카드·뒤집은 상태 그대로)
+  //  처음 가동하면 캡슐이 증기와 빛을 뿜으며 열린 뒤(Props.openTM) 카드 화면으로
   openTM(it) {
+    if (this.tmOpening) return;
     if (!it.cards) { it.member = this.player.m; it.cards = rollCards(it.member); it.flipped = [false, false, false]; it.sel = -1; }
-    this.tmActive = it;
-    this.toggleOverlay('tm');
-    Sfx.play('mega');
+    this.tmOpening = true;
+    this.player.b.setVelocityX(0);
+    this.props.openTM(it, () => {
+      this.tmOpening = false;
+      if (this.over || this.overlay || !this.props) return;
+      this.tmActive = it;
+      this.toggleOverlay('tm');
+      Sfx.play('mega');
+    });
   }
   // 카드 i 확정 (기술 습득 카드는 바꿀 슬롯 z·x·c 와 함께)
   finishTM(i, slot) {
@@ -835,6 +846,7 @@ export default class GameScene extends Phaser.Scene {
     const p = this.player, room = roomAt(this.level, p.x, p.y - 4) || this.room;
     if (room !== this.room) {
       this.room = room;
+      for (const m of p.members) m.sturdyUsed = false;   // 기합의띠(특성 카드)는 방마다 1번
       this.events.emit('room', room);
       this.enterArea(room);
       if (room.type === 'village') {
@@ -1004,6 +1016,7 @@ export default class GameScene extends Phaser.Scene {
   killEnemy(e) {
     if (!e.alive) return;
     e.alive = false; e.intangible = true; e.telegraph(false);
+    if (this.player) perkKill(this.player);   // 특성 카드: 생명의구슬 유물 — 처치하면 체력 회복
     (e.colliders || []).forEach(c => c.destroy());
     e.colliders = [];
     e.b.enable = false;
@@ -1172,8 +1185,8 @@ export default class GameScene extends Phaser.Scene {
   // 히든 전설 보상: 출전 중인 포켓몬에게 맞춘 '전설' 등급 기술 카드 3장
   openLegendCards() {
     if (this.over || this.transitioning || this.overlay) { this.time.delayedCall(800, () => this.openLegendCards()); return; }
-    const m = this.player.m;
-    const it = { kind: 'tm', legend: true, used: false, member: m, cards: rollCards(m).map(c => Object.assign(c, { grade: '전설' })), flipped: [false, false, false], sel: -1 };
+    const m = this.player.m;   // 히든 전설 보상: 유니크 이상 · 한 장은 반드시 전설
+    const it = { kind: 'tm', legend: true, used: false, member: m, cards: rollCards(m, { floor: '유니크', legend: true }), flipped: [false, false, false], sel: -1 };
     this.tmActive = it;
     this.toggleOverlay('tm');
     Sfx.play('mega');

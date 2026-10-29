@@ -6,6 +6,7 @@ import { Enemy } from './Enemy.js';
 import { BOSSES } from '../data/pokemon.js';
 import { Sfx } from '../systems/Audio.js';
 import { overlap } from './Combat.js';
+import { bolt } from './Perks.js';
 
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const STRIKE = new Set(['dash', 'dive', 'spin', 'spark', 'glide', 'jet', 'serpent', 'skydive', 'lunge', 'volt', 'boltRun', 'fbDive']);
@@ -1838,7 +1839,7 @@ BOSS_AI.giratina = function (e, dt, p) {
       b.setVelocity(Phaser.Math.Clamp((tx - e.x) * 1.6, -far, far), Phaser.Math.Clamp((ty - e.y) * 1.6, -120, 120));
       e.cd -= dt;
       if (e.cd > 0) break;
-      e.mode = e.choose(['dive', 'gravity', 'claws', 'dive']);
+      e.mode = e.choose(['dive', 'gravity', 'claws', 'collapse', 'dive']);
       e.state = 'wind'; e.timer = ph2 ? .45 : .6; e.telegraph(true); b.setVelocity(0, 0);
       sc.fx.glow(e.x, e.y, 40, col, e.timer * 1000, .9);
       if (e.mode === 'dive') e.dives = ph2 ? 2 : 1;
@@ -1861,6 +1862,13 @@ BOSS_AI.giratina = function (e, dt, p) {
           rockfall(e, xs, { kind: 'other', color: 0xff6a8a, r: 6, warn: 0xff3a5a, delay: .2, step: .06 });
         });
         e.state = 'fire'; e.timer = 1.6;
+      } else if (e.mode === 'collapse') {   // 섀도다이브 · 차원 붕괴: 앞 공간을 균열 3줄기로 할퀴고, 바닥을 따라 그림자 가시 5(2페이즈 7)개가 플레이어 쪽으로 솟는다
+        const dir = Math.sign(p.x - e.x) || 1, n = ph2 ? 7 : 5;
+        for (let k = 0; k < 3; k++) sc.time.delayedCall(k * 60, () => { if (!live(e)) return; const cx = e.x + dir * 40, cy = e.y + (k - 1) * 16; bolt(sc, cx - dir * 30, cy - 34, cx + dir * 30, cy + 34, k % 2 ? 0x9a3aff : 0xff1a4a, 5, 380); });
+        sc.fx.glow(e.x + dir * 40, e.y, 50, 0xff1a4a, 400, 1); sc.fx.shake(.01, 240); Sfx.play('ghost');
+        marchPillars(e, e.x + dir * 40, dir, n, { gap: 40, step: .1, h: 78, w: 22, color: 0x8a1a3a, type: 'ghost', delay: .45, life: .5, status: { slow: 1 },
+          burst: (x, gy) => { bolt(sc, x + (Math.random() - .5) * 20, gy - 130, x, gy - 50, 0x9a3aff, 2, 220); sc.fx.burst(x, gy - 4, [0x12020a, 0xff1a4a, 0x9a3aff], 10, 100, { angle: -Math.PI / 2, spread: .8, up: 110, life: .45, glow: true }); sc.fx.shake(.005, 100); Sfx.play('crack'); } });
+        e.state = 'fire'; e.timer = 1.2;
       } else {   // 섀도크루
         const n = ph2 ? 7 : 5, base = Math.atan2(p.y - e.y, p.x - e.x);
         for (let k = 0; k < n; k++) { const a = base + (k - (n - 1) / 2) * .2; e.shot({ x: e.x, y: e.y, vx: Math.cos(a) * 240, vy: Math.sin(a) * 240, r: 7, kind: 'wave', type: 'ghost', color: col, life: 2 }); }

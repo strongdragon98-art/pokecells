@@ -22,7 +22,7 @@ export const SKILLS = {
   spacial_rend: { name: '공간절단', type: 'dragon', cd: 9, icon: 'claw', desc: '화면을 가로지르는 공간의 균열이 시간차로 두 번 베어낸다. 두 번째는 풀죽음.', mega: '균열 폭·위력 증가' },
   warp_rift: { name: '공간이동', type: 'dragon', cd: 9, icon: 'dash', desc: '균열을 열고 방향키 쪽으로 순간이동. 남은 균열이 적을 계속 벤다. 무적.', mega: '이동 거리 증가 + 도착 지점에도 균열' },
   // ===== 기라티나 =====
-  shadow_claw: { name: '섀도크루', type: 'ghost', cd: 0, icon: 'claw', desc: '그림자 발톱 3연격. 급소율이 매우 높다.', mega: '마지막 타격에 저주' },
+  shadow_claw: { name: '섀도다이브: 차원 붕괴', type: 'ghost', cd: 0, icon: 'claw', desc: '공간을 세 줄기로 찢어 할퀴고, 앞 바닥을 따라 그림자 가시와 암흑 번개가 5번 연달아 솟구친다. 맞은 적은 잠깐 경직.', mega: '가시가 더 크고 맞은 적을 저주' },
   shadow_force: { name: '섀도다이브', type: 'ghost', cd: 9, icon: 'ghost', desc: '0.9초간 모습을 감추고(무적) 움직이다 가장 가까운 적 뒤에서 나타나 일격. 방어 무시.', mega: '폭발 범위·위력 증가 + 저주' },
   distortion: { name: '반전세계', type: 'ghost', cd: 11, icon: 'orb', desc: '4초간 주변을 반전세계로 바꾼다. 안의 적은 저주·둔화되고 중력이 약해져 떠오른다.', mega: '범위·시간 증가' },
   // ===== 다크라이 =====

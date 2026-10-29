@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 import { typeMultiplier, effectiveness, typeColor } from '../data/types.js';
 import { Sfx } from '../systems/Audio.js';
 import { ProjectileRenderer } from '../systems/ProjectileRenderer.js';
+import { onHit as perkHit } from './Perks.js';
 
 const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 const circRect = (cx, cy, r, b) => { const nx = Math.max(b.x, Math.min(cx, b.x + b.w)), ny = Math.max(b.y, Math.min(cy, b.y + b.h)); return (nx - cx) ** 2 + (ny - cy) ** 2 <= r * r; };
@@ -31,6 +32,7 @@ export class Combat {
     const eff = effectiveness(m);
     let d = base * m * mods.all * (1 + (mods.typeBoost[type] || 0));
     if (e.status.curse > 0) d *= 1.3;
+    if (mods.execute && e.hp <= e.maxhp * .25) d *= 1 + mods.execute;   // 특성 카드: 마무리 일격
     if (e.guardMul) d *= e.guardMul;
     const crit = !o.dot && Math.random() < .06 + (o.crit || 0) + mods.crit;
     if (crit) d *= 1.6;
@@ -52,6 +54,7 @@ export class Combat {
       const steal = (mods.lifesteal || 0) + (o.lifesteal || 0);
       if (steal > 0) p.heal(d * steal, true);
     }
+    if (e.hp > 0) perkHit(this, e, d, type, o);   // 특성 카드: 화상·빙결·마비·독·저주 부여 · 연쇄 번개 · 장판 · 블랙홀
     if (e.hp <= 0 && !(e.cheatDeath && e.cheatDeath())) this.s.killEnemy(e);   // 칠색조 부활처럼 한 번 버티는 보스
     return d;
   }
@@ -127,7 +130,10 @@ export class Combat {
     const s = this.s, color = c.color ?? typeColor(c.type);
     const q = Object.assign({ owner: 'player', vx: 0, vy: 0, r: 4, life: 1, pierce: 1, grav: 0, t: 0, hit: new Set(), status: {} }, c);
     q.color = color;
-    if (q.owner === 'player') q.dmg = this.p.atk * (q.mul ?? 1);
+    if (q.owner === 'player') {
+      q.dmg = this.p.atk * (q.mul ?? 1);
+      if (this.p.mods.homing && !q.homing && !q.update && !q.boomerang && Math.hypot(q.vx, q.vy) > 40) q.homing = 1.4;   // 특성 카드: 유도 탄두
+    }
     q.seed = Math.random() * 3;
     this.pr.attach(q);                                   // 속성별 도트 투사체
     if (q.muzzle !== false) this.pr.muzzle(q);           // 발사 섬광

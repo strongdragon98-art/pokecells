@@ -9,7 +9,10 @@ import { SKILLS, SPECIES, UNLOCKABLE, UNLOCK_KILLS, TIERS, ZMOVES, Z_CD, TAGS, E
 import { ITEMS, MAX_EQUIP } from '../data/items.js';
 import { STAGES, areaLabel } from '../data/stages.js';
 import { typeName, typeColor, hex } from '../data/types.js';
-import { GRADE, UPGRADES } from '../data/tm.js';
+import { GRADE_STYLE, UPGRADES, rollCards } from '../data/tm.js';
+
+// 특성 카드 분류 → 카드 가운데 아이콘 글자 (기술 아이콘이 없는 카드)
+const PERK_ICON = { 능력치: '⚔', 기동: '➶', 유틸: '✚', '속성 부여': '✺', '스킬 변이': '✷', 유물: '❂', 숙련: '✦' };
 import { HK, hkText, darkBand, hkMenu, hiImage, fadeLine, bar3d, glassPanel, glassButton, typePill } from '../systems/ui.js';
 import { MapView, VP } from '../systems/MapView.js';
 import { TouchControls } from '../systems/TouchControls.js';
@@ -479,76 +482,146 @@ export default class UIScene extends Phaser.Scene {
     this.tweens.killTweensOf(this.overlay.list);
     this.overlay.removeAll(true); this.gOver.clear(); this.overlay.setVisible(false); this.menu = null;
     this.overlayMode = null; this.tmBusy = false; this.boxPanel = null;
+    for (const ev of this.tmEvents || []) ev.remove();
+    this.tmEvents = [];   // 기술머신 전설 카드 번개 타이머
     this.input.keyboard.off('keydown', this.onOverlayKey, this);
   }
 
   // ================= 기술머신: 뒷면 카드 3장 → 하나씩 뒤집기 → 1장 확정 (기술 카드는 바꿀 슬롯까지) =================
   //  카드·뒤집힌 상태·고른 카드는 제단(gs.tmActive)에 남아 닫았다 다시 열어도 그대로다. flip: 막 뒤집은 카드 (뒤집기 애니메이션)
+  //  등급 4단계 (data/tm.js GRADE_STYLE): 커먼 은빛 · 레어 사파이어 · 유니크 아메시스트 · 전설 황금 프리즘
+  //   전설 카드는 뒷면부터 황금 빛줄기·번개가 새어 나오고, 뒤집으면 화면이 흔들리며 황금 파편이 쏟아진다
+  //  입력: 카드 클릭/터치 · 1·2·3 · ← → 로 고르고 Enter·Space·Z (닫힌 카드면 뒤집기, 다 열렸으면 결정)
   showTM(flip = -1) {
     const gs = this.gs, it = gs.tmActive;
     if (!it) return;
+    // 카드가 3장이 아니거나 빈 칸이 섞였으면(예전 저장·오류) 그 포켓몬 기준으로 다시 뽑는다 — 어떤 경우에도 3장
+    if (!Array.isArray(it.cards) || it.cards.length !== 3 || it.cards.some(c => !c || !c.name)) { it.cards = rollCards(it.member); it.flipped = [false, false, false]; it.sel = -1; }
+    if (!Array.isArray(it.flipped) || it.flipped.length !== 3) it.flipped = [false, false, false];
     this.clearOverlay();
     this.toastT = 0;
+    if (flip < 0) this.tmBusy = false;   // 뒤집기 도중 창을 닫았다 열어도 입력이 막히지 않게
     const g = this.gOver, L = this.overlay.setVisible(true), p = gs.player, m = it.member;
     const allOpen = it.flipped.every(Boolean), W = 150, H = 200, CY = 170;
+    if (it.sel < 0 || it.sel > 2) it.sel = Math.max(0, it.flipped.indexOf(false));
     g.fillStyle(0x05040a, .9); g.fillRect(0, 0, GAME_W, GAME_H);
-    L.add(this.add.image(320, CY, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(0x4a7aff).setScale(9, 5).setAlpha(.16));
+    L.add(this.add.image(320, CY, 'glow').setBlendMode(ADD).setTint(0x4a7aff).setScale(9, 5).setAlpha(.16));
     L.add(hkText(this, 320, 20, it.legend ? '전설의 기술 카드' : '기술머신', 18, it.legend ? HK.gold : HK.ivory, { bold: true, ls: it.legend ? 5 : 8, origin: .5, glow: true }));
     L.add(fadeLine(this, 320, 38, 320, .8));
     L.add(hkText(this, 320, 50, `${p.formName(m)}에게 맞춰진 고대 석판 · ${allOpen ? '마음에 드는 카드 1장을 고르세요' : `카드를 눌러 하나씩 뒤집으세요 (남은 ${it.flipped.filter(f => !f).length}장)`}`, 9.5, HK.dim, { origin: .5 }));
     this.tmTextures(W, H);
     it.cards.forEach((card, i) => {
-      const x = 320 + (i - 1) * 172, chosen = it.sel === i, open = it.flipped[i] && i !== flip;
-      if (chosen) {   // 고른 카드: 금빛 테두리 빛 + 살짝 떠오름
-        L.add(this.add.image(x, CY - 6, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(0xffd27a).setScale(3.4, 4.2).setAlpha(.45));
-      }
+      const x = 320 + (i - 1) * 172, chosen = allOpen && it.sel === i, focus = !allOpen && it.sel === i && !it.flipped[i], open = it.flipped[i] && i !== flip;
+      const st = GRADE_STYLE[card.grade] || GRADE_STYLE.커먼, col = st.glow;
+      // 등급 오라 (열린 카드) · 전설은 뒷면부터 빛줄기
+      if ((open && card.grade !== '커먼') || card.grade === '전설') this.tmAura(L, x, CY, W, H, card.grade, open);
+      if (chosen) L.add(this.add.image(x, CY - 6, 'glow').setBlendMode(ADD).setTint(0xffd27a).setScale(3.4, 4.2).setAlpha(.45));
       const c = this.add.container(x, chosen ? CY - 6 : CY); L.add(c);
       const back = hiImage(this, 0, 0, 'tm-back'); c.add(back);
       const face = this.add.container(0, 0); c.add(face);
       this.tmFace(face, card, m, W, H, chosen);
       back.setVisible(!open); face.setVisible(open);
-      if (i === flip) {   // 뒤집기: 가로 1 → 0 (뒷면) → 앞면으로 바꿔 0 → 1, 빛이 번쩍
-        this.tmBusy = true;
-        const col = GRADE[card.grade] || 0xffffff;
-        this.tweens.add({ targets: c, scaleX: 0, duration: 110, ease: 'Quad.easeIn', onComplete: () => {
-          back.setVisible(false); face.setVisible(true);
-          const flash = this.add.rectangle(0, 0, W, H, 0xffffff, 1); c.add(flash);
-          const halo = this.add.image(x, CY, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(col).setScale(1).setAlpha(.9); L.add(halo);
-          this.tweens.add({ targets: flash, alpha: 0, duration: 260, onComplete: () => flash.destroy() });
-          this.tweens.add({ targets: halo, scaleX: 4, scaleY: 5, alpha: 0, duration: 420, onComplete: () => halo.destroy() });
-          for (let k = 0; k < 10; k++) {   // 반짝이 조각
-            const sp = this.add.image(x, CY, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(k % 2 ? col : 0xffffff).setScale(.12).setAlpha(1); L.add(sp);
-            const a = Math.random() * Math.PI * 2, d = 60 + Math.random() * 50;
-            this.tweens.add({ targets: sp, x: x + Math.cos(a) * d, y: CY + Math.sin(a) * d * 1.2, alpha: 0, duration: 500 + Math.random() * 200, ease: 'Cubic.easeOut', onComplete: () => sp.destroy() });
-          }
-          this.tweens.add({ targets: c, scaleX: 1, duration: 150, ease: 'Back.easeOut', onComplete: () => { this.tmBusy = false; if (it.flipped.every(Boolean)) this.showTM(); } });
-          Sfx.play(card.grade === '전설' ? 'unlock' : 'item');
-        } });
+      if (focus) {   // 키보드 커서: 다음에 뒤집을 카드
+        const fr = this.add.graphics(); fr.lineStyle(1.5, HK.goldN, .9); fr.strokeRoundedRect(-W / 2 - 4, -H / 2 - 4, W + 8, H + 8, 11); c.add(fr);
+        this.tweens.add({ targets: fr, alpha: { from: .35, to: 1 }, duration: 500, yoyo: true, repeat: -1 });
       }
-      // 누르기 영역 (뒤집기 / 고르기)
+      if (i === flip) this.tmFlip(L, c, back, face, card, x, CY, W, H, it);
+      // 누르기 영역 (뒤집기 / 고르기) — 마우스 클릭 · 모바일 터치 모두 pointerdown
       const z = this.add.zone(x, CY, W, H).setInteractive({ useHandCursor: true }); L.add(z);
       z.on('pointerdown', () => this.tmPress(i));
-      L.add(hkText(this, x, CY + H / 2 + 6, String(i + 1), 9, chosen ? HK.gold : HK.faint, { origin: [.5, 0] }));
+      L.add(hkText(this, x, CY + H / 2 + 6, String(i + 1), 9, chosen || focus ? HK.gold : HK.faint, { origin: [.5, 0] }));
     });
     // 아래: 단계별 안내 · 결정 · 슬롯 고르기
     const BY = 300;
     if (this.tmSlot && it.sel >= 0) {
-      L.add(hkText(this, 320, BY - 12, '어느 기술 자리에 배울까요?  (Z · X · C)', 10, HK.gold, { origin: .5, bold: true }));
+      L.add(hkText(this, 320, BY - 12, '어느 기술 자리에 배울까요?  (Z · X · C 또는 1 · 2 · 3)', 10, HK.gold, { origin: .5, bold: true }));
       ['z', 'x', 'c'].forEach((sl, k) => {
-        const id = m.skills[sl], name = SKILLS[id].name;
+        const id = m.skills[sl], name = SKILLS[id] ? SKILLS[id].name : id;
         glassButton(this, 320 + (k - 1) * 156 - 72, BY, 144, 26, `${sl.toUpperCase()}   ${name}`, () => this.tmChooseSlot(sl), { size: 9.5, layer: L, primary: true });
       });
       glassButton(this, 18, BY + 34, 92, 20, '←  다른 카드', () => { this.tmSlot = false; Sfx.play('select'); this.showTM(); }, { size: 8.5, layer: L });
-    } else if (it.sel >= 0 && allOpen) {
+    } else if (allOpen) {
       const card = it.cards[it.sel];
-      glassButton(this, 320 - 90, BY, 180, 28, card.kind === 'move' ? '이 기술 배우기  (Enter)' : '이 카드로 결정  (Enter)', () => this.tmConfirm(), { size: 10.5, layer: L, primary: true });
+      glassButton(this, 320 - 100, BY, 200, 28, card.kind === 'move' ? '이 기술 배우기  (Enter · Z)' : '이 카드로 결정  (Enter · Z)', () => this.tmConfirm(), { size: 10.5, layer: L, primary: true });
     } else {
-      L.add(hkText(this, 320, BY + 10, allOpen ? '카드를 눌러 고른 뒤 결정하세요  ·  ← → 고르기 · Enter 결정' : '카드를 누르거나 1 · 2 · 3 으로 뒤집기  ·  3장을 다 열어 본 뒤 1장을 고른다', 9, HK.dim, { origin: .5 }));
+      L.add(hkText(this, 320, BY + 10, '카드를 누르거나 1 · 2 · 3  ·  ← → 고르고 Enter · Space · Z 로 뒤집기  ·  3장을 다 열어 본 뒤 1장을 고른다', 9, HK.dim, { origin: .5 }));
     }
     L.add(hkText(this, 320, 348, 'Esc 닫기 (고른 내용은 제단에 남는다)', 8, HK.faint, { origin: .5 }));
     glassButton(this, 566, 8, 64, 20, '✕  닫기', () => gs.toggleOverlay('tm'), { size: 9, layer: L });
     this.input.keyboard.on('keydown', this.onOverlayKey, this);
     this.overlayMode = 'tm';
+  }
+
+  // 등급 오라: 레어 사파이어 반짝임 · 유니크 보랏빛 일렁임 · 전설 황금 빛줄기(God Rays) + 번개 (뒷면일 때도)
+  tmAura(L, x, y, W, H, grade, open) {
+    const st = GRADE_STYLE[grade];
+    if (grade === '레어') {
+      const a = this.add.image(x, y, 'glow').setBlendMode(ADD).setTint(st.glow).setScale(2.6, 3.4).setAlpha(.22); L.add(a);
+      this.tweens.add({ targets: a, alpha: { from: .14, to: .3 }, duration: 900, yoyo: true, repeat: -1 });
+    } else if (grade === '유니크') {
+      for (const [tint, sx, sy, d] of [[0xb5179e, 3, 3.8, 1300], [0x7209b7, 2.6, 3.4, 1700]]) {
+        const a = this.add.image(x, y, 'glow').setBlendMode(ADD).setTint(tint).setScale(sx, sy).setAlpha(.3); L.add(a);
+        this.tweens.add({ targets: a, scaleX: sx * 1.12, scaleY: sy * 1.08, alpha: { from: .2, to: .42 }, duration: d, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      }
+    } else if (grade === '전설') {
+      const core = this.add.image(x, y, 'glow').setBlendMode(ADD).setTint(0xffb703).setScale(3.4, 4.2).setAlpha(open ? .45 : .32); L.add(core);
+      this.tweens.add({ targets: core, alpha: { from: open ? .3 : .2, to: open ? .55 : .42 }, duration: 700, yoyo: true, repeat: -1 });
+      for (let k = 0; k < 8; k++) {   // 빛줄기: 카드 뒤에서 사방으로 천천히 도는 광선
+        const r = this.add.image(x, y, 'ray').setOrigin(.5, 0).setBlendMode(ADD).setTint(k % 2 ? 0xff5a3a : 0xffd25a).setScale(1.3, 1.05).setAlpha(.3).setRotation(k / 8 * Math.PI * 2);
+        L.add(r);
+        this.tweens.add({ targets: r, rotation: r.rotation + Math.PI * 2, duration: 14000, repeat: -1 });
+        this.tweens.add({ targets: r, alpha: { from: .18, to: .5 }, duration: 900 + k * 90, yoyo: true, repeat: -1 });
+      }
+      // 황금 번개: 가끔 카드 가장자리에서 튄다
+      const ev = this.time.addEvent({ delay: 380, loop: true, callback: () => {
+        if (!core.scene) { ev.remove(); return; }
+        const gl = this.add.graphics().setBlendMode(ADD); L.add(gl);
+        const side = Math.random() < .5 ? -1 : 1, x0 = x + side * (W / 2 - 4), y0 = y + (Math.random() - .5) * H * .8;
+        let px = x0, py = y0; gl.lineStyle(1.5, 0xffe08a, 1); gl.beginPath(); gl.moveTo(px, py);
+        for (let s = 0; s < 4; s++) { px += side * (6 + Math.random() * 8); py += (Math.random() - .5) * 16; gl.lineTo(px, py); }
+        gl.strokePath();
+        this.tweens.add({ targets: gl, alpha: 0, duration: 200, onComplete: () => gl.destroy() });
+      } });
+      this.tmEvents.push(ev);
+    }
+  }
+
+  // 뒤집기: 가로 1 → 0 (뒷면) → 앞면으로 바꿔 0 → 1 · 등급별 이펙트
+  tmFlip(L, c, back, face, card, x, y, W, H, it) {
+    this.tmBusy = true;
+    const st = GRADE_STYLE[card.grade] || GRADE_STYLE.커먼, col = st.glow, cam = this.cameras.main;
+    const safety = this.time.delayedCall(1200, () => { this.tmBusy = false; });   // 트윈이 끊겨도 입력이 영영 막히지 않게
+    this.tweens.add({ targets: c, scaleX: 0, duration: card.grade === '전설' ? 260 : 110, ease: 'Quad.easeIn', onComplete: () => {
+      back.setVisible(false); face.setVisible(true);
+      const flash = this.add.rectangle(0, 0, W, H, 0xffffff, 1); c.add(flash);
+      this.tweens.add({ targets: flash, alpha: 0, duration: 260, onComplete: () => flash.destroy() });
+      const spark = (n, tints, d0, d1, sc0 = .12) => {
+        for (let k = 0; k < n; k++) {
+          const sp = this.add.image(x, y, 'glow').setBlendMode(ADD).setTint(tints[k % tints.length]).setScale(sc0).setAlpha(1); L.add(sp);
+          const a = Math.random() * Math.PI * 2, d = d0 + Math.random() * d1;
+          this.tweens.add({ targets: sp, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 1.2, alpha: 0, scale: sc0 * .3, duration: 450 + Math.random() * 300, ease: 'Cubic.easeOut', onComplete: () => sp.destroy() });
+        }
+      };
+      const wave = (tint, s1, ms) => { const h = this.add.image(x, y, 'glow').setBlendMode(ADD).setTint(tint).setScale(1).setAlpha(.9); L.add(h); this.tweens.add({ targets: h, scaleX: s1, scaleY: s1 * 1.25, alpha: 0, duration: ms, onComplete: () => h.destroy() }); };
+      if (card.grade === '커먼') { wave(0xd8e4ff, 3.4, 380); spark(6, [0xffffff, 0xd0d7de], 50, 30); Sfx.play('card_common'); }
+      else if (card.grade === '레어') { wave(col, 4, 420); spark(18, [0x00b4d8, 0x48e5ff, 0xffffff], 70, 60, .1); Sfx.play('card_rare'); }
+      else if (card.grade === '유니크') {
+        wave(0xb5179e, 4.6, 520); wave(0x7209b7, 3.6, 640); spark(22, [0xb5179e, 0x7209b7, 0xffc8ff], 80, 70);
+        const fl = this.add.rectangle(0, 0, GAME_W, GAME_H, 0x9a2aff, .28).setOrigin(0); L.add(fl);
+        this.tweens.add({ targets: fl, alpha: 0, duration: 420, onComplete: () => fl.destroy() });
+        cam.shake(220, .005); Sfx.play('card_unique');
+      } else {   // 전설: 강한 흔들림 · 번쩍 · 팡파르 · 화면 전체에 황금 파편
+        wave(0xffffff, 6, 520); wave(0xffb703, 5, 700); wave(0xff0054, 3.6, 820);
+        spark(30, [0xffb703, 0xff0054, 0xffffff, 0xffe08a], 90, 120, .14);
+        cam.shake(520, .012); cam.flash(380, 255, 236, 180);
+        for (let k = 0; k < 46; k++) {
+          const sh = this.add.rectangle(Math.random() * GAME_W, -10 - Math.random() * 60, 2 + Math.random() * 3, 3 + Math.random() * 4, k % 3 ? 0xffd25a : 0xff5a3a, 1).setBlendMode(ADD); L.add(sh);
+          this.tweens.add({ targets: sh, y: GAME_H + 20, x: sh.x + (Math.random() - .5) * 80, angle: (Math.random() - .5) * 720, alpha: { from: 1, to: .2 }, duration: 1100 + Math.random() * 900, delay: Math.random() * 300, ease: 'Quad.easeIn', onComplete: () => sh.destroy() });
+        }
+        Sfx.play('card_legend');
+      }
+      this.tweens.add({ targets: c, scaleX: 1, duration: 150, ease: 'Back.easeOut', onComplete: () => { safety.remove(); this.tmBusy = false; if (it.flipped.every(Boolean)) this.showTM(); } });
+    } });
   }
 
   // 카드 뒷면 · 등급별 앞면 바탕 (고해상도 캔버스, 한 번만)
@@ -574,27 +647,38 @@ export default class UIScene extends Phaser.Scene {
       c.fillStyle = 'rgba(232,212,160,.75)'; c.font = `600 8px ${"'Cinzel', serif"}`; c.textAlign = 'center';
       c.fillText('T E C H N I C A L', cx, h - 30); c.fillText('M A C H I N E', cx, h - 19);
     });
-    for (const [grade, col] of Object.entries(GRADE)) hiTex(this, `tm-face-${grade}`, W, H, (c, w, h) => {
-      const css = hex(col);
-      const gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#201c34'); gr.addColorStop(.5, '#14121f'); gr.addColorStop(1, '#0b0a12');
+    for (const [grade, st] of Object.entries(GRADE_STYLE)) hiTex(this, `tm-face2-${grade}`, W, H, (c, w, h) => {
+      const gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, st.bg[0]); gr.addColorStop(.55, '#14121f'); gr.addColorStop(1, st.bg[1]);
       rr(c, .5, .5, w - 1, h - 1, 9); c.fillStyle = gr; c.fill();
-      c.save(); c.shadowColor = css; c.shadowBlur = 8; c.strokeStyle = css; c.lineWidth = 1.6; c.stroke(); c.restore();
-      rr(c, 5, 5, w - 10, h - 10, 6); c.strokeStyle = css + '55'; c.lineWidth = .8; c.stroke();
-      const top = c.createLinearGradient(0, 0, 0, 70); top.addColorStop(0, css + '40'); top.addColorStop(1, css + '00');
+      // 등급 테두리: 유니크·전설은 두 색 그라데이션 (전설은 황금 → 붉은 프리즘)
+      const bd = c.createLinearGradient(0, 0, w, h); bd.addColorStop(0, st.border[0]); bd.addColorStop(1, st.border[1]);
+      if (grade === '전설') { bd.addColorStop(.5, '#ffe08a'); }
+      c.save(); c.shadowColor = st.border[0]; c.shadowBlur = grade === '커먼' ? 5 : 10; c.strokeStyle = bd; c.lineWidth = grade === '전설' ? 2.4 : grade === '커먼' ? 1.4 : 1.8; rr(c, 1, 1, w - 2, h - 2, 9); c.stroke(); c.restore();
+      rr(c, 5, 5, w - 10, h - 10, 6); c.strokeStyle = st.border[1] + '66'; c.lineWidth = .8; c.stroke();
+      const top = c.createLinearGradient(0, 0, 0, 70); top.addColorStop(0, st.border[0] + '48'); top.addColorStop(1, st.border[0] + '00');
       c.fillStyle = top; c.fillRect(6, 6, w - 12, 64);
+      if (grade !== '커먼') {   // 메탈릭 광택: 비스듬한 빛 띠
+        const sh = c.createLinearGradient(0, 0, w, h * .6); sh.addColorStop(.3, 'rgba(255,255,255,0)'); sh.addColorStop(.42, grade === '전설' ? 'rgba(255,230,160,.22)' : 'rgba(255,255,255,.14)'); sh.addColorStop(.54, 'rgba(255,255,255,0)');
+        rr(c, 3, 3, w - 6, h - 6, 7); c.save(); c.clip(); c.fillStyle = sh; c.fillRect(0, 0, w, h); c.restore();
+      }
+      if (grade === '전설') {   // 네 모서리 황금 장식
+        c.fillStyle = '#ffd25a';
+        for (const [x, y] of [[9, 9], [w - 9, 9], [9, h - 9], [w - 9, h - 9]]) { c.beginPath(); c.moveTo(x, y - 4); c.lineTo(x + 4, y); c.lineTo(x, y + 4); c.lineTo(x - 4, y); c.closePath(); c.fill(); }
+      }
     });
   }
 
-  // 카드 앞면 내용: 등급 · 종류 · 기술 아이콘 · 이름 · 타입 · 효과
+  // 카드 앞면 내용: 등급 · 종류 · 아이콘 · 이름 · 타입/분류 · 효과
   tmFace(face, card, m, W, H, chosen) {
-    const col = GRADE[card.grade] || 0xffffff, gcss = hex(col), top = -H / 2;
-    face.add(hiImage(this, 0, 0, `tm-face-${card.grade}`));
-    face.add(hkText(this, -W / 2 + 10, top + 8, card.grade, 8.5, gcss, { bold: true, ls: 1 }));
-    face.add(hkText(this, W / 2 - 10, top + 8, card.kind === 'move' ? '새 기술 · 타 속성' : card.kind === 'up' ? '기술 강화' : '숙련', 8, HK.dim, { origin: [1, 0] }));
-    const iconId = card.kind === 'move' ? card.id : card.kind === 'up' ? card.skill : null, tcol = typeColor(card.type);
-    face.add(this.add.image(0, top + 50, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(tcol).setScale(.9).setAlpha(.5));
+    const st = GRADE_STYLE[card.grade] || GRADE_STYLE.커먼, gcss = st.border[0], top = -H / 2;
+    face.add(hiImage(this, 0, 0, `tm-face2-${card.grade}`));
+    const pad = card.grade === '전설' ? 16 : 10;   // 전설 카드는 모서리 장식을 비켜서
+    face.add(hkText(this, -W / 2 + pad, top + 8, `${card.grade} · ${st.en}`, 7.5, gcss, { bold: true }));
+    face.add(hkText(this, W / 2 - pad, top + 8, card.cat || (card.kind === 'move' ? '새 기술 · 타 속성' : card.kind === 'up' ? '기술 강화' : '숙련'), 7.5, HK.dim, { origin: [1, 0] }));
+    const iconId = card.kind === 'move' ? card.id : card.kind === 'up' ? card.skill : null, tcol = card.kind === 'perk' || card.kind === 'mastery' ? st.glow : typeColor(card.type);
+    face.add(this.add.image(0, top + 50, 'glow').setBlendMode(ADD).setTint(tcol).setScale(.9).setAlpha(.5));
     if (iconId && this.textures.exists(`sk:${iconId}`)) face.add(this.add.image(0, top + 50, `sk:${iconId}`).setDisplaySize(42, 42));
-    else face.add(hkText(this, 0, top + 50, '✦', 26, gcss, { origin: .5, glow: true }));
+    else face.add(hkText(this, 0, top + 50, PERK_ICON[card.cat] || '✦', 24, gcss, { origin: .5, glow: true }));
     // 이름: '불꽃세례 개조: 푸른 연옥' 은 두 줄 (작은 머리글 + 큰 이름)
     const [head, main] = card.name.includes(': ') ? card.name.split(': ') : [null, card.name];
     let y = top + 80;
@@ -602,21 +686,32 @@ export default class UIScene extends Phaser.Scene {
     const nm = hkText(this, 0, y, main, main.length > 8 ? 11 : 12.5, chosen ? HK.gold : HK.ivory, { bold: true, origin: [.5, 0] });
     if (nm.width > W - 18) nm.setScale((W - 18) / nm.width);
     face.add(nm); y += 18;
-    const probe = hkText(this, 0, 0, typeName(card.type), 7.5, '#ffffff', { bold: true }), pw = Math.round(probe.width) + 14;   // 타입 알약 폭 재기 (가운데 맞춤)
-    probe.destroy();
-    typePill(this, face, -pw / 2, y, card.type, 7.5); y += 16;
+    if (card.kind === 'move' || card.kind === 'up' || card.type !== 'normal') {
+      const probe = hkText(this, 0, 0, typeName(card.type), 7.5, '#ffffff', { bold: true }), pw = Math.round(probe.width) + 14;   // 타입 알약 폭 재기 (가운데 맞춤)
+      probe.destroy();
+      typePill(this, face, -pw / 2, y, card.type, 7.5); y += 16;
+    } else y += 4;
     face.add(hkText(this, -W / 2 + 11, y, card.desc, 8.5, HK.ivory, { style: { wordWrap: { width: W - 22, useAdvancedWrap: true }, lineSpacing: 2 } }));
-    const foot = card.kind === 'move' ? `재사용 ${card.cd}초 · Z·X·C 중 하나와 교체` : card.kind === 'up' ? `대상: ${SKILLS[card.skill].name}` : `${this.gs.player.formName(m)}에게만`;
+    const have = card.kind === 'perk' ? ((m.perks || {})[card.id] || 0) : 0;
+    const foot = card.kind === 'move' ? `재사용 ${card.cd}초 · Z·X·C 중 하나와 교체` : card.kind === 'up' ? `대상: ${SKILLS[card.skill].name}` : have ? `${this.gs.player.formName(m)}에게만 · 지금 ${have}장 → ${have + 1}장` : `${this.gs.player.formName(m)}에게만`;
     face.add(hkText(this, 0, H / 2 - 16, foot, 7.5, HK.dim, { origin: [.5, 0] }));
   }
 
-  // 카드 누르기: 뒷면이면 뒤집고, 3장을 다 열었으면 고른다
+  // 카드 누르기: 뒷면이면 뒤집고, 3장을 다 열었으면 고른다 (이미 고른 카드를 한 번 더 누르면 결정)
   tmPress(i) {
     const it = this.gs.tmActive;
-    if (!it || this.tmBusy || this.tmSlot) return;
-    if (!it.flipped[i]) { it.flipped[i] = true; this.showTM(i); return; }
-    if (!it.flipped.every(Boolean)) { Sfx.play('deny'); return; }
+    if (!it || this.tmBusy || this.tmSlot || i < 0 || i > 2) return;
+    if (!it.flipped[i]) { it.flipped[i] = true; it.sel = i; this.showTM(i); return; }
+    if (!it.flipped.every(Boolean)) { it.sel = i; Sfx.play('deny'); return; }
+    if (it.sel === i) { this.tmConfirm(); return; }
     it.sel = i; Sfx.play('select'); this.showTM();
+  }
+  // Enter · Space · Z: 커서 카드가 닫혀 있으면 뒤집고, 다 열렸으면 결정
+  tmEnter() {
+    const it = this.gs.tmActive;
+    if (!it || this.tmBusy) return;
+    if (!it.flipped.every(Boolean)) { const i = it.flipped[it.sel] ? it.flipped.indexOf(false) : it.sel; this.tmPress(i); return; }
+    this.tmConfirm();
   }
   tmConfirm() {
     const it = this.gs.tmActive;
@@ -1321,8 +1416,8 @@ export default class UIScene extends Phaser.Scene {
         return;
       }
       if (n) this.tmPress(n - 1);
-      else if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && it.flipped.every(Boolean)) { it.sel = ((it.sel < 0 ? 0 : it.sel + (e.code === 'ArrowRight' ? 1 : -1)) + 3) % 3; Sfx.play('select'); this.showTM(); }
-      else if (e.code === 'Enter' || e.code === 'Space') this.tmConfirm();
+      else if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && !this.tmBusy) { it.sel = ((it.sel < 0 ? 0 : it.sel + (e.code === 'ArrowRight' ? 1 : -1)) + 3) % 3; Sfx.play('select'); this.showTM(); }
+      else if (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyZ' || keyNameFromEvent(e) === Settings.key('z')) this.tmEnter();
       return;
     }
     if (this.overlayMode === 'pause' && e.code === 'KeyL') { this.gs.paused = false; this.gs.gameOver(false, true); return; }

@@ -7,6 +7,7 @@ import { Actor } from './Actor.js';
 import { SPECIES, SKILLS, TAGS, TIERS, EVO_EXP, ZMOVES, Z_CD } from '../data/pokemon.js';
 import { FORM_ITEMS } from '../data/roster.js';
 import { computeMods, ITEMS, MAX_EQUIP } from '../data/items.js';
+import { onHurt, onDash } from './Perks.js';
 import { typeMultiplier, effectiveness, typeColor } from '../data/types.js';
 import * as base from './skills.js';
 import * as gen23 from './skills/gen23.js';
@@ -58,7 +59,7 @@ export class Player extends Actor {
     const sp = SPECIES[k];
     return {
       key: k, sp, maxhp: sp.hp, hp: sp.hp, cd: { z: 0, x: 0, c: 0 }, alive: true,
-      tier: 0, exp: 0, mega: false, megaPick: 0, items: {}, mods: computeMods({}),
+      tier: 0, exp: 0, mega: false, megaPick: 0, items: {}, perks: {}, mods: computeMods({}, {}),   // perks: 기술머신 특성 카드 (game/Perks.js)
       skills: { ...(sp.evo[0].skills || sp.skills) }, ups: new Set(), atkBonus: 1, cdBonus: 1,   // 기술머신: 바꿔 단 기술 · 받은 강화 카드 · 숙련 보너스
       learned: Object.values(sp.evo[0].skills || sp.skills)   // 배운 기술 전부 (가방 → 기술에서 Z·X·C 자리에 골라 넣는다)
     };
@@ -76,7 +77,12 @@ export class Player extends Actor {
   get tierIdx() { return this.tierOf(this.m); }
   get T() { return TIERS[this.tierIdx]; }
   get fxMul() { return this.T.fx; }                    // 스킬 이펙트 크기 배율 (skills.js)
-  get atk() { return this.sp.atk * this.T.atk * (this.m.atkBonus || 1) * this.statOf('atk') * this.buffMul('atk'); }
+  // 공격력: 특성 카드(힘·역린)와 구애머리띠(Z칸)·구애안경(X·C칸)은 지금 쓰는 기술 칸을 보고 곱한다
+  get atk() {
+    const md = this.mods, sl = this.action && this.action.slot, m = this.m;
+    const slotMul = sl === 'z' ? md.bandMul : sl === 'x' || sl === 'c' ? md.specsMul : 1, rage = md.berserk && m.hp <= m.maxhp * .5 ? 1 + md.berserk : 1;
+    return this.sp.atk * this.T.atk * (m.atkBonus || 1) * this.statOf('atk') * this.buffMul('atk') * md.atkMul * slotMul * rage;
+  }
   // 고른 메가(리자몽·뮤츠 X/Y) · 모습별 타입 · 모습별 능력치 배율(잉어킹 → 갸라도스 10배)
   megaOf(m = this.m) { return m.sp.megas[m.megaPick || 0] || m.sp.mega; }
   typesOf(m = this.m) { return (m.mega && this.megaOf(m).types) || this.form(m).types || m.sp.types; }
@@ -122,7 +128,7 @@ export class Player extends Actor {
     const meta = this.scene.registry.get('spriteMeta'), k = this.form(m).key;
     return meta[k] && meta[k].hasSprite ? k : m.key;
   }
-  maxHpOf(m) { return Math.round(m.sp.hp * this.stageBonus * TIERS[this.tierOf(m)].hp * this.statOf('hp', m)); }
+  maxHpOf(m) { return Math.round(m.sp.hp * this.stageBonus * TIERS[this.tierOf(m)].hp * this.statOf('hp', m) * ((m.mods && m.mods.hpMul) || 1)); }
 
   visualKey() {
     const meta = this.scene.registry.get('spriteMeta');
@@ -160,7 +166,7 @@ export class Player extends Actor {
   // 경험치는 정화할 때 출전 중이던 포켓몬이 받는다
   addExp(n, m = this.m) {
     if (m.tier >= EVO_EXP.length) return;
-    m.exp += n;
+    m.exp += n * ((m.mods && m.mods.expMul) || 1);   // 메가스톤 코어: 경험치 2배
     if (m.exp >= EVO_EXP[m.tier]) this.evolve(m);
   }
   // 다음 진화까지 진행도 0~1 (3단 이후 1)
@@ -220,7 +226,7 @@ export class Player extends Actor {
     const m = this.members[i];
     if (this.equipCount(m) >= MAX_EQUIP) return false;
     m.items[id] = (m.items[id] || 0) + 1;
-    m.mods = computeMods(m.items);
+    this.refreshMods(m);
     return true;
   }
   // 아이템 1개 옮기기: from·to 는 파티 번호(0~2) 또는 -1(가방)
@@ -230,11 +236,14 @@ export class Player extends Actor {
     if (!src[id]) return false;
     if (to >= 0 && this.equipCount(this.members[to]) >= MAX_EQUIP) return false;   // 장착 칸이 가득
     if (--src[id] <= 0) delete src[id];
-    if (from >= 0) this.members[from].mods = computeMods(src);
+    if (from >= 0) this.refreshMods(this.members[from]);
     if (to < 0) this.bag[id] = (this.bag[id] || 0) + 1;
     else this.giveItem(id, to);
     return true;
   }
+
+  // 장착 아이템 + 특성 카드가 바뀌면 보정치를 다시 계산 (최대 체력 배율도 바로 반영)
+  refreshMods(m) { m.mods = computeMods(m.items, m.perks); this.recalcHp(0, m); }
 
   heal(n, silent = false) {
     const m = this.m;
@@ -278,7 +287,8 @@ export class Player extends Actor {
       if (this.action) this.endAction(true);   // 스킬의 end() 로 남은 이펙트·상태를 정리
       this.dash = { t: 0, dir: dir || this.face };
       this.face = this.dash.dir; this.refacing();
-      this.dashCd = .55; this.inv = Math.max(this.inv, .26);
+      this.dashCd = .55 * this.mods.dashCdMul; this.inv = Math.max(this.inv, .26 + this.mods.dashInvAdd);
+      onDash(this, this.dash);   // 특성 카드: 대시 폭탄 · 분신 대시
       if (this.pas.teleport) this.teleport(this.dash);
       else { Sfx.play('dash'); this.squash(1.3, .75); }
     }
@@ -297,7 +307,7 @@ export class Player extends Actor {
     this.slowT = (this.slowT || 0) - dt;
     this.windT = (this.windT || 0) - dt;
     if (this.flipT > 0 && (this.flipT -= dt) <= 0) { this.b.setGravityY(0); this.sprite.setFlipY(false); }
-    const speed = sp.speed * (this.speedBuff > 0 ? 1.25 : 1) * slow * (this.mega.active ? 1.1 : 1) * this.statOf('speed') * this.buffMul('speed');
+    const speed = sp.speed * this.mods.speedMul * (this.speedBuff > 0 ? 1.25 : 1) * slow * (this.mega.active ? 1.1 : 1) * this.statOf('speed') * this.buffMul('speed');
     if (this.dash && this.dash.tele) {   // 순간이동: 이미 옮겨졌다. 잠깐 멈춰 잔상만 남긴다
       this.dash.t += dt;
       b.setAllowGravity(false); b.setVelocity(0, 0);
@@ -321,11 +331,17 @@ export class Player extends Actor {
     // 점프 (코요테 타임 + 입력 버퍼 + 다단 점프 + 발판 내려가기)
     const ground = this.onGround;
     if (ground) { this.coyote = .1; this.jumpsUsed = 0; this.airDash = true; } else this.coyote -= dt;
-    if (inp.jumpP) this.jbuf = .12; else this.jbuf -= dt;
+    if (inp.jumpP) { this.jbuf = .12; this.jbufDown = !!(inp.downAim ?? inp.down); } else this.jbuf -= dt;
     if (this.jbuf > 0 && !this.dash && !(a && a.mm === 0)) {
-      if (inp.down && ground && sc.standingOnPlatform(this)) { this.dropT = .28; this.jbuf = 0; b.setVelocityY(40); }
+      // 하향 점프(↓ + 점프)는 일반 점프와 완전히 따로: 이 분기에 들어오면 위로 뛰는 점프는 절대 하지 않는다
+      //  · 통과 발판 위: 0.25초 동안 발판 충돌을 끄고 부드럽게 아래로 (위로 튀지 않는다)
+      //  · 단단한 바닥 위 · 이미 떨어지는 중: 아무 일도 없다 (위아래로 떨리지 않게)
+      if (this.jbufDown || inp.downAim || this.dropT > 0) {
+        this.jbuf = 0;
+        if (ground && this.dropT <= 0 && sc.standingOnPlatform(this)) { this.dropT = .25; this.coyote = 0; b.setVelocityY(120); b.y += 2; }
+      }
       else if (ground || this.coyote > 0) { this.jump(sp.jump, false); }
-      else if (this.jumpsUsed < sp.jumps) { this.jump(sp.jump * .92, true); }
+      else if (this.jumpsUsed < sp.jumps + this.mods.extraJumps) { this.jump(sp.jump * .92, true); }
     }
     if (!inp.jumpH && b.velocity.y < -60 && !(a && a.ctrl)) b.setVelocityY(b.velocity.y * .86);   // 짧게 누르면 낮은 점프
     const hover = sp.hover || (this.pas.hoverForm !== undefined && this.form().fi >= this.pas.hoverForm);
@@ -561,8 +577,10 @@ export class Player extends Actor {
     }
     const m = type === 'none' ? 1 : typeMultiplier(type, this.types);
     const eff = effectiveness(m);
-    const d = Math.max(1, Math.round(dmg * m * (this.mega.active ? .8 : 1) * (this.pas.guard || 1) * this.buffMul('guard')));
-    this.m.hp -= d;
+    const d = Math.max(1, Math.round(dmg * m * (this.mega.active ? .8 : 1) * (this.pas.guard || 1) * this.buffMul('guard') * this.mods.guard));
+    // 기합의띠(특성 카드): 쓰러질 피해를 체력 1로 버티고 3초 무적 — 방마다 1번 (GameScene.updateRooms 가 되돌린다)
+    const sash = this.mods.sturdy && !this.m.sturdyUsed && this.m.hp > 1 && d >= this.m.hp;
+    this.m.hp = sash ? 1 : this.m.hp - d;
     sc.fx.floatText(this.x, this.b.y - 2, `-${d}`, eff === 'super' ? '#ff6a4a' : '#ff9a8a', eff === 'super' ? 15 : 12);
     if (eff === 'super') sc.fx.floatText(this.x, this.b.y - 18, '효과가 굉장했다!', '#ffb050', 10);
     this.flash(100); this.hurtT = .25; this.inv = .85;
@@ -574,6 +592,12 @@ export class Player extends Actor {
       const dir = Math.sign(this.x - srcX) || -this.face;
       this.b.setVelocity(dir * 170, -170);
       if (this.action && !this.action.inv) this.endAction(true);
+    }
+    onHurt(this);   // 특성 카드: 가시 갑옷
+    if (sash) {
+      this.m.sturdyUsed = true; this.inv = 3;
+      sc.fx.floatText(this.x, this.b.y - 20, '기합의띠로 버텼다!', '#ffd25a', 12);
+      sc.fx.ring(this.x, this.y, 30, 0xffd25a, 400); sc.fx.glow(this.x, this.y, 36, 0xffd25a, 600, 1); Sfx.play('mega');
     }
     if (this.m.hp <= 0) this.faint();
     return true;
