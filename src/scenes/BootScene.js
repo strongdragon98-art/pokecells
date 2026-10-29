@@ -56,6 +56,6 @@ export default class BootScene extends Phaser.Scene {
     this.registry.set('manifest', this.loader.manifest);
     await composeSkillIcons(this, this.loader.skillSvgs(this.embed));   // 못 받은 스킬은 아래에서 도트 아이콘으로 채운다
     generateBaseTextures(this);
-    this.scene.start('Lobby');
+    this.scene.start('Title');   // 오프닝 화면 (새 게임 · 불러오기 · 설정 · 종료)
   }
 }

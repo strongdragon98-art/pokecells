@@ -20,6 +20,7 @@ export default class LobbyScene extends Phaser.Scene {
   create(data) {
     uiCamera(this);
     this.meta = this.registry.get('spriteMeta');
+    this.leaving = false;   // 씬 인스턴스는 재사용된다
     this.party = Save.data.party.filter(k => Save.isUnlocked(k)).slice(0, 3);
     this.message = (data && data.message) || '';
     const cam = this.cameras.main;
@@ -41,6 +42,7 @@ export default class LobbyScene extends Phaser.Scene {
       if (e.code === 'F1' || e.code === 'F3') this.debugUnlockAll();
       else if (e.code === 'Space') this.enter();
       else if (e.code === 'KeyC' && RunSave.has()) this.resume();
+      else if (e.code === 'Escape') this.toTitle();
       else this.panel.key(e);
     });
     this.input.keyboard.addCapture('TAB,F1,F3');
@@ -88,9 +90,19 @@ export default class LobbyScene extends Phaser.Scene {
     // 테스터 모드: 켜면 모든 포켓몬을 고를 수 있다 (끄면 원래 진행도 그대로)
     const on = Save.tester;
     glassButton(this, 532, 24, 96, 20, on ? '테스터 모드  ON' : '테스터 모드  OFF', () => this.toggleTester(), { size: 9, bold: true, primary: on }).objs.forEach(o => o.setDepth(6));
+    glassButton(this, 432, 24, 92, 20, '◀ 처음 화면', () => this.toTitle(), { size: 9, ls: 0 }).objs.forEach(o => o.setDepth(6));   // Esc 로도
     // 이어하기: 저장해 둔 판 (일시정지 메뉴의 저장 · 포켓몬센터 자동 저장)이 있으면 왼쪽 위에 (C 키로도)
     const rs = RunSave.peek();
     if (rs) glassButton(this, 12, 24, 132, 20, `▶ 이어하기 · ${rs.stageIdx + 1}지방`, () => this.resume(), { size: 9, ls: 0, bold: true, primary: true }).objs.forEach(o => o.setDepth(6));
+  }
+
+  // 처음 화면(오프닝 메뉴)으로 — Esc
+  toTitle() {
+    if (this.leaving) return;
+    this.leaving = true;
+    Sfx.play('select');
+    this.cameras.main.fadeOut(250, 7, 6, 15);
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Title', { skipPress: true }));
   }
 
   // 저장한 판 이어하기: 컷신 없이 저장한 자리에서 (파티도 저장한 그대로)
