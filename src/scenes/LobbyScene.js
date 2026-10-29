@@ -1,5 +1,5 @@
 // 포켓몬 도감 로비 — 탭형 보관함(systems/RosterPanel.js)에서 최대 3마리를 골라 던전에 들어간다
-//  위: [🌱 1~9세대 스타팅 (세대 필터) | ⭐ 특수 포켓몬 | 👑 정화한 전설/보스]   왼쪽: 카드 격자   오른쪽: 진화 트리·배지·타입·스킬
+//  위: [🌱 세대별 포켓몬 (전체 · 1~9세대) | 👑 정화한 전설/보스]   왼쪽: 카드 격자   오른쪽: 진화 트리·배지·타입·스킬
 //  아래: 파티 3자리 + 던전 입장.  F1 · F3 디버그: 모든 스타팅 & 보스 캐릭터 전체 즉시 해금
 //  배경: 심연 속 무한다이노 실루엣 · 빛기둥 · 안개 · 떠다니는 빛가루
 import Phaser from 'phaser';
@@ -27,7 +27,7 @@ export default class LobbyScene extends Phaser.Scene {
     this.drawBackdrop();
     this.drawHeader();
     this.panel = new RosterPanel(this, {
-      x: 16, y: 66, h: 230, infoX: 392, infoW: 234, focus: (data && data.focus) || this.party[0] || 'charmander', tab: data && data.tab,
+      x: 16, y: 66, h: 230, infoX: 392, infoW: 234, focus: (data && data.focus) || this.party[0] || 'charmander', tab: data && data.tab, gen: data && data.gen,
       picked: k => this.party.indexOf(k), onToggle: k => this.toggle(k), onFocus: () => { this.message = ''; this.buildBar(); }
     });
     this.panel.L.setDepth(5);
@@ -123,7 +123,7 @@ export default class LobbyScene extends Phaser.Scene {
   debugUnlockAll() {
     Save.debugUnlockAll();
     Sfx.play('unlock');
-    this.scene.restart({ message: '[디버그] 🔓 모든 스타팅 & 보스 캐릭터를 해금했어요', focus: this.panel.focus, tab: this.panel.tab });
+    this.scene.restart({ message: '[디버그] 🔓 모든 스타팅 & 보스 캐릭터를 해금했어요', focus: this.panel.focus, tab: this.panel.tab, gen: this.panel.gen });
   }
   enter() {
     if (!this.party.length) { Sfx.play('deny'); this.message = '파티에 한 마리 이상 넣어 주세요'; this.buildBar(); return; }

@@ -136,38 +136,38 @@ export const LINES = [
     skills: { z: 'quick_peck', x: 'aqua_step', c: 'drain_punch' }, desc: '물의 스텝을 밟는 댄서. 춤출수록 빨라진다.', unlock: { start: true } },
 
   // ======================= 특수 포켓몬 =======================
-  { id: 'gastly', cat: 'special', hp: 90, atk: 12, speed: 112, jump: 290, jumps: 2, hover: true, types: T('ghost', 'poison'),
+  { id: 'gastly', cat: 'special', gen: 1, hp: 90, atk: 12, speed: 112, jump: 290, jumps: 2, hover: true, types: T('ghost', 'poison'),
     forms: [{ key: 'gastly', name: '고오스', dex: 92 }, { key: 'haunter', name: '고우스트', dex: 93 }, { key: 'gengar', name: '팬텀', dex: 94 }],
     megas: [{ key: 'gengar-mega', name: '메가팬텀', pokeapi: 10038, sc: '0001' }],
     skills: { z: 'lick_shadow', x: 'shadow_ball', c: 'phantom_dash' }, desc: '점프 키를 누르면 떠 있는다. 벽을 통과하는 섀도볼과 저주.', unlock: { kills: true } },
-  { id: 'ralts', cat: 'special', hp: 92, atk: 12, speed: 112, jump: 300, jumps: 2, types: T('psychic', 'fairy'),
+  { id: 'ralts', cat: 'special', gen: 3, hp: 92, atk: 12, speed: 112, jump: 300, jumps: 2, types: T('psychic', 'fairy'),
     forms: [{ key: 'ralts', name: '랄토스', dex: 280 }, { key: 'kirlia', name: '킬리아', dex: 281 }, { key: 'gardevoir', name: '가디안', dex: 282 }],
     megas: [{ key: 'gardevoir-mega', name: '메가가디안', pokeapi: 10051, sc: '0001' }],
     passive: { teleport: true },
     skills: { z: 'confusion_orb', x: 'psychic', c: 'moonblast' }, desc: '에스퍼·페어리 마법사. 대시가 잔상을 남기는 완전 무적 순간이동이다.', unlock: { stage: 1 } },
-  { id: 'larvitar', cat: 'special', hp: 150, atk: 12, speed: 96, jump: 292, jumps: 2, types: T('rock', 'ground'),
+  { id: 'larvitar', cat: 'special', gen: 2, hp: 150, atk: 12, speed: 96, jump: 292, jumps: 2, types: T('rock', 'ground'),
     forms: [{ key: 'larvitar', name: '애버라스', dex: 246 }, { key: 'pupitar', name: '데기라스', dex: 247 }, { key: 'tyranitar', name: '마기라스', dex: 248, types: T('rock', 'dark') }],
     megas: [{ key: 'tyranitar-mega', name: '메가마기라스', types: T('rock', 'dark'), pokeapi: 10049, sc: '0001' }],
     passive: { superArmor: true, sandstorm: 2, guard: .85 },
     skills: { z: 'rock_smash', x: 'stone_edge', c: 'crunch' }, desc: '중장갑 브루저. 맞아도 경직되지 않고, 마기라스는 모래바람 오라를 두른다.', unlock: { stage: 2 } },
-  { id: 'dratini', cat: 'special', hp: 104, atk: 12, speed: 120, jump: 300, jumps: 3, types: T('dragon'),
+  { id: 'dratini', cat: 'special', gen: 1, hp: 104, atk: 12, speed: 120, jump: 300, jumps: 3, types: T('dragon'),
     forms: [{ key: 'dratini', name: '미뇽', dex: 147 }, { key: 'dragonair', name: '신뇽', dex: 148 }, { key: 'dragonite', name: '망나뇽', dex: 149, types: T('dragon', 'flying') }],
     passive: { hoverForm: 2 },
     skills: { z: 'dragon_tail', x: 'extreme_speed', c: 'outrage' }, desc: '드래곤 올라운더. 3단 점프, 망나뇽은 체공 비행. 신속과 역린.', unlock: { stage: 3 } },
-  { id: 'magikarp', cat: 'special', hp: 120, atk: 13, speed: 112, jump: 300, jumps: 2, types: T('water'),
+  { id: 'magikarp', cat: 'special', gen: 1, hp: 120, atk: 13, speed: 112, jump: 300, jumps: 2, types: T('water'),
     forms: [{ key: 'magikarp', name: '잉어킹', dex: 129, skills: { z: 'splash', x: 'karp_tackle', c: 'flail' } },
             { key: 'gyarados', name: '갸라도스', dex: 130, types: T('water', 'flying') }],
     formAt: [0, 0, 1], formStat: [{ atk: .1, hp: .55, speed: .72 }, { atk: 1, hp: 1, speed: 1 }],
     megas: [{ key: 'gyarados-mega', name: '메가갸라도스', types: T('water', 'dark'), pokeapi: 10041, sc: '0001' }],
     passive: { flop: 0 },
     skills: { z: 'aqua_tail', x: 'hydro_pump', c: 'hyper_beam' }, desc: '대기만성. 잉어킹은 튀어오르기뿐이지만, 3단 진화 순간 공격력 10배 갸라도스로 각성한다.', unlock: { start: true } },
-  { id: 'onix', cat: 'special', hp: 170, atk: 11, speed: 92, jump: 286, jumps: 2, types: T('rock', 'ground'),
+  { id: 'onix', cat: 'special', gen: 1, hp: 170, atk: 11, speed: 92, jump: 286, jumps: 2, types: T('rock', 'ground'),
     forms: [{ key: 'onix', name: '롱스톤', dex: 95 }, { key: 'steelix', name: '강철톤', dex: 208, types: T('steel', 'ground') }],
     formAt: [0, 1, 1],
     megas: [{ key: 'steelix-mega', name: '메가강철톤', types: T('steel', 'ground'), pokeapi: 10072, sc: '0001' }],
     passive: { big: 1.35, guard: .7 },
     skills: { z: 'iron_tail', x: 'dig', c: 'rock_tomb' }, desc: '거대 탱커. 몸집과 공격 범위가 압도적이고 방어력이 최고. 구멍파기로 땅속을 이동한다.', unlock: { total: 150 } },
-  { id: 'scyther', cat: 'special', hp: 100, atk: 12, speed: 140, jump: 312, jumps: 2, types: T('bug', 'flying'),
+  { id: 'scyther', cat: 'special', gen: 1, hp: 100, atk: 12, speed: 140, jump: 312, jumps: 2, types: T('bug', 'flying'),
     forms: [{ key: 'scyther', name: '스라크', dex: 123 }, { key: 'scizor', name: '핫삼', dex: 212, types: T('bug', 'steel') }],
     formAt: [0, 1, 1],
     megas: [{ key: 'scizor-mega', name: '메가핫삼', types: T('bug', 'steel'), pokeapi: 10046, sc: '0001' }],
@@ -175,13 +175,13 @@ export const LINES = [
     skills: { z: 'bullet_punch', x: 'x_scissor', c: 'u_turn' }, desc: '초고속 암살자. 가장 빠른 이동과 연타, 적의 등 뒤로 파고드는 유턴.', unlock: { total: 300 } },
 
   // ======================= 야생 정화 =======================
-  { id: 'pichu', cat: 'wild', hp: 96, atk: 11, speed: 126, jump: 315, jumps: 2, types: T('electric'),
+  { id: 'pichu', cat: 'wild', gen: 1, hp: 96, atk: 11, speed: 126, jump: 315, jumps: 2, types: T('electric'),
     forms: [{ key: 'pichu', name: '피츄', dex: 172 }, { key: 'pikachu', name: '피카츄', dex: 25 }, { key: 'raichu', name: '라이츄', dex: 26 }],
     skills: { z: 'thundershock', x: 'thunderbolt', c: 'volt_tackle' }, desc: '원거리 전기 딜러. 마비로 적을 묶는다.', unlock: { kills: true } },
-  { id: 'zubat', cat: 'wild', hp: 92, atk: 10, speed: 124, jump: 280, jumps: 3, types: T('poison', 'flying'),
+  { id: 'zubat', cat: 'wild', gen: 1, hp: 92, atk: 10, speed: 124, jump: 280, jumps: 3, types: T('poison', 'flying'),
     forms: [{ key: 'zubat', name: '주뱃', dex: 41 }, { key: 'golbat', name: '골뱃', dex: 42 }, { key: 'crobat', name: '크로뱃', dex: 169 }],
     skills: { z: 'leech_life', x: 'supersonic', c: 'wing_dash' }, desc: '3단 점프와 8방향 날개치기로 공중을 지배한다. 흡혈로 회복.', unlock: { kills: true } },
-  { id: 'machop', cat: 'wild', hp: 138, atk: 11, speed: 104, jump: 295, jumps: 2, types: T('fighting'),
+  { id: 'machop', cat: 'wild', gen: 1, hp: 138, atk: 11, speed: 104, jump: 295, jumps: 2, types: T('fighting'),
     forms: [{ key: 'machop', name: '알통몬', dex: 66 }, { key: 'machoke', name: '근육몬', dex: 67 }, { key: 'machamp', name: '괴력몬', dex: 68 }],
     skills: { z: 'karate_chop', x: 'dynamic_punch', c: 'counter' }, desc: '묵직한 격투가. 카운터로 공격을 받아친다.', unlock: { kills: true } },
 
@@ -233,10 +233,10 @@ export const LINES = [
 ];
 
 export const LINE = Object.fromEntries(LINES.map(l => [l.id, l]));
+// 보관함 탭: 스타팅·특수·야생 정화 포켓몬은 구분 없이 세대별로, 전설만 따로
 export const CATS = [
-  { id: 'starter', label: '1~9세대 스타팅', icon: '🌱' },
-  { id: 'special', label: '특수 포켓몬', icon: '⭐' },
-  { id: 'legend', label: '정화한 전설/보스', icon: '👑' }
+  { id: 'pokemon', label: '세대별 포켓몬', icon: '🌱', cats: ['starter', 'special', 'wild'] },
+  { id: 'legend', label: '정화한 전설/보스', icon: '👑', cats: ['legend'] }
 ];
 
 // 대표 타입 → 교체 등장 스킬 · Z기술
