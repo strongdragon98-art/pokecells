@@ -2,7 +2,8 @@
 import Phaser from 'phaser';
 import { ZOOM, RES, TILE } from '../config.js';
 import { STAGES, areaLabel } from '../data/stages.js';
-import { WILD, DEX_ORDER, wildForm, pickWildStage, EXP_PURIFY, EXP_BOSS, DROPS, EVO_EXP, ZMOVES, BOSSES } from '../data/pokemon.js';
+import { FORM_ITEMS } from '../data/roster.js';
+import { WILD, DEX_ORDER, SPECIES, wildForm, pickWildStage, EXP_PURIFY, EXP_BOSS, DROPS, EVO_EXP, ZMOVES, BOSSES } from '../data/pokemon.js';
 import { ITEMS, ITEM_KEYS, ITEM_DROP, CONSUMABLES, MAX_EQUIP } from '../data/items.js';
 import { typeColor } from '../data/types.js';
 import { PLAT_SET, groundYAt, T as TILE_ID } from '../game/Level.js';
@@ -126,7 +127,8 @@ export default class GameScene extends Phaser.Scene {
       const layers = new Map();
       for (const [x, y] of sd.cells) {
         const r = level.cellRoom.get(Math.floor(x / CW) + ',' + Math.floor(y / CH));
-        if (!r) continue;
+        if (!r || !r.map) continue;
+        if (x < r.X0 || y < r.Y0 || x - r.X0 >= r.map.width || y - r.Y0 >= r.map.height) continue;   // 방 지도 밖으로 삐져나온 굴 칸 (가끔 생긴다) — 덮지 않고 넘어간다
         let cl = layers.get(r);
         if (!cl) { cl = r.map.createBlankLayer(`cover${this.covers.length}_${r.id}`, r.ts, r.X0 * TILE, r.Y0 * TILE).setDepth(10.2); if (this.webgl) cl.setPipeline('Light2D'); layers.set(r, cl); }
         cl.putTileAt(TILE_ID.SOLID, x - r.X0, y - r.Y0);
@@ -900,7 +902,9 @@ export default class GameScene extends Phaser.Scene {
     else this.player.addExp(EXP_PURIFY, who);
     this.runStats.kills++;
     this.announceJoin(Save.addPurify());   // 누적 정화로 합류하는 특수 포켓몬 (롱스톤·스라크)
-    if (e.boss && Save.unlockLegend(e.bossKey)) this.time.delayedCall(2800, () => this.announceJoin([e.bossKey]));   // 전설 보스 정화 → 그 전설이 플레이어블로 합류
+    const joinedBy = e.boss && Save.unlockByBoss(e.bossKey);   // 전설 보스 정화 → 그 전설이 플레이어블로 합류 (한카리아스 → 딥상어동 계열)
+    if (joinedBy) this.time.delayedCall(2800, () => this.announceJoin([joinedBy]));
+    if (e.boss) this.dropFormItem(e);
     if (e.boss) { this.bossDefeated(e); return; }
     if (Math.random() < ITEM_DROP.wild) this.spawnPickup('item', e.x, e.y, pick(ITEM_KEYS));   // 야생은 아이템 대신 가끔 오렌열매
     else if (Math.random() < .16) this.spawnPickup('oran', e.x, e.y);
@@ -1038,6 +1042,12 @@ export default class GameScene extends Phaser.Scene {
     Music.play(this.stage.bgm);
   }
 
+  // 폼체인지 아이템을 지닌 전설 보스(디아루가·펄기아·기라티나)는 정화하면 그 아이템을 떨어뜨린다
+  dropFormItem(boss) {
+    const id = Object.keys(FORM_ITEMS).find(k => FORM_ITEMS[k].boss === boss.bossKey);
+    if (id && !this.player.formItems.has(id)) this.time.delayedCall(900, () => { if (this.level) this.spawnPickup('formitem', boss.x, boss.y - 12, id); });
+  }
+
   // 「🎉 [이름]의 영혼이 동료로 합류했습니다!」 알림을 하나씩
   announceJoin(keys) {
     keys.forEach((k, i) => this.time.delayedCall(i * 4200, () => {
@@ -1060,12 +1070,13 @@ export default class GameScene extends Phaser.Scene {
   spawnPickup(kind, x, y, id, still = false) {
     // 아이템·상처약은 가방과 같은 본가 그림을 16칸 크기로 (월드 배율만큼 곱게 줄여 둔다). 그림이 없으면 도트 아이콘
     const artId = kind === 'item' ? id : kind === 'potion' ? 'potion' : null, art = artId && itemArt(this, artId, 16 * ZOOM);
-    const img = this.physics.add.image(x, y, art || (kind === 'item' ? `it:${id}` : kind === 'potion' ? 'oran' : kind)).setDepth(19);
+    const img = this.physics.add.image(x, y, art || (kind === 'item' ? `it:${id}` : kind === 'potion' ? 'oran' : kind === 'formitem' ? 'megastone' : kind)).setDepth(19);   // 폼체인지 아이템은 구슬 모양 (색으로 구분)
+    if (kind === 'formitem') img.setTint(FORM_ITEMS[id].color);
     if (art) { img.setDisplaySize(16, 16); img.body.setSize(10 / img.scaleX, 16 / img.scaleY); }   // 몸통도 그림 크기에 맞춰 바닥에 딱 놓이게
     else img.body.setSize(10, 10);
     if (!still) img.setVelocity(rand(-70, 70), -190);
     img.body.setBounce(.35); img.body.setDragX(120);
-    const col = kind === 'megastone' ? 0xff8ad0 : kind === 'zcrystal' ? 0xfff6a0 : kind === 'oran' ? 0x4a7aff : kind === 'potion' ? 0xd88aff : 0xffe08a;
+    const col = kind === 'formitem' ? FORM_ITEMS[id].color : kind === 'megastone' ? 0xff8ad0 : kind === 'zcrystal' ? 0xfff6a0 : kind === 'oran' ? 0x4a7aff : kind === 'potion' ? 0xd88aff : 0xffe08a;
     const glow = this.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(col).setScale(.5).setDepth(18);
     const coll = this.physics.add.collider(img, this.layers);
     const pk = { kind, id, img, glow, coll, t: 0 };
@@ -1124,6 +1135,11 @@ export default class GameScene extends Phaser.Scene {
       pl.z.has = true; pl.z.cd = 0;
       this.events.emit('banner', 'Z크리스탈 획득!', `Q 로 Z기술 — ${pl.members.map(m => ZMOVES[m.sp.zmove].name).join(' · ')}`);
       Sfx.play('unlock'); this.fx.ring(pl.x, pl.y, 50, 0xfff6a0, 400); this.fx.burst(pl.x, pl.y, [0xfff6a0, 0xffffff, 0x9ad8ff], 24, 160, { glow: true });
+    } else if (p.kind === 'formitem') {   // 폼체인지 아이템: 그 전설이 파티에 있으면 V 로 오리진폼 (포켓몬센터 보관함에서 데려올 수 있다)
+      const it = FORM_ITEMS[p.id], who = Object.values(SPECIES).find(sp => sp.megas.some(m => m.item === p.id));
+      pl.formItems.add(p.id);
+      this.events.emit('banner', `${it.name} 획득!`, `${who ? who.name : '그 전설'}을(를) 파티에 넣고 V 로 폼체인지 — 이번 판 끝까지 유지`);
+      Sfx.play('unlock'); this.fx.ring(pl.x, pl.y, 50, it.color, 400); this.fx.burst(pl.x, pl.y, [it.color, 0xffffff], 24, 160, { glow: true });
     } else {
       pl.mega.stones++;
       this.events.emit('banner', '메가스톤 획득!', pl.tier >= 2 ? 'V 로 메가진화 — 이번 판 끝까지 유지' : `3단 진화 후 V 로 메가진화 (진화까지 ${pl.expToNext()})`);

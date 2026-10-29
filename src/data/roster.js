@@ -46,12 +46,14 @@ export const LINES = [
   // ======================= 2세대 · 성도 =======================
   { id: 'chikorita', cat: 'starter', gen: 2, ...STARTER, hp: 128, atk: 10, speed: 108, types: T('grass'),
     forms: [{ key: 'chikorita', name: '치코리타', dex: 152 }, { key: 'bayleef', name: '베이리프', dex: 153 }, { key: 'meganium', name: '메가니움', dex: 154 }],
+    megas: [{ key: 'meganium-mega', name: '메가메가니움', types: T('grass', 'fairy'), pokeapi: 10282, sc: '0001' }],
     skills: { z: 'magical_leaf', x: 'petal_blizzard', c: 'synthesis' }, desc: '꽃잎 폭풍과 광합성으로 파티를 지탱하는 힐러.', unlock: { start: true } },
   { id: 'cyndaquil', cat: 'starter', gen: 2, ...STARTER, hp: 104, atk: 12, speed: 120, types: T('fire'),
     forms: [{ key: 'cyndaquil', name: '브케인', dex: 155 }, { key: 'quilava', name: '마그케인', dex: 156 }, { key: 'typhlosion', name: '블레이범', dex: 157 }],
     skills: { z: 'flare_jab', x: 'eruption', c: 'flame_wheel' }, desc: '등의 불꽃을 터뜨리는 폭발형 딜러. 체력이 높을수록 분화가 강하다.', unlock: { start: true } },
   { id: 'totodile', cat: 'starter', gen: 2, ...STARTER, hp: 120, atk: 12, speed: 112, types: T('water'),
     forms: [{ key: 'totodile', name: '리아코', dex: 158 }, { key: 'croconaw', name: '엘리게이', dex: 159 }, { key: 'feraligatr', name: '장크로다일', dex: 160 }],
+    megas: [{ key: 'feraligatr-mega', name: '메가장크로다일', types: T('water', 'dragon'), pokeapi: 10283, sc: '0001' }],
     skills: { z: 'chomp_combo', x: 'waterfall', c: 'aqua_jet' }, desc: '물어뜯고 솟구치는 근접 물 파이터.', unlock: { start: true } },
 
   // ======================= 3세대 · 호연 =======================
@@ -85,6 +87,7 @@ export const LINES = [
     skills: { z: 'leaf_tornado', x: 'leaf_storm', c: 'coil' }, desc: '우아한 풀뱀. 똬리틀기로 힘을 쌓아 리프스톰을 쏟아낸다.', unlock: { start: true } },
   { id: 'tepig', cat: 'starter', gen: 5, ...STARTER, hp: 136, atk: 12, speed: 100, types: T('fire'),
     forms: [{ key: 'tepig', name: '뚜꾸리', dex: 498 }, { key: 'pignite', name: '차오꿀', dex: 499, types: T('fire', 'fighting') }, { key: 'emboar', name: '염무왕', dex: 500, types: T('fire', 'fighting') }],
+    megas: [{ key: 'emboar-mega', name: '메가염무왕', types: T('fire', 'fighting'), pokeapi: 10286, sc: '0001' }],
     skills: { z: 'arm_thrust', x: 'heat_crash', c: 'rollout' }, desc: '몸무게로 짓누르는 불꽃 레슬러.', unlock: { start: true } },
   { id: 'oshawott', cat: 'starter', gen: 5, ...STARTER, hp: 114, atk: 12, speed: 114, types: T('water'),
     forms: [{ key: 'oshawott', name: '수댕이', dex: 501 }, { key: 'dewott', name: '쌍검자비', dex: 502 }, { key: 'samurott', name: '대검귀', dex: 503 }],
@@ -93,14 +96,17 @@ export const LINES = [
   // ======================= 6세대 · 칼로스 =======================
   { id: 'chespin', cat: 'starter', gen: 6, ...STARTER, hp: 140, atk: 11, speed: 104, types: T('grass'),
     forms: [{ key: 'chespin', name: '도치마론', dex: 650 }, { key: 'quilladin', name: '도치보구', dex: 651 }, { key: 'chesnaught', name: '브리가론', dex: 652, types: T('grass', 'fighting') }],
+    megas: [{ key: 'chesnaught-mega', name: '메가브리가론', types: T('grass', 'fighting'), pokeapi: 10292, sc: '0001' }],
     skills: { z: 'needle_arm', x: 'spiky_shield', c: 'body_press' }, desc: '가시 방패로 막고 바디프레스로 짓누르는 기사.', unlock: { start: true } },
   { id: 'fennekin', cat: 'starter', gen: 6, ...STARTER, hp: 98, atk: 12, speed: 118, types: T('fire'),
     forms: [{ key: 'fennekin', name: '푸호꼬', dex: 653 }, { key: 'braixen', name: '테르나', dex: 654 }, { key: 'delphox', name: '마폭시', dex: 655, types: T('fire', 'psychic') }],
+    megas: [{ key: 'delphox-mega', name: '메가마폭시', types: T('fire', 'psychic'), pokeapi: 10293, sc: '0001' }],
     skills: { z: 'mystical_fire', x: 'fire_spin', c: 'psyshock' }, desc: '지팡이 끝 불꽃으로 마법을 부리는 원거리 마도사.', unlock: { start: true } },
   { id: 'froakie', cat: 'starter', gen: 6, ...STARTER, hp: 100, atk: 12, speed: 132, jump: 322, types: T('water'),
     forms: [{ key: 'froakie', name: '개구마르', dex: 656 }, { key: 'frogadier', name: '개굴반장', dex: 657 }, { key: 'greninja', name: '개굴닌자', dex: 658, types: T('water', 'dark') }],
-    megas: [{ key: 'greninja-ash', name: '지우개굴닌자', types: T('water', 'dark'), pokeapi: 10117, sc: '0001', bond: true }],
-    skills: { z: 'water_shuriken', x: 'night_slash', c: 'double_team' }, desc: '물수리검을 던지는 닌자. 유대변화로 거대 수리검을 등에 진다.', unlock: { start: true } },
+    megas: [{ key: 'greninja-ash', name: '지우개굴닌자', types: T('water', 'dark'), pokeapi: 10117, sc: '0001', bond: true },
+            { key: 'greninja-mega', name: '메가개굴닌자', types: T('water', 'dark'), pokeapi: 10294, sc: '0002' }],
+    skills: { z: 'water_shuriken', x: 'night_slash', c: 'double_team' }, desc: '물수리검을 던지는 닌자. V 는 유대변화(거대 수리검), ↑+V 는 메가진화.', unlock: { start: true } },
 
   // ======================= 7세대 · 알로라 =======================
   { id: 'rowlet', cat: 'starter', gen: 7, ...STARTER, hp: 108, atk: 11, speed: 112, jumps: 3, types: T('grass', 'flying'),
@@ -153,14 +159,15 @@ export const LINES = [
   { id: 'dratini', cat: 'special', gen: 1, hp: 104, atk: 12, speed: 120, jump: 300, jumps: 3, types: T('dragon'),
     forms: [{ key: 'dratini', name: '미뇽', dex: 147 }, { key: 'dragonair', name: '신뇽', dex: 148 }, { key: 'dragonite', name: '망나뇽', dex: 149, types: T('dragon', 'flying') }],
     passive: { hoverForm: 2 },
+    megas: [{ key: 'dragonite-mega', name: '메가망나뇽', types: T('dragon', 'flying'), pokeapi: 10281, sc: '0001' }],
     skills: { z: 'dragon_tail', x: 'extreme_speed', c: 'outrage' }, desc: '드래곤 올라운더. 3단 점프, 망나뇽은 체공 비행. 신속과 역린.', unlock: { stage: 3 } },
   { id: 'magikarp', cat: 'special', gen: 1, hp: 120, atk: 13, speed: 112, jump: 300, jumps: 2, types: T('water'),
-    forms: [{ key: 'magikarp', name: '잉어킹', dex: 129, skills: { z: 'splash', x: 'karp_tackle', c: 'flail' } },
+    forms: [{ key: 'magikarp', name: '잉어킹', dex: 129, skills: { z: 'splash', x: 'bounce', c: 'flail' } },
             { key: 'gyarados', name: '갸라도스', dex: 130, types: T('water', 'flying') }],
     formAt: [0, 0, 1], formStat: [{ atk: .1, hp: .55, speed: .72 }, { atk: 1, hp: 1, speed: 1 }],
     megas: [{ key: 'gyarados-mega', name: '메가갸라도스', types: T('water', 'dark'), pokeapi: 10041, sc: '0001' }],
     passive: { flop: 0 },
-    skills: { z: 'aqua_tail', x: 'hydro_pump', c: 'hyper_beam' }, desc: '대기만성. 잉어킹은 튀어오르기뿐이지만, 3단 진화 순간 공격력 10배 갸라도스로 각성한다.', unlock: { start: true } },
+    skills: { z: 'aqua_tail', x: 'hydro_pump', c: 'hyper_beam' }, desc: '대기만성. 잉어킹은 튀어오르기·뛰어오르기로 버티다가, 3단 진화 순간 공격력 10배 갸라도스로 각성한다.', unlock: { start: true } },
   { id: 'onix', cat: 'special', gen: 1, hp: 170, atk: 11, speed: 92, jump: 286, jumps: 2, types: T('rock', 'ground'),
     forms: [{ key: 'onix', name: '롱스톤', dex: 95 }, { key: 'steelix', name: '강철톤', dex: 208, types: T('steel', 'ground') }],
     formAt: [0, 1, 1],
@@ -173,10 +180,18 @@ export const LINES = [
     megas: [{ key: 'scizor-mega', name: '메가핫삼', types: T('bug', 'steel'), pokeapi: 10046, sc: '0001' }],
     passive: { atkSpeed: 1.35 },
     skills: { z: 'bullet_punch', x: 'x_scissor', c: 'u_turn' }, desc: '초고속 암살자. 가장 빠른 이동과 연타, 적의 등 뒤로 파고드는 유턴.', unlock: { total: 300 } },
+  // 한카리아스: 보스로 나오지만 전설은 아니다 → 딥상어동 계열로 4세대에. 신오 챔피언로드의 한카리아스(난천)를 정화하면 합류
+  { id: 'gible', cat: 'special', gen: 4, hp: 122, atk: 12, speed: 124, jump: 306, jumps: 2, types: T('dragon', 'ground'),
+    forms: [{ key: 'gible', name: '딥상어동', dex: 443 }, { key: 'gabite', name: '한바이트', dex: 444 }, { key: 'garchomp', name: '한카리아스', dex: 445 }],
+    megas: [{ key: 'garchomp-mega', name: '메가한카리아스', types: T('dragon', 'ground'), pokeapi: 10058, sc: '0001' },
+            { key: 'garchomp-mega-z', name: '메가한카리아스Z', types: T('dragon'), pokeapi: 10309, sc: '0002' }],
+    skills: { z: 'dual_chop', x: 'dragon_rush', c: 'sand_tomb' }, desc: '음속의 육지 상어. 모래 속에서 덮쳐든다.', unlock: { boss: 'garchomp' } },
 
   // ======================= 야생 정화 =======================
   { id: 'pichu', cat: 'wild', gen: 1, hp: 96, atk: 11, speed: 126, jump: 315, jumps: 2, types: T('electric'),
     forms: [{ key: 'pichu', name: '피츄', dex: 172 }, { key: 'pikachu', name: '피카츄', dex: 25 }, { key: 'raichu', name: '라이츄', dex: 26 }],
+    megas: [{ key: 'raichu-mega-x', name: '메가라이츄X', types: T('electric'), pokeapi: 10304, sc: '0002' },   // SpriteCollab 0001 은 알로라 라이츄
+            { key: 'raichu-mega-y', name: '메가라이츄Y', types: T('electric'), pokeapi: 10305, sc: '0003' }],
     skills: { z: 'thundershock', x: 'thunderbolt', c: 'volt_tackle' }, desc: '원거리 전기 딜러. 마비로 적을 묶는다.', unlock: { kills: true } },
   { id: 'zubat', cat: 'wild', gen: 1, hp: 92, atk: 10, speed: 124, jump: 280, jumps: 3, types: T('poison', 'flying'),
     forms: [{ key: 'zubat', name: '주뱃', dex: 41 }, { key: 'golbat', name: '골뱃', dex: 42 }, { key: 'crobat', name: '크로뱃', dex: 169 }],
@@ -210,25 +225,27 @@ export const LINES = [
     skills: { z: 'dragon_claw', x: 'dragon_ascent', c: 'draco_meteor' }, desc: '하늘의 지배자. 화룡점정으로 하늘에서 내리꽂힌다.', unlock: { legend: true } },
   { id: 'latias', cat: 'legend', legend: true, hp: 140, atk: 13, speed: 134, jump: 310, jumps: 3, hover: true, types: T('dragon', 'psychic'),
     forms: [{ key: 'latias', name: '라티아스', dex: 380 }], formAt: [0, 0, 0],
+    megas: [{ key: 'latias-mega', name: '메가라티아스', types: T('dragon', 'psychic'), pokeapi: 10062, sc: '0001' }],
     skills: { z: 'mist_ball', x: 'heal_pulse', c: 'glide_dash' }, desc: '마음을 읽는 꿈의 포켓몬. 치유파동으로 파티를 돌본다.', unlock: { legend: true } },
   { id: 'latios', cat: 'legend', legend: true, hp: 145, atk: 15, speed: 134, jump: 310, jumps: 3, hover: true, types: T('dragon', 'psychic'),
     forms: [{ key: 'latios', name: '라티오스', dex: 381 }], formAt: [0, 0, 0],
+    megas: [{ key: 'latios-mega', name: '메가라티오스', types: T('dragon', 'psychic'), pokeapi: 10063, sc: '0001' }],
     skills: { z: 'luster_purge', x: 'dragon_pulse', c: 'aerial_dive' }, desc: '빛을 굴절시키는 꿈의 포켓몬. 라스트버지와 용의파동.', unlock: { legend: true } },
-  { id: 'garchomp', cat: 'legend', legend: true, hp: 160, atk: 16, speed: 132, jump: 310, jumps: 2, types: T('dragon', 'ground'),
-    forms: [{ key: 'garchomp', name: '한카리아스', dex: 445 }], formAt: [0, 0, 0],
-    megas: [{ key: 'garchomp-mega', name: '메가한카리아스', types: T('dragon', 'ground'), pokeapi: 10058, sc: '0001' }],
-    skills: { z: 'dual_chop', x: 'dragon_rush', c: 'sand_tomb' }, desc: '음속의 육지 상어. 모래 속에서 덮쳐든다.', unlock: { legend: true } },
   { id: 'dialga', cat: 'legend', legend: true, hp: 170, atk: 16, speed: 112, jump: 300, jumps: 2, types: T('steel', 'dragon'),
     forms: [{ key: 'dialga', name: '디아루가', dex: 483 }], formAt: [0, 0, 0],
+    megas: [{ key: 'dialga-origin', name: '디아루가 오리진폼', types: T('steel', 'dragon'), pokeapi: 10245, sc: '0001', item: 'adamant' }],
     skills: { z: 'metal_claw', x: 'roar_of_time', c: 'chrono_stop' }, desc: '시간을 다스리는 신. 시간의포효로 세계를 뒤틀고 시간을 멈춘다.', unlock: { legend: true } },
   { id: 'palkia', cat: 'legend', legend: true, hp: 165, atk: 16, speed: 118, jump: 304, jumps: 2, types: T('water', 'dragon'),
     forms: [{ key: 'palkia', name: '펄기아', dex: 484 }], formAt: [0, 0, 0],
+    megas: [{ key: 'palkia-origin', name: '펄기아 오리진폼', types: T('water', 'dragon'), pokeapi: 10246, sc: '0001', item: 'lustrous' }],
     skills: { z: 'aqua_blade', x: 'spacial_rend', c: 'warp_rift' }, desc: '공간을 다스리는 신. 공간절단으로 모든 것을 가른다.', unlock: { legend: true } },
   { id: 'giratina', cat: 'legend', legend: true, hp: 175, atk: 15, speed: 116, jump: 300, jumps: 2, hover: true, types: T('ghost', 'dragon'),
     forms: [{ key: 'giratina', name: '기라티나', dex: 487 }], formAt: [0, 0, 0],
+    megas: [{ key: 'giratina-origin', name: '기라티나 오리진폼', types: T('ghost', 'dragon'), pokeapi: 10007, sc: '0001', item: 'griseous' }],
     skills: { z: 'shadow_claw', x: 'shadow_force', c: 'distortion' }, desc: '반전세계의 주인. 섀도다이브로 사라졌다 덮친다.', unlock: { legend: true } },
   { id: 'darkrai', cat: 'legend', legend: true, hp: 140, atk: 15, speed: 126, jump: 310, jumps: 2, hover: true, types: T('dark'),
     forms: [{ key: 'darkrai', name: '다크라이', dex: 491 }], formAt: [0, 0, 0],
+    megas: [{ key: 'darkrai-mega', name: '메가다크라이', types: T('dark'), pokeapi: 10312, sc: '0002' }],   // SpriteCollab 0001 은 컷신용
     skills: { z: 'dark_pulse', x: 'dark_void', c: 'nightmare' }, desc: '악몽을 부르는 칠흑의 포켓몬. 다크홀로 적을 잠재운다.', unlock: { legend: true } }
 ];
 
@@ -238,6 +255,13 @@ export const CATS = [
   { id: 'pokemon', label: '세대별 포켓몬', icon: '🌱', cats: ['starter', 'special', 'wild'] },
   { id: 'legend', label: '정화한 전설/보스', icon: '👑', cats: ['legend'] }
 ];
+
+// 폼체인지 아이템: 그 전설 보스(BOSSES 의 key)를 정화하면 떨어뜨린다 · 그 판 동안 파티 공용
+export const FORM_ITEMS = {
+  adamant: { name: '큰금강옥', boss: 'dialga', color: 0x6ab0ff },
+  lustrous: { name: '큰백옥', boss: 'palkia', color: 0xd88aff },
+  griseous: { name: '큰백금옥', boss: 'giratina', color: 0xffd860 }
+};
 
 // 대표 타입 → 교체 등장 스킬 · Z기술
 export const TAG_BY_TYPE = {
@@ -259,6 +283,7 @@ export function unlockHint(l) {
   if (u.stage) return `${['관동', '성도', '호연', '신오', '하나'][u.stage - 1]}지방 최종 보스를 정화하면 합류`;
   if (u.total) return `야생 포켓몬을 누적 ${u.total}마리 정화하면 합류`;
   if (u.legend) return `전설 보스 · ${LEGEND_WHERE[l.id] || '어딘가의 전설'}을(를) 정화하면 합류`;
+  if (u.boss) return `보스 · ${LEGEND_WHERE[u.boss] || u.boss}을(를) 정화하면 합류`;
   return '';
 }
 
@@ -271,7 +296,8 @@ export function toSpecies(l) {
     return { key: f.key, name: f.name, dex: f.dex, fi, types: f.types || l.types, skills: f.skills || null, stat: (l.formStat || [])[fi] || null,
       aura: ti > 0 && fi === formAt[ti - 1] && fi === l.forms.length - 1 && !l.legend };   // 더 진화할 모습이 없으면 오라로 대신
   });
-  const megas = (l.megas || []).map(m => ({ name: m.name, key: m.key, sprite: m.sprite || m.key, portrait: m.key, types: m.types || last.types || l.types, bond: !!m.bond, scale: 1 }));
+  // item: 폼체인지 (오리진폼) — 메가스톤 대신 그 전설의 아이템(FORM_ITEMS)으로 발동
+  const megas = (l.megas || []).map(m => ({ name: m.name, key: m.key, sprite: m.sprite || m.key, portrait: m.key, types: m.types || last.types || l.types, bond: !!m.bond, item: m.item || null, scale: 1 }));
   const mega = megas[0] || { name: `각성 ${last.name}`, sprite: null, portrait: null, types: last.types || l.types, scale: 1.1, awaken: true };
   const ptype = l.types[0];
   return {

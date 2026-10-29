@@ -18,6 +18,7 @@ export const SKILLS = {
 
   // ===== 잉어킹 (일부러 한심하다) =====
   splash: { name: '튀어오르기', type: 'water', cd: 0, icon: 'drop', desc: '제자리에서 팔딱 튀어오른다. 하지만 아무 일도 일어나지 않았다!', mega: '잉어킹은 메가진화할 수 없다…' },
+  bounce: { name: '뛰어오르기', type: 'flying', cd: 3, icon: 'wing', desc: '높이 뛰어올랐다가 내리꽂혀 착지한 자리 주변을 크게 친다. 잉어킹의 유일한 제대로 된 공격.', mega: '잉어킹은 메가진화할 수 없다…' },
   karp_tackle: { name: '몸통박치기', type: 'normal', cd: 4, icon: 'dash', desc: '파닥거리며 앞으로 몸을 던진다. 매우 약하다.', mega: '잉어킹은 메가진화할 수 없다…' },
   flail: { name: '바둥바둥', type: 'normal', cd: 6, icon: 'spin', desc: '마구 바둥거린다. 체력이 낮을수록 세지지만… 여전히 약하다.', mega: '잉어킹은 메가진화할 수 없다…' },
 

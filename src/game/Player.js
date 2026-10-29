@@ -5,6 +5,7 @@
 import Phaser from 'phaser';
 import { Actor } from './Actor.js';
 import { SPECIES, SKILLS, TAGS, TIERS, EVO_EXP, ZMOVES, Z_CD } from '../data/pokemon.js';
+import { FORM_ITEMS } from '../data/roster.js';
 import { computeMods, ITEMS, MAX_EQUIP } from '../data/items.js';
 import { typeMultiplier, effectiveness, typeColor } from '../data/types.js';
 import * as base from './skills.js';
@@ -32,6 +33,7 @@ export class Player extends Actor {
     this.members = partyKeys.map(k => this.makeMember(k));
     this.idx = 0;
     this.buffs = [];                                   // 일시 강화 { atk, speed, guard, t } (출전 포켓몬)
+    this.formItems = new Set();                        // 폼체인지 아이템 (큰금강옥·큰백옥·큰백금옥 — data/roster.js 의 FORM_ITEMS, 그 판 동안 파티 공용)
     this.sandT = 0; this.flopT = 0;
     this.bag = {};                                      // 가방: 아무도 장착하지 않은 아이템
     this.inv = 0; this.dash = null; this.dashCd = 0; this.airDash = true; this.swapCd = 0;
@@ -401,7 +403,7 @@ export class Player extends Actor {
   debugEvolve() {
     const m = this.m;
     if (m.tier < EVO_EXP.length) { m.exp = EVO_EXP[m.tier]; this.evolve(m); return; }
-    if (!this.mega.active) { this.mega.stones = Math.max(1, this.mega.stones); this.startMega(); }
+    if (!this.mega.active) { this.mega.stones = Math.max(1, this.mega.stones); for (const mg of this.sp.megas) if (mg.item) this.formItems.add(mg.item); this.startMega(); }
   }
 
   updateAnim(dt) {
@@ -507,11 +509,16 @@ export class Player extends Actor {
   }
 
   // ---------------- 메가진화 (3단 + 메가스톤, 영구) ----------------
+  //  폼체인지(디아루가·펄기아·기라티나 오리진폼)는 메가스톤·진화 단계 대신 그 전설의 아이템만 있으면 된다
   startMega(variant = 0) {
-    const mg = this.mega, sc = this.scene;
+    const mg = this.mega, sc = this.scene, want = this.sp.megas[variant] || this.sp.megas[0];
     if (mg.active) return;
-    if (mg.stones <= 0) { sc.events.emit('toast', '메가스톤이 없다 (스테이지 3 보스가 지니고 있다)'); Sfx.play('deny'); return; }
-    if (this.tier < 2) { sc.events.emit('toast', `${this.form().name}은(는) 3단 진화 후에 메가진화할 수 있다 (진화까지 ${this.expToNext()})`); Sfx.play('deny'); return; }
+    if (want && want.item) {
+      if (!this.formItems.has(want.item)) { const it = FORM_ITEMS[want.item]; sc.events.emit('toast', `${it.name}이(가) 없다 (${this.form().name} 보스를 정화하면 떨어뜨린다)`); Sfx.play('deny'); return; }
+    } else {
+      if (mg.stones <= 0) { sc.events.emit('toast', '메가스톤이 없다 (스테이지 3 보스가 지니고 있다)'); Sfx.play('deny'); return; }
+      if (this.tier < 2) { sc.events.emit('toast', `${this.form().name}은(는) 3단 진화 후에 메가진화할 수 있다 (진화까지 ${this.expToNext()})`); Sfx.play('deny'); return; }
+    }
     if (this.sp.megas[variant]) this.m.megaPick = variant;
     mg.active = true;   // 출전 중인 포켓몬만 (메가스톤은 파티 공용이라 다른 3단 포켓몬도 각자 메가진화할 수 있다)
     this.recalcHp(.5, this.m);
@@ -523,7 +530,7 @@ export class Player extends Actor {
     sc.fx.burst(this.x, this.y, [0xff8ad0, 0x9a7aff, 0x5ad0ff, 0xfff6c0, 0xffffff], 40, 220, { glow: true });
     sc.fx.shake(.012, 300);
     Sfx.play('mega');
-    const mgv = this.megaOf(), title = mgv.bond ? '유대변화!' : mgv.awaken ? '각성!' : '메가진화!';
+    const mgv = this.megaOf(), title = mgv.item ? '폼체인지!' : mgv.bond ? '유대변화!' : mgv.awaken ? '각성!' : '메가진화!';
     const alt = this.sp.megas.length > 1 && !variant ? ` · ↑+V 는 ${this.sp.megas[1].name}` : '';
     sc.events.emit('banner', title, `${this.form().name} → ${mgv.name} · 이 포켓몬은 이번 판 끝까지 유지${alt}`);
     sc.events.emit('swap', this);

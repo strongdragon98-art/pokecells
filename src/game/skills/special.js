@@ -328,6 +328,24 @@ export const SKILL_IMPL = {
       }
     };
   },
+  // 뛰어오르기: 위로 크게 뛰었다가 땅에 닿는 순간 충격파. 잉어킹 공격력(1.3)으로도 야생을 2~3방에 정화할 만큼 배율을 크게 잡았다
+  bounce(p) {
+    const sc = p.scene;
+    return {
+      dur: 1.4, mm: .7, anim: 'Walk',
+      ev: [[0, () => { p.b.setVelocityY(-440); p.squash(.6, 1.45); Sfx.play('jump'); sc.fx.burst(p.x, p.bottom - 1, [0x8ad0ff, 0xffffff], 8, 80, { up: 60, life: .35 }); }]],
+      update(p, a) {
+        if (a.t > .2 && !a.landed && p.b.velocity.y > 0) p.b.setVelocityY(Math.min(560, p.b.velocity.y + 18));   // 내려올 땐 더 빠르게 내리꽂는다
+        if (a.t < .25 || a.landed || !p.onGround) return;
+        a.landed = true; a.dur = a.t + .18;
+        const s = sizeMul(p), r = 38 * s;
+        sc.combat.hitCircle(p.x, p.bottom - 8, r, 20, 'flying', { kbx: 170, kby: -240, hs: 90 });
+        sc.fx.ring(p.x, p.bottom - 4, r, 0xc8e0ff, 280); sc.fx.ring(p.x, p.bottom - 4, r * .6, 0xffffff, 220);
+        sc.fx.burst(p.x, p.bottom - 2, [0x8ad0ff, 0xc8e0ff, 0xffffff], 22, 160, { up: 120, life: .5 });
+        sc.fx.shake(.012, 200); Sfx.play('boom'); p.squash(1.45, .65);
+      }
+    };
+  },
   karp_tackle(p) {
     const sc = p.scene, set = new Set();
     return {

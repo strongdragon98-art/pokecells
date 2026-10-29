@@ -117,9 +117,11 @@ export class RosterPanel {
     const lastTypes = sp.evo[sp.evo.length - 1].types;
     for (const t of legendLocked ? [] : lastTypes) tx += typePill(s, L, tx, Y + 28, t, 8) + 4;
     const badges = [];
+    const megaN = sp.megas.filter(m => !m.bond && !m.item).length;
+    if (sp.megas.some(m => m.item)) badges.push(['폼체인지', '#ffd860']);
     if (sp.megas.some(m => m.bond)) badges.push(['유대변화', '#8ad8ff']);
-    else if (sp.megas.length) badges.push([sp.megas.length > 1 ? `메가진화 ×${sp.megas.length}` : '메가진화', '#ff9ad8']);
-    else if (!sp.legend) badges.push(['각성 (오라)', HK.dim]);
+    if (megaN) badges.push([megaN > 1 ? `메가진화 ×${megaN}` : '메가진화', '#ff9ad8']);
+    if (!sp.megas.length && !sp.legend) badges.push(['각성 (오라)', HK.dim]);
     if (sp.legend) badges.push(['전설', HK.gold]);
     for (const [b, c] of legendLocked ? [] : badges) {
       const t = hkText(s, tx + 6, Y + 29, b, 7.5, c, { bold: true }); L.add(t);

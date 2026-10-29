@@ -24,7 +24,9 @@ function load() {
     if (!raw) return fresh();
     const d = Object.assign(fresh(), raw);
     // 옛 기록 고치기: 피카츄 → 피츄 계열로 이름이 바뀌었고, 꼬렛은 플레이어블에서 빠졌다
-    const ren = k => k === 'pikachu' ? 'pichu' : k, keep = k => k !== 'rattata';
+    //  한카리아스는 전설에서 빠져 딥상어동 계열(gible)이 됐다
+    const ren = k => k === 'pikachu' ? 'pichu' : k === 'garchomp' ? 'gible' : k, keep = k => k !== 'rattata';
+    d.joined = (d.joined || []).map(ren);
     d.unlocked = [...new Set(d.unlocked.map(ren).filter(keep))];
     d.party = (d.party || []).map(ren).filter(keep);
     if (d.kills.pikachu != null) { d.kills.pichu = Math.max(d.kills.pichu || 0, d.kills.pikachu); delete d.kills.pikachu; }
@@ -63,12 +65,13 @@ export const Save = {
     this.write();
     return out;
   },
-  // 전설 보스를 정화하면 영구 합류 (플레이어블 전설이 있는 보스만)
-  unlockLegend(k) {
-    if (!LINE[k] || LINE[k].cat !== 'legend' || this.data.unlocked.includes(k)) return false;
-    this.data.unlocked.push(k); this.data.joined.push(k);
+  // 보스를 정화하면 그 보스로 합류하는 라인이 영구 합류 (전설은 같은 이름 · 한카리아스 보스 → 딥상어동 계열) → 합류한 라인 id 또는 null
+  unlockByBoss(bossKey) {
+    const l = LINES.find(x => (x.cat === 'legend' && x.id === bossKey) || (x.unlock && x.unlock.boss === bossKey));
+    if (!l || this.data.unlocked.includes(l.id)) return null;
+    this.data.unlocked.push(l.id); if (!this.data.joined.includes(l.id)) this.data.joined.push(l.id);
     this.write();
-    return true;
+    return l.id;
   },
   // 디버그 (로비 F1·F3 · 게임 F3 메뉴): 스타팅·특수·야생·전설 전부 해금
   debugUnlockAll() {
