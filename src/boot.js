@@ -7,6 +7,7 @@ import GameScene from './scenes/GameScene.js';
 import UIScene from './scenes/UIScene.js';
 import { GAME_W, GAME_H, RES } from './config.js';
 import { setupMobile } from './systems/Mobile.js';
+import { installKeyFix } from './systems/KeyFix.js';
 
 // 개발 서버(main.js)와 단일 HTML 빌드(main-single.js)가 함께 쓰는 시작 함수
 export async function startGame() {
@@ -38,6 +39,7 @@ export async function startGame() {
     scene: [BootScene, TitleScene, LobbyScene, CutsceneScene, GameScene, UIScene]
   });
   window.__game = game;   // 개발 중 콘솔 확인용
+  installKeyFix(game);    // 한글 입력 모드에서도 키가 먹히게 (systems/KeyFix.js)
   setupMobile(game);
   document.getElementById('boot')?.remove();
 }
