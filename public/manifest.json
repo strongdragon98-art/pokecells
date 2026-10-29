@@ -1,0 +1,17 @@
+{
+  "name": "포켓 셀즈",
+  "short_name": "포켓셀",
+  "description": "할로우 나이트풍 2D 포켓몬 메트로배니아 (개인 비상업 팬게임)",
+  "lang": "ko",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#07060f",
+  "icons": [
+    { "src": "./pwa/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./pwa/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./pwa/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

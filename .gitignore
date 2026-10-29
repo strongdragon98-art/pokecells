@@ -1,0 +1,7 @@
+node_modules/
+dist/
+dist-single/
+src/single/
+# 테스터용 묶음 · 한 파일 테스트판 (npm run package · package:itch 로 다시 만든다)
+*.zip
+포켓셀즈-테스트.html
