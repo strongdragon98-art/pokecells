@@ -269,7 +269,7 @@ const AI = {
     const near = Math.abs(dx) < 220 && Math.abs(dy) < 160;
     e.facePlayer(p);
     const tx = near ? p.x - Math.sign(dx || 1) * 60 : e.home.x + Math.sin(e.t) * 40;
-    const ty = near ? p.y - 50 + Math.sin(e.t * 4) * 10 : e.home.y + Math.sin(e.t * 1.7) * 10;
+    const ty = near ? p.y - 30 + Math.sin(e.t * 4) * 8 : e.home.y + Math.sin(e.t * 1.7) * 10;   // 공격이 닿는 낮은 높이에서 맴돈다
     b.setVelocity(Phaser.Math.Clamp((tx - e.x) * 2, -e.spd, e.spd), Phaser.Math.Clamp((ty - e.y) * 2, -e.spd, e.spd));
     if (near && e.cd <= 0) { e.mode = e.canShoot && Math.random() < .5 ? 'shot' : 'dive'; e.state = 'wind'; e.timer = .35; }
   },
@@ -324,7 +324,20 @@ const AI = {
       b.setVelocity(Phaser.Math.Clamp((tx - e.x) * 1.4, -e.spd, e.spd), Phaser.Math.Clamp((ty - e.y) * 1.4, -e.spd, e.spd));
       if (e.cd <= 0 && !e.fade) { e.state = 'wind'; e.timer = .5; }
     } else b.setVelocity(b.velocity.x * .95, Math.sin(e.t) * 12);
+    keepOutOfWalls(e, p);
   }
 };
+
+// 벽을 통과하는 고스트가 건물·바위 속으로 숨어 버리지 않게: 벽 쪽 이동은 막고, 이미 속에 있으면 플레이어 쪽으로 빠르게 빠져나온다
+function keepOutOfWalls(e, p) {
+  const s = e.scene, b = e.b, la = 14;
+  if (s.isSolidAt(e.x, e.y)) {
+    const a = Math.atan2(p.y - e.y, p.x - e.x);
+    b.setVelocity(Math.cos(a) * e.spd * 2.5, Math.sin(a) * e.spd * 2.5);
+    return;
+  }
+  if (b.velocity.x && s.isSolidAt(e.x + Math.sign(b.velocity.x) * la, e.y)) b.setVelocityX(0);
+  if (b.velocity.y && s.isSolidAt(e.x, e.y + Math.sign(b.velocity.y) * la)) b.setVelocityY(0);
+}
 
 export { AI, typeColor };

@@ -7,7 +7,7 @@ import { Sfx } from '../systems/Audio.js';
 import { SLASH_PAL } from '../systems/Fx.js';
 
 // 기술 크기 배율: 아이템 × 진화 단계 (1단 1 · 2단 1.2 · 3단 1.4 · 메가 1.65) → 판정·궤적·투사체가 같이 커진다
-const sizeMul = p => p.mods.sizeMul * p.fxMul;
+const sizeMul = p => p.mods.sizeMul * p.fxMul * (p.sp.reach || 1);   // reach: 거대 몸집 포켓몬(롱스톤 계열)의 공격 범위 배율
 const up = (p, id) => p.hasUp(id);   // 기술머신 강화 카드를 받았나 (data/tm.js 의 UPGRADES)
 
 // 전방 근접 판정 + 3겹 도트 검기 (가장자리 오라 → 중간 → 순백 코어) + 맞은 자리 톱니 섬광
@@ -51,7 +51,7 @@ function shoot(p, o) {
       owner: 'player', x: p.x + p.face * (o.fwd ?? 10), y: p.y + (o.oy ?? -3),
       vx: Math.cos(a) * sp * p.face, vy: Math.sin(a) * sp + (o.vy ?? 0), r: (o.r ?? 4) * s, mul: o.mul ?? 1, type: o.type, kind: o.kind, life: o.life ?? .8,
       pierce: o.pierce ?? 1, grav: o.grav ?? 0, homing: o.homing, boomerang: o.boomerang, ghost: o.ghost, status: o.status || {}, boom,
-      kb: o.kb, color: o.color, light: o.light, grow: o.grow, onExpire: o.onExpire, tier: p.tierIdx, pow: s,
+      kb: o.kb, color: o.color, light: o.light, grow: o.grow, onExpire: o.onExpire, onHit: o.onHit, tier: p.tierIdx, pow: s,
       stream: !!o.stream || count > 1   // 연속 투사체(연사·여러 갈래)인가 → 적 투사체와 맞대결 (Combat.clashProjectiles)
     });
   }
@@ -812,6 +812,9 @@ function zAction(p, def, o) {
     end: o.end
   };
 }
+
+// 라인별 전용 스킬 파일(game/skills/*.js)도 같은 도구를 쓴다 (game/skillKit.js 가 다시 내보낸다)
+export { sizeMul, slashHit, strikeHit, shoot, lineFx, beamAction, rockPillar, iceShards, dashAction, zCharge, zStrike, zAction };
 
 const zView = p => p.scene.cameras.main.worldView;
 const zGround = (p, x) => p.scene.groundBelow(x, p.y - 30);

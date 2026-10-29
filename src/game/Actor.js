@@ -26,6 +26,7 @@ export class Actor {
     this.meta = this.scene.registry.get('spriteMeta')[key];
     this.scaleBase = scale;
     this.animKey = null;
+    this.sprite.setRotation(0);   // 폴백 도트의 절차 기울기가 남지 않게
     this.play('Idle', true);
   }
 
@@ -45,7 +46,7 @@ export class Actor {
       if (name !== 'Idle') return this.play('Idle', force);
       return;
     }
-    this.animKey = k; this.animName = name;
+    this.animKey = k; this.animName = name; this.animAt = this.procT || 0;
     this.sprite.play(k);
     const a = this.meta.anims[name];
     this.sprite.setOrigin(.5, a ? a.oy : .75);
@@ -64,10 +65,26 @@ export class Actor {
     this.sprite.x = Math.round(this.b.center.x);
     this.sprite.y = Math.round(this.b.bottom);
     this.sprite.setScale(this.scaleBase * this.sx, this.scaleBase * this.sy);
+    if (this.meta && this.meta.procedural) this.proceduralPose(dt);
     if (this.flashT > 0) { this.flashT -= dt; this.sprite.setTintFill(0xffffff); }
     else if (this.tintFill !== null) this.sprite.setTintFill(this.tintFill);
     else if (this.tint !== null) this.sprite.setTint(this.tint);
     else this.sprite.clearTint();
+  }
+
+  // 한 장짜리 폴백 도트(SpriteLoader.buildFallback)에 입히는 절차 애니메이션: 숨쉬기 · 걷기 출렁임 · 점프 기울기 · 공격 돌진 · 피격 젖힘
+  proceduralPose(dt) {
+    const t = this.procT = (this.procT || 0) + dt, n = this.animName, s = this.sprite, f = this.face;
+    let ox = 0, oy = 0, rot = 0, kx = 1, ky = 1;
+    if (!this.onGround) rot = Math.max(-.3, Math.min(.3, this.b.velocity.y / 900)) * f;
+    else if (n === 'Walk') { oy = -Math.abs(Math.sin(t * 14)) * 1.6; rot = Math.sin(t * 14) * .07; }
+    else if (n === 'Idle') { ky = 1 + Math.sin(t * 3.2) * .04; kx = 1 - Math.sin(t * 3.2) * .02; }
+    if (n === 'Attack' || n === 'Strike' || n === 'Shoot') {
+      const k = Math.sin(Math.min(1, (t - (this.animAt || 0)) / .2) * Math.PI);
+      ox = f * k * 4; kx *= 1 + k * .14; ky *= 1 - k * .06; rot += f * k * .12;
+    } else if (n === 'Hurt') { rot = -f * .22; ox = -f * 2; }
+    s.x += ox; s.y += oy;
+    s.setScale(s.scaleX * kx, s.scaleY * ky).setRotation(rot);
   }
 
   destroy() { this.obj.destroy(); this.sprite.destroy(); }

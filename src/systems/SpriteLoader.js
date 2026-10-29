@@ -1,7 +1,21 @@
 // PMDCollab SpriteCollab 시트 로더
 // 시트는 8방향(행) × 프레임(열) 구성이다. 행 순서: 0 아래, 1 오른아래, 2 오른쪽, 3 오른위, 4 위, 5 왼위, 6 왼쪽, 7 왼아래.
 // 횡스크롤에서는 2행(오른쪽)과 6행(왼쪽)만 잘라 '{key}:{Anim}:{right|left}' 애니메이션으로 등록한다.
+// 스마트 폴백: 로스터(data/roster.js)의 포켓몬 중 모션 시트를 아직 받지 않은 모습은
+//  PokeAPI 기본 도트를 실행 중에 바로 불러와 한 장짜리 좌/우 시트로 만들고, Actor 가 절차 애니메이션을 입힌다
+import { LINES } from '../data/roster.js';
+
 export const ANIMS = ['Idle', 'Walk', 'Attack', 'Strike', 'Shoot', 'Hurt'];
+const POKEAPI = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon';
+// 로스터의 모든 모습·메가 → PokeAPI 번호
+const ROSTER_ART = (() => {
+  const out = {};
+  for (const l of LINES) {
+    for (const f of l.forms) out[f.key] = f.dex;
+    for (const m of l.megas || []) out[m.key] = m.pokeapi;
+  }
+  return out;
+})();
 const FALLBACK = {
   Idle: ['Walk'], Walk: ['Idle'], Attack: ['Strike', 'Shoot', 'Walk'], Strike: ['Attack', 'Shoot', 'Walk'],
   Shoot: ['Attack', 'Strike', 'Walk'], Hurt: ['Idle', 'Walk']
@@ -63,6 +77,12 @@ export class SpriteLoader {
       load.xml(`xml:${key}`, `assets/${e.animData}`);
       load.once(`filecomplete-xml-xml:${key}`, (k, t, doc) => this.queueSheets(key, doc));
     }
+    // 아직 받지 않은 로스터 포켓몬: PokeAPI 도트를 바로 불러온다 (실패하면 건너뛰고, 고를 때 빈 칸 대신 실루엣)
+    load.setCORS('anonymous');
+    for (const [key, id] of Object.entries(ROSTER_ART)) {
+      const e = manifest.pokemon[key];
+      if (id && !(e && e.icon)) load.image(`icon:${key}`, `${POKEAPI}/${id}.png`);
+    }
   }
 
   queueSheets(key, doc) {
@@ -117,7 +137,43 @@ export class SpriteLoader {
   // 로드가 끝난 뒤 호출: 좌/우 행만 잘라 애니메이션 등록 + 발 위치/몸통 크기 측정
   registerAll() {
     for (const key of Object.keys(this.manifest?.pokemon || {})) this.register(key);
+    // 모션 시트가 없는 로스터 포켓몬은 아이콘 도트로 대신
+    for (const key of Object.keys(ROSTER_ART)) {
+      if (this.meta[key] && this.meta[key].hasSprite) continue;
+      if (!this.buildFallback(key)) continue;
+      this.register(key);
+      this.meta[key].procedural = true;
+    }
     return this.meta;
+  }
+
+  // 아이콘 도트 한 장 → 투명 여백을 잘라 낸 2행 시트 (0행 오른쪽 = 좌우 반전, 1행 왼쪽 = 원본: PokeAPI 정면 도트는 왼쪽을 본다)
+  //  rowFor(rows=2) 가 그대로 읽으므로 register·measure 를 바꿀 필요가 없다
+  buildFallback(key) {
+    const tex = this.scene.textures, src = `icon:${key}`;
+    if (!tex.exists(src)) return false;
+    const img = tex.get(src).getSourceImage();
+    if (!img || !img.width) return false;
+    const W = img.width, H = img.height, cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const c = cv.getContext('2d', { willReadFrequently: true });
+    c.drawImage(img, 0, 0);
+    let px;
+    try { px = c.getImageData(0, 0, W, H).data; } catch (e) { return false; }   // CORS 로 막히면 쓰지 않는다
+    let minX = W, maxX = -1, minY = H, maxY = -1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (px[(y * W + x) * 4 + 3] > 40) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
+    if (maxX < 0) return false;
+    const w = maxX - minX + 1, h = maxY - minY + 1, fw = w + 4 + (w % 2), fh = (h + 4) * 2;   // 몸 중심이 프레임 가운데, 발이 아래쪽 1/4
+    const sheet = tex.createCanvas(`sheet:${key}:Idle`, fw, fh * 2), sc = sheet.getContext();
+    sc.imageSmoothingEnabled = false;
+    const ox = (fw - w) / 2, oy = fh / 2 - h + 2;   // 발바닥을 프레임 중앙 아래로
+    sc.save(); sc.translate(fw, 0); sc.scale(-1, 1); sc.drawImage(img, minX, minY, w, h, ox, oy, w, h); sc.restore();
+    sc.drawImage(img, minX, minY, w, h, ox, fh + oy, w, h);
+    sheet.refresh();
+    tex.get(`sheet:${key}:Idle`).add(0, 0, 0, 0, fw, fh); tex.get(`sheet:${key}:Idle`).add(1, 0, 0, fh, fw, fh);
+    const d = { fw, fh, durations: [30], hit: -1, rush: -1, source: 'Idle' };
+    this.data[key] = Object.fromEntries(ANIMS.map(a => [a, { ...d, name: a }]));
+    return true;
   }
 
   resolve(key, anim) {

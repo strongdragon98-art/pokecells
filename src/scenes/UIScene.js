@@ -15,6 +15,7 @@ import { MapView, VP } from '../systems/MapView.js';
 import { TouchControls } from '../systems/TouchControls.js';
 import { tagIcon, roundPortrait, itemArt, hiTex } from '../systems/Textures.js';
 import { Save } from '../systems/Save.js';
+import { RosterPanel } from '../systems/RosterPanel.js';
 import { Sfx } from '../systems/Audio.js';
 import { Settings, SETTING_DEFAULTS, DEFAULT_KEYS, KEY_ACTIONS, FIXED_KEYS, keyLabel, keyNameFromEvent } from '../systems/Settings.js';
 
@@ -154,7 +155,7 @@ export default class UIScene extends Phaser.Scene {
     this.unlockG = this.add.graphics();
     this.unlockGlow = this.add.image(320, 146, 'glow').setTint(0xffd25a).setBlendMode(ADD).setScale(1.5).setAlpha(.55);
     this.unlockImg = this.add.image(320, 146, 'px');
-    this.unlockText = hkText(this, 320, 188, '', 15, '#fff2c8', { ls: 1, bold: true, origin: .5, glow: true, glowColor: 'rgba(255,216,144,0.7)' });
+    this.unlockText = hkText(this, 320, 188, '', 15, '#fff2c8', { bold: true, origin: .5, glow: true, glowColor: 'rgba(255,216,144,0.7)' });   // 자간을 주면 글자 단위로 끊어 그려 이모지(🎉)가 깨진다
     this.unlockSub = hkText(this, 320, 208, '', 10, HK.dim, { origin: .5 });
     this.unlockSparks = [0, 1, 2, 3].map(() => this.add.image(0, 0, 'sparkle').setBlendMode(ADD).setScale(0));
     this.unlockBox.add([this.unlockG, fadeLine(this, 320, 102, 380), this.unlockGlow, this.unlockImg, hiImage(this, 320, 146, 'gloss'),
@@ -171,11 +172,11 @@ export default class UIScene extends Phaser.Scene {
       area: a => this.areaTitle(a),
       overlay: kind => kind === 'map' ? this.showMap() : kind === 'inv' ? (this.invMember = null, this.showInv()) :   // 가방은 열 때마다 출전 중인 포켓몬부터
          kind === 'tm' ? (this.tmSlot = false, this.showTM())
-        : kind === 'taxi' ? this.showTaxi() : kind === 'debug' ? this.showDebug() : kind === 'settings' ? this.showSettings(0) : this.clearOverlay(),
+        : kind === 'taxi' ? this.showTaxi() : kind === 'debug' ? this.showDebug() : kind === 'settings' ? this.showSettings(0) : kind === 'box' ? this.showBox() : this.clearOverlay(),
       lore: s => this.showLore(s),
       say: (who, s) => this.showLore(s, who),   // 트레이너 대사 (난천 · 레드)
       boss: b => { if (b) this.bossTitle(b); },
-      unlock: k => this.onUnlock(k),
+      unlock: (k, kind) => this.onUnlock(k, kind),
       killcount: (k, n) => { this.recent[k] = this.time.now; this.toast(`${SPECIES[k].name} 정화 진행도: ${n} / ${UNLOCK_KILLS}`); },
       pause: on => this.showPause(on),
       gameover: r => this.showResult(r)
@@ -258,12 +259,13 @@ export default class UIScene extends Phaser.Scene {
   }
 
   // 도감 등록 팝업: 금빛 테두리 초상화 + 「✨ [이름] 세뇌 완전 정화! 도감 등록 완료!」
-  onUnlock(k) {
+  //  합류(kind 'join'): 보스·특수 포켓몬 → 「🎉 [이름]의 영혼이 동료로 합류했습니다!」
+  onUnlock(k, kind) {
     const name = SPECIES[k].name;
     this.bannerT = 0;
-    this.unlockText.setText(`✨ [${name}] 세뇌 완전 정화! 도감 등록 완료!`);
-    this.unlockSub.setText(`${name}을(를) 다음 판부터 파티에 넣을 수 있어요`);
-    this.unlockImg.setTexture(roundPortrait(this, k));
+    this.unlockText.setText(kind === 'join' ? `🎉 [${name}]의 영혼이 동료로 합류했습니다!` : `✨ [${name}] 세뇌 완전 정화! 도감 등록 완료!`);
+    this.unlockSub.setText(kind === 'join' ? '이제 플레이어블 캐릭터로 선택할 수 있습니다! (포켓몬센터 보관함 · 도감)' : `${name}을(를) 다음 판부터 파티에 넣을 수 있어요`);
+    this.unlockImg.setTexture(roundPortrait(this, SPECIES[k].evo[0].key));
     const g = this.unlockG;
     g.clear(); darkBand(g, 0, 86, GAME_W, 158, .9);
     this.unlockSparks.forEach((s, i) => {
@@ -294,7 +296,7 @@ export default class UIScene extends Phaser.Scene {
     const m = p.m, mg = p.mega;
 
     // ===== 그릇: 출전 포켓몬 + 진화 경험치 액체 (3단이면 가득, 메가면 분홍) =====
-    const pk = mg.active && p.sp.mega.portrait && this.textures.exists(`portrait:${p.sp.mega.portrait}`) ? p.sp.mega.portrait : p.formKey();
+    const pk = p.portraitKey();
     this.vPortrait.setTexture(roundPortrait(this, pk));
     const level = p.expProgress(), ready = mg.stones > 0 && p.tier >= 2 && !mg.active;
     if (level > 0) {
@@ -470,7 +472,7 @@ export default class UIScene extends Phaser.Scene {
     if (this.keyWait) { this.keyWait = null; if (this.gs) this.gs.keyCapture = false; }
     this.tweens.killTweensOf(this.overlay.list);
     this.overlay.removeAll(true); this.gOver.clear(); this.overlay.setVisible(false); this.menu = null;
-    this.overlayMode = null; this.tmBusy = false;
+    this.overlayMode = null; this.tmBusy = false; this.boxPanel = null;
     this.input.keyboard.off('keydown', this.onOverlayKey, this);
   }
 
@@ -797,11 +799,14 @@ export default class UIScene extends Phaser.Scene {
       z.on('pointerover', () => { if (this.dbgSel !== i) this.showDebug(ci, i); });
       z.on('pointerdown', () => this.debugPick(i));
     });
-    const by = 300;
-    glassButton(this, 120, by, 120, 20, '성장 한 단계  F4', () => { gs.toggleOverlay('debug'); gs.debugGrow(); }, { size: 9, layer: L });
-    glassButton(this, 260, by, 120, 20, '공중날기 전부 해금', () => { gs.debugUnlockHubs(); Sfx.play('unlock'); }, { size: 9, layer: L });
-    glassButton(this, 400, by, 120, 20, '파티 회복', () => { for (const m of gs.player.members) { m.hp = m.maxhp; m.alive = true; } Sfx.play('heal'); this.toast('[디버그] 파티 전원 회복'); }, { size: 9, layer: L });
-    L.add(hkText(this, 320, 336, '1~5 챕터 · ↑↓←→ 고르기 · Enter 순간이동 · R 정화한 보스 다시 싸우기 · F3 · Esc 닫기', 8.5, HK.faint, { origin: .5 }));
+    const by = 296, by2 = 318;
+    glassButton(this, 50, by, 120, 20, '성장 한 단계  F4', () => { gs.toggleOverlay('debug'); gs.debugGrow(); }, { size: 9, layer: L });
+    glassButton(this, 180, by, 120, 20, '공중날기 전부 해금', () => { gs.debugUnlockHubs(); Sfx.play('unlock'); }, { size: 9, layer: L });
+    glassButton(this, 310, by, 120, 20, '파티 회복', () => { for (const m of gs.player.members) { m.hp = m.maxhp; m.alive = true; } Sfx.play('heal'); this.toast('[디버그] 파티 전원 회복'); }, { size: 9, layer: L });
+    glassButton(this, 440, by, 150, 20, '📦 포켓몬 보관함 (교체)', () => { gs.overlay = 'box'; this.showBox(); }, { size: 9, ls: 0, layer: L });
+    glassButton(this, 50, by2, 270, 20, '🔓 모든 스타팅 & 보스 캐릭터 전체 즉시 해금', () => { Save.debugUnlockAll(); Sfx.play('unlock'); this.toast('[디버그] 모든 포켓몬 해금 · 포켓몬센터 보관함·도감에서 고를 수 있다'); }, { size: 9, ls: 0, layer: L, primary: true });
+    glassButton(this, 330, by2, 260, 20, '⚡ 현재 포켓몬 즉시 진화 / 메가진화 발동', () => { gs.toggleOverlay('debug'); gs.player.debugEvolve(); }, { size: 9, ls: 0, layer: L, primary: true });
+    L.add(hkText(this, 320, 348, '1~5 챕터 · ↑↓←→ 고르기 · Enter 순간이동 · R 정화한 보스 다시 싸우기 · F3 · Esc 닫기', 8.5, HK.faint, { origin: .5 }));
     glassButton(this, 566, 8, 64, 20, '✕  닫기', () => gs.toggleOverlay('debug'), { size: 9, layer: L });
     this.input.keyboard.on('keydown', this.onOverlayKey, this);
     this.overlayMode = 'debug';
@@ -882,7 +887,7 @@ export default class UIScene extends Phaser.Scene {
     const nm = hkText(this, 112, PY + 6, p.formName(m), 13, m.alive ? HK.ivory : HK.faint, { bold: true });
     L.add(nm);
     let tx = nm.x + nm.width + 8;
-    for (const ty of (m.mega && sp.mega.types) || sp.types) tx += typePill(this, L, tx, PY + 9, ty, 8.5) + 4;
+    for (const ty of p.typesOf(m)) tx += typePill(this, L, tx, PY + 9, ty, 8.5) + 4;
     L.add(hkText(this, 336, PY + 9, '체력', 8.5, HK.dim));
     bar3d(g, 362, PY + 14, 92, 4, m.hp / m.maxhp, m.hp / m.maxhp > .25 ? 0x6ae08a : 0xff6a6a);
     L.add(hkText(this, 460, PY + 9, `${Math.ceil(m.hp)}/${m.maxhp}`, 8.5, HK.ivory));
@@ -1191,7 +1196,53 @@ export default class UIScene extends Phaser.Scene {
     Sfx.play(r.won ? 'unlock' : 'hurt');
   }
 
+  // ---------------- 포켓몬 보관함 (포켓몬센터 · 엔트리 교체) ----------------
+  //  아래 엔트리 칸을 눌러 바꿀 자리를 고르고, 위 보관함에서 카드를 두 번 누르면 그 자리에 들어간다 (새로 온 포켓몬은 1단부터)
+  showBox() {
+    this.clearOverlay();
+    const gs = this.gs, p = gs.player, g = this.gOver, L = this.overlay.setVisible(true);
+    g.fillStyle(0x05040a, .95); g.fillRect(0, 0, GAME_W, GAME_H);
+    L.add(hkText(this, 320, 12, '포켓몬 보관함', 14, HK.ivory, { ls: 4, bold: true, origin: [.5, 0], glow: true }));
+    L.add(hkText(this, 320, 32, '새로 데려온 포켓몬은 1단부터 · 떠나는 포켓몬의 장착 아이템은 가방으로 · 메가스톤·Z크리스탈은 파티 공용', 8.5, HK.dim, { origin: [.5, 0] }));
+    if (this.boxSlot === undefined || this.boxSlot > p.members.length) this.boxSlot = p.idx;
+    const bar = this.add.container(0, 0); L.add(bar);
+    const drawBar = () => {
+      bar.removeAll(true);
+      bar.add(fadeLine(this, 320, 304, 600, .35));
+      bar.add(hkText(this, 40, 326, '엔트리', 10, HK.dim, { bold: true, ls: 2, origin: .5 }));
+      [0, 1, 2].forEach(i => {
+        const m = p.members[i], sx = 92 + i * 46, sy = 326, sel = i === this.boxSlot;
+        if (sel) bar.add(this.add.image(sx, sy, 'glow').setBlendMode(ADD).setTint(0xffd890).setScale(.8).setAlpha(.45));
+        if (m) bar.add(this.add.image(sx, sy, roundPortrait(this, p.portraitKey(m))).setScale(.7).setAlpha(m.alive ? 1 : .4));
+        bar.add(hiImage(this, sx, sy, 'gloss').setScale(.7 / RES));
+        bar.add(hiImage(this, sx, sy, sel ? 'slot3d-gold' : 'slot3d').setScale(.7 / RES).setAlpha(m || sel ? 1 : .4));
+        bar.add(hkText(this, sx - 12, sy - 14, String(i + 1), 8, sel ? HK.gold : HK.faint, { bold: true, origin: .5 }));
+        const z = this.add.zone(sx, sy, 36, 36).setInteractive({ useHandCursor: true });
+        z.on('pointerdown', () => { this.boxSlot = Math.min(i, p.members.length); Sfx.play('select'); drawBar(); });
+        bar.add(z);
+      });
+      const cur = p.members[this.boxSlot];
+      bar.add(hkText(this, 400, 326, `${this.boxSlot + 1}번 자리${cur ? ` (${p.formName(cur)})` : ' (빈 자리)'}에 넣을 포켓몬을 고르세요\n카드 두 번 누르기 · Enter  ·  ←→↑↓ · Q/E 탭  ·  Esc 닫기`, 8.5, HK.dim, { origin: .5, style: { align: 'center', lineSpacing: 3 } }));
+    };
+    this.boxPanel = new RosterPanel(this, {
+      layer: L, x: 16, y: 52, h: 244, infoX: 392, infoW: 234, focus: p.m.key,
+      picked: k => p.members.findIndex(m => m.key === k),
+      onToggle: k => {
+        if (!Save.isUnlocked(k)) { Sfx.play('deny'); this.toast('아직 합류하지 않은 포켓몬이다'); return; }
+        if (p.members.some(m => m.key === k)) { Sfx.play('deny'); this.toast('이미 파티에 있다'); return; }
+        p.replaceMember(this.boxSlot, k); Save.setParty(p.members.map(m => m.key));
+        Sfx.play('swap'); this.toast(`${SPECIES[k].name}이(가) ${this.boxSlot + 1}번 자리에 들어왔다!`);
+        this.boxPanel.build(); drawBar();
+      }
+    });
+    drawBar();
+    glassButton(this, 566, 8, 64, 20, '✕  닫기', () => gs.toggleOverlay('box'), { size: 9, layer: L });
+    this.input.keyboard.on('keydown', this.onOverlayKey, this);
+    this.overlayMode = 'box';
+  }
+
   onOverlayKey(e) {
+    if (this.overlayMode === 'box' && this.boxPanel) { this.boxPanel.key(e); return; }
     const digit = /^(Digit|Numpad)[1-5]$/.test(e.code) ? +e.code.slice(-1) - 1 : -1;
     if (this.overlayMode === 'map' && this.mapView) {
       if (digit >= 0) { if (this.mapOpen(digit) && digit !== this.mapCi) { Sfx.play('select'); this.showMap(digit); } return; }

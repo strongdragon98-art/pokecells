@@ -9,9 +9,10 @@
 //   hidden 은 부서지는 벽 너머로 깊게(2~4방) 뻗고, hiddenDir 쪽(down 아래 · left 왼쪽 · up 위)을 좋아한다
 //  color: 지도·방 뒤 배경 색 · bg: 중경 배경 종류(town · road · city · forest · gym · default + 지역 랜드마크: museum · tower · silph · crystal · shrine · radio · burnt · belltower · lighthouse · volcano · seacave · skypillar · snowcity · temple · rift · spear · ferris · dragonspiral · core — systems/Textures.js 의 LANDMARKS) · city: 시내 이름(아머까오 목적지)
 //  boss(챕터): 지방 최종 보스 · pool: 야생 계열 · palette: 타일·조명 색
+//  bgm · bossBgm: 필드 / 지방 최종 보스전 배경음 (data/music.js 의 곡 이름 — 중간·히든 보스는 공용 boss_ruin)
 export const STAGES = [
   {
-    name: '침식된 관동지방', region: '관동지방', short: '관동', boss: 'mewtwo', pool: ['rattata', 'zubat', 'pichu', 'gastly'],
+    name: '침식된 관동지방', region: '관동지방', short: '관동', boss: 'mewtwo', bgm: 'ashfield', bossBgm: 'boss_abyss', pool: ['rattata', 'zubat', 'pichu', 'gastly'],
     terrain: { house: 2, terrace: 3, pit: 2, island: 2, bridge: 2, ziggurat: 1, tiers: 2, flat: 1 }, props: { lamp: 3, tree: 2, fence: 2, statue: 1 }, stalactites: [0, 2],
     plat: 'wood', roofs: [0x7a2a2a, 0x2a3a6a, 0x2a5a3a, 0x5a3a1a],
     palette: { sky: 0x0a0608, far: 0x1c0d14, wall: 0x2e3a36, wall2: 0x1a2420, edge: 0x5ad8a0, plat: 0x2c5a4a, light: 0x6affc8, accent: 0xd88aff, ambient: 0x3a4248, moss: 0x2e7a52 },
@@ -33,7 +34,7 @@ export const STAGES = [
     ]
   },
   {
-    name: '어둠에 잠긴 성도지방', region: '성도지방', short: '성도', boss: 'ho-oh', pool: ['rattata', 'zubat', 'machop', 'pichu'],
+    name: '어둠에 잠긴 성도지방', region: '성도지방', short: '성도', boss: 'ho-oh', bgm: 'cinder', bossBgm: 'boss_blaze', pool: ['rattata', 'zubat', 'machop', 'pichu'],
     terrain: { terrace: 3, house: 3, bridge: 2, tiers: 2, island: 2, pit: 1, ziggurat: 1 }, props: { lamp: 2, tree: 3, fence: 2, statue: 1 }, stalactites: [0, 2],
     plat: 'wood', roofs: [0x8a3a2a, 0x3a2a24, 0x6a4a2a, 0x2a3a3a],
     palette: { sky: 0x0e0806, far: 0x241510, wall: 0x4a3324, wall2: 0x2e1f16, edge: 0xffb04a, plat: 0x6a4428, light: 0xffc06a, accent: 0xffd8a0, ambient: 0x564434, moss: 0x7a6a2a },
@@ -49,7 +50,7 @@ export const STAGES = [
     ]
   },
   {
-    name: '폭풍이 휘몰아치는 호연지방', region: '호연지방', short: '호연', boss: 'rayquaza', pool: ['zubat', 'machop', 'pichu', 'gastly'],
+    name: '폭풍이 휘몰아치는 호연지방', region: '호연지방', short: '호연', boss: 'rayquaza', bgm: 'mistcave', bossBgm: 'boss_abyss', pool: ['zubat', 'machop', 'pichu', 'gastly'],
     terrain: { pit: 3, bridge: 3, island: 3, terrace: 2, tiers: 2 }, props: { lamp: 2, statue: 2, tree: 1 }, stalactites: [1, 3],
     plat: 'metal', roofs: [0x2a5a6a, 0x3a3a4a, 0x2a6a5a, 0x5a3a2a],
     palette: { sky: 0x04100e, far: 0x0a2420, wall: 0x24504a, wall2: 0x14322e, edge: 0x4affd0, plat: 0x2a6a5a, light: 0x6affe0, accent: 0xa0fff0, ambient: 0x345450, moss: 0x2a8a6a },
@@ -65,7 +66,7 @@ export const STAGES = [
     ]
   },
   {
-    name: '시공이 뒤틀린 신오지방', region: '신오지방', short: '신오', boss: 'dialga', pool: ['machop', 'gastly', 'zubat', 'pichu'],
+    name: '시공이 뒤틀린 신오지방', region: '신오지방', short: '신오', boss: 'dialga', bgm: 'spiretower', bossBgm: 'boss_final', pool: ['machop', 'gastly', 'zubat', 'pichu'],
     terrain: { island: 4, tiers: 3, ziggurat: 3, terrace: 2, bridge: 2, pit: 1 }, props: { statue: 3, lamp: 2, fence: 1 }, stalactites: [2, 4],
     plat: 'metal', roofs: [0x3a4a6a, 0x4a4a5a, 0x2a3a5a, 0x5a5a6a],
     palette: { sky: 0x080a14, far: 0x161a30, wall: 0x3a4466, wall2: 0x242a44, edge: 0xa0c8ff, plat: 0x4a5a86, light: 0xb0d0ff, accent: 0xe0e8ff, ambient: 0x464e6e, moss: 0x5a7a9a },
@@ -81,7 +82,7 @@ export const STAGES = [
     ]
   },
   {
-    name: '종언의 하나지방 · 무한다이노의 심연', region: '하나지방', short: '하나', boss: 'eternatus', pool: ['gastly', 'machop', 'zubat', 'pichu', 'rattata'],
+    name: '종언의 하나지방 · 무한다이노의 심연', region: '하나지방', short: '하나', boss: 'eternatus', bgm: 'spiretower', bossBgm: 'boss_final', pool: ['gastly', 'machop', 'zubat', 'pichu', 'rattata'],
     terrain: { bridge: 3, ziggurat: 3, house: 2, pit: 2, island: 2, tiers: 2 }, props: { lamp: 3, statue: 2, fence: 1 }, stalactites: [1, 3],
     plat: 'metal', roofs: [0x5a2a3a, 0x3a2a3a, 0x6a3a4a, 0x2a2a3a],
     palette: { sky: 0x0e0408, far: 0x240a14, wall: 0x46202e, wall2: 0x2c121c, edge: 0xff4a6a, plat: 0x6a2a3a, light: 0xff6a8a, accent: 0xffa0b8, ambient: 0x52343e, moss: 0x8a2a4a },

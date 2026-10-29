@@ -2,7 +2,7 @@
 import Phaser from 'phaser';
 import { ZOOM, RES, TILE } from '../config.js';
 import { STAGES, areaLabel } from '../data/stages.js';
-import { wildForm, pickWildStage, EXP_PURIFY, EXP_BOSS, DROPS, EVO_EXP, ZMOVES, BOSSES } from '../data/pokemon.js';
+import { WILD, DEX_ORDER, wildForm, pickWildStage, EXP_PURIFY, EXP_BOSS, DROPS, EVO_EXP, ZMOVES, BOSSES } from '../data/pokemon.js';
 import { ITEMS, ITEM_KEYS, ITEM_DROP, CONSUMABLES, MAX_EQUIP } from '../data/items.js';
 import { typeColor } from '../data/types.js';
 import { PLAT_SET, groundYAt, T as TILE_ID } from '../game/Level.js';
@@ -23,6 +23,7 @@ const TRAINER_LINES = {
 import { Combat, overlap } from '../game/Combat.js';
 import { Fx } from '../systems/Fx.js';
 import { Sfx } from '../systems/Audio.js';
+import { Music } from '../systems/Music.js';
 import { Settings } from '../systems/Settings.js';
 import { Save } from '../systems/Save.js';
 import { itemArt, shade } from '../systems/Textures.js';
@@ -201,6 +202,7 @@ export default class GameScene extends Phaser.Scene {
     this.room = roomAt(level, pos.x, pos.y - 4) || level.start.room;
     this.boss = null; this.bosses = []; this.portal = null; this.lowSeen = false;
     this.events.emit('stage', si, st);
+    Music.play(st.bgm);
     this.time.delayedCall(450, () => { if (this.level === level) { this.enterArea(this.room, true); if (this.room.type === 'village') this.visitHub(this.room); } });
   }
 
@@ -250,6 +252,7 @@ export default class GameScene extends Phaser.Scene {
   cleanup() {
     if (this.cleaned) return;
     this.cleaned = true;
+    Music.stop();
     this.clearWorld();
     if (this.player) { this.player.destroy(); this.player = null; }
     if (this.webgl && this.lights && this.lights.lights) this.lights.lights.slice().forEach(l => this.lights.removeLight(l));
@@ -521,6 +524,7 @@ export default class GameScene extends Phaser.Scene {
     this.events.emit('banner', '눈앞이 캄캄해졌다…', c ? '마지막으로 들른 포켓몬센터로 돌아간다' : '챕터 입구로 돌아간다');
     for (const m of p.members) { m.hp = m.maxhp; m.alive = true; }
     p.inv = 2.5;
+    Music.play(this.stage.bgm);
     const pos = c ? this.hubPos(c) : this.worldOf(this.stageIdx).level.start;
     this.moveTo(c ? c.ci : this.stageIdx, { x: pos.x, y: pos.y }, () => { this.player.inv = 2; });
   }
@@ -593,6 +597,8 @@ export default class GameScene extends Phaser.Scene {
     this.fx.burst(cx, cy, [0xffe08a, 0x8affb0, 0xffffff], 34, 120, { glow: true, up: 70, grav: -30, bounce: false, life: 1.1 });
     this.cameras.main.flash(380, 255, 244, 200);
     this.events.emit('banner', '모든 포켓몬이 건강해졌다!', '포켓몬센터 · 파티 전원 회복 · 쓰러지면 여기서 다시 일어난다');
+    // 이어서 포켓몬 보관함 (엔트리 교체) — 파티 밖에 데려올 포켓몬이 있을 때만
+    if (DEX_ORDER.some(k => Save.isUnlocked(k) && !p.members.some(m => m.key === k))) this.time.delayedCall(1100, () => { if (!this.over && !this.overlay) this.toggleOverlay('box'); });
   }
 
   togglePause() {
@@ -749,9 +755,11 @@ export default class GameScene extends Phaser.Scene {
 
   spawnAt(s) {
     // 계열은 지방 pool 에서, 진화 단계는 지금 출전 중인 포켓몬 단계 ±1 안에서 (두 단계 차이는 안 남)
-    const { line, stage } = pickWildStage(this.stage.pool, this.player.tierIdx), { key, def } = wildForm(line, stage), gy = s.y;
-    let x = s.x, y = def.flying ? gy - rand(30, 64) : gy - 14;
-    for (let k = 0; k < 6 && def.flying && (this.isSolidAt(x, y) || this.isSolidAt(x, y - 12)); k++) y = gy - rand(20, 50);   // 날짐승: 바위·종유석 속 피하기
+    let pk = pickWildStage(this.stage.pool, this.player.tierIdx);
+    if (WILD[pk.line].flying && Math.random() < .5) pk = pickWildStage(this.stage.pool, this.player.tierIdx);   // 날짐승·고스트는 잡기 번거로워 등장 빈도 절반쯤으로
+    const { line, stage } = pk, { key, def } = wildForm(line, stage), gy = s.y;
+    let x = s.x, y = def.flying ? gy - rand(30, 52) : gy - 14;
+    for (let k = 0; k < 6 && def.flying && (this.isSolidAt(x, y) || this.isSolidAt(x, y - 12)); k++) y = gy - rand(20, 44);   // 날짐승: 바위·종유석 속 피하기
     const room = s.room || this.room;
     const e = new Enemy(this, key, x, y, { def, hpMul: 1 + this.stageIdx * .4, dmgMul: 1 + this.stageIdx * .25 });
     e.line = line; e.stage = stage;
@@ -810,6 +818,7 @@ export default class GameScene extends Phaser.Scene {
     }
     this.events.emit('boss', boss);   // UI 가 할로우 나이트식 보스 이름 타이틀을 띄운다
     this.fx.shake(.01, 500); Sfx.play('boss');
+    Music.play(def.tier === 'boss' ? this.stage.bossBgm : 'boss_ruin');   // 지방 최종 보스는 지방 전용곡, 중간·히든 보스는 공용 전투곡
   }
   // 이어 싸우기: 다음 보스가 나오는 연출
   nextInChain(prev) {
@@ -890,6 +899,8 @@ export default class GameScene extends Phaser.Scene {
     if (e.boss) this.time.delayedCall(1600, () => { if (this.player && !this.over) this.player.addExp(EXP_BOSS, who); });
     else this.player.addExp(EXP_PURIFY, who);
     this.runStats.kills++;
+    this.announceJoin(Save.addPurify());   // 누적 정화로 합류하는 특수 포켓몬 (롱스톤·스라크)
+    if (e.boss && Save.unlockLegend(e.bossKey)) this.time.delayedCall(2800, () => this.announceJoin([e.bossKey]));   // 전설 보스 정화 → 그 전설이 플레이어블로 합류
     if (e.boss) { this.bossDefeated(e); return; }
     if (Math.random() < ITEM_DROP.wild) this.spawnPickup('item', e.x, e.y, pick(ITEM_KEYS));   // 야생은 아이템 대신 가끔 오렌열매
     else if (Math.random() < .16) this.spawnPickup('oran', e.x, e.y);
@@ -1019,6 +1030,22 @@ export default class GameScene extends Phaser.Scene {
       if (final) this.spawnPortal(room.right - 40, this.groundBelow(room.right - 40, room.top + 8));
     });
     Save.data.bestStage = Math.max(Save.data.bestStage, this.stageIdx + 1); Save.write();
+    if (final) {   // 지방 최종 보스 정화 = 그 지방 클리어 → 클리어로 합류하는 특수 포켓몬 (가디안·마기라스·망나뇽)
+      Save.data.cleared = Math.max(Save.data.cleared || 0, this.stageIdx + 1);
+      const joined = Save.newlyJoined();
+      this.time.delayedCall(5600, () => this.announceJoin(joined));
+    }
+    Music.play(this.stage.bgm);
+  }
+
+  // 「🎉 [이름]의 영혼이 동료로 합류했습니다!」 알림을 하나씩
+  announceJoin(keys) {
+    keys.forEach((k, i) => this.time.delayedCall(i * 4200, () => {
+      if (this.over) return;
+      this.runStats.unlocked.push(k);
+      this.events.emit('unlock', k, 'join');
+      Sfx.play('unlock');
+    }));
   }
   // 히든 전설 보상: 출전 중인 포켓몬에게 맞춘 '전설' 등급 기술 카드 3장
   openLegendCards() {
@@ -1171,6 +1198,7 @@ export default class GameScene extends Phaser.Scene {
     if (!won && !quit) { this.respawn(); return; }   // 전멸해도 끝이 아니다: 마지막 포켓몬센터에서 다시 일어난다
     if (this.over) return;
     this.over = true;
+    Music.stop();
     Save.recordRun(this.stageIdx + 1, won);
     this.physics.world.pause();
     this.events.emit('gameover', {

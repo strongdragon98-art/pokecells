@@ -1,9 +1,20 @@
 // 플레이어로 쓸 수 있는 포켓몬 / 야생 적 / 보스 / 기술 데이터
 // 플레이어블 규칙: 3단 진화 계열이거나, 2단 진화 + 메가진화가 있는 계열(예: 스라크→핫삼+메가핫삼)만. 가장 처음 모습으로 시작한다.
-//  2단에서 끝나는 계열(꼬렛→레트라 등)은 플레이어블이 아니라 야생 몹(WILD)으로만 쓴다.
+//  2단에서 끝나는 계열(꼬렛→레트라 등)은 플레이어블이 아니라 야생 몹(WILD)으로만 쓴다. 예외: 정화한 전설 보스(진화 없음)
+//  라인 정의는 data/roster.js (PlayableRosterRegistry), 라인별 전용 기술 표시 정보는 data/skills/*.js
+import { LINES, toSpecies } from './roster.js';
+import * as gen23 from './skills/gen23.js';
+import * as gen45 from './skills/gen45.js';
+import * as gen67 from './skills/gen67.js';
+import * as gen89 from './skills/gen89.js';
+import * as special from './skills/special.js';
+import * as legend1 from './skills/legend1.js';
+import * as legend2 from './skills/legend2.js';
+import * as typeMoves from './skills/typeMoves.js';
+
 export const STARTERS = ['charmander', 'squirtle', 'bulbasaur'];
-export const UNLOCKABLE = ['pichu', 'zubat', 'machop', 'gastly'];
-export const DEX_ORDER = ['bulbasaur', 'charmander', 'squirtle', 'pichu', 'zubat', 'machop', 'gastly'];
+export const UNLOCKABLE = ['pichu', 'zubat', 'machop', 'gastly'];   // 같은 종을 정화해 등록 (야생으로 나오는 계열)
+export const DEX_ORDER = LINES.map(l => l.id);
 export const UNLOCK_KILLS = 10;
 
 // ---------------- 한 판 안의 성장: 1단 → 2단 → (Z크리스탈) → 3단 → 영구 메가진화 ----------------
@@ -25,69 +36,14 @@ export const TIERS = [
 ];
 export const Z_CD = 45;   // Z기술 재사용 대기 (초)
 
-// hp/atk 는 기본값. speed=px/s, jump=초기 점프 속도, jumps=공중 점프 포함 횟수
-export const SPECIES = {
-  bulbasaur: {
-    name: '이상해씨', dex: 1, types: ['grass', 'poison'], hp: 125, atk: 9, speed: 108, jump: 300, jumps: 2,
-    desc: '중거리 견제와 회복 장판으로 버티는 운영형.',
-    skills: { z: 'vine_whip', x: 'razor_leaf', c: 'seed_field' }, tag: 'tag_grass',
-    evo: [{ key: 'bulbasaur', name: '이상해씨' }, { key: 'ivysaur', name: '이상해풀' }, { key: 'venusaur', name: '이상해꽃' }],
-    zmove: 'bloom_doom',
-    mega: { name: '메가이상해꽃', sprite: 'venusaur', portrait: 'venusaur-mega', scale: 1 }
-  },
-  charmander: {
-    name: '파이리', dex: 4, types: ['fire'], hp: 108, atk: 11, speed: 118, jump: 305, jumps: 2,
-    desc: '화상을 거는 근접 딜러. 돌진으로 파고든다.',
-    skills: { z: 'scratch_ember', x: 'flamethrower', c: 'flame_charge' }, tag: 'tag_fire',
-    evo: [{ key: 'charmander', name: '파이리' }, { key: 'charmeleon', name: '리자드' }, { key: 'charizard', name: '리자몽' }],
-    zmove: 'inferno_overdrive',
-    mega: { name: '메가리자몽X', sprite: 'charizard-mega-x', portrait: 'charizard-mega-x', types: ['fire', 'dragon'], scale: 1 }
-  },
-  squirtle: {
-    name: '꼬부기', dex: 7, types: ['water'], hp: 132, atk: 10, speed: 110, jump: 300, jumps: 2,
-    desc: '둔화와 넉백, 투사체 방어가 특기인 탱커.',
-    skills: { z: 'tackle_watergun', x: 'bubblebeam', c: 'rapid_spin' }, tag: 'tag_water',
-    evo: [{ key: 'squirtle', name: '꼬부기' }, { key: 'wartortle', name: '어니부기' }, { key: 'blastoise', name: '거북왕' }],
-    zmove: 'hydro_vortex',
-    mega: { name: '메가거북왕', sprite: 'blastoise', portrait: 'blastoise-mega', scale: 1 }
-  },
-  pichu: {
-    name: '피츄', dex: 172, types: ['electric'], hp: 96, atk: 11, speed: 126, jump: 315, jumps: 2,
-    desc: '원거리 전기 딜러. 마비로 적을 묶는다.',
-    skills: { z: 'thundershock', x: 'thunderbolt', c: 'volt_tackle' }, tag: 'tag_electric',
-    evo: [{ key: 'pichu', name: '피츄' }, { key: 'pikachu', name: '피카츄' }, { key: 'raichu', name: '라이츄' }],
-    zmove: 'catastropika',
-    mega: { name: '메가 오라 라이츄', sprite: null, portrait: null, scale: 1.1 }
-  },
-  zubat: {
-    name: '주뱃', dex: 41, types: ['poison', 'flying'], hp: 92, atk: 10, speed: 124, jump: 280, jumps: 3,
-    desc: '3단 점프와 8방향 날개치기로 공중을 지배한다. 흡혈로 회복.',
-    skills: { z: 'leech_life', x: 'supersonic', c: 'wing_dash' }, tag: 'tag_flying',
-    evo: [{ key: 'zubat', name: '주뱃' }, { key: 'golbat', name: '골뱃' }, { key: 'crobat', name: '크로뱃' }],
-    zmove: 'acid_downpour',
-    mega: { name: '메가 오라 크로뱃', sprite: null, portrait: null, scale: 1.1 }
-  },
-  machop: {
-    name: '알통몬', dex: 66, types: ['fighting'], hp: 138, atk: 11, speed: 104, jump: 295, jumps: 2,
-    desc: '묵직한 격투가. 카운터로 공격을 받아친다.',
-    skills: { z: 'karate_chop', x: 'dynamic_punch', c: 'counter' }, tag: 'tag_fighting',
-    evo: [{ key: 'machop', name: '알통몬' }, { key: 'machoke', name: '근육몬' }, { key: 'machamp', name: '괴력몬' }],
-    zmove: 'all_out_pummeling',
-    mega: { name: '메가 오라 괴력몬', sprite: null, portrait: null, scale: 1.1 }
-  },
-  gastly: {
-    name: '고오스', dex: 92, types: ['ghost', 'poison'], hp: 90, atk: 12, speed: 112, jump: 290, jumps: 2, hover: true,
-    desc: '점프 키를 누르면 떠 있는다. 벽을 통과하는 섀도볼과 저주.',
-    skills: { z: 'lick_shadow', x: 'shadow_ball', c: 'phantom_dash' }, tag: 'tag_ghost',
-    evo: [{ key: 'gastly', name: '고오스' }, { key: 'haunter', name: '고우스트' }, { key: 'gengar', name: '팬텀' }],
-    zmove: 'never_ending_nightmare',
-    mega: { name: '메가팬텀', sprite: 'gengar-mega', portrait: 'gengar-mega', scale: 1 }
-  }
-};
+// 라인 정의(data/roster.js)에서 만든다. hp/atk 는 기본값. speed=px/s, jump=초기 점프 속도, jumps=공중 점프 포함 횟수
+export const SPECIES = Object.fromEntries(LINES.map(l => [l.id, toSpecies(l)]));
 
-// 기술 표시 정보 (실제 동작은 game/skills.js)
+// 기술 표시 정보 (실제 동작은 game/skills.js · game/skills/*.js)
 //  필살앞니·분노의앞니·전광석화 / tag_normal / 울트라대시어택 은 꼬렛이 플레이어블에서 빠져 지금 쓰는 포켓몬이 없다 (노말 플레이어블이 생기면 다시 쓴다)
+//  라인별 전용 기술을 먼저 펼치고 아래 기본·기술머신 기술로 덮는다 — 이름이 같으면(깨물어부수기·지진·파도타기 등) 기술머신판을 쓴다
 export const SKILLS = {
+  ...gen23.SKILLS, ...gen45.SKILLS, ...gen67.SKILLS, ...gen89.SKILLS, ...special.SKILLS, ...legend1.SKILLS, ...legend2.SKILLS,
   scratch_ember: { name: '할퀴기·불꽃세례', type: 'fire', cd: 0, icon: 'claw', desc: '할퀴기 2연타 후 3타째에 불꽃세례 발사. 화상.', mega: '불꽃세례가 파란 불꽃 3갈래로' },
   flamethrower: { name: '화염방사', type: 'fire', cd: 6, icon: 'flame', desc: '1.2초간 전방에 화염을 뿜는다. 천천히 이동 가능.', mega: '사거리·폭 대폭 증가' },
   flame_charge: { name: '니트로차지', type: 'fire', cd: 4, icon: 'dash', desc: '화염을 두르고 돌진. 무적 + 경로상 적 관통 피해.', mega: '지나간 자리에 불길' },
@@ -145,7 +101,8 @@ export const TAGS = {
   tag_electric: { name: '방전', type: 'electric', desc: '등장하며 주변을 감전 + 마비' },
   tag_flying: { name: '초음파 폭발', type: 'flying', desc: '등장하며 주변 적을 혼란시킨다' },
   tag_fighting: { name: '지진 착지', type: 'fighting', desc: '내려찍어 주변 적을 띄운다' },
-  tag_ghost: { name: '저주', type: 'ghost', desc: '주변 적에게 저주(받는 피해 +30%)' }
+  tag_ghost: { name: '저주', type: 'ghost', desc: '주변 적에게 저주(받는 피해 +30%)' },
+  ...typeMoves.TAGS
 };
 
 // Z기술 (Z크리스탈을 얻으면 Q). 실제 동작은 game/skills.js 의 ZMOVE_IMPL — 화면 안 모든 적에게 공격력 ×mul
@@ -157,7 +114,8 @@ export const ZMOVES = {
   catastropika: { name: '필살 피카슛', type: 'electric', mul: 13, desc: '전기를 두르고 날아올라 내리꽂는다. 화면 전체 감전 + 마비.' },
   acid_downpour: { name: '애시드포이즌딜리트', type: 'poison', mul: 11, desc: '독의 늪을 깔고 독비를 쏟는다. 맹독.' },
   all_out_pummeling: { name: '전력무쌍격렬권', type: 'fighting', mul: 13, desc: '수십 개의 주먹 탄환을 화면에 쏟아붓는다.' },
-  never_ending_nightmare: { name: '무한암야로의 유인', type: 'ghost', mul: 12, desc: '땅에서 그림자 손이 솟아 적을 붙잡는다. 저주.' }
+  never_ending_nightmare: { name: '무한암야로의 유인', type: 'ghost', mul: 12, desc: '땅에서 그림자 손이 솟아 적을 붙잡는다. 저주.' },
+  ...typeMoves.ZMOVES
 };
 
 // 야생 적: 진화 계열 하나 = 항목 하나. forms 는 단계별 [도트 키, 이름], 능력치는 1단 기준. ai 는 game/Enemy.js 의 행동 패턴

@@ -7,6 +7,7 @@ import { mkdir, writeFile, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchItemArt, ITEM_ART } from './fetch-items.js';
+import { assetTargets } from '../src/data/roster.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ASSETS = path.join(ROOT, 'public', 'assets');
@@ -18,7 +19,7 @@ const ANIMS = ['Walk', 'Attack', 'Strike', 'Shoot', 'Hurt', 'Idle'];
 const FORCE = process.argv.includes('--force');
 
 // key: 게임 안에서 쓰는 이름 / dex: 도감번호 4자리 / form: SpriteCollab 폼 폴더 / pokeapi: PokeAPI 번호
-const TARGETS = [
+const BASE_TARGETS = [
   { key: 'bulbasaur', dex: '0001', role: '스타팅' },
   { key: 'charmander', dex: '0004', role: '스타팅' },
   { key: 'squirtle', dex: '0007', role: '스타팅' },
@@ -75,6 +76,8 @@ const TARGETS = [
   { key: 'blastoise-mega', dex: '0009', form: '0001', role: '메가', pokeapi: 10036 },
   { key: 'gengar-mega', dex: '0094', form: '0001', role: '메가', pokeapi: 10038 }
 ];
+// 플레이어블 로스터(data/roster.js)의 모든 진화 모습·메가 중 위 목록에 없는 것을 더한다
+const TARGETS = [...BASE_TARGETS, ...assetTargets().filter(r => !BASE_TARGETS.some(b => b.key === r.key))];
 // 도트 없이 아트워크만 받는 폼: 무한다이맥스 무한다이노 → eternatus 항목의 artworkAlt
 const EXTRA_ART = [{ key: 'eternatus', field: 'artworkAlt', file: 'artwork-eternamax.png', pokeapi: 10190 }];
 
@@ -193,7 +196,9 @@ async function main() {
   manifest.items = await fetchItemArt({ force: FORCE });   // 가방에 보일 본가 아이템 그림
   manifest.sources.itemArt = ITEM_ART;
   await writeFile(path.join(ASSETS, 'manifest.json'), JSON.stringify(manifest, null, 2));
-  const missingCore = TARGETS.filter(t => !t.form && !Object.keys(manifest.pokemon[t.key].anims).length).map(t => t.key);
+  const missingCore = BASE_TARGETS.filter(t => !t.form && !Object.keys(manifest.pokemon[t.key].anims).length).map(t => t.key);
+  const noAnim = TARGETS.filter(t => !t.form && !BASE_TARGETS.includes(t) && !Object.keys(manifest.pokemon[t.key].anims).length).map(t => t.key);
+  if (noAnim.length) console.log(`로스터 포켓몬 중 모션 시트 없음 → 게임에서 PokeAPI 도트 + 절차 애니메이션으로 대신: ${noAnim.join(', ')}`);
   console.log(`\n완료: 새로 받음 ${stats.ok}개 (${(stats.bytes / 1024).toFixed(0)}KB) · 이미 있음 ${stats.skipped}개 · 원본에 없음(404) ${stats.missing}개 · 실패 ${stats.failed}개`);
   console.log(`manifest: ${path.relative(ROOT, path.join(ASSETS, 'manifest.json'))}`);
   if (missingCore.length) { console.error(`필수 포켓몬 스프라이트를 받지 못했습니다: ${missingCore.join(', ')}`); process.exitCode = 1; }

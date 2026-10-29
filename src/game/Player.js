@@ -7,21 +7,32 @@ import { Actor } from './Actor.js';
 import { SPECIES, SKILLS, TAGS, TIERS, EVO_EXP, ZMOVES, Z_CD } from '../data/pokemon.js';
 import { computeMods, ITEMS, MAX_EQUIP } from '../data/items.js';
 import { typeMultiplier, effectiveness, typeColor } from '../data/types.js';
-import { SKILL_IMPL, TAG_IMPL, ZMOVE_IMPL } from './skills.js';
+import * as base from './skills.js';
+import * as gen23 from './skills/gen23.js';
+import * as gen45 from './skills/gen45.js';
+import * as gen67 from './skills/gen67.js';
+import * as gen89 from './skills/gen89.js';
+import * as special from './skills/special.js';
+import * as legend1 from './skills/legend1.js';
+import * as legend2 from './skills/legend2.js';
+import * as typeMoves from './skills/typeMoves.js';
 import { Sfx } from '../systems/Audio.js';
 
 const SWAP_CD = 3;
+// 라인별 전용 기술을 먼저, 기본·기술머신 기술(game/skills.js)로 덮는다 (같은 이름이면 기술머신판)
+const SKILL_IMPL = Object.assign({}, gen23.SKILL_IMPL, gen45.SKILL_IMPL, gen67.SKILL_IMPL, gen89.SKILL_IMPL, special.SKILL_IMPL, legend1.SKILL_IMPL, legend2.SKILL_IMPL, base.SKILL_IMPL);
+const TAG_IMPL = Object.assign({}, typeMoves.TAG_IMPL, base.TAG_IMPL);
+const ZMOVE_IMPL = Object.assign({}, typeMoves.ZMOVE_IMPL, base.ZMOVE_IMPL);
+const LEGEND_BODY = { w: 22, h: 32 };   // 전설 플레이어블 히트박스 = 일반 최종진화(약 18×26)의 1.25배
+const TELEPORT = 78;                    // 순간이동 거리
 
 export class Player extends Actor {
   constructor(scene, partyKeys, x, y) {
     super(scene, null, x, y, 14, 18);
-    this.members = partyKeys.map(k => ({
-      key: k, sp: SPECIES[k], maxhp: SPECIES[k].hp, hp: SPECIES[k].hp, cd: { z: 0, x: 0, c: 0 }, alive: true,
-      tier: 0, exp: 0, mega: false, items: {}, mods: computeMods({}),      // 포켓몬마다 따로 크는 것들
-      skills: { ...SPECIES[k].skills }, ups: new Set(), atkBonus: 1, cdBonus: 1,   // 기술머신: 바꿔 단 기술 · 받은 강화 카드 · 숙련 보너스
-      learned: Object.values(SPECIES[k].skills)   // 배운 기술 전부 (가방 → 기술에서 Z·X·C 자리에 골라 넣는다)
-    }));
+    this.members = partyKeys.map(k => this.makeMember(k));
     this.idx = 0;
+    this.buffs = [];                                   // 일시 강화 { atk, speed, guard, t } (출전 포켓몬)
+    this.sandT = 0; this.flopT = 0;
     this.bag = {};                                      // 가방: 아무도 장착하지 않은 아이템
     this.inv = 0; this.dash = null; this.dashCd = 0; this.airDash = true; this.swapCd = 0;
     this.jumpsUsed = 0; this.coyote = 0; this.jbuf = 0; this.dropT = 0; this.hurtT = 0; this.speedBuff = 0;
@@ -36,21 +47,44 @@ export class Player extends Actor {
     this.b.setCollideWorldBounds(true);
     this.sprite.setDepth(22);
     this.aura = scene.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setDepth(21).setVisible(false);
+    for (const m of this.members) m.maxhp = m.hp = this.maxHpOf(m);   // 모습별 체력 배율(잉어킹 0.55)까지 반영
     this.applyVisual();
+  }
+
+  // 파티 한 자리 (포켓몬마다 따로 크는 것들)
+  makeMember(k) {
+    const sp = SPECIES[k];
+    return {
+      key: k, sp, maxhp: sp.hp, hp: sp.hp, cd: { z: 0, x: 0, c: 0 }, alive: true,
+      tier: 0, exp: 0, mega: false, megaPick: 0, items: {}, mods: computeMods({}),
+      skills: { ...(sp.evo[0].skills || sp.skills) }, ups: new Set(), atkBonus: 1, cdBonus: 1,   // 기술머신: 바꿔 단 기술 · 받은 강화 카드 · 숙련 보너스
+      learned: Object.values(sp.evo[0].skills || sp.skills)   // 배운 기술 전부 (가방 → 기술에서 Z·X·C 자리에 골라 넣는다)
+    };
   }
 
   get m() { return this.members[this.idx]; }
   get sp() { return this.m.sp; }
+  get pas() { return this.sp.passive || {}; }        // 특성 (data/roster.js 의 passive)
   get tier() { return this.m.tier; }                 // 0 = 1단, 1 = 2단, 2 = 3단 (출전 포켓몬)
   get exp() { return this.m.exp; }
   get items() { return this.m.items; }
   get mods() { return this.m.mods; }
-  get types() { return (this.mega.active && this.sp.mega.types) || this.sp.types; }
+  get types() { return this.typesOf(); }
   tierOf(m) { return m.mega ? 3 : m.tier; }
   get tierIdx() { return this.tierOf(this.m); }
   get T() { return TIERS[this.tierIdx]; }
   get fxMul() { return this.T.fx; }                    // 스킬 이펙트 크기 배율 (skills.js)
-  get atk() { return this.sp.atk * this.T.atk * (this.m.atkBonus || 1); }
+  get atk() { return this.sp.atk * this.T.atk * (this.m.atkBonus || 1) * this.statOf('atk') * this.buffMul('atk'); }
+  // 고른 메가(리자몽·뮤츠 X/Y) · 모습별 타입 · 모습별 능력치 배율(잉어킹 → 갸라도스 10배)
+  megaOf(m = this.m) { return m.sp.megas[m.megaPick || 0] || m.sp.mega; }
+  typesOf(m = this.m) { return (m.mega && this.megaOf(m).types) || this.form(m).types || m.sp.types; }
+  statOf(k, m = this.m) { const s = this.form(m).stat; return s && s[k] !== undefined ? s[k] : 1; }
+  // 일시 강화: 똬리틀기·용의춤 등 (atk·speed 배율, guard = 받는 피해 배율)
+  addBuff(o) {
+    this.buffs.push({ atk: o.atk || 1, speed: o.speed || 1, guard: o.guard || 1, t: o.t || 4 });
+    if (o.color !== undefined) this.scene.fx.ring(this.x, this.y, 26, o.color, 300);
+  }
+  buffMul(k) { let v = 1; for (const b of this.buffs) v *= b[k]; return v; }
   // 기술 슬롯(z·x·c)에 지금 단 기술 id — 기술머신으로 포켓몬마다 바꿀 수 있다
   skillId(slot, m = this.m) { return m.skills[slot]; }
   hasUp(id, m = this.m) { return m.ups.has(id); }
@@ -72,36 +106,40 @@ export class Player extends Actor {
     if (m === this.m && this.action && this.action.slot && (this.action.slot === slot || this.action.slot === other)) this.endAction(true);
     return true;
   }
-  get name() { return this.mega.active ? this.sp.mega.name : this.form().name; }
+  get name() { return this.mega.active ? this.megaOf().name : this.form().name; }
 
   // 지금 단계의 모습 (2단계뿐인 포켓몬은 마지막 모습에 오라)
   form(m = this.m) { const e = m.sp.evo; return e[Math.min(m.tier, e.length - 1)]; }
-  formName(m = this.m) { return m.mega ? m.sp.mega.name : this.form(m).name; }
-  // 초상화: 메가진화했으면 메가 초상화, 아니면 지금 진화 단계의 모습
+  formName(m = this.m) { return m.mega ? this.megaOf(m).name : this.form(m).name; }
+  // 초상화: 메가진화했으면 메가 초상화, 아니면 지금 진화 단계의 모습 (받지 않은 모습은 PokeAPI 아이콘)
   portraitKey(m = this.m) {
-    const mp = m.mega && m.sp.mega.portrait;
-    return mp && this.scene.textures.exists(`portrait:${mp}`) ? mp : this.formKey(m);
+    const mp = m.mega && this.megaOf(m).portrait, tx = this.scene.textures;
+    return mp && (tx.exists(`portrait:${mp}`) || tx.exists(`icon:${mp}`)) ? mp : this.formKey(m);
   }
   formKey(m = this.m) {
     const meta = this.scene.registry.get('spriteMeta'), k = this.form(m).key;
     return meta[k] && meta[k].hasSprite ? k : m.key;
   }
-  maxHpOf(m) { return Math.round(m.sp.hp * this.stageBonus * TIERS[this.tierOf(m)].hp); }
+  maxHpOf(m) { return Math.round(m.sp.hp * this.stageBonus * TIERS[this.tierOf(m)].hp * this.statOf('hp', m)); }
 
   visualKey() {
     const meta = this.scene.registry.get('spriteMeta');
-    const mk = this.sp.mega.sprite;
+    const mk = this.megaOf().sprite;
     if (this.mega.active && mk && meta[mk] && meta[mk].hasSprite) return mk;
     return this.formKey();
   }
 
   // 진화할수록 몸집이 조금씩 커진다 (진화형 도트 자체도 크다) + 메가 모습이 없으면 오라와 함께 더 크게
+  //  거대 몸집(롱스톤 계열)은 판정도 크게, 전설은 도트 크기와 상관없이 히트박스를 고정한다 (좁은 길·발판을 지나가도록)
   applyVisual() {
-    const key = this.visualKey();
-    const scale = this.T.size * (this.mega.active && !this.sp.mega.sprite ? (this.sp.mega.scale || 1.1) : 1) * (!this.mega.active && this.form().aura ? 1.06 : 1);
-    this.setSpecies(key, scale);
+    const key = this.visualKey(), mg = this.megaOf(), big = this.pas.big || 1;
+    let scale = this.T.size * (this.mega.active && !mg.sprite ? (mg.scale || 1.1) : 1) * (!this.mega.active && this.form().aura ? 1.06 : 1);
+    const meta0 = this.scene.registry.get('spriteMeta')[key];
+    if (this.sp.legend && meta0) scale *= Phaser.Math.Clamp(40 / Math.max(10, meta0.height), .55, 1.4);
+    this.setSpecies(key, scale * big);
     const meta = this.meta;
-    const w = Math.max(10, Math.min(24, Math.round(meta.bodyW * scale))), h = Math.max(14, Math.min(38, Math.round(meta.bodyH * scale)));
+    if (this.sp.legend) { this.resizeBody(LEGEND_BODY.w, LEGEND_BODY.h); return; }
+    const w = Math.max(10, Math.min(24 * big, Math.round(meta.bodyW * scale * big))), h = Math.max(14, Math.min(38 * big, Math.round(meta.bodyH * scale * big)));
     this.resizeBody(w, h);
   }
 
@@ -133,9 +171,16 @@ export class Player extends Actor {
 
   evolve(m = this.m) {
     if (m.tier >= EVO_EXP.length) return;
-    const sc = this.scene, before = this.form(m).name;
+    const sc = this.scene, before = this.form(m).name, prev = this.form(m), atk0 = this.statOf('atk', m);
     m.tier++;
     m.exp = Math.max(m.exp, EVO_EXP[m.tier - 1]);
+    // 모습마다 기술이 다른 라인(잉어킹 → 갸라도스): 옛 기본 기술 자리를 새 기본 기술로 바꾸고 배운 기술에 더한다 (기술머신으로 바꿔 단 자리는 그대로)
+    const oldSet = prev.skills || m.sp.skills, newSet = this.form(m).skills || m.sp.skills;
+    if (oldSet !== newSet) for (const sl of ['z', 'x', 'c']) {
+      if (!m.learned.includes(newSet[sl])) m.learned.push(newSet[sl]);
+      if (m.skills[sl] === oldSet[sl]) m.skills[sl] = newSet[sl];
+    }
+    const burst = this.statOf('atk', m) / Math.max(.01, atk0);
     this.recalcHp(.3, m);
     if (m !== this.m) {   // 대기 중인 포켓몬은 조용히 진화만 (보통은 출전 포켓몬만 경험치를 받는다)
       sc.events.emit('toast', `${before}은(는) ${this.form(m).name}(으)로 진화했다!`);
@@ -154,7 +199,8 @@ export class Player extends Actor {
     Sfx.play('evolve');
     const after = this.form().name;
     sc.events.emit('banner', before === after ? `${after}의 힘이 깨어났다!` : `${before}은(는) ${after}(으)로 진화했다!`,
-      `${TIERS[this.tier].name} 진화 · 공격력 ×${TIERS[this.tier].atk} · 몸집·기술 이펙트 커짐 (이 포켓몬만)`);
+      burst >= 5 ? `기다림 끝의 각성! 공격력 ×${Math.round(burst)} · 기술이 완전히 바뀌었다` : `${TIERS[this.tier].name} 진화 · 공격력 ×${TIERS[this.tier].atk} · 몸집·기술 이펙트 커짐 (이 포켓몬만)`);
+    if (burst >= 5) { sc.fx.shake(.02, 600); sc.cameras.main.flash(500, 120, 200, 255, true); }
     if (this.tier === 2 && this.mega.stones > 0 && !this.mega.active) sc.time.delayedCall(2600, () => sc.events.emit('toast', '메가스톤이 공명한다! V 로 메가진화'));
     sc.events.emit('swap', this);
   }
@@ -204,6 +250,9 @@ export class Player extends Actor {
     this.inv -= dt; this.dashCd -= dt; this.swapCd -= dt; this.comboT -= dt; this.zBuf -= dt; this.dropT -= dt; this.hurtT -= dt; this.speedBuff -= dt;
     this.z.cd = Math.max(0, this.z.cd - dt);
     for (const m of this.members) for (const k in m.cd) m.cd[k] = Math.max(0, m.cd[k] - dt);
+    for (const bf of this.buffs) bf.t -= dt;
+    if (this.buffs.length) this.buffs = this.buffs.filter(bf => bf.t > 0);
+    this.updatePassive(dt);
     // 재생: 출전 포켓몬(아이템), 대기 포켓몬(초당 1%)
     if (this.mods.regen && this.m.hp < this.m.maxhp) this.m.hp = Math.min(this.m.maxhp, this.m.hp + this.m.maxhp * this.mods.regen * dt);
     for (const m of this.members) if (m !== this.m && m.alive && m.hp < m.maxhp) m.hp = Math.min(m.maxhp, m.hp + m.maxhp * .005 * dt);
@@ -217,17 +266,19 @@ export class Player extends Actor {
       else if (inp.swapNext) target = this.nextAlive(1); else if (inp.swapPrev) target = this.nextAlive(-1);
       if (target >= 0 && target !== this.idx) this.swapTo(target);
     }
-    if (inp.mega) this.startMega();
+    if (inp.mega) this.startMega(inp.up ? 1 : 0);   // ↑ + V : 두 번째 메가 (메가리자몽Y · 메가뮤츠Y)
     if (inp.zmoveP) this.useZMove();
 
-    // 대시(회피)
+    // 대시(회피) — 파괴광선 반동 등(action.noDash)은 끊을 수 없다. 랄토스 계열은 순간이동
     const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
-    if (inp.dashP && this.dashCd <= 0 && !this.dash && (this.onGround || this.airDash)) {
+    if (inp.dashP && this.dashCd <= 0 && !this.dash && (this.onGround || this.airDash) && !(this.action && this.action.noDash)) {
       if (!this.onGround) this.airDash = false;
+      if (this.action) this.endAction(true);   // 스킬의 end() 로 남은 이펙트·상태를 정리
       this.dash = { t: 0, dir: dir || this.face };
       this.face = this.dash.dir; this.refacing();
-      this.action = null; this.dashCd = .55; this.inv = Math.max(this.inv, .26);
-      Sfx.play('dash'); this.squash(1.3, .75);
+      this.dashCd = .55; this.inv = Math.max(this.inv, .26);
+      if (this.pas.teleport) this.teleport(this.dash);
+      else { Sfx.play('dash'); this.squash(1.3, .75); }
     }
 
     // 스킬 (Z는 입력 버퍼로 콤보)
@@ -244,8 +295,12 @@ export class Player extends Actor {
     this.slowT = (this.slowT || 0) - dt;
     this.windT = (this.windT || 0) - dt;
     if (this.flipT > 0 && (this.flipT -= dt) <= 0) { this.b.setGravityY(0); this.sprite.setFlipY(false); }
-    const speed = sp.speed * (this.speedBuff > 0 ? 1.25 : 1) * slow * (this.mega.active ? 1.1 : 1);
-    if (this.dash) {
+    const speed = sp.speed * (this.speedBuff > 0 ? 1.25 : 1) * slow * (this.mega.active ? 1.1 : 1) * this.statOf('speed') * this.buffMul('speed');
+    if (this.dash && this.dash.tele) {   // 순간이동: 이미 옮겨졌다. 잠깐 멈춰 잔상만 남긴다
+      this.dash.t += dt;
+      b.setAllowGravity(false); b.setVelocity(0, 0);
+      if (this.dash.t >= .12) { this.dash = null; b.setAllowGravity(true); }
+    } else if (this.dash) {
       this.dash.t += dt;
       b.setAllowGravity(false); b.setVelocity(this.dash.dir * 330, 0);
       this.dash.gt = (this.dash.gt || 0) - dt;
@@ -271,11 +326,12 @@ export class Player extends Actor {
       else if (this.jumpsUsed < sp.jumps) { this.jump(sp.jump * .92, true); }
     }
     if (!inp.jumpH && b.velocity.y < -60 && !(a && a.ctrl)) b.setVelocityY(b.velocity.y * .86);   // 짧게 누르면 낮은 점프
-    if (sp.hover && inp.jumpH && b.velocity.y > 40 && !this.dash) b.setVelocityY(40);           // 고오스 부유
+    const hover = sp.hover || (this.pas.hoverForm !== undefined && this.form().fi >= this.pas.hoverForm);
+    if (hover && inp.jumpH && b.velocity.y > 40 && !this.dash) b.setVelocityY(40);              // 고오스·망나뇽·전설 부유
 
-    // 행동 진행
+    // 행동 진행 (스라크 계열은 모든 행동이 빠르다)
     if (a) {
-      a.t += dt;
+      a.t += dt * (this.pas.atkSpeed || 1);
       if (a.update) a.update(this, a, dt);
       while (a.ev && a.evi < a.ev.length && a.t >= a.ev[a.evi][0]) { a.ev[a.evi][1](); a.evi++; }
       if (this.action === a && a.t >= a.dur) this.endAction();
@@ -299,6 +355,53 @@ export class Player extends Actor {
     this.squash(.72, 1.32);
     if (air) { this.scene.fx.ring(this.x, this.bottom, 10, 0xffffff, 200); Sfx.play('djump'); }
     else { this.scene.fx.burst(this.x, this.bottom - 1, 0xd0c8e8, 5, 50, { up: 20, life: .3 }); Sfx.play('jump'); }
+  }
+
+  // 순간이동 (랄토스 계열 대시): 벽 앞까지 즉시 옮기고, 출발점에 잔상 · 완전 무적
+  teleport(d) {
+    const sc = this.scene, b = this.b, hw = b.width / 2;
+    let dist = 0;
+    while (dist < TELEPORT && !sc.isSolidAt(this.x + d.dir * (dist + 4 + hw), this.y) && !sc.isSolidAt(this.x + d.dir * (dist + 4 + hw), b.bottom - 3)) dist += 4;
+    for (let k = 0; k < 3; k++) sc.fx.ghost(this.sprite, k % 2 ? 0xff9ad0 : 0xc8a0ff, .6 - k * .15, 380 + k * 120);
+    sc.fx.ring(this.x, this.y, 16, 0xff9ad0, 240);
+    b.reset(this.x + d.dir * dist, this.y);
+    sc.fx.glow(this.x, this.y, 26, 0xc8a0ff, 260, .9); sc.fx.ring(this.x, this.y, 22, 0xc8a0ff, 260);
+    d.tele = true; this.inv = Math.max(this.inv, .4);
+    Sfx.play('recall'); this.squash(.7, 1.3);
+  }
+
+  // 상시 특성: 모래바람 오라(마기라스) · 파닥파닥 이동(잉어킹)
+  updatePassive(dt) {
+    const sc = this.scene, pas = this.pas, fi = this.form().fi;
+    if (pas.sandstorm !== undefined && fi >= pas.sandstorm) {
+      const r = 70 * (this.mega.active ? 1.4 : 1);
+      if (Math.random() < .6) sc.fx.burst(this.x + (Math.random() - .5) * r * 2, this.y + (Math.random() - .5) * r, [0xd8b060, 0xc0a050, 0xf0d8a0], 1, 40, { grav: 0, bounce: false, life: .5, size: 1 });
+      this.sandT -= dt;
+      if (this.sandT <= 0) { this.sandT = .5; sc.combat.hitCircle(this.x, this.y, r, .22, 'rock', { kbx: 0, kby: 0, hs: 0 }); }
+    }
+    if (pas.flop !== undefined && fi === pas.flop && this.onGround && !this.action && Math.abs(this.b.velocity.x) > 20) {
+      this.flopT -= dt;
+      if (this.flopT <= 0) { this.flopT = .32; this.b.setVelocityY(-150); this.squash(1.25, .75); sc.fx.burst(this.x, this.bottom - 1, [0x8ad0ff, 0xffffff], 4, 50, { up: 40, life: .3 }); }
+    }
+  }
+
+  // 포켓몬센터 보관함: i번째 자리를 다른 포켓몬으로 (새로 온 포켓몬은 1단부터 · 메가스톤·Z크리스탈·가방은 파티 공용이라 그대로)
+  replaceMember(i, key) {
+    if (!SPECIES[key] || this.members.some(m => m.key === key)) return false;
+    const m = this.makeMember(key), old = this.members[i];
+    if (old) for (const [id, n] of Object.entries(old.items)) this.bag[id] = (this.bag[id] || 0) + n;   // 떠나는 포켓몬의 장착 아이템은 가방으로
+    if (i >= this.members.length) { i = this.members.length; this.members.push(m); } else this.members[i] = m;
+    m.maxhp = m.hp = this.maxHpOf(m);
+    if (i === this.idx) { if (this.action) this.endAction(true); this.combo = 0; this.buffs = []; this.applyVisual(); }
+    this.scene.events.emit('swap', this);
+    return true;
+  }
+
+  // 디버그 (F3 메뉴): 출전 포켓몬을 다음 진화 단계로, 3단이면 메가진화
+  debugEvolve() {
+    const m = this.m;
+    if (m.tier < EVO_EXP.length) { m.exp = EVO_EXP[m.tier]; this.evolve(m); return; }
+    if (!this.mega.active) { this.mega.stones = Math.max(1, this.mega.stones); this.startMega(); }
   }
 
   updateAnim(dt) {
@@ -349,7 +452,7 @@ export class Player extends Actor {
     if (a.anim) {
       this.play(a.anim, true);
       const am = this.meta.anims[a.anim];
-      this.sprite.anims.timeScale = am ? Phaser.Math.Clamp(am.ms / (a.dur * 1000), .5, 3.5) : 1;
+      this.sprite.anims.timeScale = am ? Phaser.Math.Clamp(am.ms * (this.pas.atkSpeed || 1) / (a.dur * 1000), .5, 3.5) : 1;
     }
     if (a.noGrav) { this.b.setAllowGravity(false); if (!a.ctrl) this.b.setVelocityY(0); }
   }
@@ -404,11 +507,12 @@ export class Player extends Actor {
   }
 
   // ---------------- 메가진화 (3단 + 메가스톤, 영구) ----------------
-  startMega() {
+  startMega(variant = 0) {
     const mg = this.mega, sc = this.scene;
     if (mg.active) return;
     if (mg.stones <= 0) { sc.events.emit('toast', '메가스톤이 없다 (스테이지 3 보스가 지니고 있다)'); Sfx.play('deny'); return; }
     if (this.tier < 2) { sc.events.emit('toast', `${this.form().name}은(는) 3단 진화 후에 메가진화할 수 있다 (진화까지 ${this.expToNext()})`); Sfx.play('deny'); return; }
+    if (this.sp.megas[variant]) this.m.megaPick = variant;
     mg.active = true;   // 출전 중인 포켓몬만 (메가스톤은 파티 공용이라 다른 3단 포켓몬도 각자 메가진화할 수 있다)
     this.recalcHp(.5, this.m);
     this.applyVisual();
@@ -419,7 +523,9 @@ export class Player extends Actor {
     sc.fx.burst(this.x, this.y, [0xff8ad0, 0x9a7aff, 0x5ad0ff, 0xfff6c0, 0xffffff], 40, 220, { glow: true });
     sc.fx.shake(.012, 300);
     Sfx.play('mega');
-    sc.events.emit('banner', '메가진화!', `${this.form().name} → ${this.sp.mega.name} · 이 포켓몬은 이번 판 끝까지 유지`);
+    const mgv = this.megaOf(), title = mgv.bond ? '유대변화!' : mgv.awaken ? '각성!' : '메가진화!';
+    const alt = this.sp.megas.length > 1 && !variant ? ` · ↑+V 는 ${this.sp.megas[1].name}` : '';
+    sc.events.emit('banner', title, `${this.form().name} → ${mgv.name} · 이 포켓몬은 이번 판 끝까지 유지${alt}`);
     sc.events.emit('swap', this);
   }
 
@@ -448,7 +554,7 @@ export class Player extends Actor {
     }
     const m = type === 'none' ? 1 : typeMultiplier(type, this.types);
     const eff = effectiveness(m);
-    const d = Math.max(1, Math.round(dmg * m * (this.mega.active ? .8 : 1)));
+    const d = Math.max(1, Math.round(dmg * m * (this.mega.active ? .8 : 1) * (this.pas.guard || 1) * this.buffMul('guard')));
     this.m.hp -= d;
     sc.fx.floatText(this.x, this.b.y - 2, `-${d}`, eff === 'super' ? '#ff6a4a' : '#ff9a8a', eff === 'super' ? 15 : 12);
     if (eff === 'super') sc.fx.floatText(this.x, this.b.y - 18, '효과가 굉장했다!', '#ffb050', 10);
@@ -457,7 +563,7 @@ export class Player extends Actor {
     sc.fx.burst(this.x, this.y, [0xff5a5a, 0xffffff], 8, 100);
     Sfx.play('hurt');
     if (o.slow) this.slowT = o.slow;
-    if (!this.mega.active || o.force) {
+    if ((!this.mega.active && !this.pas.superArmor) || o.force) {   // 메가·슈퍼아머(애버라스 계열)는 경직·넉백 없음
       const dir = Math.sign(this.x - srcX) || -this.face;
       this.b.setVelocity(dir * 170, -170);
       if (this.action && !this.action.inv) this.endAction(true);
@@ -469,7 +575,7 @@ export class Player extends Actor {
   faint() {
     const sc = this.scene, m = this.m;
     m.hp = 0; m.alive = false;
-    sc.fx.burst(this.x, this.y, [typeColor(this.sp.types[0]), 0xffffff], 30, 160, { glow: true });
+    sc.fx.burst(this.x, this.y, [typeColor(this.typesOf(m)[0]), 0xffffff], 30, 160, { glow: true });
     sc.events.emit('toast', `${this.form(m).name}은(는) 쓰러졌다!`);
     const next = this.nextAlive(1);
     if (next >= 0) { this.swapTo(next, true); this.inv = 1.5; }
