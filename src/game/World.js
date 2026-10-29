@@ -369,6 +369,13 @@ export function buildChapter(ch, ci, retry = 0) {
       setP(x0 + 4, r.F - 3, 7); setP(x1 - 11, r.F - 3, 7); setP(mid - 5, r.F - 6, 10);
       if (w > 40) { setP(x0 + 10, r.F - 9, 6); setP(x1 - 16, r.F - 9, 6); }
       if (tall) for (let y = r.F - 12, k = 0; y >= r.ty0 + 3; y -= 4, k++) setP(k % 2 ? x0 + 4 : x1 - 12, y, 8);
+      // 뮤츠(관동 최종 보스)는 높이 떠다녀서 가운데 위쪽에 디딤 발판 3개를 더 깐다 (양옆 사다리 발판 사이를 잇는 높이)
+      if (tall && r.boss === 'mewtwo') {
+        const top = r.ty0 + 3, span = r.F - top;
+        setP(mid - 4, r.F - Math.round(span * .42), 8);
+        setP(x0 + Math.round(w * .3) - 3, r.F - Math.round(span * .66), 6);
+        setP(x0 + Math.round(w * .7) - 3, r.F - Math.round(span * .66), 6);
+      }
       if (area.gym || r.type === 'boss') for (const [x, h] of [[x0 + 1, 8], [x1 - 3, 9]]) addProp({ kind: 'pillar', x, g: r.F, h: Math.min(h, r.F - r.ty0 - 2), variant: ri(0, 2) }, 2);
       marks.push({ kind: r.type === 'boss' ? 'boss' : r.type === 'mini' ? 'mini' : 'hidden', x: mid, y: r.F, room: r });
     } else if (r.type === 'tm') {
