@@ -265,6 +265,23 @@ function dropSignArt(scene) {
   });
 }
 
+// 간이 포켓몬 회복기 (Field Recovery Terminal): 실프주식회사 휴대용 필드 캡슐 — 금속 받침 · 초록 유리 돔(회복 십자) · 청록 화면 · S 로고
+function terminalArt(scene) {
+  const steel = 0x3e4a5a, teal = 0x4affd8, green = 0x7dff9a;
+  return canvasTex(scene, 'prop:terminal', 30, 40, (F, c) => {
+    F(2, 32, 26, 8, shade(steel, .5)); F(3, 33, 24, 6, steel); F(3, 33, 24, 1, shade(steel, 1.7)); F(3, 37, 24, 1, 0xd8a63a, .8);   // 받침
+    F(6, 14, 18, 19, shade(steel, .55)); F(7, 15, 16, 17, steel); F(7, 15, 1, 17, shade(steel, 1.6));                             // 몸통
+    F(9, 18, 12, 7, 0x0a1a1c); F(10, 19, 10, 5, 0x0e3a36); F(10, 19, 10, 1, teal, .9);                                            // 화면
+    F(11, 21, 2, 1, teal); F(14, 21, 4, 1, teal, .7); F(11, 23, 6, 1, teal, .5);                                                  // 화면 글자
+    F(12, 27, 6, 4, 0x1a2230); F(13, 28, 1, 2, 0xff5a5a); F(15, 28, 1, 2, teal); F(17, 28, 0, 0, 0);                             // 버튼
+    const gr = c.createRadialGradient(15, 9, 1, 15, 9, 10); gr.addColorStop(0, 'rgba(200,255,220,.95)'); gr.addColorStop(1, 'rgba(60,200,140,.55)');
+    c.fillStyle = gr; c.beginPath(); c.arc(15, 12, 9, Math.PI, 0); c.lineTo(24, 14); c.lineTo(6, 14); c.closePath(); c.fill();          // 유리 돔
+    F(13, 5, 4, 8, 0xffffff); F(11, 7, 8, 4, 0xffffff); F(14, 6, 2, 6, green); F(12, 8, 6, 2, green);                              // 회복 십자
+    F(8, 6, 2, 1, 0xffffff, .7); F(7, 7, 1, 3, 0xffffff, .5);                                                                       // 돔 반사광
+    F(5, 13, 20, 2, shade(steel, .4)); F(5, 13, 20, 1, 0xd8a63a);                                                                   // 돔 테
+    F(21, 27, 2, 3, 0xd8e0f0); F(20, 27, 1, 1, 0xd8e0f0); F(22, 29, 1, 1, 0xd8e0f0);                                               // S 로고(실프)
+  });
+}
 // 기술머신 제단 (Grand TM Shrine): 고대 실프주식회사 하이테크 캡슐 — 예전 제단의 2배가 넘는 크기
 //  바닥 홀로그램 마법진 · 금테 금속 받침 · 유리 배양관(안에서 황금·보랏빛 디스크와 에너지 코어가 떠서 맥동) · 위 뚜껑(작동하면 들린다)
 function tmArt(scene) {
@@ -591,6 +608,17 @@ export class Props {
         }
       }
     }
+    // 간이 포켓몬 회복기 (World.terminals): 다가가면 자동 저장 + 부활 자리 · F / ↑ 로 파티 전원 회복
+    (this.level.terminals || []).forEach((tm, i) => {
+      const x = tm.x * TILE + 16, Y = tm.g * TILE;
+      const pad = this.add(s.add.image(x, Y - 1, 'glow').setBlendMode(ADD).setTint(0x4affd8).setScale(1.6, .3).setAlpha(.5).setDepth(5.9));
+      this.lit(s.add.image(x, Y + 1, terminalArt(s)).setOrigin(.5, 1).setDepth(6.4));
+      const holo = this.glow(x, Y - 30, .8, 0x7dffb0, .45, 6.5);
+      const beam = this.add(s.add.image(x, Y - 50, 'glow').setBlendMode(ADD).setTint(0x4affd8).setScale(.3, 1.6).setAlpha(.12).setDepth(6.3));
+      const l = this.light(x, Y - 26, 120, 0x6affc8, 1.3);
+      this.pulses.push({ o: holo, base: .4, amp: .18, sp: 2.2 }, { o: pad, base: .4, amp: .15, sp: 1.4 });
+      this.interacts.push({ kind: 'terminal', idx: i, data: tm, x, y: Y, range: 26, used: false, repeat: true, prompt: '[F 또는 ↑ : 간이 회복기]', promptY: Y - 50, holo, beam, lightObj: l, near: false });
+    });
     this.buildSurfaceDecor();
     this.buildRails();
     this.buildFireflies();
@@ -721,7 +749,7 @@ export class Props {
     }
     // 맥동 (나무 균열 · 결계 · 로어 표지)
     for (const p of this.pulses) p.o.setAlpha(Math.max(0, p.base + Math.sin(t * p.sp) * p.amp));
-    for (const it of this.interacts) if (it.kind === 'tm' && !it.used) this.tmResonance(it, dt);
+    for (const it of this.interacts) if (it.kind === 'tm' && !it.used) this.tmResonance(it, dt); else if (it.kind === 'terminal') this.terminalNear(it);
     // 지지직 깜빡임: 가끔 잠깐 꺼졌다 켜진다
     for (const f of this.flickers) {
       if (f.off > 0) { f.off -= dt; if (f.off <= 0) f.objs.forEach((o, i) => o.setAlpha(f.base[i])); if (f.light && f.off <= 0) f.light.setIntensity(f.lightK); continue; }
@@ -762,6 +790,15 @@ export class Props {
     if (Math.random() < (near ? .7 : .16)) s.fx.embers(it.x + (Math.random() - .5) * 30, it.y - 10 - Math.random() * (near ? 90 : 50), near ? [0xffd25a, 0xb08aff, 0xffffff] : [0x9ad8ff, 0xffffff], 1, { speed: near ? 40 : 12 });
   }
 
+  // 간이 회복기: 반경 안에 들어서면 연결(자동 저장 + 부활 자리) — 들어설 때마다 한 번
+  terminalNear(it) {
+    const s = this.s, p = s.player, near = !!p && Math.abs(p.x - it.x) < 70 && Math.abs(p.bottom - it.y) < 50;
+    if (near === it.near) return;
+    it.near = near;
+    s.tweens.killTweensOf(it.beam);
+    s.tweens.add({ targets: it.beam, alpha: near ? .45 : .12, scaleY: near ? 3.2 : 1.6, y: near ? it.y - 70 : it.y - 50, duration: 500, ease: 'Cubic.easeOut' });
+    if (near && s.linkTerminal) s.linkTerminal(it);
+  }
   // 기술머신 작동: 캡슐 뚜껑이 들리고 증기·빛을 뿜는다 → done() (카드 화면). 이미 연 캡슐은 바로
   openTM(it, done) {
     const s = this.s;

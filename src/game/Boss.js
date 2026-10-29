@@ -10,6 +10,13 @@ import { bolt } from './Perks.js';
 
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const STRIKE = new Set(['dash', 'dive', 'spin', 'spark', 'glide', 'jet', 'serpent', 'skydive', 'lunge', 'volt', 'boltRun', 'fbDive']);
+// 공중 보스 체공 고도 제한: 이 상태들에서는 아래 땅·발판 위로 HOVER_GAP 보다 높이 뜨지 않는다 (1단 점프·기본기로 닿게)
+const HOVER_STATES = new Set(['idle', 'wind', 'fire', 'recover', 'barrage', 'blinkFire']);
+const HOVER_GAP = 30;                                      // 보스 발끝 ~ 아래 땅 (px)
+const FREE_FLYERS = new Set(['eternatus']);                // 아레나 한가운데 고정된 거대 보스는 제외
+// 약점 그로기: 상성별 게이지 증가량 (약점은 등배의 3.5배) · 그로기 시간 · 그로기 중 받는 피해 배율
+const STAGGER_GAIN = { super: 8.4, normal: 2.4, weak: .8, immune: 0 };
+export const GROGGY_T = 4.5, GROGGY_MUL = 1.35;
 
 export class Boss extends Enemy {
   constructor(scene, key, x, y, o = {}) {
@@ -45,12 +52,20 @@ export class Boss extends Enemy {
     if (this.state === 'intro') {
       this.timer -= dt;
       if (this.timer <= 0) { this.state = 'idle'; this.intangible = false; }
+    } else if (this.groggyT > 0) {
+      this.updateGroggy(dt);
+    } else if (this.state === 'rest') {
+      this.updateRest(dt, p);
     } else if (st.stun > 0 || st.root > 0) {
       this.b.setVelocityX(this.b.velocity.x * .8);
       this.telegraph(false);
     } else {
       if (this.phase === 1 && this.hp < this.maxhp * .5) this.enterPhase2();
+      const prev = this.state;
       (BOSS_AI[this.def.ai] || BOSS_AI.legend)(this, dt, p);
+      if (prev === 'wind' && this.state !== 'wind') this.bigN = (this.bigN || 0) + 1;   // 큰 기술 하나를 썼다
+      this.maybeRest();
+      this.hoverCap();
     }
     if (this.striking && !this.intangible && overlap(this.bounds(), p.bounds())) p.takeHit(this.dmg, this.def.atkType || this.types[0], this.x, {});
     // 아레나 밖으로 나가지 않게 (날아다니는 보스는 위아래도)
@@ -92,6 +107,83 @@ export class Boss extends Enemy {
       sc.cameras.main.flash(260, 230, 180, 255, true);
       sc.events.emit('banner', `${this.name} 폭주!`, this.def.rage);
     } else sc.events.emit('toast', `${this.name}이(가) 분노했다!`);
+  }
+
+  // ---------------- 공중 보스: 낮게 뜨기 · 패턴 2~3번 뒤 착지해 숨 고르기 ----------------
+  get hoverer() { return this.flying && !FREE_FLYERS.has(this.bossKey); }
+  hoverCap() {
+    if (!this.hoverer || !HOVER_STATES.has(this.state) || this.intangible) return;
+    const gy = this.scene.groundBelow(this.x, this.bottom - 2), maxUp = gy - this.b.height / 2 - HOVER_GAP;
+    if (this.y < maxUp) this.b.setVelocityY(Math.max(this.b.velocity.y, Math.min(170, (maxUp - this.y) * 3)));
+  }
+  maybeRest() {
+    if (!this.hoverer || this.state !== 'idle' || this.intangible) return;
+    if (this.restAt === undefined) this.restAt = 2 + (Math.random() < .5 ? 1 : 0);
+    if ((this.bigN || 0) < this.restAt) return;
+    const sc = this.scene;
+    this.state = 'rest'; this.restT = 2.5 + Math.random(); this.restFx = 0;
+    this.b.setAllowGravity(true); this.b.setVelocity(0, 140);
+    this.telegraph(false);
+    if (!sc.restTold) { sc.restTold = true; sc.events.emit('toast', `${this.name}이(가) 지쳐 내려앉았다 — 지금이 기회!`); }
+  }
+  updateRest(dt, p) {
+    const sc = this.scene;
+    this.restT -= dt; this.restFx -= dt;
+    this.b.setVelocityX(this.b.velocity.x * .85);
+    this.facePlayer(p);
+    if (this.restFx <= 0) {   // 헐떡임: 머리 위로 흰 김
+      this.restFx = .45;
+      sc.fx.burst(this.x + this.face * 8, this.top + 4, [0xe8e8f0, 0xffffff], 3, 30, { angle: -Math.PI / 2, spread: .6, up: 30, grav: -20, bounce: false, life: .6, size: 2 });
+    }
+    if (this.restT <= 0) {
+      this.b.setAllowGravity(false); this.b.setVelocityY(-150);
+      this.state = 'idle'; this.cd = .5; this.bigN = 0; this.restAt = 2 + (Math.random() < .5 ? 1 : 0);
+      sc.fx.ring(this.x, this.bottom - 2, 26, this.def.color || 0x9a7aff, 260);
+    }
+  }
+
+  // ---------------- 약점 그로기 ----------------
+  //  맞을 때마다 상성에 따라 게이지가 찬다 (약점은 등배의 3.5배 + "WEAKNESS!") → 100% 면 즉시 추락 · 4.5초 무방비 · 받는 피해 ×1.35
+  addStagger(eff) {
+    if (this.groggyT > 0 || this.state === 'intro' || !this.alive || this.gone) return;
+    const sc = this.scene, gain = STAGGER_GAIN[eff] ?? STAGGER_GAIN.normal;
+    if (!gain) return;
+    this.stagger = Math.min(100, (this.stagger || 0) + gain);
+    if (eff === 'super') {
+      this.staggerFlash = .35;
+      if (sc.time.now - (this.weakAt || -9999) > 380) { this.weakAt = sc.time.now; sc.fx.floatText(this.x, this.top - 16, 'WEAKNESS!', '#ffb040', 12); }
+    }
+    if (this.stagger >= 100) this.startGroggy();
+  }
+  startGroggy() {
+    const sc = this.scene;
+    this.groggyT = GROGGY_T; this.stagger = 100;
+    this.state = 'groggy'; this.telegraph(false); this.intangible = false; this.sprite.setAlpha(1);
+    if (this.puddle) this.puddle.clear();
+    this.b.setAllowGravity(true); this.b.setVelocity(0, 300);   // 공중에 있어도 그대로 추락
+    sc.fx.floatText(this.x, this.top - 26, '💥 GROGGY! (자세 무너짐)', '#ffd040', 14);
+    sc.events.emit('banner', 'GROGGY!', `${this.name}의 자세가 무너졌다 · ${GROGGY_T}초 동안 무방비 · 받는 피해 ×${GROGGY_MUL}`);
+    sc.fx.shake(.02, 500); sc.fx.hitStop(160);
+    sc.fx.ring(this.x, this.y, 60, 0xffb040, 420); sc.fx.glow(this.x, this.y, 70, 0xffd040, 420, 1);
+    sc.fx.burst(this.x, this.y, [0xffd040, 0xffb040, 0xffffff], 34, 220, { glow: true, up: 80 });
+    Sfx.play('shatter'); Sfx.play('boom');
+    // 머리 위를 도는 별 3개
+    this.stars = [0, 1, 2].map(() => sc.add.text(this.x, this.top, '★', { fontFamily: 'Galmuri11', fontSize: '12px', color: '#ffe060', stroke: '#5a3a00', strokeThickness: 3, resolution: 2 }).setOrigin(.5).setDepth(45));
+    this.fxObjs = (this.fxObjs || []).concat(this.stars);
+  }
+  updateGroggy(dt) {
+    this.groggyT -= dt;
+    this.stagger = 100 * Math.max(0, this.groggyT) / GROGGY_T;   // 게이지가 줄어들며 남은 시간을 보여 준다
+    this.b.setVelocityX(this.b.velocity.x * .8);
+    const t = this.scene.time.now / 1000;
+    (this.stars || []).forEach((s, k) => { const a = t * 5 + k * Math.PI * 2 / 3; s.setPosition(this.x + Math.cos(a) * 18, this.top - 8 + Math.sin(a) * 5).setAlpha(.75 + Math.sin(t * 10 + k) * .25).setScale(.85 + Math.sin(a) * .2); });
+    if (this.groggyT > 0) return;
+    this.groggyT = 0; this.stagger = 0;
+    for (const s of this.stars || []) s.destroy();
+    this.stars = null;
+    this.b.setAllowGravity(!this.flying);
+    if (this.flying) this.b.setVelocityY(-140);
+    this.state = 'idle'; this.cd = .6; this.bigN = 0;
   }
 
   // 짝 보스(라티아스·라티오스)가 먼저 정화되면: 유대의 힘으로 각성 — 빨라지고 혼자서 합동 공격을 모두 쓴다
@@ -599,8 +691,16 @@ function startBlink(e, hide = .28) {
   e.state = 'blinkOut'; e.timer = hide;
 }
 // 플레이어에게서 dmin~dmax 떨어진 아레나 안 공중 (above: 머리 위도 고른다)
+//  75% 는 플레이어가 딛고 있는 땅·발판 바로 위 (허공 한가운데가 아니라 때릴 수 있는 높이)
 function blinkSpot(e, p, dmin, dmax, above = false) {
-  const room = e.room;
+  const room = e.room, sc = e.scene;
+  if (Math.random() < .75) for (let k = 0; k < 12; k++) {
+    const s = Math.random() < .5 ? -1 : 1, x = p.x + s * (dmin + Math.random() * (dmax - dmin));
+    if (x < room.left + 30 || x > room.right - 30 || sc.isSolidAt(x, p.y - 8)) continue;
+    const gy = sc.groundBelow(x, p.y - 30);
+    if (gy - p.bottom > 80 || gy - p.bottom < -60) continue;   // 플레이어와 같은 층쯤
+    return { x, y: gy - e.b.height / 2 - 4 };
+  }
   for (let k = 0; k < 16; k++) {
     if (above && Math.random() < .3) {
       const x = Phaser.Math.Clamp(p.x + (Math.random() - .5) * 60, room.left + 30, room.right - 30), y = p.y - 110 - Math.random() * 30;
@@ -624,7 +724,7 @@ BOSS_AI.alakazam = function (e, dt, p) {
   switch (e.state) {
     case 'idle': {
       e.facePlayer(p);
-      const tx = p.x - Math.sign(p.x - e.x || 1) * 130, ty = p.y - 48 + Math.sin(e.t * 2.4) * 12, far = Math.abs(p.x - e.x) > 260 ? 200 : 100;
+      const tx = p.x - Math.sign(p.x - e.x || 1) * 130, ty = p.y - 22 + Math.sin(e.t * 2.4) * 8, far = Math.abs(p.x - e.x) > 260 ? 200 : 100;
       b.setVelocity(Phaser.Math.Clamp((tx - e.x) * 1.6, -far, far), Phaser.Math.Clamp((ty - e.y) * 1.6, -110, 110));
       e.cd -= dt;
       if (e.cd > 0) break;
@@ -753,7 +853,7 @@ BOSS_AI.mewtwo = function (e, dt, p) {
   switch (e.state) {
     case 'idle': {
       e.facePlayer(p);
-      const tx = p.x - Math.sign(p.x - e.x || 1) * 110, ty = p.y - 52 + Math.sin(e.t * 2) * 12, far = Math.abs(p.x - e.x) > 240 ? 200 : 110;
+      const tx = p.x - Math.sign(p.x - e.x || 1) * 110, ty = p.y - 24 + Math.sin(e.t * 2) * 8, far = Math.abs(p.x - e.x) > 240 ? 200 : 110;
       b.setVelocity(Phaser.Math.Clamp((tx - e.x) * 1.6, -far, far), Phaser.Math.Clamp((ty - e.y) * 1.6, -110, 110));
       e.cd -= dt;
       if (ph2 && !e.raged) { e.raged = true; e.cd = 0; e.forced = 'psystrike'; }

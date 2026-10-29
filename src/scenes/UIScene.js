@@ -128,6 +128,7 @@ export default class UIScene extends Phaser.Scene {
 
     // ── 보스 체력 (아래 가운데) + 보스 등장 타이틀 (오른쪽)
     this.tBoss = hkText(this, 320, 330, '', 10, HK.ivory, { ls: 3, bold: true, origin: [.5, 1] });
+    this.tStagger = hkText(this, 210, 343.5, '', 7, '#ffb040', { bold: true, origin: [1, .5] });   // 보스 그로기 게이지 이름표
     this.tBossSub = hkText(this, 626, 236, '', 10, HK.dim, { ls: 2, origin: [1, 0] }).setDepth(21).setAlpha(0);
     this.tBossName = hkText(this, 626, 250, '', 26, HK.ivory, { ls: 3, bold: true, origin: [1, 0], glow: true }).setDepth(21).setAlpha(0);
     this.bossLine = fadeLine(this, 540, 288, 200, .8).setDepth(21).setAlpha(0);
@@ -438,7 +439,17 @@ export default class UIScene extends Phaser.Scene {
     if (showBoss) {
       if (duo) duo.forEach((q, i) => bar3d(g, 214 + i * 110, 334, 102, 4, q.alive ? q.hp / q.maxhp : 0, q.def.color || 0xa070ff));   // 짝 보스: 두 줄
       else bar3d(g, 214, 334, 212, 4, boss.hp / boss.maxhp, boss.phase === 2 ? 0xff5a9a : 0xa070ff);
-    }
+      // 그로기 게이지 (HP 바 바로 아래): 약점으로 때리면 번쩍이며 빠르게 찬다 · 그로기 중엔 남은 시간만큼 줄어든다
+      const sg = (q, x, w) => {
+        const groggy = q.groggyT > 0, k = (q.stagger || 0) / 100;
+        q.staggerFlash = Math.max(0, (q.staggerFlash || 0) - dt);
+        bar3d(g, x, 341, w, 3, k, groggy ? (Math.floor(time / 90) % 2 ? 0xffe060 : 0xff8a2a) : 0xffb040);
+        if (q.staggerFlash > 0 && k > 0) { g.fillStyle(0xffffff, q.staggerFlash * 2); g.fillRect(x, 341, w * k, 3); }
+        return groggy;
+      };
+      const gro = duo ? duo.map((q, i) => q.alive && sg(q, 214 + i * 110, 102)).some(Boolean) : sg(boss, 214, 212);
+      this.tStagger.setText(gro ? 'GROGGY' : '그로기').setColor(gro ? '#ffe060' : '#ffb040');
+    } else this.tStagger.setText('');
     // 화면 밖 보스: 가장자리에 그쪽을 가리키는 표식 (아레나가 화면보다 넓을 때 · 땅속에 숨은 동안은 없음)
     if (showBoss) for (const bq of duo || [boss]) {
       if (!bq.alive || bq.sprite.alpha <= .2) continue;
@@ -727,8 +738,8 @@ export default class UIScene extends Phaser.Scene {
   }
 
   // 진행 저장 결과: 자동 저장은 작은 알림, 일시정지 메뉴에서 저장하면 메뉴 아래 글귀로
-  onSaved({ ok, auto }) {
-    const msg = ok ? (auto ? '포켓몬센터 · 자동 저장했다' : '저장했다 · 로비의 이어하기로 여기서부터') : '저장하지 못했다 (브라우저 저장 공간을 확인해 주세요)';
+  onSaved({ ok, auto, where }) {
+    const msg = ok ? (auto ? (where === 'terminal' ? '간이 회복기 연결 · 자동 저장했다 · 쓰러지면 여기서 다시 일어난다' : '포켓몬센터 · 자동 저장했다') : '저장했다 · 로비의 이어하기로 여기서부터') : '저장하지 못했다 (브라우저 저장 공간을 확인해 주세요)';
     if (this.overlayMode === 'pause' && this.pauseNote && this.pauseNote.scene) { this.pauseNote.setText(msg).setColor(ok ? HK.gold : '#ff8a8a'); Sfx.play(ok ? 'heal' : 'deny'); }
     else this.toast(msg);
   }

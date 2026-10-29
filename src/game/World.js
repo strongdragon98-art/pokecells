@@ -477,10 +477,37 @@ export function buildChapter(ch, ci, retry = 0) {
   };
   const data = grid.map((row, y) => row.map((c, x) => tileOf(x, y)));
 
+  // ---- 간이 포켓몬 회복기 (Field Recovery Terminal): 보스방(지방 보스·중간 보스·히든 성소)에서 방 2~3칸 떨어진 안전한 방 바닥 ----
+  //  바로 앞 방(1칸)은 보스의 위압감을 위해 비운다 · 3칸 안에 시내(포켓몬센터)가 있으면 두지 않는다
+  //  난수를 쓰지 않고 지형을 다 만든 뒤 정한다 (시드로 다시 만든 지형·저장 기록과 어긋나지 않게 props 와도 따로 둔다)
+  const terminals = [], byId = new Map(rooms.map(r => [r.id, r]));
+  const SKIP_ROOM = new Set(['boss', 'mini', 'sanctuary', 'village', 'tm', 'treasure', 'pocket']);
+  for (const boss of rooms.filter(r => r.type === 'boss' || r.type === 'mini' || r.type === 'sanctuary')) {
+    const dist = new Map([[boss.id, 0]]), q = [boss];
+    while (q.length) {
+      const r = q.shift(), d = dist.get(r.id);
+      if (d >= 3) continue;
+      for (const id of r.links) if (!dist.has(id) && byId.has(id)) { dist.set(id, d + 1); q.push(byId.get(id)); }
+    }
+    if ([...dist.entries()].some(([id, d]) => d <= 3 && byId.get(id).type === 'village')) continue;
+    const cand = rooms.filter(r => (dist.get(r.id) === 2 || dist.get(r.id) === 3) && !SKIP_ROOM.has(r.type) && !terminals.some(t => t.room === r))
+      .sort((a, b) => dist.get(a.id) - dist.get(b.id) || (b.main ? 1 : 0) - (a.main ? 1 : 0) || a.id - b.id);
+    for (const r of cand) {
+      const mid = (r.tx0 + r.tx1) >> 1, half = (r.tx1 - r.tx0) >> 1, free = xx => xx > r.tx0 + 2 && xx < r.tx1 - 3
+        && [0, 1].every(o => grid[r.F] && (grid[r.F][xx + o] === 'S' || grid[r.F][xx + o] === 'B') && grid[r.F - 1][xx + o] === '.' && grid[r.F - 2][xx + o] === '.' && grid[r.F - 3][xx + o] === '.');
+      let x = null;
+      for (let k = 0; k < half && x === null; k++) for (const xx of [mid + k, mid - k]) if (free(xx)) { x = xx; break; }
+      if (x === null) continue;
+      terminals.push({ x, g: r.F, room: r, boss });
+      marks.push({ kind: 'terminal', x, y: r.F, room: r });
+      break;
+    }
+  }
+
   const start = mainRooms[0];
   return {
     ci, chapter: ch, data, grid, cols, rows, width: cols * TILE, height: rows * TILE, ncx, ncy, cellRoom,
-    rooms, doors, sides, breakables, props, chests, spawns, marks, potions, hubs, tileOf,
+    rooms, doors, sides, breakables, props, chests, spawns, marks, potions, hubs, tileOf, terminals,
     start: { x: (start.tx0 + 5) * TILE, y: start.F * TILE - 12, room: start }, surfaceRow
   };
 }

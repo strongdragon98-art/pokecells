@@ -546,7 +546,7 @@ export default class GameScene extends Phaser.Scene {
   // ---------------- 진행 저장 (systems/RunSave.js) ----------------
   // auto: 포켓몬센터 자동 저장 (조용히 작은 알림만) · 아니면 일시정지 메뉴의 '저장하기' → 저장했으면 true
   //  자리: 자동 저장은 그 시내 포켓몬센터 앞, 직접 저장은 마지막으로 밟은 땅 (보스전 중에는 저장하지 않는다)
-  saveRun(auto = false) {
+  saveRun(auto = false, where = 'center') {
     if (this.over || !this.player || !this.level) return false;
     if (this.arenaRoom) { if (!auto) this.events.emit('toast', '보스전 중에는 저장할 수 없다'); return false; }
     const p = this.player, c = this.lastCenter;
@@ -559,10 +559,32 @@ export default class GameScene extends Phaser.Scene {
       stats: { kills: this.runStats.kills, unlocked: this.runStats.unlocked.slice(), items: this.runStats.items, time: (this.time.now - this.runStats.start) / 1000 },
       player: snapshotPlayer(p)
     });
-    this.events.emit('saved', { ok, auto });
+    this.events.emit('saved', { ok, auto, where });
     return ok;
   }
+  // 간이 포켓몬 회복기 연결: 마지막 부활 자리로 정하고 자동 저장 (반경에 들어설 때 · 작동할 때)
+  linkTerminal(it, quiet = false) {
+    if (this.arenaRoom || this.over) return;
+    const ci = this.stageIdx, c = this.lastCenter, fresh = !(c && c.terminal && c.ci === ci && c.idx === it.idx);
+    this.lastCenter = { ci, roomId: it.data.room.id, terminal: true, idx: it.idx, x: it.x - 22, y: it.y - 14 };
+    if (fresh && !quiet) { Sfx.play('select'); this.fx.ring(it.x, it.y - 20, 30, 0x4affd8, 360); }
+    this.saveRun(true, 'terminal');
+  }
+  // 간이 회복기 작동: 띠리리- 띠리! · 초록 치유 파동 · 파티 전원 체력·상태이상 100% 회복
+  healAtTerminal(it) {
+    const p = this.player;
+    for (const m of p.members) { m.hp = m.maxhp; m.alive = true; }
+    p.slowT = 0; p.windT = 0; if (p.flipT > 0) p.flipT = .001; p.buffs = p.buffs.filter(bf => bf.atk >= 1 && bf.speed >= 1 && bf.guard <= 1);
+    Sfx.play('fieldheal');
+    const cx = it.x, cy = it.y - 20;
+    [0, 160, 320].forEach((d, i) => this.time.delayedCall(d, () => { this.fx.ring(cx, cy, 34 + i * 24, i % 2 ? 0x4affd8 : 0x7dff9a, 600); this.fx.glow(cx, cy, 40 + i * 10, 0x7dffb0, 420, .6); }));
+    this.fx.burst(p.x, p.y, [0x7dff9a, 0x4affd8, 0xffffff], 30, 90, { glow: true, up: 70, grav: -40, bounce: false, life: 1 });
+    this.cameras.main.flash(260, 200, 255, 220, true);
+    this.events.emit('banner', '파티 전원 회복!', '간이 포켓몬 회복기 · 체력·상태이상 회복 · 자동 저장 완료');
+    this.saveRun(true, 'terminal');
+  }
   hubPos(h) {
+    if (h.terminal) return { x: h.x, y: h.y };   // 간이 회복기 앞
     const hub = this.worldOf(h.ci).level.hubs.find(q => q.room.id === h.roomId);
     return { x: hub.x - 24, y: hub.y - 14 };
   }
@@ -578,7 +600,7 @@ export default class GameScene extends Phaser.Scene {
   respawn() {
     if (this.transitioning) return;
     const p = this.player, c = this.lastCenter;
-    this.events.emit('banner', '눈앞이 캄캄해졌다…', c ? '마지막으로 들른 포켓몬센터로 돌아간다' : '챕터 입구로 돌아간다');
+    this.events.emit('banner', '눈앞이 캄캄해졌다…', c ? (c.terminal ? '마지막으로 연결한 간이 회복기 앞에서 다시 일어난다' : '마지막으로 들른 포켓몬센터로 돌아간다') : '챕터 입구로 돌아간다');
     for (const m of p.members) { m.hp = m.maxhp; m.alive = true; }
     p.inv = 2.5;
     Music.play(this.stage.bgm);
@@ -601,6 +623,13 @@ export default class GameScene extends Phaser.Scene {
     if (it.kind === 'lore') { if (this.time.now - (this.loreAt || 0) > 500) { this.loreAt = this.time.now; this.events.emit('lore', it.text); Sfx.play('select'); } return; }
     if (it.kind === 'tm') { this.openTM(it); return; }   // 카드를 확정해야 다 쓴 제단이 된다
     if (it.kind === 'taxi') { this.toggleOverlay('taxi'); Sfx.play('select'); return; }   // 아머까오 공중날기 (몇 번이고)
+    if (it.kind === 'terminal') {   // 간이 포켓몬 회복기: 파티 전원 회복 + 연결(자동 저장 · 부활 자리)
+      if (this.time.now - (this.healAt || 0) < 1500) return;
+      this.healAt = this.time.now;
+      this.linkTerminal(it, true);
+      this.healAtTerminal(it);
+      return;
+    }
     if (it.kind === 'center') {   // 포켓몬센터는 몇 번이고 (HK 의자처럼) — 쉬면 여기가 다시 일어날 자리가 된다
       if (this.time.now - (this.healAt || 0) < 1500) return;
       this.healAt = this.time.now;
@@ -875,6 +904,7 @@ export default class GameScene extends Phaser.Scene {
     for (const s of this.level.spawns) {
       if (s.spawned || Math.abs(s.x - p.x) > reach || Math.abs(s.y - p.y) > reachY) continue;
       s.spawned = true;
+      if ((this.level.terminals || []).some(t => Math.abs(t.x * TILE - s.x) < 150 && Math.abs(t.g * TILE - s.y) < 90)) continue;   // 간이 회복기 둘레는 안전 구역
       this.spawnAt(s);
     }
   }

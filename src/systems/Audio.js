@@ -83,6 +83,7 @@ class AudioSys {
       case 'card_unique': this.tone(220, .3, 'sawtooth', .05, 440); this.arp([784, 1047, 1319, 1760], .06, 'square', .05); break;
       case 'card_legend': this.tone(110, .9, 'sawtooth', .09, 220); this.arp([523, 659, 784, 1047, 1319, 1568, 2093], .07, 'square', .06);
         this.arp([1047, 1568, 2093], .2, 'triangle', .05); this.tone(2093, .8, 'triangle', .04, 0, .55); this.hiss(.5, .14, 900, 0, 1); break;
+      case 'fieldheal': [988, 1175, 1319, 1175, 1568].forEach((f, i) => this.tone(f, i === 4 ? .5 : .11, 'square', .05, 0, [0, .1, .2, .34, .46][i])); this.tone(784, .8, 'triangle', .04, 0, .02); break;   // 띠리리- 띠리!
       case 'steam': this.hiss(.7, .2, 1400, 0, .6); this.hiss(.4, .1, 4200, .1, 2); this.tone(90, .35, 'sine', .08, 60); break;
       case 'resonate': this.tone(196, .6, 'sine', .05, 98); this.tone(392, .5, 'triangle', .025, 196, .05); break;
       case 'type': this.tone(1500, .018, 'square', .012); break;

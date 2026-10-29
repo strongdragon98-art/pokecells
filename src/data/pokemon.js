@@ -166,7 +166,7 @@ export const BOSSES = {
   onix: { name: '롱스톤', title: '회색시티 박물관의 거대 화석', types: ['rock', 'ground'], hp: 1100, dmg: 14, ai: 'onix', color: 0xa88c66, tier: 'mini' },
   gengar: { name: '팬텀', title: '포켓몬타워의 망령', types: ['ghost', 'poison'], hp: 1500, dmg: 16, ai: 'gengar', scale: 2, megaSprite: 'gengar-mega', megaName: '메가팬텀', tier: 'mini' },
   alakazam: { name: '후딘', title: '실프주식회사의 염동 지배자', types: ['psychic'], hp: 1500, dmg: 17, ai: 'alakazam', fly: true, color: 0xff5a9a, megaSprite: 'alakazam-mega', megaName: '메가후딘', tier: 'mini' },
-  mewtwo: { name: '뮤츠', title: '심연에 폭주하는', types: ['psychic'], hp: 2300, dmg: 20, ai: 'mewtwo', fly: true, color: 0xb06aff, rage: '염동력이 걷잡을 수 없이 넘쳐흐른다', tier: 'boss' },
+  mewtwo: { name: '뮤츠', title: '심연에 폭주하는', types: ['psychic'], hp: 2070, dmg: 20, ai: 'mewtwo', fly: true, color: 0xb06aff, rage: '염동력이 걷잡을 수 없이 넘쳐흐른다', tier: 'boss' },   // hp: 2300 × 0.9 (전투 시간 단축)
   steelix: { name: '강철톤', title: '블루시티 동굴 밑바닥의', types: ['steel', 'ground'], hp: 2600, dmg: 21, ai: 'onix', steel: true, color: 0xa8b0c8, tier: 'hidden' },
   // ---- 성도 ----
   raikou: { name: '라이코', title: '방울탑 하층의 수호자', types: ['electric'], hp: 1700, dmg: 21, ai: 'raikou', color: 0xffe040, tier: 'mini' },

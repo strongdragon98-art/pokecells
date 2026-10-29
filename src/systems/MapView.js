@@ -217,6 +217,9 @@ export class MapView {
         pg.fillStyle(used ? 0x5a5a6a : 0x7ab8ff, 1); pg.fillCircle(x, y, 4.2);
         pg.fillStyle(used ? 0x8a8a9a : 0xc8e4ff, 1); pg.fillCircle(x, y, 2.8);
         pg.fillStyle(0x101828, 1); pg.fillCircle(x, y, 1.1);
+      } else if (m.kind === 'terminal') {   // 간이 포켓몬 회복기: 청록 바탕에 흰 십자
+        pin(x, y, 0x7dffd0, 0x0a2a24);
+        pg.fillStyle(0xffffff, 1); pg.fillRect(x - .9, y - 3.2, 1.8, 6.4); pg.fillRect(x - 3.2, y - .9, 6.4, 1.8);
       } else if (m.kind === 'potion') {   // 상처약 (주우면 사라진다)
         if (lv.potions.some(pt => pt.room === m.room && pt.taken)) continue;
         pin(x, y, 0xe8b0ff, 0x1a1028);
