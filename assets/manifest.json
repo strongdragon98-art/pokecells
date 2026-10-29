@@ -1,0 +1,987 @@
+{
+  "generated": "2026-10-29T04:45:59.534Z",
+  "sources": {
+    "spriteCollab": "https://raw.githubusercontent.com/PMDCollab/SpriteCollab/master",
+    "pokeapi": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon",
+    "artwork": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork",
+    "gameIcons": "https://raw.githubusercontent.com/game-icons/icons/master",
+    "itemArt": "https://www.serebii.net/itemdex/sprites/sv"
+  },
+  "pokemon": {
+    "bulbasaur": {
+      "key": "bulbasaur",
+      "dex": "0001",
+      "form": null,
+      "role": "스타팅",
+      "animData": "sprites/bulbasaur/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/bulbasaur/Walk-Anim.png",
+        "Attack": "sprites/bulbasaur/Attack-Anim.png",
+        "Shoot": "sprites/bulbasaur/Shoot-Anim.png",
+        "Hurt": "sprites/bulbasaur/Hurt-Anim.png",
+        "Idle": "sprites/bulbasaur/Idle-Anim.png",
+        "Strike": "sprites/bulbasaur/Attack-Anim.png"
+      },
+      "portrait": "sprites/bulbasaur/portrait.png",
+      "icon": "sprites/bulbasaur/pokeapi.png",
+      "artwork": "sprites/bulbasaur/artwork.png"
+    },
+    "charmander": {
+      "key": "charmander",
+      "dex": "0004",
+      "form": null,
+      "role": "스타팅",
+      "animData": "sprites/charmander/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/charmander/Walk-Anim.png",
+        "Attack": "sprites/charmander/Attack-Anim.png",
+        "Strike": "sprites/charmander/Strike-Anim.png",
+        "Charge": "sprites/charmander/Charge-Anim.png",
+        "Hurt": "sprites/charmander/Hurt-Anim.png",
+        "Idle": "sprites/charmander/Idle-Anim.png",
+        "Shoot": "sprites/charmander/Charge-Anim.png"
+      },
+      "portrait": "sprites/charmander/portrait.png",
+      "icon": "sprites/charmander/pokeapi.png",
+      "artwork": "sprites/charmander/artwork.png"
+    },
+    "squirtle": {
+      "key": "squirtle",
+      "dex": "0007",
+      "form": null,
+      "role": "스타팅",
+      "animData": "sprites/squirtle/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/squirtle/Walk-Anim.png",
+        "Attack": "sprites/squirtle/Attack-Anim.png",
+        "Shoot": "sprites/squirtle/Shoot-Anim.png",
+        "Hurt": "sprites/squirtle/Hurt-Anim.png",
+        "Idle": "sprites/squirtle/Idle-Anim.png",
+        "Strike": "sprites/squirtle/Attack-Anim.png"
+      },
+      "portrait": "sprites/squirtle/portrait.png",
+      "icon": "sprites/squirtle/pokeapi.png",
+      "artwork": "sprites/squirtle/artwork.png"
+    },
+    "pichu": {
+      "key": "pichu",
+      "dex": "0172",
+      "form": null,
+      "role": "플레이",
+      "animData": "sprites/pichu/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/pichu/Walk-Anim.png",
+        "Attack": "sprites/pichu/Attack-Anim.png",
+        "Hurt": "sprites/pichu/Hurt-Anim.png",
+        "Idle": "sprites/pichu/Idle-Anim.png"
+      },
+      "portrait": "sprites/pichu/portrait.png",
+      "icon": "sprites/pichu/pokeapi.png",
+      "artwork": "sprites/pichu/artwork.png"
+    },
+    "rattata": {
+      "key": "rattata",
+      "dex": "0019",
+      "form": null,
+      "role": "야생",
+      "animData": "sprites/rattata/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/rattata/Walk-Anim.png",
+        "Attack": "sprites/rattata/Attack-Anim.png",
+        "Shoot": "sprites/rattata/Shoot-Anim.png",
+        "Hurt": "sprites/rattata/Hurt-Anim.png",
+        "Idle": "sprites/rattata/Idle-Anim.png",
+        "Strike": "sprites/rattata/Attack-Anim.png"
+      },
+      "portrait": "sprites/rattata/portrait.png",
+      "icon": "sprites/rattata/pokeapi.png",
+      "artwork": "sprites/rattata/artwork.png"
+    },
+    "pikachu": {
+      "key": "pikachu",
+      "dex": "0025",
+      "form": null,
+      "role": "진화",
+      "animData": "sprites/pikachu/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/pikachu/Walk-Anim.png",
+        "Attack": "sprites/pikachu/Attack-Anim.png",
+        "Shoot": "sprites/pikachu/Shoot-Anim.png",
+        "Hurt": "sprites/pikachu/Hurt-Anim.png",
+        "Idle": "sprites/pikachu/Idle-Anim.png"
+      },
+      "portrait": "sprites/pikachu/portrait.png",
+      "icon": "sprites/pikachu/pokeapi.png",
+      "artwork": "sprites/pikachu/artwork.png"
+    },
+    "zubat": {
+      "key": "zubat",
+      "dex": "0041",
+      "form": null,
+      "role": "야생",
+      "animData": "sprites/zubat/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/zubat/Walk-Anim.png",
+        "Attack": "sprites/zubat/Attack-Anim.png",
+        "Shoot": "sprites/zubat/Shoot-Anim.png",
+        "Hurt": "sprites/zubat/Hurt-Anim.png",
+        "Idle": "sprites/zubat/Idle-Anim.png",
+        "Strike": "sprites/zubat/Attack-Anim.png"
+      },
+      "portrait": "sprites/zubat/portrait.png",
+      "icon": "sprites/zubat/pokeapi.png",
+      "artwork": "sprites/zubat/artwork.png"
+    },
+    "machop": {
+      "key": "machop",
+      "dex": "0066",
+      "form": null,
+      "role": "야생",
+      "animData": "sprites/machop/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/machop/Walk-Anim.png",
+        "Attack": "sprites/machop/Attack-Anim.png",
+        "Strike": "sprites/machop/Strike-Anim.png",
+        "Shoot": "sprites/machop/Shoot-Anim.png",
+        "Hurt": "sprites/machop/Hurt-Anim.png",
+        "Idle": "sprites/machop/Idle-Anim.png"
+      },
+      "portrait": "sprites/machop/portrait.png",
+      "icon": "sprites/machop/pokeapi.png",
+      "artwork": "sprites/machop/artwork.png"
+    },
+    "gastly": {
+      "key": "gastly",
+      "dex": "0092",
+      "form": null,
+      "role": "야생",
+      "animData": "sprites/gastly/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/gastly/Walk-Anim.png",
+        "Attack": "sprites/gastly/Attack-Anim.png",
+        "Shoot": "sprites/gastly/Shoot-Anim.png",
+        "Hurt": "sprites/gastly/Hurt-Anim.png",
+        "Idle": "sprites/gastly/Idle-Anim.png",
+        "Strike": "sprites/gastly/Attack-Anim.png"
+      },
+      "portrait": "sprites/gastly/portrait.png",
+      "icon": "sprites/gastly/pokeapi.png",
+      "artwork": "sprites/gastly/artwork.png"
+    },
+    "venusaur": {
+      "key": "venusaur",
+      "dex": "0003",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/venusaur/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/venusaur/Walk-Anim.png",
+        "Attack": "sprites/venusaur/Attack-Anim.png",
+        "Shoot": "sprites/venusaur/Shoot-Anim.png",
+        "Hurt": "sprites/venusaur/Hurt-Anim.png",
+        "Idle": "sprites/venusaur/Idle-Anim.png",
+        "Strike": "sprites/venusaur/Attack-Anim.png"
+      },
+      "portrait": "sprites/venusaur/portrait.png",
+      "icon": "sprites/venusaur/pokeapi.png",
+      "artwork": "sprites/venusaur/artwork.png"
+    },
+    "charizard": {
+      "key": "charizard",
+      "dex": "0006",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/charizard/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/charizard/Walk-Anim.png",
+        "Attack": "sprites/charizard/Attack-Anim.png",
+        "Strike": "sprites/charizard/Strike-Anim.png",
+        "Shoot": "sprites/charizard/Shoot-Anim.png",
+        "Hurt": "sprites/charizard/Hurt-Anim.png",
+        "Idle": "sprites/charizard/Idle-Anim.png"
+      },
+      "portrait": "sprites/charizard/portrait.png",
+      "icon": "sprites/charizard/pokeapi.png",
+      "artwork": "sprites/charizard/artwork.png"
+    },
+    "blastoise": {
+      "key": "blastoise",
+      "dex": "0009",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/blastoise/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/blastoise/Walk-Anim.png",
+        "Attack": "sprites/blastoise/Attack-Anim.png",
+        "Shoot": "sprites/blastoise/Shoot-Anim.png",
+        "Hurt": "sprites/blastoise/Hurt-Anim.png",
+        "Idle": "sprites/blastoise/Idle-Anim.png"
+      },
+      "portrait": "sprites/blastoise/portrait.png",
+      "icon": "sprites/blastoise/pokeapi.png",
+      "artwork": "sprites/blastoise/artwork.png"
+    },
+    "gengar": {
+      "key": "gengar",
+      "dex": "0094",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/gengar/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/gengar/Walk-Anim.png",
+        "Attack": "sprites/gengar/Attack-Anim.png",
+        "Strike": "sprites/gengar/Strike-Anim.png",
+        "Shoot": "sprites/gengar/Shoot-Anim.png",
+        "Hurt": "sprites/gengar/Hurt-Anim.png",
+        "Idle": "sprites/gengar/Idle-Anim.png"
+      },
+      "portrait": "sprites/gengar/portrait.png",
+      "icon": "sprites/gengar/pokeapi.png",
+      "artwork": "sprites/gengar/artwork.png"
+    },
+    "eternatus": {
+      "key": "eternatus",
+      "dex": "0890",
+      "form": null,
+      "role": "컷신",
+      "animData": "sprites/eternatus/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/eternatus/Walk-Anim.png",
+        "Attack": "sprites/eternatus/Attack-Anim.png",
+        "Shoot": "sprites/eternatus/Shoot-Anim.png",
+        "Hurt": "sprites/eternatus/Hurt-Anim.png",
+        "Idle": "sprites/eternatus/Idle-Anim.png",
+        "Strike": "sprites/eternatus/Attack-Anim.png"
+      },
+      "portrait": "sprites/eternatus/portrait.png",
+      "icon": "sprites/eternatus/pokeapi.png",
+      "artwork": "sprites/eternatus/artwork.png",
+      "artworkAlt": "sprites/eternatus/artwork-eternamax.png"
+    },
+    "ivysaur": {
+      "key": "ivysaur",
+      "dex": "0002",
+      "form": null,
+      "role": "진화",
+      "animData": "sprites/ivysaur/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/ivysaur/Walk-Anim.png",
+        "Attack": "sprites/ivysaur/Attack-Anim.png",
+        "Shoot": "sprites/ivysaur/Shoot-Anim.png",
+        "Hurt": "sprites/ivysaur/Hurt-Anim.png",
+        "Idle": "sprites/ivysaur/Idle-Anim.png",
+        "Strike": "sprites/ivysaur/Attack-Anim.png"
+      },
+      "portrait": "sprites/ivysaur/portrait.png",
+      "icon": "sprites/ivysaur/pokeapi.png",
+      "artwork": "sprites/ivysaur/artwork.png"
+    },
+    "charmeleon": {
+      "key": "charmeleon",
+      "dex": "0005",
+      "form": null,
+      "role": "진화",
+      "animData": "sprites/charmeleon/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/charmeleon/Walk-Anim.png",
+        "Attack": "sprites/charmeleon/Attack-Anim.png",
+        "Strike": "sprites/charmeleon/Strike-Anim.png",
+        "Shoot": "sprites/charmeleon/Shoot-Anim.png",
+        "Hurt": "sprites/charmeleon/Hurt-Anim.png",
+        "Idle": "sprites/charmeleon/Idle-Anim.png"
+      },
+      "portrait": "sprites/charmeleon/portrait.png",
+      "icon": "sprites/charmeleon/pokeapi.png",
+      "artwork": "sprites/charmeleon/artwork.png"
+    },
+    "wartortle": {
+      "key": "wartortle",
+      "dex": "0008",
+      "form": null,
+      "role": "진화",
+      "animData": "sprites/wartortle/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/wartortle/Walk-Anim.png",
+        "Attack": "sprites/wartortle/Attack-Anim.png",
+        "Shoot": "sprites/wartortle/Shoot-Anim.png",
+        "Hurt": "sprites/wartortle/Hurt-Anim.png",
+        "Idle": "sprites/wartortle/Idle-Anim.png"
+      },
+      "portrait": "sprites/wartortle/portrait.png",
+      "icon": "sprites/wartortle/pokeapi.png",
+      "artwork": "sprites/wartortle/artwork.png"
+    },
+    "raticate": {
+      "key": "raticate",
+      "dex": "0020",
+      "form": null,
+      "role": "진화",
+      "animData": "sprites/raticate/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/raticate/Walk-Anim.png",
+        "Attack": "sprites/raticate/Attack-Anim.png",
+        "Shoot": "sprites/raticate/Shoot-Anim.png",
+        "Hurt": "sprites/raticate/Hurt-Anim.png",
+        "Idle": "sprites/raticate/Idle-Anim.png",
+        "Strike": "sprites/raticate/Attack-Anim.png"
+      },
+      "portrait": "sprites/raticate/portrait.png",
+      "icon": "sprites/raticate/pokeapi.png",
+      "artwork": "sprites/raticate/artwork.png"
+    },
+    "raichu": {
+      "key": "raichu",
+      "dex": "0026",
+      "form": null,
+      "role": "진화",
+      "animData": "sprites/raichu/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/raichu/Walk-Anim.png",
+        "Attack": "sprites/raichu/Attack-Anim.png",
+        "Shoot": "sprites/raichu/Shoot-Anim.png",
+        "Hurt": "sprites/raichu/Hurt-Anim.png",
+        "Idle": "sprites/raichu/Idle-Anim.png"
+      },
+      "portrait": "sprites/raichu/portrait.png",
+      "icon": "sprites/raichu/pokeapi.png",
+      "artwork": "sprites/raichu/artwork.png"
+    },
+    "golbat": {
+      "key": "golbat",
+      "dex": "0042",
+      "form": null,
+      "role": "진화",
+      "animData": "sprites/golbat/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/golbat/Walk-Anim.png",
+        "Attack": "sprites/golbat/Attack-Anim.png",
+        "Shoot": "sprites/golbat/Shoot-Anim.png",
+        "Hurt": "sprites/golbat/Hurt-Anim.png",
+        "Idle": "sprites/golbat/Idle-Anim.png",
+        "Strike": "sprites/golbat/Attack-Anim.png"
+      },
+      "portrait": "sprites/golbat/portrait.png",
+      "icon": "sprites/golbat/pokeapi.png",
+      "artwork": "sprites/golbat/artwork.png"
+    },
+    "crobat": {
+      "key": "crobat",
+      "dex": "0169",
+      "form": null,
+      "role": "진화",
+      "animData": "sprites/crobat/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/crobat/Walk-Anim.png",
+        "Attack": "sprites/crobat/Attack-Anim.png",
+        "Shoot": "sprites/crobat/Shoot-Anim.png",
+        "Hurt": "sprites/crobat/Hurt-Anim.png",
+        "Idle": "sprites/crobat/Idle-Anim.png",
+        "Strike": "sprites/crobat/Attack-Anim.png"
+      },
+      "portrait": "sprites/crobat/portrait.png",
+      "icon": "sprites/crobat/pokeapi.png",
+      "artwork": "sprites/crobat/artwork.png"
+    },
+    "machoke": {
+      "key": "machoke",
+      "dex": "0067",
+      "form": null,
+      "role": "진화",
+      "animData": "sprites/machoke/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/machoke/Walk-Anim.png",
+        "Attack": "sprites/machoke/Attack-Anim.png",
+        "Charge": "sprites/machoke/Charge-Anim.png",
+        "Hurt": "sprites/machoke/Hurt-Anim.png",
+        "Idle": "sprites/machoke/Idle-Anim.png",
+        "Shoot": "sprites/machoke/Charge-Anim.png"
+      },
+      "portrait": "sprites/machoke/portrait.png",
+      "icon": "sprites/machoke/pokeapi.png",
+      "artwork": "sprites/machoke/artwork.png"
+    },
+    "machamp": {
+      "key": "machamp",
+      "dex": "0068",
+      "form": null,
+      "role": "진화",
+      "animData": "sprites/machamp/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/machamp/Walk-Anim.png",
+        "Attack": "sprites/machamp/Attack-Anim.png",
+        "Charge": "sprites/machamp/Charge-Anim.png",
+        "Hurt": "sprites/machamp/Hurt-Anim.png",
+        "Idle": "sprites/machamp/Idle-Anim.png",
+        "Shoot": "sprites/machamp/Charge-Anim.png"
+      },
+      "portrait": "sprites/machamp/portrait.png",
+      "icon": "sprites/machamp/pokeapi.png",
+      "artwork": "sprites/machamp/artwork.png"
+    },
+    "haunter": {
+      "key": "haunter",
+      "dex": "0093",
+      "form": null,
+      "role": "진화",
+      "animData": "sprites/haunter/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/haunter/Walk-Anim.png",
+        "Attack": "sprites/haunter/Attack-Anim.png",
+        "Shoot": "sprites/haunter/Shoot-Anim.png",
+        "Hurt": "sprites/haunter/Hurt-Anim.png",
+        "Idle": "sprites/haunter/Idle-Anim.png"
+      },
+      "portrait": "sprites/haunter/portrait.png",
+      "icon": "sprites/haunter/pokeapi.png",
+      "artwork": "sprites/haunter/artwork.png"
+    },
+    "mewtwo": {
+      "key": "mewtwo",
+      "dex": "0150",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/mewtwo/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/mewtwo/Walk-Anim.png",
+        "Attack": "sprites/mewtwo/Attack-Anim.png",
+        "Shoot": "sprites/mewtwo/Shoot-Anim.png",
+        "Hurt": "sprites/mewtwo/Hurt-Anim.png",
+        "Idle": "sprites/mewtwo/Idle-Anim.png"
+      },
+      "portrait": "sprites/mewtwo/portrait.png",
+      "icon": "sprites/mewtwo/pokeapi.png",
+      "artwork": "sprites/mewtwo/artwork.png"
+    },
+    "alakazam": {
+      "key": "alakazam",
+      "dex": "0065",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/alakazam/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/alakazam/Walk-Anim.png",
+        "Attack": "sprites/alakazam/Attack-Anim.png",
+        "Shoot": "sprites/alakazam/Shoot-Anim.png",
+        "Hurt": "sprites/alakazam/Hurt-Anim.png",
+        "Idle": "sprites/alakazam/Idle-Anim.png",
+        "Strike": "sprites/alakazam/Attack-Anim.png"
+      },
+      "portrait": "sprites/alakazam/portrait.png",
+      "icon": "sprites/alakazam/pokeapi.png",
+      "artwork": "sprites/alakazam/artwork.png"
+    },
+    "alakazam-mega": {
+      "key": "alakazam-mega",
+      "dex": "0065",
+      "form": "0001",
+      "role": "메가",
+      "animData": "sprites/alakazam-mega/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/alakazam-mega/Walk-Anim.png",
+        "Attack": "sprites/alakazam-mega/Attack-Anim.png",
+        "Shoot": "sprites/alakazam-mega/Shoot-Anim.png",
+        "Hurt": "sprites/alakazam-mega/Hurt-Anim.png",
+        "Idle": "sprites/alakazam-mega/Idle-Anim.png",
+        "Strike": "sprites/alakazam-mega/Attack-Anim.png"
+      },
+      "portrait": "sprites/alakazam-mega/portrait.png",
+      "icon": "sprites/alakazam-mega/pokeapi.png",
+      "artwork": "sprites/alakazam-mega/artwork.png"
+    },
+    "onix": {
+      "key": "onix",
+      "dex": "0095",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/onix/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/onix/Walk-Anim.png",
+        "Attack": "sprites/onix/Attack-Anim.png",
+        "Shoot": "sprites/onix/Shoot-Anim.png",
+        "Hurt": "sprites/onix/Hurt-Anim.png",
+        "Idle": "sprites/onix/Idle-Anim.png"
+      },
+      "portrait": "sprites/onix/portrait.png",
+      "icon": "sprites/onix/pokeapi.png",
+      "artwork": "sprites/onix/artwork.png"
+    },
+    "steelix": {
+      "key": "steelix",
+      "dex": "0208",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/steelix/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/steelix/Walk-Anim.png",
+        "Attack": "sprites/steelix/Attack-Anim.png",
+        "Shoot": "sprites/steelix/Shoot-Anim.png",
+        "Hurt": "sprites/steelix/Hurt-Anim.png",
+        "Idle": "sprites/steelix/Idle-Anim.png",
+        "Strike": "sprites/steelix/Attack-Anim.png"
+      },
+      "portrait": "sprites/steelix/portrait.png",
+      "icon": "sprites/steelix/pokeapi.png",
+      "artwork": "sprites/steelix/artwork.png"
+    },
+    "ho-oh": {
+      "key": "ho-oh",
+      "dex": "0250",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/ho-oh/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/ho-oh/Walk-Anim.png",
+        "Attack": "sprites/ho-oh/Attack-Anim.png",
+        "Shoot": "sprites/ho-oh/Shoot-Anim.png",
+        "Hurt": "sprites/ho-oh/Hurt-Anim.png",
+        "Idle": "sprites/ho-oh/Idle-Anim.png"
+      },
+      "portrait": "sprites/ho-oh/portrait.png",
+      "icon": "sprites/ho-oh/pokeapi.png",
+      "artwork": "sprites/ho-oh/artwork.png"
+    },
+    "suicune": {
+      "key": "suicune",
+      "dex": "0245",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/suicune/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/suicune/Walk-Anim.png",
+        "Attack": "sprites/suicune/Attack-Anim.png",
+        "Shoot": "sprites/suicune/Shoot-Anim.png",
+        "Hurt": "sprites/suicune/Hurt-Anim.png",
+        "Idle": "sprites/suicune/Idle-Anim.png",
+        "Strike": "sprites/suicune/Attack-Anim.png"
+      },
+      "portrait": "sprites/suicune/portrait.png",
+      "icon": "sprites/suicune/pokeapi.png",
+      "artwork": "sprites/suicune/artwork.png"
+    },
+    "entei": {
+      "key": "entei",
+      "dex": "0244",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/entei/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/entei/Walk-Anim.png",
+        "Attack": "sprites/entei/Attack-Anim.png",
+        "Shoot": "sprites/entei/Shoot-Anim.png",
+        "Hurt": "sprites/entei/Hurt-Anim.png",
+        "Idle": "sprites/entei/Idle-Anim.png",
+        "Strike": "sprites/entei/Attack-Anim.png"
+      },
+      "portrait": "sprites/entei/portrait.png",
+      "icon": "sprites/entei/pokeapi.png",
+      "artwork": "sprites/entei/artwork.png"
+    },
+    "raikou": {
+      "key": "raikou",
+      "dex": "0243",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/raikou/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/raikou/Walk-Anim.png",
+        "Attack": "sprites/raikou/Attack-Anim.png",
+        "Shoot": "sprites/raikou/Shoot-Anim.png",
+        "Hurt": "sprites/raikou/Hurt-Anim.png",
+        "Idle": "sprites/raikou/Idle-Anim.png"
+      },
+      "portrait": "sprites/raikou/portrait.png",
+      "icon": "sprites/raikou/pokeapi.png",
+      "artwork": "sprites/raikou/artwork.png"
+    },
+    "ampharos": {
+      "key": "ampharos",
+      "dex": "0181",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/ampharos/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/ampharos/Walk-Anim.png",
+        "Attack": "sprites/ampharos/Attack-Anim.png",
+        "Shoot": "sprites/ampharos/Shoot-Anim.png",
+        "Hurt": "sprites/ampharos/Hurt-Anim.png",
+        "Idle": "sprites/ampharos/Idle-Anim.png",
+        "Strike": "sprites/ampharos/Attack-Anim.png"
+      },
+      "portrait": "sprites/ampharos/portrait.png",
+      "icon": "sprites/ampharos/pokeapi.png",
+      "artwork": "sprites/ampharos/artwork.png"
+    },
+    "rayquaza": {
+      "key": "rayquaza",
+      "dex": "0384",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/rayquaza/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/rayquaza/Walk-Anim.png",
+        "Attack": "sprites/rayquaza/Attack-Anim.png",
+        "Shoot": "sprites/rayquaza/Shoot-Anim.png",
+        "Hurt": "sprites/rayquaza/Hurt-Anim.png",
+        "Idle": "sprites/rayquaza/Idle-Anim.png"
+      },
+      "portrait": "sprites/rayquaza/portrait.png",
+      "icon": "sprites/rayquaza/pokeapi.png",
+      "artwork": "sprites/rayquaza/artwork.png"
+    },
+    "latias": {
+      "key": "latias",
+      "dex": "0380",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/latias/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/latias/Walk-Anim.png",
+        "Attack": "sprites/latias/Attack-Anim.png",
+        "Shoot": "sprites/latias/Shoot-Anim.png",
+        "Hurt": "sprites/latias/Hurt-Anim.png",
+        "Idle": "sprites/latias/Idle-Anim.png",
+        "Strike": "sprites/latias/Attack-Anim.png"
+      },
+      "portrait": "sprites/latias/portrait.png",
+      "icon": "sprites/latias/pokeapi.png",
+      "artwork": "sprites/latias/artwork.png"
+    },
+    "latios": {
+      "key": "latios",
+      "dex": "0381",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/latios/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/latios/Walk-Anim.png",
+        "Attack": "sprites/latios/Attack-Anim.png",
+        "Shoot": "sprites/latios/Shoot-Anim.png",
+        "Hurt": "sprites/latios/Hurt-Anim.png",
+        "Idle": "sprites/latios/Idle-Anim.png",
+        "Strike": "sprites/latios/Attack-Anim.png"
+      },
+      "portrait": "sprites/latios/portrait.png",
+      "icon": "sprites/latios/pokeapi.png",
+      "artwork": "sprites/latios/artwork.png"
+    },
+    "garchomp": {
+      "key": "garchomp",
+      "dex": "0445",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/garchomp/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/garchomp/Walk-Anim.png",
+        "Attack": "sprites/garchomp/Attack-Anim.png",
+        "Shoot": "sprites/garchomp/Shoot-Anim.png",
+        "Hurt": "sprites/garchomp/Hurt-Anim.png",
+        "Idle": "sprites/garchomp/Idle-Anim.png",
+        "Strike": "sprites/garchomp/Attack-Anim.png"
+      },
+      "portrait": "sprites/garchomp/portrait.png",
+      "icon": "sprites/garchomp/pokeapi.png",
+      "artwork": "sprites/garchomp/artwork.png"
+    },
+    "garchomp-mega": {
+      "key": "garchomp-mega",
+      "dex": "0445",
+      "form": "0001",
+      "role": "메가",
+      "animData": null,
+      "anims": {},
+      "portrait": "sprites/garchomp-mega/portrait.png",
+      "icon": "sprites/garchomp-mega/pokeapi.png",
+      "artwork": "sprites/garchomp-mega/artwork.png"
+    },
+    "dialga": {
+      "key": "dialga",
+      "dex": "0483",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/dialga/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/dialga/Walk-Anim.png",
+        "Attack": "sprites/dialga/Attack-Anim.png",
+        "Shoot": "sprites/dialga/Shoot-Anim.png",
+        "Hurt": "sprites/dialga/Hurt-Anim.png",
+        "Idle": "sprites/dialga/Idle-Anim.png"
+      },
+      "portrait": "sprites/dialga/portrait.png",
+      "icon": "sprites/dialga/pokeapi.png",
+      "artwork": "sprites/dialga/artwork.png"
+    },
+    "palkia": {
+      "key": "palkia",
+      "dex": "0484",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/palkia/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/palkia/Walk-Anim.png",
+        "Attack": "sprites/palkia/Attack-Anim.png",
+        "Shoot": "sprites/palkia/Shoot-Anim.png",
+        "Hurt": "sprites/palkia/Hurt-Anim.png",
+        "Idle": "sprites/palkia/Idle-Anim.png"
+      },
+      "portrait": "sprites/palkia/portrait.png",
+      "icon": "sprites/palkia/pokeapi.png",
+      "artwork": "sprites/palkia/artwork.png"
+    },
+    "giratina": {
+      "key": "giratina",
+      "dex": "0487",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/giratina/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/giratina/Walk-Anim.png",
+        "Attack": "sprites/giratina/Attack-Anim.png",
+        "Shoot": "sprites/giratina/Shoot-Anim.png",
+        "Hurt": "sprites/giratina/Hurt-Anim.png",
+        "Idle": "sprites/giratina/Idle-Anim.png",
+        "Strike": "sprites/giratina/Attack-Anim.png"
+      },
+      "portrait": "sprites/giratina/portrait.png",
+      "icon": "sprites/giratina/pokeapi.png",
+      "artwork": "sprites/giratina/artwork.png"
+    },
+    "giratina-origin": {
+      "key": "giratina-origin",
+      "dex": "0487",
+      "form": "0001",
+      "role": "폼",
+      "animData": "sprites/giratina-origin/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/giratina-origin/Walk-Anim.png",
+        "Attack": "sprites/giratina-origin/Attack-Anim.png",
+        "Shoot": "sprites/giratina-origin/Shoot-Anim.png",
+        "Hurt": "sprites/giratina-origin/Hurt-Anim.png",
+        "Idle": "sprites/giratina-origin/Idle-Anim.png",
+        "Strike": "sprites/giratina-origin/Attack-Anim.png"
+      },
+      "portrait": "sprites/giratina-origin/portrait.png",
+      "icon": "sprites/giratina-origin/pokeapi.png",
+      "artwork": "sprites/giratina-origin/artwork.png"
+    },
+    "darkrai": {
+      "key": "darkrai",
+      "dex": "0491",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/darkrai/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/darkrai/Walk-Anim.png",
+        "Attack": "sprites/darkrai/Attack-Anim.png",
+        "Shoot": "sprites/darkrai/Shoot-Anim.png",
+        "Hurt": "sprites/darkrai/Hurt-Anim.png",
+        "Idle": "sprites/darkrai/Idle-Anim.png"
+      },
+      "portrait": "sprites/darkrai/portrait.png",
+      "icon": "sprites/darkrai/pokeapi.png",
+      "artwork": "sprites/darkrai/artwork.png"
+    },
+    "zekrom": {
+      "key": "zekrom",
+      "dex": "0644",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/zekrom/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/zekrom/Walk-Anim.png",
+        "Attack": "sprites/zekrom/Attack-Anim.png",
+        "Shoot": "sprites/zekrom/Shoot-Anim.png",
+        "Hurt": "sprites/zekrom/Hurt-Anim.png",
+        "Idle": "sprites/zekrom/Idle-Anim.png"
+      },
+      "portrait": "sprites/zekrom/portrait.png",
+      "icon": "sprites/zekrom/pokeapi.png",
+      "artwork": "sprites/zekrom/artwork.png"
+    },
+    "kyurem-black": {
+      "key": "kyurem-black",
+      "dex": "0646",
+      "form": "0001",
+      "role": "폼",
+      "animData": "sprites/kyurem-black/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/kyurem-black/Walk-Anim.png",
+        "Attack": "sprites/kyurem-black/Attack-Anim.png",
+        "Shoot": "sprites/kyurem-black/Shoot-Anim.png",
+        "Hurt": "sprites/kyurem-black/Hurt-Anim.png",
+        "Idle": "sprites/kyurem-black/Idle-Anim.png"
+      },
+      "portrait": "sprites/kyurem-black/portrait.png",
+      "icon": "sprites/kyurem-black/pokeapi.png",
+      "artwork": "sprites/kyurem-black/artwork.png"
+    },
+    "groudon": {
+      "key": "groudon",
+      "dex": "0383",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/groudon/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/groudon/Walk-Anim.png",
+        "Attack": "sprites/groudon/Attack-Anim.png",
+        "Shoot": "sprites/groudon/Shoot-Anim.png",
+        "Hurt": "sprites/groudon/Hurt-Anim.png",
+        "Idle": "sprites/groudon/Idle-Anim.png",
+        "Strike": "sprites/groudon/Attack-Anim.png"
+      },
+      "portrait": "sprites/groudon/portrait.png",
+      "icon": "sprites/groudon/pokeapi.png",
+      "artwork": "sprites/groudon/artwork.png"
+    },
+    "corviknight": {
+      "key": "corviknight",
+      "dex": "0823",
+      "form": null,
+      "role": "택시",
+      "animData": "sprites/corviknight/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/corviknight/Walk-Anim.png",
+        "Attack": "sprites/corviknight/Attack-Anim.png",
+        "Shoot": "sprites/corviknight/Shoot-Anim.png",
+        "Hurt": "sprites/corviknight/Hurt-Anim.png",
+        "Idle": "sprites/corviknight/Idle-Anim.png",
+        "Strike": "sprites/corviknight/Attack-Anim.png"
+      },
+      "portrait": "sprites/corviknight/portrait.png",
+      "icon": "sprites/corviknight/pokeapi.png",
+      "artwork": "sprites/corviknight/artwork.png"
+    },
+    "venusaur-mega": {
+      "key": "venusaur-mega",
+      "dex": "0003",
+      "form": "0001",
+      "role": "메가",
+      "animData": null,
+      "anims": {},
+      "portrait": "sprites/venusaur-mega/portrait.png",
+      "icon": "sprites/venusaur-mega/pokeapi.png",
+      "artwork": "sprites/venusaur-mega/artwork.png"
+    },
+    "charizard-mega-x": {
+      "key": "charizard-mega-x",
+      "dex": "0006",
+      "form": "0001",
+      "role": "메가",
+      "animData": "sprites/charizard-mega-x/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/charizard-mega-x/Walk-Anim.png",
+        "Attack": "sprites/charizard-mega-x/Attack-Anim.png",
+        "Shoot": "sprites/charizard-mega-x/Shoot-Anim.png",
+        "Hurt": "sprites/charizard-mega-x/Hurt-Anim.png",
+        "Idle": "sprites/charizard-mega-x/Idle-Anim.png"
+      },
+      "portrait": "sprites/charizard-mega-x/portrait.png",
+      "icon": "sprites/charizard-mega-x/pokeapi.png",
+      "artwork": "sprites/charizard-mega-x/artwork.png"
+    },
+    "charizard-mega-y": {
+      "key": "charizard-mega-y",
+      "dex": "0006",
+      "form": "0002",
+      "role": "메가",
+      "animData": null,
+      "anims": {},
+      "portrait": "sprites/charizard-mega-y/portrait.png",
+      "icon": "sprites/charizard-mega-y/pokeapi.png",
+      "artwork": "sprites/charizard-mega-y/artwork.png"
+    },
+    "blastoise-mega": {
+      "key": "blastoise-mega",
+      "dex": "0009",
+      "form": "0001",
+      "role": "메가",
+      "animData": null,
+      "anims": {},
+      "portrait": "sprites/blastoise-mega/portrait.png",
+      "icon": "sprites/blastoise-mega/pokeapi.png",
+      "artwork": "sprites/blastoise-mega/artwork.png"
+    },
+    "gengar-mega": {
+      "key": "gengar-mega",
+      "dex": "0094",
+      "form": "0001",
+      "role": "메가",
+      "animData": "sprites/gengar-mega/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/gengar-mega/Walk-Anim.png",
+        "Attack": "sprites/gengar-mega/Attack-Anim.png",
+        "Strike": "sprites/gengar-mega/Strike-Anim.png",
+        "Shoot": "sprites/gengar-mega/Shoot-Anim.png",
+        "Hurt": "sprites/gengar-mega/Hurt-Anim.png",
+        "Idle": "sprites/gengar-mega/Idle-Anim.png"
+      },
+      "portrait": "sprites/gengar-mega/portrait.png",
+      "icon": "sprites/gengar-mega/pokeapi.png",
+      "artwork": "sprites/gengar-mega/artwork.png"
+    }
+  },
+  "icons": {
+    "scratch_ember": "icons/lorc-claw-slashes.svg",
+    "flamethrower": "icons/lorc-fire-ray.svg",
+    "flame_charge": "icons/lorc-fire-dash.svg",
+    "tackle_watergun": "icons/lorc-water-bolt.svg",
+    "bubblebeam": "icons/lorc-bubbles.svg",
+    "rapid_spin": "icons/lorc-whirlwind.svg",
+    "vine_whip": "icons/lorc-vine-whip.svg",
+    "razor_leaf": "icons/lorc-falling-leaf.svg",
+    "seed_field": "icons/lorc-sprout.svg",
+    "hyper_fang": "icons/lorc-sharp-smile.svg",
+    "super_fang": "icons/lorc-gluttonous-smile.svg",
+    "quick_attack": "icons/lorc-sprint.svg",
+    "thundershock": "icons/lorc-lightning-branches.svg",
+    "thunderbolt": "icons/lorc-lightning-storm.svg",
+    "volt_tackle": "icons/lorc-lightning-arc.svg",
+    "leech_life": "icons/lorc-bat-wing.svg",
+    "supersonic": "icons/lorc-sonic-boom.svg",
+    "wing_dash": "icons/lorc-feathered-wing.svg",
+    "karate_chop": "icons/lorc-punch.svg",
+    "dynamic_punch": "icons/lorc-punch-blast.svg",
+    "counter": "icons/lorc-shield-reflect.svg",
+    "lick_shadow": "icons/delapouite-tongue.svg",
+    "shadow_ball": "icons/lorc-magic-swirl.svg",
+    "phantom_dash": "icons/lorc-spectre.svg",
+    "crunch": "icons/lorc-shark-jaws.svg",
+    "solar_beam": "icons/lorc-sunbeams.svg",
+    "hurricane": "icons/lorc-tornado.svg",
+    "thunder_punch": "icons/lorc-lightning-tear.svg",
+    "dragon_claw": "icons/lorc-dragon-head.svg",
+    "ice_beam": "icons/lorc-ice-bolt.svg",
+    "flash_cannon": "icons/lorc-cannon-shot.svg",
+    "dark_pulse": "icons/lorc-evil-moon.svg",
+    "earthquake": "icons/lorc-earth-crack.svg",
+    "sludge_bomb": "icons/lorc-acid-blob.svg",
+    "earth_power": "icons/lorc-earth-spit.svg",
+    "play_rough": "icons/lorc-fairy-wand.svg",
+    "giga_drain": "icons/lorc-life-tap.svg",
+    "iron_tail": "icons/lorc-spiked-tail.svg",
+    "surf": "icons/lorc-big-wave.svg",
+    "psychic": "icons/lorc-psychic-waves.svg",
+    "heat_wave": "icons/lorc-heat-haze.svg",
+    "steel_wing": "icons/lorc-feathered-wing.svg",
+    "ice_punch": "icons/lorc-frozen-orb.svg",
+    "stone_edge": "icons/lorc-stone-spear.svg"
+  },
+  "items": {
+    "charcoal": "items/charcoal.png",
+    "mystic_water": "items/mystic_water.png",
+    "miracle_seed": "items/miracle_seed.png",
+    "magnet": "items/magnet.png",
+    "spell_tag": "items/spell_tag.png",
+    "black_belt": "items/black_belt.png",
+    "silk_scarf": "items/silk_scarf.png",
+    "poison_barb": "items/poison_barb.png",
+    "life_orb": "items/life_orb.png",
+    "core_multi": "items/core_multi.png",
+    "core_haste": "items/core_haste.png",
+    "core_giant": "items/core_giant.png",
+    "leftovers": "items/leftovers.png",
+    "shell_bell": "items/shell_bell.png",
+    "razor_claw": "items/razor_claw.png",
+    "quick_claw": "items/quick_claw.png",
+    "potion": "items/potion.png"
+  }
+}
