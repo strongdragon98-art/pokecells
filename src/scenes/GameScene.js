@@ -27,6 +27,7 @@ import { Sfx } from '../systems/Audio.js';
 import { Music } from '../systems/Music.js';
 import { Settings } from '../systems/Settings.js';
 import { Save } from '../systems/Save.js';
+import { RunSave, seeded, newSeed, snapshotWorld, applyWorld, snapshotPlayer, restorePlayer } from '../systems/RunSave.js';
 import { itemArt, shade } from '../systems/Textures.js';
 import { rollCards, applyCard } from '../data/tm.js';
 
@@ -37,7 +38,8 @@ export default class GameScene extends Phaser.Scene {
   constructor() { super('Game'); }
 
   init(data) {
-    this.partyKeys = data && data.party && data.party.length ? data.party : Save.data.party;
+    this.resume = (data && data.resume) || null;   // 로비의 '이어하기': systems/RunSave.js 의 저장 내용
+    this.partyKeys = this.resume ? this.resume.player.members.map(m => m.key) : data && data.party && data.party.length ? data.party : Save.data.party;
   }
 
   create() {
@@ -46,6 +48,13 @@ export default class GameScene extends Phaser.Scene {
     this.unlockedHubs = [];                // 들른 시내 = 아머까오 공중날기 목적지 { ci, roomId, name }
     this.lastCenter = null;                // 쓰러지면 다시 일어날 포켓몬센터
     this.runStats = { kills: 0, unlocked: [], start: this.time.now, items: 0, stage: 1 };
+    this.seeds = [];                       // 챕터마다 지형 시드 (저장·이어하기에서 같은 지형을 다시 만든다)
+    const rs = this.resume;
+    this.savedWorlds = rs ? rs.worlds.slice() : null;   // 챕터마다 저장해 둔 바뀐 것 (worldOf 가 그 챕터를 만들 때 덮어쓴다)
+    if (rs) {
+      this.stageIdx = rs.stageIdx; this.seeds = rs.seeds.slice(); this.unlockedHubs = rs.hubs.slice(); this.lastCenter = rs.lastCenter;
+      Object.assign(this.runStats, { kills: rs.stats.kills, unlocked: rs.stats.unlocked.slice(), items: rs.stats.items, start: this.time.now - rs.stats.time * 1000 });
+    }
     this.webgl = this.renderer.type === Phaser.WEBGL;
     this.enemies = []; this.pickups = []; this.chests = []; this.worldObjs = [];
     this.inp = {}; this.paused = false; this.transitioning = false; this.over = false; this.cleaned = false;
@@ -69,7 +78,8 @@ export default class GameScene extends Phaser.Scene {
     this.corruptG = this.add.graphics().setDepth(18);                                          // 세뇌된 적 발밑 침식 오라
     this.eyeTrailG = this.add.graphics().setDepth(23).setBlendMode(Phaser.BlendModes.ADD);     // 붉은 안광 궤적
     this.combat = new Combat(this);
-    this.buildWorld();
+    this.buildWorld(rs ? rs.pos : null);
+    if (rs) { restorePlayer(this.player, rs.player); this.resume = null; }
     this.scene.launch('UI');
     this.scene.bringToTop('UI');
     cam.fadeIn(350, 7, 6, 15);
@@ -80,7 +90,15 @@ export default class GameScene extends Phaser.Scene {
   // 챕터(지방) 하나 = 메트로배니아식 2D 월드 (game/World.js). 한 번 만든 챕터는 기억해 두고, 아머까오로 돌아오면 그대로 다시 깐다
   //  (부순 벽 · 연 상자 · 정화한 보스 · 걷힌 흙 · 주운 상처약 · 탐험한 칸). 적은 들어올 때마다 다시 나온다.
   //  at: { x, y } 도착 자리 (없으면 챕터 입구)
-  worldOf(ci) { return this.worlds[ci] || (this.worlds[ci] = { level: buildChapter(STAGES[ci], ci), explored: null, areasSeen: new Set() }); }
+  //  지형은 챕터 시드로 만든다 (같은 시드 = 같은 지형). 이어하기면 저장해 둔 바뀐 것(연 상자·정화한 보스 등)을 덮어쓴다
+  worldOf(ci) {
+    if (this.worlds[ci]) return this.worlds[ci];
+    const seed = this.seeds[ci] ?? (this.seeds[ci] = newSeed());
+    const W = { seed, level: seeded(seed, () => buildChapter(STAGES[ci], ci)), explored: null, areasSeen: new Set() };
+    const saved = this.savedWorlds && this.savedWorlds[ci];
+    if (saved && !applyWorld(W, saved)) this.savedWorlds[ci] = null;   // 게임이 바뀌어 지형이 달라졌으면 그 챕터는 처음 상태로
+    return (this.worlds[ci] = W);
+  }
   buildWorld(at = null) {
     this.clearWorld();
     const si = this.stageIdx, st = STAGES[si], W = this.worldOf(si), level = W.level;
@@ -519,6 +537,27 @@ export default class GameScene extends Phaser.Scene {
       Sfx.play('heal');
     }
     this.lastCenter = { ci, roomId: room.id };
+    this.saveRun(true);   // 포켓몬센터(시내)에 오면 자동 저장
+  }
+
+  // ---------------- 진행 저장 (systems/RunSave.js) ----------------
+  // auto: 포켓몬센터 자동 저장 (조용히 작은 알림만) · 아니면 일시정지 메뉴의 '저장하기' → 저장했으면 true
+  //  자리: 자동 저장은 그 시내 포켓몬센터 앞, 직접 저장은 마지막으로 밟은 땅 (보스전 중에는 저장하지 않는다)
+  saveRun(auto = false) {
+    if (this.over || !this.player || !this.level) return false;
+    if (this.arenaRoom) { if (!auto) this.events.emit('toast', '보스전 중에는 저장할 수 없다'); return false; }
+    const p = this.player, c = this.lastCenter;
+    const pos = auto && c && c.ci === this.stageIdx ? this.hubPos(c) : { x: Math.round(p.safeX ?? p.x), y: Math.round(p.safeY ?? p.y) };
+    const worlds = (this.savedWorlds || []).slice();
+    this.worlds.forEach((W, ci) => { if (W) worlds[ci] = snapshotWorld(W); });
+    const ok = RunSave.write({
+      v: 1, at: Date.now(), stageIdx: this.stageIdx, stageName: this.stage.name, pos, seeds: this.seeds.slice(), worlds,
+      hubs: this.unlockedHubs.slice(), lastCenter: c,
+      stats: { kills: this.runStats.kills, unlocked: this.runStats.unlocked.slice(), items: this.runStats.items, time: (this.time.now - this.runStats.start) / 1000 },
+      player: snapshotPlayer(p)
+    });
+    this.events.emit('saved', { ok, auto });
+    return ok;
   }
   hubPos(h) {
     const hub = this.worldOf(h.ci).level.hubs.find(q => q.room.id === h.roomId);
@@ -1289,6 +1328,7 @@ export default class GameScene extends Phaser.Scene {
     this.over = true;
     Music.stop();
     Save.recordRun(this.stageIdx + 1, won);
+    if (won) RunSave.clear();   // 끝까지 깼으면 이어하기 기록은 지운다
     this.physics.world.pause();
     this.events.emit('gameover', {
       won, stage: this.stageIdx + 1, stageName: this.stage.name, kills: this.runStats.kills, items: this.runStats.items,

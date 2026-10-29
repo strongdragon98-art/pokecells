@@ -5,6 +5,7 @@
 import Phaser from 'phaser';
 import { DEX_ORDER, SPECIES } from '../data/pokemon.js';
 import { Save } from '../systems/Save.js';
+import { RunSave } from '../systems/RunSave.js';
 import { Sfx } from '../systems/Audio.js';
 import { HK, hkText, hiImage, fadeLine, glassButton } from '../systems/ui.js';
 import { roundPortrait } from '../systems/Textures.js';
@@ -39,6 +40,7 @@ export default class LobbyScene extends Phaser.Scene {
       Sfx.unlock();
       if (e.code === 'F1' || e.code === 'F3') this.debugUnlockAll();
       else if (e.code === 'Space') this.enter();
+      else if (e.code === 'KeyC' && RunSave.has()) this.resume();
       else this.panel.key(e);
     });
     this.input.keyboard.addCapture('TAB,F1,F3');
@@ -86,6 +88,18 @@ export default class LobbyScene extends Phaser.Scene {
     // 테스터 모드: 켜면 모든 포켓몬을 고를 수 있다 (끄면 원래 진행도 그대로)
     const on = Save.tester;
     glassButton(this, 532, 24, 96, 20, on ? '테스터 모드  ON' : '테스터 모드  OFF', () => this.toggleTester(), { size: 9, bold: true, primary: on }).objs.forEach(o => o.setDepth(6));
+    // 이어하기: 저장해 둔 판 (일시정지 메뉴의 저장 · 포켓몬센터 자동 저장)이 있으면 왼쪽 위에 (C 키로도)
+    const rs = RunSave.peek();
+    if (rs) glassButton(this, 12, 24, 132, 20, `▶ 이어하기 · ${rs.stageIdx + 1}지방`, () => this.resume(), { size: 9, ls: 0, bold: true, primary: true }).objs.forEach(o => o.setDepth(6));
+  }
+
+  // 저장한 판 이어하기: 컷신 없이 저장한 자리에서 (파티도 저장한 그대로)
+  resume() {
+    const rs = RunSave.peek();
+    if (!rs) return;
+    Sfx.unlock(); Sfx.play('swap');
+    this.cameras.main.fadeOut(250, 7, 6, 15);
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Game', { resume: rs }));
   }
 
   toggleTester() {

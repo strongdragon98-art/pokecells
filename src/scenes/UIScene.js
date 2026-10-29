@@ -182,6 +182,7 @@ export default class UIScene extends Phaser.Scene {
       unlock: (k, kind) => this.onUnlock(k, kind),
       killcount: (k, n) => { this.recent[k] = this.time.now; this.toast(`${SPECIES[k].name} 정화 진행도: ${n} / ${UNLOCK_KILLS}`); },
       pause: on => this.showPause(on),
+      saved: r => this.onSaved(r),
       gameover: r => this.showResult(r)
     };
     for (const [k, fn] of Object.entries(this.handlers)) ge.on(k, fn, this);
@@ -630,22 +631,31 @@ export default class UIScene extends Phaser.Scene {
     this.gs.finishTM(it.sel, slot);
   }
 
+  // 진행 저장 결과: 자동 저장은 작은 알림, 일시정지 메뉴에서 저장하면 메뉴 아래 글귀로
+  onSaved({ ok, auto }) {
+    const msg = ok ? (auto ? '포켓몬센터 · 자동 저장했다' : '저장했다 · 로비의 이어하기로 여기서부터') : '저장하지 못했다 (브라우저 저장 공간을 확인해 주세요)';
+    if (this.overlayMode === 'pause' && this.pauseNote && this.pauseNote.scene) { this.pauseNote.setText(msg).setColor(ok ? HK.gold : '#ff8a8a'); Sfx.play(ok ? 'heal' : 'deny'); }
+    else this.toast(msg);
+  }
+
   showPause(on) {
     this.clearOverlay();
     if (!on) return;
     this.toastT = 0;
     const g = this.gOver, L = this.overlay.setVisible(true);
     g.fillStyle(0x05040a, .84); g.fillRect(0, 0, GAME_W, GAME_H);
-    L.add(hkText(this, 320, 56, '일시정지', 20, HK.ivory, { ls: 6, bold: true, origin: .5, glow: true }));
-    L.add(fadeLine(this, 320, 78, 300));
+    L.add(hkText(this, 320, 50, '일시정지', 20, HK.ivory, { ls: 6, bold: true, origin: .5, glow: true }));
+    L.add(fadeLine(this, 320, 72, 300));
     // Space·Z 는 게임 입력과 겹치므로 일시정지 메뉴는 Enter·클릭으로 고른다
-    this.menu = hkMenu(this, 320, 106, [
+    this.menu = hkMenu(this, 320, 92, [
       { label: '계속하기', onPick: () => this.gs.togglePause() },
+      { label: '저장하기', onPick: () => this.gs.saveRun(false) },
+      { label: '저장하고 도감으로', onPick: () => { if (this.gs.saveRun(false)) { this.gs.paused = false; this.gs.backToLobby(); } } },
       { label: '설정', onPick: () => { this.gs.togglePause(); this.gs.toggleOverlay('settings'); } },
       { label: '포기하고 도감으로', onPick: () => { this.gs.paused = false; this.gs.gameOver(false, true); } }
-    ], { layer: L, gap: 26, pickKeys: ['Enter'], onMove: () => Sfx.play('select') });
-    L.add(fadeLine(this, 320, 162, 220, .5));
-    L.add(hkText(this, 320, 180, '조 작 법', 9, HK.dim, { ls: 2, origin: .5 }));
+    ], { layer: L, gap: 21, pickKeys: ['Enter'], onMove: () => Sfx.play('select') });
+    L.add(fadeLine(this, 320, 190, 220, .5));
+    L.add(hkText(this, 320, 202, '조 작 법', 9, HK.dim, { ls: 2, origin: .5 }));
     const kl = a => keyLabel(Settings.key(a));
     const lines = [
       [`${kl('left')} ${kl('right')}`, '이동'], [`${kl('jump')} / ${kl('up')}`, '점프 (공중 점프)'], [`${kl('down')} + ${kl('jump')}`, '발판 아래로'], [`${kl('z')} · ${kl('x')} · ${kl('c')}`, '스킬 (Z칸은 콤보)'],
@@ -653,11 +663,12 @@ export default class UIScene extends Phaser.Scene {
       [`${kl('map')} · ${kl('bag')} · ${kl('settings')}`, '지도 · 가방 · 설정 (키 변경)'], [`${kl('interact')} / ${kl('up')}`, '센터 · 자판기 · 아머까오 · 기술머신'], ['N', '소리 켜기/끄기'], ['Esc · P', '일시정지']
     ];
     lines.forEach(([k, d], i) => {
-      const cx = i % 2 ? 400 : 172, y = 192 + (i >> 1) * 15;
+      const cx = i % 2 ? 400 : 172, y = 214 + (i >> 1) * 15;
       L.add(hkText(this, cx - 6, y, k, 10, HK.gold, { origin: [1, 0] }));
       L.add(hkText(this, cx + 6, y, d, 10, HK.ivory));
     });
-    L.add(hkText(this, 320, 290, 'Esc · P 로 돌아가기   ·   L 포기', 9, HK.faint, { origin: .5 }));
+    this.pauseNote = hkText(this, 320, 314, 'Esc · P 로 돌아가기   ·   L 포기   ·   포켓몬센터에 가면 자동 저장', 9, HK.faint, { origin: .5 });
+    L.add(this.pauseNote);
     this.input.keyboard.on('keydown', this.onOverlayKey, this);
     this.overlayMode = 'pause';
   }
