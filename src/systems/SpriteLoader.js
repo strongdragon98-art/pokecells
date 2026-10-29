@@ -61,7 +61,7 @@ export class SpriteLoader {
   // 1단계: manifest → 2단계: AnimData.xml/초상화/아이콘 → 3단계: 실제 프레임 크기로 시트 로드
   preload() {
     const load = this.scene.load;
-    load.json('manifest', 'assets/manifest.json');
+    load.json('manifest', `assets/manifest.json?v=${__BUILD_ID__}`);   // 배포할 때마다 새로 받는다 (vite.config.js 의 define)
     load.once('filecomplete-json-manifest', (key, type, data) => this.queueManifest(data));
   }
 

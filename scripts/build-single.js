@@ -176,6 +176,7 @@ async function bundle() {
     root: ROOT,
     base: './',
     logLevel: 'warn',
+    define: { __BUILD_ID__: JSON.stringify(Date.now().toString(36)) },   // vite.config.js 와 같은 값 (단일 HTML 은 파일 안의 manifest 를 써서 실제로는 안 쓰인다)
     resolve: { alias: { phaser: path.join(ROOT, 'node_modules', 'phaser', 'dist', 'phaser-arcade-physics.min.js') } },   // 쓰지 않는 Matter 물리엔진 제외
     build: {
       outDir: OUT_DIR, emptyOutDir: true, assetsInlineLimit: 1e9, cssCodeSplit: false, modulePreload: false,
