@@ -17,6 +17,20 @@ const PASSIVE_TEXT = {
   superArmor: '슈퍼아머 — 맞아도 경직·넉백 없음', teleport: '대시 = 잔상을 남기는 완전 무적 순간이동', sandstorm: '마기라스: 모래바람 오라가 주변에 지속 피해',
   flop: '잉어킹은 물가처럼 파닥파닥 뛰며 이동', big: '거대한 몸집 · 공격 범위 1.35배', guard: '받는 피해 감소', atkSpeed: '모든 기술 동작 1.35배 빠름', hoverForm: '망나뇽: 점프 키를 누르면 체공 비행'
 };
+// 초상화 원 하나: 합류한 포켓몬은 둥근 초상화, 아직이면 배경이 투명한 도트(icon:)를 검게 칠한 실루엣
+//  (PMD 초상화는 배경까지 꽉 찬 그림이라 검게 칠하면 그냥 검은 원이 된다)
+function face(s, L, key, x, y, scale, locked) {
+  if (locked && s.textures.exists(`icon:${key}`)) {
+    L.add(s.add.circle(x, y, 20 * scale, 0x4a4270, 1));
+    L.add(s.add.image(x, y, `icon:${key}`).setDisplaySize(62 * scale, 62 * scale).setTintFill(0x07050e));
+    return;
+  }
+  const img = s.add.image(x, y, roundPortrait(s, key)).setScale(scale);
+  if (locked) img.setTintFill(0x0c0a16);
+  if (img.texture.key === 'px') img.setDisplaySize(30 * scale / .8, 30 * scale / .8).setTintFill(0x1a1828);
+  L.add(img);
+}
+
 const tabOf = cat => CATS.find(c => c.cats.includes(cat)).id;
 const tabCats = tab => CATS.find(c => c.id === tab).cats;
 
@@ -76,13 +90,9 @@ export class RosterPanel {
       const cx = o.x + 22 + (i % COLS) * CELL, cy = gy + cell / 2 + Math.floor(i / COLS) * cell;
       const unlocked = Save.isUnlocked(key), pi = o.picked ? o.picked(key) : -1, focused = key === this.focus, sc = (focused ? .9 : .8) * k;
       if (focused) L.add(s.add.image(cx, cy, 'glow').setBlendMode(ADD).setTint(0xefeae0).setScale(.9 * k).setAlpha(.28));
-      const img = s.add.image(cx, cy, roundPortrait(s, SPECIES[key].evo[0].key)).setScale(sc);
-      if (!unlocked) img.setTintFill(0x0c0a16);
-      if (img.texture.key === 'px') img.setDisplaySize(30 * k, 30 * k).setTintFill(0x1a1828);
-      L.add(img);
+      face(s, L, SPECIES[key].evo[0].key, cx, cy, sc, !unlocked);
       L.add(hiImage(s, cx, cy, 'gloss').setScale(sc / RES));
       L.add(hiImage(s, cx, cy, pi >= 0 ? 'slot3d-gold' : 'slot3d').setScale(sc / RES).setAlpha(focused || pi >= 0 ? 1 : .55));
-      if (!unlocked) L.add(hkText(s, cx, cy, '?', 13 * k, '#55506e', { bold: true, origin: .5 }));
       if (pi >= 0) L.add(hkText(s, cx + 13 * k, cy - 14 * k, String(pi + 1), 9, HK.gold, { bold: true, origin: .5 }));
       if (SPECIES[key].megas.length && unlocked) L.add(hkText(s, cx - 13 * k, cy + 12 * k, 'M', 7, '#ff9ad8', { bold: true, title: true, origin: .5 }));
       const z = s.add.zone(cx, cy, CELL - 2, cell - 2).setInteractive({ useHandCursor: true });
@@ -123,9 +133,7 @@ export class RosterPanel {
     const step = Math.min(46, (W - 20) / Math.max(1, chain.length));
     chain.forEach((c, i) => {
       const cx = X + 10 + step / 2 + i * step, cy = Y + 58;
-      const img = s.add.image(cx, cy, roundPortrait(s, c.key)).setScale(.55);
-      if (!unlocked) img.setTintFill(0x0c0a16);
-      L.add(img);
+      face(s, L, c.key, cx, cy, .55, !unlocked);
       L.add(hiImage(s, cx, cy, c.mega ? 'slot3d-gold' : 'slot3d').setScale(.55 / RES).setAlpha(.8));
       L.add(hkText(s, cx, cy + 13, unlocked ? c.name.replace(/^메가/, 'M ') : '?', 6.5, c.mega ? '#ff9ad8' : HK.dim, { origin: [.5, 0] }));
       if (i < chain.length - 1) L.add(hkText(s, cx + step / 2, cy, chain[i + 1].mega ? '★' : '›', 8, chain[i + 1].mega ? '#ff9ad8' : HK.faint, { origin: .5 }));

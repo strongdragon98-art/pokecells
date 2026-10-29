@@ -81,8 +81,18 @@ export default class LobbyScene extends Phaser.Scene {
     title.setFill(grad);
     hkText(this, 320, 38, '심연 정화 도감', 11, HK.abyss, { bold: true, ls: 6, origin: [.5, 0], glow: true, glowColor: 'rgba(160,112,255,0.6)' });
     fadeLine(this, 320, 58, 440);
-    hkText(this, 14, 10, `도감 ${DEX_ORDER.filter(k => Save.isUnlocked(k)).length} / ${DEX_ORDER.length}`, 9, HK.dim, { ls: 1 });
+    hkText(this, 14, 10, `도감 ${DEX_ORDER.filter(k => Save.isUnlocked(k)).length} / ${DEX_ORDER.length}${Save.tester ? '  (테스터 모드)' : ''}`, 9, Save.tester ? HK.gold : HK.dim, { ls: 1 });
     hkText(this, 626, 10, `도전 ${Save.data.runs}  ·  클리어 ${Save.data.wins}`, 9, HK.dim, { ls: 1, origin: [1, 0] });
+    // 테스터 모드: 켜면 모든 포켓몬을 고를 수 있다 (끄면 원래 진행도 그대로)
+    const on = Save.tester;
+    glassButton(this, 532, 24, 96, 20, on ? '테스터 모드  ON' : '테스터 모드  OFF', () => this.toggleTester(), { size: 9, bold: true, primary: on }).objs.forEach(o => o.setDepth(6));
+  }
+
+  toggleTester() {
+    const on = !Save.tester;
+    Save.setTester(on);
+    Sfx.play(on ? 'unlock' : 'select');
+    this.scene.restart({ message: on ? '테스터 모드: 모든 포켓몬을 고를 수 있어요 (진행도는 그대로 저장돼요)' : '테스터 모드를 껐어요 · 원래 진행도로 돌아갔어요', focus: this.panel.focus, tab: this.panel.tab, gen: this.panel.gen });
   }
 
   // ---------------- 아래: 파티 3자리 + 안내 + 던전 입장 ----------------

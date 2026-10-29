@@ -9,11 +9,11 @@ function fresh() {
   return { unlocked: [...STARTERS], kills: {}, party: [...STARTERS], runs: 0, wins: 0, bestStage: 0, cleared: 0, totalPurified: 0, joined: [] };
 }
 
-// 조건을 만족했는지 (저장된 등록 목록 + 진행도로 판정)
+// 조건을 만족했는지 (저장된 등록 목록 + 진행도로 판정). 테스터 모드면 전부 열린다 — 끄면 원래 진행도로 돌아간다
 function met(d, k) {
   const l = LINE[k];
   if (!l) return false;
-  if (d.unlocked.includes(k)) return true;
+  if (d.tester || d.unlocked.includes(k)) return true;
   const u = l.unlock || {};
   return !!(u.start || (u.stage && (d.cleared || 0) >= u.stage) || (u.total && d.totalPurified >= u.total));   // cleared: 최종 보스까지 정화한 지방 수
 }
@@ -32,8 +32,8 @@ function load() {
     for (const s of STARTERS) if (!d.unlocked.includes(s)) d.unlocked.push(s);
     d.party = (d.party || []).filter(k => met(d, k)).slice(0, 3);
     if (!d.party.length) d.party = [...STARTERS];
-    // 이미 조건을 넘긴 포켓몬은 알림 없이 합류 처리
-    for (const l of LINES) if (met(d, l.id) && !d.joined.includes(l.id)) d.joined.push(l.id);
+    // 이미 조건을 넘긴 포켓몬은 알림 없이 합류 처리 (테스터 모드로 열린 건 진짜 합류가 아니니 빼고)
+    for (const l of LINES) if (met({ ...d, tester: false }, l.id) && !d.joined.includes(l.id)) d.joined.push(l.id);
     return d;
   } catch (e) {
     return fresh();
@@ -47,7 +47,7 @@ export const Save = {
   kills(k) { return this.data.kills[k] || 0; },
   // 아직 등록 안 된 야생 포켓몬 정화 → { count, unlockedNow }
   addKill(k) {
-    if (!UNLOCKABLE.includes(k) || this.isUnlocked(k)) return null;
+    if (!UNLOCKABLE.includes(k) || this.data.unlocked.includes(k)) return null;   // 테스터 모드여도 진짜 정화 진행도는 쌓인다
     const count = Math.min(UNLOCK_KILLS, this.kills(k) + 1);
     this.data.kills[k] = count;
     let unlockedNow = false;
@@ -58,8 +58,8 @@ export const Save = {
   // 누적 정화 +1 · 보스 정화 뒤 → 새로 조건을 넘긴 라인 목록 (합류 알림용)
   addPurify() { this.data.totalPurified++; return this.newlyJoined(); },
   newlyJoined() {
-    const out = [];
-    for (const l of LINES) if (met(this.data, l.id) && !this.data.joined.includes(l.id)) { this.data.joined.push(l.id); out.push(l.id); }
+    const out = [], real = { ...this.data, tester: false };
+    for (const l of LINES) if (met(real, l.id) && !this.data.joined.includes(l.id)) { this.data.joined.push(l.id); out.push(l.id); }
     this.write();
     return out;
   },
@@ -74,6 +74,13 @@ export const Save = {
   debugUnlockAll() {
     for (const k of UNLOCKABLE) this.data.kills[k] = UNLOCK_KILLS;
     for (const l of LINES) { if (!this.data.unlocked.includes(l.id)) this.data.unlocked.push(l.id); if (!this.data.joined.includes(l.id)) this.data.joined.push(l.id); }
+    this.write();
+  },
+  // 테스터 모드 (로비 오른쪽 위): 켜면 모든 포켓몬을 고를 수 있다. 끄면 진짜로 합류하지 않은 포켓몬은 파티에서 빠진다
+  get tester() { return !!this.data.tester; },
+  setTester(on) {
+    this.data.tester = !!on;
+    if (!on) { this.data.party = this.data.party.filter(k => met(this.data, k)); if (!this.data.party.length) this.data.party = [...STARTERS]; }
     this.write();
   },
   setParty(list) { this.data.party = list.slice(0, 3); this.write(); },
