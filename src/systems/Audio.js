@@ -27,6 +27,7 @@ class AudioSys {
     if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f + slide), t + dur);
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur);
     o.connect(g); g.connect(this.master); o.start(t); o.stop(t + dur + .03);
+    o.onended = () => { o.disconnect(); g.disconnect(); };   // 다 울린 노드는 바로 떼어 낸다 (사파리에서 쌓이지 않게)
   }
 
   hiss(dur, vol = .18, freq = 1200, delay = 0, q = .8) {
@@ -35,6 +36,7 @@ class AudioSys {
     s.buffer = this.noise; f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur);
     s.connect(f); f.connect(g); g.connect(this.master); s.start(t, Math.random() * .5); s.stop(t + dur + .03);
+    s.onended = () => { s.disconnect(); f.disconnect(); g.disconnect(); };
   }
 
   arp(notes, step = .07, type = 'square', vol = .06) { notes.forEach((n, i) => this.tone(n, step * 1.7, type, vol, 0, i * step)); }

@@ -42,6 +42,9 @@ export default class UIScene extends Phaser.Scene {
     this.gTop = this.add.graphics().setDepth(2.5);      // 스킬 쿨타임
     this.gOver = this.add.graphics().setDepth(40);
     this.recent = {}; this.maskFill = []; this.maskKey = '';
+    // 실시간 FPS (왼쪽 아래 구석, 0.5초마다 갱신 — 글자 텍스처를 매 프레임 다시 굽지 않게)
+    this.fpsText = hkText(this, 4, GAME_H - 2, '', 7, HK.faint, { origin: [0, 1] }).setDepth(60).setAlpha(.7);
+    this.fpsT = 0;
 
     // ── 그릇: 출전 포켓몬 초상화 위로 메가 게이지가 차오르고, 유리 덮개와 몬스터볼 테두리가 덮는다
     this.vGlow = this.add.image(V.x, V.y, 'glow').setBlendMode(ADD).setTint(0xff8ad0).setScale(1.5).setAlpha(0);
@@ -292,6 +295,8 @@ export default class UIScene extends Phaser.Scene {
     const dt = delta / 1000, gs = this.gs, p = gs.player;
     const g = this.g, gm = this.gMid, gt = this.gTop;
     g.clear(); gm.clear(); gt.clear();
+    this.fpsT -= delta;
+    if (this.fpsT <= 0) { this.fpsT = 500; this.fpsText.setText(`${Math.round(this.game.loop.actualFps)} FPS`); }
     if (!p) return;
     const m = p.m, mg = p.mega;
 
@@ -806,6 +811,12 @@ export default class UIScene extends Phaser.Scene {
     glassButton(this, 440, by, 150, 20, '📦 포켓몬 보관함 (교체)', () => { gs.overlay = 'box'; this.showBox(); }, { size: 9, ls: 0, layer: L });
     glassButton(this, 50, by2, 270, 20, '🔓 모든 스타팅 & 보스 캐릭터 전체 즉시 해금', () => { Save.debugUnlockAll(); Sfx.play('unlock'); this.toast('[디버그] 모든 포켓몬 해금 · 포켓몬센터 보관함·도감에서 고를 수 있다'); }, { size: 9, ls: 0, layer: L, primary: true });
     glassButton(this, 330, by2, 260, 20, '⚡ 현재 포켓몬 즉시 진화 / 메가진화 발동', () => { gs.toggleOverlay('debug'); gs.player.debugEvolve(); }, { size: 9, ls: 0, layer: L, primary: true });
+    // 성능: FPS · 깨어 있는/잠든 적 · 풀에서 쉬는 이미지 수
+    const awake = gs.enemies.filter(e => e.alive && !e.asleep).length, slept = gs.enemies.filter(e => e.asleep).length;
+    const perf = hkText(this, 50, 274, '', 8.5, HK.faint); L.add(perf);
+    const showPerf = () => perf.setText(`FPS ${Math.round(this.game.loop.actualFps)}  ·  적 ${awake} 활동 / ${slept} 잠듦(화면 밖)  ·  풀 이미지 ${gs.fx.pool.size}/${gs.fx.pool.made}`);
+    showPerf();
+    const perfT = this.time.addEvent({ delay: 500, loop: true, callback: () => { if (perf.scene) showPerf(); else perfT.remove(); } });
     L.add(hkText(this, 320, 348, '1~5 챕터 · ↑↓←→ 고르기 · Enter 순간이동 · R 정화한 보스 다시 싸우기 · F3 · Esc 닫기', 8.5, HK.faint, { origin: .5 }));
     glassButton(this, 566, 8, 64, 20, '✕  닫기', () => gs.toggleOverlay('debug'), { size: 9, layer: L });
     this.input.keyboard.on('keydown', this.onOverlayKey, this);

@@ -194,7 +194,7 @@ export class Enemy extends Actor {
 
   destroy() {
     this.alert.destroy();
-    for (const o of [this.aura, this.overlay, this.rgbR, this.rgbC, this.eyeGlow, this.eyeDot]) if (o) o.destroy();
+    for (const o of [this.aura, this.overlay, this.rgbR, this.rgbC, this.eyeGlow, this.eyeDot, this.shadowA, this.shadowB]) if (o) o.destroy();   // shadowA·B: GameScene.drawCorruption 의 발밑 타원
     super.destroy();
   }
 }

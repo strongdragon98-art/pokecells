@@ -219,6 +219,7 @@ export class ProjectileRenderer {
     this.ribbons = scene.add.graphics().setDepth(29).setBlendMode(ADD);   // 잎날 베기 잔상 리본
   }
   get fx() { return this.s.fx; }
+  get pool() { return this.s.fx.pool; }   // 투사체 그림·섬광·불꽃 덩어리 등은 Fx 의 오브젝트 풀을 함께 쓴다
 
   cfg(q) {
     if (q.kind === 'bolt' && q.type !== 'electric') return Object.assign({}, KINDS.bolt, { tint: true });   // 바람 칼날 등은 같은 모양에 색만
@@ -232,10 +233,10 @@ export class ProjectileRenderer {
     q.cfg = c;
     q.frames = q.kind === 'fire' && isBlue(q.color) ? ['pj-fire-blue0', 'pj-fire-blue1', 'pj-fire-blue2'] : c.frames;
     q.tier = q.tier || 0; q.pow = q.pow || 1;   // 진화 단계(0~3)·크기 배율 — 적 투사체는 0·1
-    q.glow = s.add.image(q.x, q.y, 'glow').setBlendMode(ADD).setTint(q.kind === 'shadow' ? 0x9a5aff : q.color).setAlpha(c.glow + q.tier * .06).setDepth(29);
+    q.glow = this.pool.get(q.x, q.y, 'glow').setBlendMode(ADD).setTint(q.kind === 'shadow' ? 0x9a5aff : q.color).setAlpha(c.glow + q.tier * .06).setDepth(29);
     // 2단부터: 같은 모양의 큰 기운이 투사체를 감싼다 (단계가 오를수록 진하게)
-    if (q.tier >= 1) q.aura = s.add.image(q.x, q.y, q.frames[0]).setDepth(30).setBlendMode(ADD).setTintFill(c.tint && q.color != null ? q.color : c.col[0]);
-    q.spr = s.add.image(q.x, q.y, q.frames[0]).setDepth(31);
+    if (q.tier >= 1) q.aura = this.pool.get(q.x, q.y, q.frames[0]).setDepth(30).setBlendMode(ADD).setTintFill(c.tint && q.color != null ? q.color : c.col[0]);
+    q.spr = this.pool.get(q.x, q.y, q.frames[0]).setDepth(31);
     if (c.blend) q.spr.setBlendMode(c.blend);
     if (c.tint && q.color != null) q.spr.setTint(q.color);
     q.spin = (Math.random() < .5 ? -1 : 1) * (c.spin || 0);
@@ -248,9 +249,7 @@ export class ProjectileRenderer {
   restyle(q) { this.detach(q); this.attach(q); }
 
   detach(q) {
-    if (q.spr) q.spr.destroy();
-    if (q.glow) q.glow.destroy();
-    if (q.aura) q.aura.destroy();
+    this.pool.release(q.spr); this.pool.release(q.glow); this.pool.release(q.aura);   // 투사체 그림은 풀로 돌려놓는다 (systems/Pool.js)
     q.spr = q.glow = q.aura = null;
   }
 
@@ -324,9 +323,9 @@ export class ProjectileRenderer {
 
   // 회전하는 투사체의 잔상 (각도까지 그대로 복사)
   afterimage(q, col) {
-    const sp = q.spr, im = this.s.add.image(sp.x, sp.y, sp.texture.key).setRotation(sp.rotation).setScale(sp.scaleX, sp.scaleY)
+    const sp = q.spr, im = this.pool.get(sp.x, sp.y, sp.texture.key).setRotation(sp.rotation).setScale(sp.scaleX, sp.scaleY)
       .setDepth(30).setTintFill(col).setAlpha(.45).setBlendMode(ADD);
-    this.s.tweens.add({ targets: im, alpha: 0, duration: 140, onComplete: () => im.destroy() });
+    this.s.tweens.add({ targets: im, alpha: 0, duration: 140, onComplete: () => this.pool.release(im) });
   }
 
   // 한 번만: 잎날 리본 그리기
@@ -346,8 +345,8 @@ export class ProjectileRenderer {
   // 발사 섬광: 입·손 앞에서 0.1초 번쩍
   muzzle(q) {
     const s = this.s, col = q.kind === 'shadow' ? 0xb07aff : q.color, x = q.x - q.vx * .01, y = q.y - q.vy * .01;
-    const im = s.add.image(x, y, 'pj-flash').setBlendMode(ADD).setTint(col).setDepth(32).setScale(.4).setAngle(Math.random() * 90);
-    s.tweens.add({ targets: im, scale: Phaser.Math.Clamp(q.r / 4, .7, 4) * 1.1, alpha: { from: 1, to: 0 }, duration: 100, onComplete: () => im.destroy() });
+    const im = this.pool.get(x, y, 'pj-flash').setBlendMode(ADD).setTint(col).setDepth(32).setScale(.4).setAngle(Math.random() * 90);
+    s.tweens.add({ targets: im, scale: Phaser.Math.Clamp(q.r / 4, .7, 4) * 1.1, alpha: { from: 1, to: 0 }, duration: 100, onComplete: () => this.pool.release(im) });
     this.fx.glow(x, y, 8 + q.r * 1.5, col, 100, .8);
     if (q.tier >= 1) this.fx.ring(x, y, 4 + q.r * 1.3, col, 120 + q.tier * 30);   // 2단부터: 발사 충격 고리
   }
@@ -355,7 +354,7 @@ export class ProjectileRenderer {
   // 불꽃 덩어리 하나 (적중 폭발·화염방사): 텍스처 프레임을 넘기며 커지다 사라진다
   flamePuff(x, y, vx, vy, life, s0, s1, blue = false) {
     const s = this.s, pal = blue ? 'blue' : 'orange';
-    const im = s.add.image(x, y, `pj-fire-${pal}0`).setBlendMode(ADD).setDepth(33).setScale(s0).setRotation(Math.atan2(vy, vx));
+    const im = this.pool.get(x, y, `pj-fire-${pal}0`).setBlendMode(ADD).setDepth(33).setScale(s0).setRotation(Math.atan2(vy, vx));
     const o = { k: 0 };
     s.tweens.add({
       targets: o, k: 1, duration: life * 1000,
@@ -364,7 +363,7 @@ export class ProjectileRenderer {
         im.setPosition(x + vx * life * k, y + vy * life * k - 10 * k * k).setScale(s0 + (s1 - s0) * k).setAlpha(1 - k * k)
           .setTexture(`pj-fire-${pal}${Math.floor(k * 9) % 3}`);
       },
-      onComplete: () => im.destroy()
+      onComplete: () => this.pool.release(im)
     });
   }
 
@@ -380,9 +379,9 @@ export class ProjectileRenderer {
   slash(x, y, ang, len, col) {
     const s = this.s;
     for (const [tint, w, a] of [[col, 1, .9], [0xffffff, .55, 1]]) {
-      const im = s.add.image(x, y, 'pj-slash').setBlendMode(ADD).setTint(tint).setDepth(34).setRotation(ang).setScale(len / 28 * .3, w);
+      const im = this.pool.get(x, y, 'pj-slash').setBlendMode(ADD).setTint(tint).setDepth(34).setRotation(ang).setScale(len / 28 * .3, w);
       s.tweens.add({ targets: im, scaleX: len / 28, duration: 70, ease: 'Quad.easeOut' });
-      s.tweens.add({ targets: im, alpha: { from: a, to: 0 }, scaleY: 0, delay: 70, duration: 140, onComplete: () => im.destroy() });
+      s.tweens.add({ targets: im, alpha: { from: a, to: 0 }, scaleY: 0, delay: 70, duration: 140, onComplete: () => this.pool.release(im) });
     }
   }
 
@@ -392,11 +391,11 @@ export class ProjectileRenderer {
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, v = (40 + Math.random() * 60) * k, vx = Math.cos(a) * v, vy = Math.sin(a) * v - 30;
       const life = .6 + Math.random() * .3, spin = (Math.random() < .5 ? -1 : 1) * (6 + Math.random() * 6), o = { k: 0 };
-      const im = s.add.image(x, y, 'pj-leaf').setDepth(33).setScale((.3 + Math.random() * .15) * k).setRotation(a).setTint(i % 2 ? 0xffffff : 0xb8f0a0);
+      const im = this.pool.get(x, y, 'pj-leaf').setDepth(33).setScale((.3 + Math.random() * .15) * k).setRotation(a).setTint(i % 2 ? 0xffffff : 0xb8f0a0);
       s.tweens.add({
         targets: o, k: 1, duration: life * 1000,
         onUpdate: () => { const t = o.k * life; im.setPosition(x + vx * t * (1 - o.k * .5) + Math.sin(t * 12 + i) * 2, y + vy * t + 90 * t * t).setRotation(a + spin * t).setAlpha(1 - o.k * o.k); },
-        onComplete: () => im.destroy()
+        onComplete: () => this.pool.release(im)
       });
     }
   }
@@ -476,8 +475,8 @@ export class ProjectileRenderer {
     const col = q.kind === 'shadow' ? 0x9a5aff : blue ? 0x5ab0ff : q.cfg && !q.cfg.tint ? q.cfg.col[0] : q.color;
     if (T >= 1) fx.ring(x, y, (12 + T * 8) * big * .7, col, 200 + T * 50);
     if (T >= 3) {
-      const im = this.s.add.image(x, y, 'pj-flash').setBlendMode(ADD).setTint(col).setDepth(34).setScale(big * .8).setAngle(45);
-      this.s.tweens.add({ targets: im, scale: big * 2.2, alpha: { from: 1, to: 0 }, duration: 180, onComplete: () => im.destroy() });
+      const im = this.pool.get(x, y, 'pj-flash').setBlendMode(ADD).setTint(col).setDepth(34).setScale(big * .8).setAngle(45);
+      this.s.tweens.add({ targets: im, scale: big * 2.2, alpha: { from: 1, to: 0 }, duration: 180, onComplete: () => this.pool.release(im) });
     }
   }
 }

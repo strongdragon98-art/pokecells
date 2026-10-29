@@ -1,7 +1,10 @@
 // 타격감 파이프라인: 히트스톱, 카메라 쉐이크, 백색 점멸, 튕기는 픽셀 파티클, 베기 궤적, 잔상, 데미지 텍스트, 발광
 import Phaser from 'phaser';
 import { Settings } from './Settings.js';
+import { ImagePool, TextPool } from './Pool.js';
 import { pxt as txt } from '../config.js';   // 월드 안 글자는 도트 글꼴
+
+const ADD = Phaser.BlendModes.ADD;
 
 // 카메라 흔들림 배율 (더 줄이거나 늘리려면 여기만): 잔타격 · 큰 순간
 const SHAKE_HIT = .5, SHAKE_BIG = .7;
@@ -55,8 +58,10 @@ export class Fx {
     this.shards = [];
     this.hitStopUntil = 0;
     this.shakeUntil = 0; this.shakeI = 0;
-    this.g = scene.add.graphics().setDepth(45);                                          // 일반 픽셀 파티클
-    this.ga = scene.add.graphics().setDepth(46).setBlendMode(Phaser.BlendModes.ADD);     // 발광 파티클
+    // 오브젝트 풀 (systems/Pool.js): 파티클 픽셀 · 섬광 · 고리 · 잔상 · 파편 · 투사체 그림 / 데미지·알림 글자
+    //  픽셀 파티클은 매 프레임 Graphics 에 다시 그리지 않고, 풀에서 꺼낸 1~2px 이미지의 위치·투명도만 바꾼다
+    this.pool = new ImagePool(scene);
+    this.tpool = new TextPool(scene);
     this.gs = scene.add.graphics().setDepth(47);                                         // 베기 검기 (3겹 도트 초승달)
     this.gsa = scene.add.graphics().setDepth(46.9).setBlendMode(Phaser.BlendModes.ADD);   // 검기 바깥 빛 (검기 밑에 깔린다)
     fxTextures(scene);
@@ -95,15 +100,18 @@ export class Fx {
   // ---- 픽셀 파티클 (바닥에 튕김) ----
   burst(x, y, color, n = 10, speed = 90, o = {}) {
     for (let i = 0; i < n; i++) {
-      if (this.parts.length >= this.maxParts) this.parts.shift();
+      if (this.parts.length >= this.maxParts) this.pool.release(this.parts.shift().img);
       const a = o.angle !== undefined ? o.angle + (Math.random() - .5) * (o.spread ?? 1.2) : Math.random() * Math.PI * 2;
       const sp = speed * (.35 + Math.random() * .75);
-      this.parts.push({
+      const p = {
         x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - (o.up ?? 40), life: (o.life ?? .55) * (.6 + Math.random() * .7),
         max: 0, color: Array.isArray(color) ? color[(Math.random() * color.length) | 0] : color, size: o.size ?? (Math.random() < .3 ? 2 : 1),
         grav: o.grav ?? 420, bounce: o.bounce ?? true, glow: !!o.glow, drag: o.drag ?? .985
-      });
-      this.parts[this.parts.length - 1].max = this.parts[this.parts.length - 1].life;
+      };
+      p.max = p.life;
+      // 'px' 는 2×2 흰 사각형: 왼쪽 위 원점 + 크기 배율로 예전 fillRect(x, y, size, size) 와 같은 칸을 덮는다
+      p.img = this.pool.get(Math.round(x), Math.round(y), 'px').setOrigin(0).setScale(p.size / 2).setTint(p.color).setDepth(p.glow ? 46 : 45).setBlendMode(p.glow ? ADD : Phaser.BlendModes.NORMAL);
+      this.parts.push(p);
     }
   }
   // 위로 떠오르는 불씨/포자
@@ -116,7 +124,7 @@ export class Fx {
       const px = x + (Math.random() - .5) * w, py = y + (Math.random() - .5) * h;
       const a = Math.atan2(py - y, px - x || (Math.random() - .5)) + (Math.random() - .5) * .5;
       const sp = speed * (.45 + Math.random() * .8);
-      const img = this.s.add.image(Math.round(px), Math.round(py), `shard${i % 4}`).setDepth(o.depth ?? 43).setScale(scale).setTintFill(0xffffff);
+      const img = this.pool.get(Math.round(px), Math.round(py), `shard${i % 4}`).setDepth(o.depth ?? 43).setScale(scale).setTintFill(0xffffff);
       this.shards.push({ img, x: px, y: py, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - (o.up ?? 80), rot: Math.random() * 360, spin: (Math.random() < .5 ? -1 : 1) * (500 + Math.random() * 900), life: (o.life ?? .75) * (.7 + Math.random() * .6), max: 0, white: .06 });
       this.shards[this.shards.length - 1].max = this.shards[this.shards.length - 1].life;
     }
@@ -133,13 +141,15 @@ export class Fx {
   sonicBoom(x, y, face, s = 1) {
     const sc = this.s;
     for (let k = 0; k < 3; k++) {
-      const im = sc.add.image(x - face * (6 + k * 7) * s, y, 'fx:cone').setFlipX(face < 0).setBlendMode(Phaser.BlendModes.ADD).setDepth(44).setScale(.45 * s, .55 * s).setAlpha(0);
-      sc.tweens.add({ targets: im, delay: k * 35, alpha: { from: .95, to: 0 }, scaleX: (1.1 + k * .15) * s, scaleY: (1.25 + k * .2) * s, x: im.x - face * 10 * s, duration: 200, ease: 'Cubic.easeOut', onComplete: () => im.destroy() });
+      const im = this.pool.get(x - face * (6 + k * 7) * s, y, 'fx:cone').setFlipX(face < 0).setBlendMode(ADD).setDepth(44).setScale(.45 * s, .55 * s).setAlpha(0);
+      sc.tweens.add({ targets: im, delay: k * 35, alpha: { from: .95, to: 0 }, scaleX: (1.1 + k * .15) * s, scaleY: (1.25 + k * .2) * s, x: im.x - face * 10 * s, duration: 200, ease: 'Cubic.easeOut', onComplete: () => this.pool.release(im) });
     }
-    // 등 뒤로 흩어지는 속도선 + 발밑 흙먼지
-    const g = sc.add.graphics().setDepth(44).setBlendMode(Phaser.BlendModes.ADD);
-    for (let k = 0; k < 4; k++) { const yy = Math.round(y - 8 * s + k * 5 * s), len = (10 + Math.random() * 12) * s; g.fillStyle(0xffffff, .8); g.fillRect(Math.round(face > 0 ? x - 10 * s - len : x + 10 * s), yy, Math.round(len), 1); }
-    sc.tweens.add({ targets: g, alpha: 0, duration: 160, onComplete: () => g.destroy() });
+    // 등 뒤로 흩어지는 속도선 (1px 높이 흰 줄 4개 — 'px' 이미지를 늘려 쓴다) + 발밑 흙먼지
+    for (let k = 0; k < 4; k++) {
+      const yy = Math.round(y - 8 * s + k * 5 * s), len = Math.round((10 + Math.random() * 12) * s);
+      const ln = this.pool.get(Math.round(face > 0 ? x - 10 * s - len : x + 10 * s), yy, 'px').setOrigin(0).setScale(len / 2, .5).setBlendMode(ADD).setDepth(44).setAlpha(.8);
+      sc.tweens.add({ targets: ln, alpha: 0, duration: 160, onComplete: () => this.pool.release(ln) });
+    }
     const gy = sc.groundBelow ? sc.groundBelow(x, y) : y + 10;
     if (gy - y < 30) this.burst(x - face * 6, gy - 1, [0xd8d0c0, 0xa89c88], 6, 60, { angle: face > 0 ? Math.PI : 0, spread: .8, up: 20, grav: 120, bounce: false, life: .35, size: 1 });
   }
@@ -147,11 +157,11 @@ export class Fx {
   // ---- 톱니 타격 섬광: 부딪힌 자리에 톱니 별이 번쩍 + 바닥 파편이 세게 튄다 ----
   starburst(x, y, color = 0xffffff, s = 1, o = {}) {
     const sc = this.s, ang = Math.random() * 30;
-    const outer = sc.add.image(x, y, 'fx:star').setTint(color).setBlendMode(Phaser.BlendModes.ADD).setDepth(49).setScale(.3 * s).setAngle(ang);
-    const core = sc.add.image(x, y, 'fx:star').setDepth(49.1).setScale(.18 * s).setAngle(ang + 15);
+    const outer = this.pool.get(x, y, 'fx:star').setTint(color).setBlendMode(ADD).setDepth(49).setScale(.3 * s).setAngle(ang);
+    const core = this.pool.get(x, y, 'fx:star').setDepth(49.1).setScale(.18 * s).setAngle(ang + 15);
     sc.tweens.add({ targets: outer, scale: 1.05 * s, duration: 70, ease: 'Quad.easeOut' });
     sc.tweens.add({ targets: core, scale: .6 * s, duration: 70, ease: 'Quad.easeOut' });
-    sc.tweens.add({ targets: [outer, core], alpha: 0, delay: 70, duration: 130, onComplete: () => { outer.destroy(); core.destroy(); } });
+    sc.tweens.add({ targets: [outer, core], alpha: 0, delay: 70, duration: 130, onComplete: () => { this.pool.release(outer); this.pool.release(core); } });
     this.burst(x, y, [color, 0xffffff], Math.round(6 * s), 150 * s, { up: 20, grav: 260, glow: true, life: .3, size: 1 });
     if (o.debris === false) return;
     const gy = sc.groundBelow ? sc.groundBelow(x, y) : y + 12;
@@ -201,22 +211,22 @@ export class Fx {
   // ---- 잔상(고스트 트레일) ----
   ghost(sprite, color = 0xffffff, alpha = .55, ms = 260) {
     if (!sprite || !sprite.frame) return;
-    const img = this.s.add.image(sprite.x, sprite.y, sprite.texture.key, sprite.frame.name)
+    const img = this.pool.get(sprite.x, sprite.y, sprite.texture.key, sprite.frame.name)
       .setOrigin(sprite.originX, sprite.originY).setFlipX(sprite.flipX).setScale(sprite.scaleX, sprite.scaleY)
-      .setDepth(sprite.depth - 1).setTintFill(color).setAlpha(alpha).setBlendMode(Phaser.BlendModes.ADD);
-    this.s.tweens.add({ targets: img, alpha: 0, duration: ms, onComplete: () => img.destroy() });
+      .setDepth(sprite.depth - 1).setTintFill(color).setAlpha(alpha).setBlendMode(ADD);
+    this.s.tweens.add({ targets: img, alpha: 0, duration: ms, onComplete: () => this.pool.release(img) });
   }
 
   // ---- 발광 원 / 퍼지는 고리 ----
   glow(x, y, radius, color, ms = 200, alpha = .8) {
-    const g = this.s.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(color).setAlpha(alpha).setDepth(44);
+    const g = this.pool.get(x, y, 'glow').setBlendMode(ADD).setTint(color).setAlpha(alpha).setDepth(44);
     g.setScale(radius / 32);
-    this.s.tweens.add({ targets: g, alpha: 0, scale: g.scale * 1.3, duration: ms, onComplete: () => g.destroy() });
+    this.s.tweens.add({ targets: g, alpha: 0, scale: g.scale * 1.3, duration: ms, onComplete: () => this.pool.release(g) });
     return g;
   }
   ring(x, y, radius, color, ms = 260) {
-    const g = this.s.add.image(x, y, 'ring').setBlendMode(Phaser.BlendModes.ADD).setTint(color).setDepth(44).setScale(.2);
-    this.s.tweens.add({ targets: g, scale: radius / 29, alpha: { from: 1, to: 0 }, duration: ms, ease: 'Cubic.easeOut', onComplete: () => g.destroy() });
+    const g = this.pool.get(x, y, 'ring').setBlendMode(ADD).setTint(color).setDepth(44).setScale(.2);
+    this.s.tweens.add({ targets: g, scale: radius / 29, alpha: { from: 1, to: 0 }, duration: ms, ease: 'Cubic.easeOut', onComplete: () => this.pool.release(g) });
   }
 
   // ---- 데미지 숫자: 효과 굉장(주황·크게) / 보통(흰색) / 별로(회색·작게) ----
@@ -224,35 +234,42 @@ export class Fx {
     const spec = eff === 'super' ? { size: 15, color: '#ff9a2a', stroke: '#3a1000', rise: 26 }
       : eff === 'weak' ? { size: 10, color: '#9a98aa', stroke: '#141220', rise: 12 }
         : { size: 12, color: crit ? '#ffe36a' : '#ffffff', stroke: '#141020', rise: 18 };
-    const t = this.s.add.text(Math.round(x + (Math.random() - .5) * 8), Math.round(y), String(amount), txt(spec.size, spec.color, { stroke: spec.stroke, strokeThickness: 3 }))
+    const t = this.tpool.get(Math.round(x + (Math.random() - .5) * 8), Math.round(y), String(amount), txt(spec.size, spec.color, { stroke: spec.stroke, strokeThickness: 3 }))
       .setOrigin(.5, 1).setDepth(60);
     if (eff === 'super') t.setScale(1.6);
     this.s.tweens.add({ targets: t, scale: 1, duration: 140, ease: 'Back.easeOut' });
-    this.s.tweens.add({ targets: t, y: t.y - spec.rise, alpha: { from: 1, to: 0 }, delay: 220, duration: 520, onComplete: () => t.destroy() });
+    this.s.tweens.add({ targets: t, y: t.y - spec.rise, alpha: { from: 1, to: 0 }, delay: 220, duration: 520, onComplete: () => this.tpool.release(t) });
     let label = null;
     if (eff === 'super') label = ['효과가 굉장했다!', '#ffb050'];
     else if (eff === 'weak') label = ['효과가 별로인 듯하다…', '#8a889a'];
     else if (crit) label = ['급소!', '#ffe36a'];
     if (label && (this.s.time.now - (this._lastLabel || 0) > (eff === 'weak' ? 900 : 350))) {
       this._lastLabel = this.s.time.now;
-      const l = this.s.add.text(Math.round(x), Math.round(y - 14), label[0], txt(10, label[1], { stroke: '#120c1c', strokeThickness: 3 })).setOrigin(.5, 1).setDepth(61);
-      this.s.tweens.add({ targets: l, y: l.y - 14, alpha: { from: 1, to: 0 }, delay: 350, duration: 500, onComplete: () => l.destroy() });
+      const l = this.tpool.get(Math.round(x), Math.round(y - 14), label[0], txt(10, label[1], { stroke: '#120c1c', strokeThickness: 3 })).setOrigin(.5, 1).setDepth(61);
+      this.s.tweens.add({ targets: l, y: l.y - 14, alpha: { from: 1, to: 0 }, delay: 350, duration: 500, onComplete: () => this.tpool.release(l) });
     }
   }
 
   floatText(x, y, s, color = '#ffffff', size = 10) {
-    const t = this.s.add.text(Math.round(x), Math.round(y), s, txt(size, color, { stroke: '#120c1c', strokeThickness: 3 })).setOrigin(.5, 1).setDepth(61);
-    this.s.tweens.add({ targets: t, y: t.y - 16, alpha: { from: 1, to: 0 }, delay: 300, duration: 600, onComplete: () => t.destroy() });
+    const t = this.tpool.get(Math.round(x), Math.round(y), s, txt(size, color, { stroke: '#120c1c', strokeThickness: 3 })).setOrigin(.5, 1).setDepth(61);
+    this.s.tweens.add({ targets: t, y: t.y - 16, alpha: { from: 1, to: 0 }, delay: 300, duration: 600, onComplete: () => this.tpool.release(t) });
+  }
+
+  // 챕터를 바꿀 때: 날던 파티클·파편·검기를 모두 거둬 풀로 돌려놓는다
+  clearAll() {
+    for (const p of this.parts) this.pool.release(p.img);
+    for (const p of this.shards) this.pool.release(p.img);
+    this.parts = []; this.shards = []; this.arcs = [];
+    this.gs.clear(); this.gsa.clear();
   }
 
   update(dt) {
     const s = this.s;
-    // 파티클
-    this.g.clear(); this.ga.clear();
+    // 파티클: 풀에서 꺼낸 픽셀 이미지의 위치·투명도만 바꾼다
     for (let i = this.parts.length - 1; i >= 0; i--) {
       const p = this.parts[i];
       p.life -= dt;
-      if (p.life <= 0) { this.parts.splice(i, 1); continue; }
+      if (p.life <= 0) { this.pool.release(p.img); this.parts.splice(i, 1); continue; }
       p.vy += p.grav * dt; p.vx *= p.drag;
       let nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
       if (p.bounce && s.isSolidAt(nx, ny)) {
@@ -260,16 +277,13 @@ export class Fx {
         else { p.vy = -p.vy * .42; p.vx *= .7; ny = p.y; if (Math.abs(p.vy) < 20) p.vy = 0; }
       }
       p.x = nx; p.y = ny;
-      const a = Math.min(1, p.life / p.max * 1.8);
-      const g = p.glow ? this.ga : this.g;
-      g.fillStyle(p.color, a);
-      g.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
+      p.img.setPosition(Math.round(p.x), Math.round(p.y)).setAlpha(Math.min(1, p.life / p.max * 1.8));
     }
     // 유리 파편
     for (let i = this.shards.length - 1; i >= 0; i--) {
       const p = this.shards[i];
       p.life -= dt;
-      if (p.life <= 0 || !p.img.scene) { p.img.destroy(); this.shards.splice(i, 1); continue; }
+      if (p.life <= 0 || !p.img.scene) { this.pool.release(p.img); this.shards.splice(i, 1); continue; }
       p.vy += 520 * dt; p.vx *= .985;
       let nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
       if (s.isSolidAt(nx, ny)) {

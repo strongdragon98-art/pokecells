@@ -80,6 +80,9 @@ function osc(ac, wave, f, t) {
   return o;
 }
 
+// 다 울린 음은 노드를 바로 떼어 낸다 (사파리에서 끊긴 노드가 쌓이지 않게)
+function unhook(src, ...ns) { src.onended = () => { src.disconnect(); for (const n of ns) n.disconnect(); }; }
+
 // 한 칸에 들어 있는 음들을 시각 t 에 예약
 export function playStep(ctx, song, i, t) {
   const { ac, bus, echo, waves, noise } = ctx;
@@ -89,17 +92,17 @@ export function playStep(ctx, song, i, t) {
       const o = osc(ac, 'sine', 150, t), g = ac.createGain();
       o.frequency.exponentialRampToValueAtTime(42, t + .11);
       g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.001, t + .16);
-      o.connect(g); g.connect(bus); o.start(t); o.stop(t + .18);
+      o.connect(g); g.connect(bus); o.start(t); o.stop(t + .18); unhook(o, g);
     } else if (ev.ch === 's' || ev.ch === 'h') {
       const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain(), d = ev.ch === 's' ? .13 : .035;
       s.buffer = noise; f.type = 'highpass'; f.frequency.value = ev.ch === 's' ? 1600 : 7000;
       g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.001, t + d);
-      s.connect(f); f.connect(g); g.connect(bus); s.start(t, Math.random() * .5); s.stop(t + d + .02);
+      s.connect(f); f.connect(g); g.connect(bus); s.start(t, Math.random() * .5); s.stop(t + d + .02); unhook(s, f, g);
       if (ev.ch === 's') {
         const o = osc(ac, 'triangle', 190, t), g2 = ac.createGain();
         o.frequency.exponentialRampToValueAtTime(110, t + .06);
         g2.gain.setValueAtTime(v * 1.4, t); g2.gain.exponentialRampToValueAtTime(.001, t + .08);
-        o.connect(g2); g2.connect(bus); o.start(t); o.stop(t + .1);
+        o.connect(g2); g2.connect(bus); o.start(t); o.stop(t + .1); unhook(o, g2);
       }
     } else {
       const dur = ev.len * song.stepDur, wave = ev.ch === 'bass' ? 'triangle' : waves[song.inst[ev.ch]] || waves.p50;
@@ -115,10 +118,10 @@ export function playStep(ctx, song, i, t) {
         if (dur > .35) {   // 긴 음에는 살짝 늦게 들어오는 비브라토
           const lfo = osc(ac, 'sine', 5.5, t), lg = ac.createGain();
           lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(hz(ev.n) * .007, t + .3);
-          lfo.connect(lg); lg.connect(o.frequency); lfo.start(t); lfo.stop(end + .12);
+          lfo.connect(lg); lg.connect(o.frequency); lfo.start(t); lfo.stop(end + .12); unhook(lfo, lg);
         }
       }
-      o.start(t); o.stop(end + .12);
+      o.start(t); o.stop(end + .12); unhook(o, g);
     }
   }
 }

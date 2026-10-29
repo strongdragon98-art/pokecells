@@ -248,6 +248,17 @@ export default class GameScene extends Phaser.Scene {
     if (this.level) for (const r of this.level.rooms) { if (r.map) r.map.destroy(); r.map = r.layer = r.ts = null; }
     this.layers = [];
     this.covers = [];
+    if (this.fx) this.fx.clearAll();   // 남은 파티클·파편은 풀로 돌려놓는다
+    this.dropStaleTweens();
+  }
+
+  // 대상이 이미 사라진(destroy 된) 트윈 정리: 챕터를 오가며 쌓이지 않게
+  dropStaleTweens() {
+    if (!this.tweens) return;
+    for (const tw of this.tweens.getTweens()) {
+      const ts = tw.targets || [];
+      if (ts.length && ts.every(o => o && typeof o.destroy === 'function' && !o.scene)) tw.remove();
+    }
   }
 
   // 로비로 나가기 전에 한 번, 씬 종료 이벤트에서 한 번 더 불려도 안전하다
@@ -257,6 +268,8 @@ export default class GameScene extends Phaser.Scene {
     Music.stop();
     this.clearWorld();
     if (this.player) { this.player.destroy(); this.player = null; }
+    if (this.fx) { this.fx.pool.destroy(); this.fx.tpool.destroy(); }
+    if (this.time) this.time.removeAllEvents();
     if (this.webgl && this.lights && this.lights.lights) this.lights.lights.slice().forEach(l => this.lights.removeLight(l));
     this.dynLights = 0;
     if (this.physics && this.physics.world) this.physics.world.resume();
@@ -623,7 +636,8 @@ export default class GameScene extends Phaser.Scene {
     this.player.update(dt, this.inp);
     this.consumeInput();
     this.props.update(time, dt);
-    for (const e of this.enemies) if (e.alive) e.update(dt, this.player);
+    this.cullEnemies();
+    for (const e of this.enemies) if (e.alive && !e.asleep) e.update(dt, this.player);
     this.drawCorruption();
     this.combat.updateProjectiles(dt);
     this.combat.updateZones(dt);
@@ -676,20 +690,22 @@ export default class GameScene extends Phaser.Scene {
 
   // ---------------- 세뇌 비주얼 (모든 적을 그래픽 두 장에 한 번에) ----------------
   // 발밑: 검보라 그림자 타원 3겹 + 바닥에서 일렁이는 침식 불꽃 / 머리: 붉은 안광이 남기는 실선 궤적
+  // 발밑 타원 그림자는 크기별로 한 번 구운 텍스처(흰색)를 적마다 두 장의 이미지로 띄워 색·투명도·위치만 바꾼다
+  //  (예전엔 매 프레임 그래픽에 한 줄씩 fillRect). 일렁이는 침식 불꽃 몇 줄과 안광 궤적만 그래픽에 그린다
   drawCorruption() {
     const g = this.corruptG, tg = this.eyeTrailG, t = this.time.now / 1000;
     g.clear(); tg.clear();
     for (const e of this.enemies) {
-      if (!e.corrupt) continue;
-      const a = e.sprite.alpha * (e.fade ? .45 : 1);
-      if (a <= .02) continue;
+      const a = e.corrupt && !e.asleep ? e.sprite.alpha * (e.fade ? .45 : 1) : 0;
+      if (a <= .02) { if (e.shadowA) { e.shadowA.setVisible(false); e.shadowB.setVisible(false); } continue; }
       // 공중의 적은 아래 바닥에 그림자가 진다 (높을수록 작고 옅게)
       const gy = e.flying || e.def.noclip ? this.groundBelow(e.x, e.bottom) : e.bottom;
       const far = Math.max(.25, 1 - Math.max(0, gy - e.bottom) / 140);
       // 발밑 오라는 은은하게: 예전 크기의 약 55% · 투명도 0.15~0.2 (포켓몬 도트가 먼저 보이도록)
       const W = (e.b.width * .9 + 10) * (e.boss ? 1.3 : 1) * .55 * (.94 + Math.sin(t * 4 + e.auraT) * .06) * far;
-      this.pixelEllipse(g, e.x, gy - 1, W, W * .24, 0x7a22c0, .15 * a * far);
-      this.pixelEllipse(g, e.x, gy - 1, W * .6, W * .16, 0x2a0a40, .2 * a * far);
+      if (!e.shadowA) { e.shadowA = this.add.image(0, 0, 'px').setOrigin(0).setDepth(17.99); e.shadowB = this.add.image(0, 0, 'px').setOrigin(0).setDepth(17.995); }
+      this.placeEllipse(e.shadowA, e.x, gy - 1, W, W * .24, 0x7a22c0, .15 * a * far);
+      this.placeEllipse(e.shadowB, e.x, gy - 1, W * .6, W * .16, 0x2a0a40, .2 * a * far);
       const n = e.boss ? 3 : 2;
       for (let i = 0; i < n; i++) {
         const fx = Math.round(e.x + Math.sin(i * 12.9 + t * .7 + e.auraT) * W * .7);
@@ -707,6 +723,63 @@ export default class GameScene extends Phaser.Scene {
         }
       }
     }
+  }
+
+  // 도트 타원 텍스처: 가로 반지름(0.5 단위)·세로 반지름별로 처음 한 번만 굽는다 (textures.exists 로 재사용)
+  ellipseTex(rx, ry) {
+    rx = Math.round(rx * 2) / 2;
+    const R = Math.max(1, Math.round(ry)), cx0 = Math.ceil(rx) + 1, key = `cel-${rx}-${R}`;
+    if (!this.textures.exists(key)) {
+      const g = this.make.graphics({ x: 0, y: 0 }, false);
+      g.fillStyle(0xffffff, 1);
+      for (let y = -R; y <= R; y++) {
+        const w = Math.round(rx * Math.sqrt(Math.max(0, 1 - (y / (R + .5)) ** 2)));
+        if (w > 0) g.fillRect(cx0 - w, R + y, w * 2, 1);
+      }
+      g.generateTexture(key, cx0 * 2, R * 2 + 1);
+      g.destroy();
+    }
+    return { key, cx0, R };
+  }
+
+  // pixelEllipse 와 같은 자리·같은 모양으로 구운 타원 이미지를 놓는다
+  placeEllipse(im, cx, cy, rx, ry, color, alpha) {
+    const t = this.ellipseTex(rx, ry);
+    if (im.texture.key !== t.key) im.setTexture(t.key);
+    im.setPosition(Math.round(cx) - t.cx0, Math.round(cy) - t.R).setTint(color).setAlpha(alpha).setVisible(true);
+  }
+
+  // 화면 밖 컬링: 플레이어가 있는 방도 아니고 카메라 시야(+여유)에서도 먼 적은 잠재운다
+  //  → AI·물리·세뇌 레이어 갱신을 멈추고 그림도 숨긴다. 시야 가까이 오면 그대로 깨어난다 (보스는 잠들지 않는다)
+  //  잠들 때(220px)와 깰 때(150px) 거리를 달리해 경계에서 깜빡이지 않게
+  cullEnemies() {
+    const v = this.cameras.main.worldView;
+    for (const e of this.enemies) {
+      if (!e.alive || e.boss) { if (e.asleep && e.alive) this.wakeEnemy(e); continue; }
+      const m = e.asleep ? 150 : 220;
+      const near = e.room === this.room || (e.x > v.x - m && e.x < v.right + m && e.y > v.y - m && e.y < v.bottom + m);
+      if (near && e.asleep) this.wakeEnemy(e);
+      else if (!near && !e.asleep) this.sleepEnemy(e);
+    }
+  }
+
+  enemyLayers(e) { return [e.sprite, e.aura, e.overlay, e.rgbR, e.rgbC, e.eyeGlow, e.eyeDot, e.alert]; }
+
+  sleepEnemy(e) {
+    e.asleep = true;
+    e.b.enable = false;
+    const ls = this.enemyLayers(e);
+    e.sleepVis = ls.map(o => o.visible);
+    for (const o of ls) o.setVisible(false);
+    e.eyeTrail = [];
+  }
+
+  wakeEnemy(e) {
+    e.asleep = false;
+    if (e.b) e.b.enable = true;
+    const ls = this.enemyLayers(e);
+    if (e.sleepVis) ls.forEach((o, i) => o.setVisible(e.sleepVis[i]));
+    e.sleepVis = null;
   }
 
   pixelEllipse(g, cx, cy, rx, ry, color, alpha) {
