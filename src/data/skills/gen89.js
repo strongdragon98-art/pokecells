@@ -2,17 +2,17 @@
 // 형식은 data/pokemon.js 의 SKILLS 와 같다. 구현은 game/skills/gen89.js
 export const SKILLS = {
   // ===== 흥나숭 =====
-  branch_poke: { name: '가지찌르기', type: 'grass', cd: 0, icon: 'leaf', desc: '나뭇가지로 2번 찌른 뒤 3타째에 드럼스틱 내려찍기. 막타는 풀죽게 한다.', mega: '찌르기 사거리 증가 + 내려찍기 양옆 뿌리 충격파(속박)' },
+  branch_poke: { name: '가지찌르기', type: 'grass', cd: 0, icon: 'leaf', desc: '나뭇가지로 2번 찌른 뒤 3타째에 드럼스틱 내려찍기. 막타는 풀죽게 한다. 꾹 눌렀다 떼면 드럼 비트 지면 충격파.', mega: '찌르기 사거리 증가 + 내려찍기 양옆 뿌리 충격파(속박)' },
   drum_beating: { name: '드럼어택', type: 'grass', cd: 7, icon: 'boom', desc: '나무 드럼을 4번 두드린다. 박자마다 앞쪽 땅에서 뿌리가 점점 멀리 솟아 적을 띄우고 둔화.', mega: '뿌리가 앞뒤 양쪽으로 + 마지막 박자에 속박' },
   grassy_glide: { name: '그래스슬라이더', type: 'grass', cd: 4, icon: 'dash', desc: '잔디를 깔며 미끄러지듯 돌진. 잔디는 3.5초간 남아 적을 갉아먹는다. 풀 장판 위에서 쓰면 더 빠르고 강하다.', mega: '잔디가 6초간 남고, 그 위에 서 있으면 HP 회복' },
 
   // ===== 염버니 =====
-  agile_kick: { name: '연속킥', type: 'fighting', cd: 0, icon: 'fist', desc: '빠른 발차기 2연타 후 3타째에 불꽃을 두른 날아차기로 돌진. 화상.', mega: '발차기마다 불꽃 추가타 + 날아차기 끝에 폭발' },
+  agile_kick: { name: '연속킥', type: 'fighting', cd: 0, icon: 'fist', desc: '빠른 발차기 2연타 후 3타째에 불꽃을 두른 날아차기로 돌진. 화상. 꾹 눌렀다 떼면 통통 튀는 불꽃 축구공 슛.', mega: '발차기마다 불꽃 추가타 + 날아차기 끝에 폭발' },
   pyro_ball: { name: '화염볼', type: 'fire', cd: 6, icon: 'flame', desc: '돌멩이를 튕겨 불을 붙여 차 날린다. 관통하는 큰 화염구가 땅에 한 번 튕기며 폭발. 화상.', mega: '세 번 튕기고 튕긴 자리마다 불길' },
   court_change: { name: '코트체인지', type: 'normal', cd: 6, icon: 'spin', desc: '가장 가까운 적과 자리를 맞바꾸며 피해를 주고 잠시 풀죽게 한다. 보스는 등 뒤로 이동.', mega: '원래 자리(적이 옮겨진 곳)에 화염 폭발' },
 
   // ===== 울머기 =====
-  pound_water: { name: '막치기·물탄', type: 'water', cd: 0, icon: 'drop', desc: '꼬리로 2번 후려친 뒤 3타째에 물탄 발사.', mega: '물탄이 관통하며 맞은 자리에 물보라(둔화)' },
+  pound_water: { name: '막치기·물탄', type: 'water', cd: 0, icon: 'drop', desc: '손끝으로 물방울 탄을 빠르게 2연사한 뒤 3타째에 굵은 물탄 발사. 꾹 눌렀다 떼면 화면 끝까지 꿰뚫는 저격탄.', mega: '물탄이 관통하며 맞은 자리에 물보라(둔화)' },
   snipe_shot: { name: '노려맞히기', type: 'water', cd: 6, icon: 'orb', desc: '잠시 조준한 뒤 초고속 관통 물탄. 화면 안의 보스·가장 먼 적을 노리고 급소율이 높다.', mega: '두 발 연속 저격 + 급소율 증가' },
   camouflage: { name: '보호색', type: 'normal', cd: 9, icon: 'shield', desc: '3초간 모습을 감춰 피해를 받지 않고 빨라진다. 숨은 채 공격하면 해제되며 그 공격이 1.6배.', mega: '4.5초 · 더 빠르게 · 기습 2배' },
 

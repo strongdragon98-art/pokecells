@@ -56,7 +56,7 @@ export const SKILLS = {
   hyper_fang: { name: '몸통박치기·필살앞니', type: 'normal', cd: 0, icon: 'fang', desc: '3타째 필살앞니는 급소율이 높고 풀죽게 한다.', mega: '필살앞니 범위 증가' },
   super_fang: { name: '분노의앞니', type: 'normal', cd: 6, icon: 'fang', desc: '돌진해 적 현재 HP의 25%(보스 6%)를 깎는다.', mega: '35% / 보스 9%' },
   quick_attack: { name: '전광석화', type: 'normal', cd: 2, icon: 'dash', desc: '순식간에 앞으로 이동하며 공격. 공중 사용 가능, 무적.', mega: '2회 연속 사용' },
-  thundershock: { name: '전기쇼크', type: 'electric', cd: 0, icon: 'bolt', desc: '전기탄 연사. 3발째는 크고 마비시킨다.', mega: '탄이 2갈래로' },
+  thundershock: { name: '전기쇼크', type: 'electric', cd: 0, icon: 'bolt', desc: '전기탄 연사. 3발째는 크고 마비시킨다. 꾹 눌렀다 떼면 하늘에서 낙뢰.', mega: '탄이 2갈래로' },
   thunderbolt: { name: '10만볼트', type: 'electric', cd: 5, icon: 'thunder', desc: '가까운 적 3마리에게 번개를 내리꽂는다.', mega: '6마리 + 연쇄' },
   volt_tackle: { name: '볼트태클', type: 'electric', cd: 4, icon: 'dash', desc: '전기를 두르고 돌진. 강하지만 반동 피해.', mega: '반동 없음' },
   leech_life: { name: '흡혈', type: 'poison', cd: 0, icon: 'fang', desc: '물어서 준 피해의 25%를 회복.', mega: '회복 40%' },
@@ -65,7 +65,7 @@ export const SKILLS = {
   karate_chop: { name: '태권당수', type: 'fighting', cd: 0, icon: 'fist', desc: '3연타. 마지막 타격은 급소율이 높다.', mega: '충격파 추가' },
   dynamic_punch: { name: '폭발펀치', type: 'fighting', cd: 6, icon: 'boom', desc: '힘을 모아 폭발하는 일격. 혼란.', mega: '폭발 반경 2배' },
   counter: { name: '카운터', type: 'fighting', cd: 4, icon: 'shield', desc: '0.6초 방어 자세. 그동안 맞으면 피해 없이 3배 반격.', mega: '방어 시간 증가' },
-  lick_shadow: { name: '핥기·섀도볼', type: 'ghost', cd: 0, icon: 'ghost', desc: '핥기 2연타 후 작은 섀도볼 발사. 마비 확률.', mega: '섀도볼 유도' },
+  lick_shadow: { name: '핥기·섀도볼', type: 'ghost', cd: 0, icon: 'ghost', desc: '핥기 2연타 후 작은 섀도볼 발사. 마비 확률. 꾹 눌렀다 떼면 벽을 뚫는 거대 섀도볼.', mega: '섀도볼 유도' },
   shadow_ball: { name: '섀도볼', type: 'ghost', cd: 4, icon: 'orb', desc: '벽을 통과하는 큰 섀도볼. 적에 닿으면 폭발.', mega: '섀도볼 3개' },
   phantom_dash: { name: '고스트다이브', type: 'ghost', cd: 4, icon: 'dash', desc: '실체를 감추고 적을 통과한 뒤, 지나간 적 모두를 기습.', mega: '통과한 적에 저주' },
 

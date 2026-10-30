@@ -3,7 +3,7 @@
 // 메가가 없는 전설은 mega = '각성' 효과
 export const SKILLS = {
   // ===== 뮤츠 =====
-  psycho_cut: { name: '사이코커터', type: 'psychic', cd: 0, icon: 'claw', desc: '염동력 칼날 2연타 후 3타째에 칼날 3장을 날린다.', mega: 'X: 격투 기운의 거대 베기 · Y: 유도 칼날 5장' },
+  psycho_cut: { name: '사이코커터', type: 'psychic', cd: 0, icon: 'claw', desc: '염동력 칼날 2연타 후 3타째에 칼날 3장을 날린다. 꾹 눌렀다 떼면 몸 둘레를 돌다 흩어지는 사이코 블레이드.', mega: 'X: 격투 기운의 거대 베기 · Y: 유도 칼날 5장' },
   psystrike: { name: '사이코브레이크', type: 'psychic', cd: 8, icon: 'wave', desc: '짓누르는 염동 파동을 연속 방출해 화면 안 모든 적을 반복 타격하고 적 탄을 지운다.', mega: 'X: 마지막 파동이 격투 타입 충격 · Y: 파동 5회' },
   future_sight: { name: '미래예지', type: 'psychic', cd: 10, icon: 'orb', desc: '화면 안 모든 적에 표식. 1.2초 뒤 표식 자리에 빛의 기둥이 내리꽂힌다.', mega: 'X: 격투 타입 · 긴 풀죽음 · Y: 기둥이 굵고 강해진다' },
   // ===== 칠색조 =====

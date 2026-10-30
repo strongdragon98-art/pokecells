@@ -26,11 +26,11 @@ function shuriken(p, o) {
   const sc = p.scene, s = sizeMul(p), count = (o.count ?? 1) + p.mods.extraProj, spread = o.spread ?? .12;
   for (let i = 0; i < count; i++) {
     const a = (o.angle ?? 0) + (i - (count - 1) / 2) * spread, sp = o.speed ?? 380;
-    const q = sc.combat.spawnProjectile({
+    sc.combat.spawnProjectile({
       owner: 'player', x: p.x + p.face * 10, y: p.y + (o.oy ?? -4), vx: Math.cos(a) * sp * p.face, vy: Math.sin(a) * sp, r: (o.r ?? 4) * s, mul: o.mul ?? 1,
-      type: 'water', kind: 'leaf', life: o.life ?? .6, pierce: o.pierce ?? 1, boomerang: o.boomerang, color: o.color ?? 0x4ac0ff, kb: o.kb ?? 90, light: o.light, status: o.status || {}
+      type: 'water', kind: 'shuriken', life: o.life ?? .6, pierce: o.pierce ?? 1, boomerang: o.boomerang, color: o.color ?? 0x4ac0ff, kb: o.kb ?? 90, light: o.light, status: o.status || {},
+      tier: p.tierIdx, pow: s, stream: true   // 물수리검 도트 (systems/ProjectileRenderer.js) · 연사라 적 연사와 맞대결
     });
-    if (q.spr) q.spr.setTint(0xeaf6ff);   // 잎 색 대신 물빛 (예전엔 q.core 였는데 투사체 그림이 바뀌며 없어졌다 — 그대로 부르면 오류로 게임이 멈췄다)
   }
   p.squash(.88, 1.1);
 }
@@ -175,12 +175,11 @@ export const SKILL_IMPL = {
   mystical_fire(p, i) {
     const m = p.mega.active;
     if (i < 2) return {
-      dur: .22, mm: .4, anim: 'Attack', ev: [[.06, () => {   // 지팡이를 휘두르면 끝에서 불티가 튄다
-        const sc = p.scene, s = sizeMul(p), x = p.x + p.face * 20 * s, y = p.y - 6 + i * 6;
-        sc.combat.hitCircle(x, y, 13 * s, 1, 'fire', { kbx: 100, kby: -60 });
-        sc.fx.slash(p.x + p.face * 10 * s, p.y - 3, 11 * s, p.face, 0xff9ad0, { flipV: i === 1, thick: 2 });
-        sc.fx.glow(x, y, 12 * s, 0xff7aa0, 160, .9); sc.fx.embers(x, y, [0xff7aa0, 0xffd04a], 4, { speed: 40 });
-        Sfx.play('swing'); p.squash(1.1, .92);
+      dur: .2, mm: .45, anim: 'Shoot', noTierFx: true, ev: [[.05, () => {   // 마도사답게 지팡이 끝에서 작은 마법 불꽃을 쏜다 (꾹 눌렀다 떼면 유도 불꽃구슬 일제 발사)
+        const sc = p.scene, s = sizeMul(p), x = p.x + p.face * 14 * s, y = p.y - 6 + i * 4;
+        shoot(p, { speed: 320, r: 3.5 + p.tierIdx * .6, mul: .95, type: 'fire', kind: 'fire', life: .45, kb: 90, stream: true, color: 0xff6ab0, oy: -6 + i * 4, status: { burn: 1 } });
+        sc.fx.glow(x, y, 10 * s, 0xff7aa0, 140, .9); sc.fx.embers(x, y, [0xff7aa0, 0xffd04a], 3, { speed: 40 });
+        Sfx.play('fire'); p.squash(1.1, .92);
       }]]
     };
     return {
@@ -237,12 +236,20 @@ export const SKILL_IMPL = {
   },
 
   // ===== 개구마르 =====
+  // 누를 때마다 물수리검을 던진다: 1타 한 장 · 2타 두 장 · 3타 부채꼴 세 장 (진화할수록 크고 빠르며, 3단은 한 장씩 더)
+  //  꾹 눌렀다 떼면 거대 물수리검 (game/Signature.js)
   water_shuriken(p, i) {
-    const m = p.mega.active;
-    if (i < 2) return { dur: .19, mm: .5, anim: 'Attack', ev: [[.05, () => slashHit(p, { fwd: 13, w: 24, h: 18, mul: .95, type: 'water', kbx: 100, color: 0x8ad0ff, flipV: i === 1 })]] };
+    const m = p.mega.active, ev = p.tierIdx, r = 4 + ev * .8, sp = 400 + ev * 40, more = ev >= 2 ? 1 : 0;
+    const toss = (n, mul, spread, oy) => { shuriken(p, { count: n + more, mul, spread, r, speed: sp, oy, life: .65, pierce: ev >= 1 ? 2 : 1 }); Sfx.play('swing'); };
+    if (i < 2) return {
+      dur: .17, mm: .55, anim: 'Shoot', noTierFx: true, ev: [[.04, () => {
+        toss(i + 1, i ? .6 : 1, .1, i ? -7 : -4);
+        if (m) shuriken(p, { mul: .4, r: r * .8, speed: sp * 1.2, angle: -.14, oy: -8, life: .5 });   // 유대변화·메가: 한 장 더
+      }]]
+    };
     return {
-      dur: m ? .4 : .32, mm: .4, anim: 'Shoot', ev: [
-        ...[0, 1, 2].map(k => [.05 + k * .05, () => { shuriken(p, { mul: .6, angle: (k - 1) * .07, oy: -6 + k * 2 }); Sfx.play('swing'); }]),
+      dur: m ? .4 : .3, mm: .45, anim: 'Shoot', noTierFx: true, ev: [
+        ...[0, 1, 2].map(k => [.04 + k * .045, () => { shuriken(p, { count: 1 + (k === 1 ? more : 0), mul: .6, r, speed: sp, angle: (k - 1) * .07, oy: -6 + k * 2, pierce: ev >= 1 ? 2 : 1 }); Sfx.play('swing'); }]),
         ...(m ? [[.2, () => {   // 유대변화: 등에 진 거대 물수리검
           shuriken(p, { r: 11, mul: 2, speed: 300, life: 1.6, pierce: 99, boomerang: .42, kb: 200, color: 0x2a8aff, light: true, oy: -8 });
           p.scene.fx.ring(p.x, p.y - 8, 26, 0x4ac0ff, 240); p.scene.fx.shake(.006, 120); Sfx.play('water');

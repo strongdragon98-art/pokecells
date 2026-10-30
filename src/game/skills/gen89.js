@@ -213,7 +213,8 @@ export const SKILL_IMPL = {
 
   // ===== 울머기 =====
   pound_water(p, i) {
-    if (i < 2) return { dur: .22, mm: .4, anim: 'Attack', ev: [[.07, () => { slashHit(p, { fwd: 12, w: 24, h: 18, oy: 2, mul: 1, type: 'normal', kbx: 150, color: 0xbfe6ff, flipV: i === 1, arc: 14 }); p.scene.fx.burst(p.x + p.face * 14, p.y + 2, [0x4a9cff, 0xbfe6ff], 4, 60); }]] };
+    // 스파이답게 손끝으로 물방울 탄을 빠르게 쏜다 (꾹 눌렀다 떼면 저격탄 — game/Signature.js)
+    if (i < 2) return { dur: .17, mm: .5, anim: 'Shoot', noTierFx: true, ev: [[.04, () => { shoot(p, { speed: 560, r: 2.5 + p.tierIdx * .5, mul: .85, type: 'water', kind: 'water', life: .5, kb: 90, stream: true, oy: i ? -5 : -2, status: { crit: .15 } }); Sfx.play('water'); }]] };
     const m = p.mega.active, sc = p.scene;
     // 메가: 관통하며 맞은 자리마다 물보라
     const splash = (e, q) => {

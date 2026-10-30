@@ -161,6 +161,32 @@ function spoon(x, y) {
   return null;
 }
 
+// 물수리검: 뒤로 휘어진 날 네 개 + 가운데 고리와 구멍 · 날 가장자리는 짙은 남색, 앞날은 흰 하이라이트 — 개굴닌자 평타·거대 수리검
+function shurikenTex(x, y) {
+  const dx = x - 12, dy = y - 12, r = Math.hypot(dx, dy);
+  if (r < 1.6) return null;                                    // 가운데 구멍
+  if (r < 3.2) return r < 2.4 ? 0x1a5ad8 : 0xbfeaff;           // 고리
+  if (r < 4.6) return 0x3aa0f0;                                // 몸통
+  const th = Math.atan2(dy, dx);
+  for (let k = 0; k < 4; k++) {
+    const axis = k * Math.PI / 2 - (r - 4.6) * .11;            // 바깥으로 갈수록 뒤로 휜다
+    const d = Math.atan2(Math.sin(th - axis), Math.cos(th - axis)), w = .62 * (1 - (r - 4.6) / 7.2);
+    if (w <= 0 || Math.abs(d) > w) continue;
+    if (Math.abs(d) > w - .16 || r > 11) return 0x1a4ab8;      // 날 테두리
+    return d > 0 ? 0xeaf8ff : 0x5ac8ff;                        // 앞날 하이라이트 · 뒷날
+  }
+  return null;
+}
+// 불꽃 축구공: 흰 공 + 검은 오각 무늬 + 주황 불꽃 테두리 — 염버니 차징 슛
+function ballTex(x, y) {
+  const dx = x - 6, dy = y - 6, r = Math.hypot(dx, dy);
+  if (r > 5.6) return null;
+  if (r > 4.6) return 0xff8a2a;
+  if (r < 1.5) return 0x2a2a32;
+  for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2 - Math.PI / 2; if (Math.hypot(dx - Math.cos(a) * 3.6, dy - Math.sin(a) * 3.6) < 1.1) return 0x3a3a44; }
+  return dx + dy < -2 ? 0xffffff : 0xe8e4dc;
+}
+
 // 발사 섬광: 가로·세로 긴 빛살 + 짧은 대각선 + 밝은 중심
 function flash(x, y) {
   const dx = Math.abs(x - 7.5), dy = Math.abs(y - 7.5), m = Math.max(dx, dy);
@@ -189,6 +215,8 @@ export function makeProjectileTextures(scene) {
   pixTex(scene, 'pj-rock', 12, 12, rock(ROCK_PAL.rock));
   pixTex(scene, 'pj-steel', 12, 12, rock(ROCK_PAL.steel));
   pixTex(scene, 'pj-spoon', 16, 8, spoon);
+  pixTex(scene, 'pj-shuriken', 24, 24, shurikenTex);
+  pixTex(scene, 'pj-ball', 12, 12, ballTex);
   pixTex(scene, 'pj-flash', 15, 15, flash);
   pixTex(scene, 'pj-slash', 28, 8, slashLine);
 }
@@ -208,7 +236,9 @@ const KINDS = {
   rock: { frames: ['pj-rock'], spin: 260, glow: .06, scale: 1, col: [0x8a7a62, 0xd8c8a8] },            // 롱스톤 낙석·바위 던지기
   steel: { frames: ['pj-steel'], spin: 360, glow: .2, scale: 1, col: [0xa8b0c8, 0xffffff] },           // 강철톤 쇠 파편
   debris: { frames: ['pj-rock'], spin: 120, glow: .4, scale: 1, col: [0xc070ff, 0xffd8ff] },           // 뮤츠가 염동력으로 띄운 지형 파편 (보랏빛 기운)
-  spoon: { frames: ['pj-spoon'], spin: 1100, glow: .25, scale: 1, col: [0xffd8f0, 0xffffff] }          // 후딘 숟가락 부메랑
+  spoon: { frames: ['pj-spoon'], spin: 1100, glow: .25, scale: 1, col: [0xffd8f0, 0xffffff] },        // 후딘 숟가락 부메랑
+  shuriken: { frames: ['pj-shuriken'], spin: 1700, glow: .3, scale: .55, col: [0x3ab0ff, 0xbfe8ff] },  // 개굴닌자 물수리검
+  ball: { frames: ['pj-ball'], spin: 720, glow: .35, scale: 1.1, col: [0xff6600, 0xffee55] }           // 염버니 불꽃 축구공
 };
 const isBlue = c => c != null && (c & 255) > ((c >> 16) & 255) + 40;
 
@@ -297,14 +327,14 @@ export class ProjectileRenderer {
     const x = q.x + (Math.random() - .5) * (P - 1) * 6, y = q.y + (Math.random() - .5) * (P - 1) * 6;
     const blue = q.frames[0].includes('blue');
     switch (q.kind) {
-      case 'fire':   // 불티 + 짙은 연기가 뒤로 흩날리며 피어오른다
+      case 'fire': case 'ball':   // 불티 + 짙은 연기가 뒤로 흩날리며 피어오른다
         if (Math.random() < .75) fx.burst(x + bx * 4, y + by * 4, blue ? [0x5ab0ff, 0xbfe6ff, 0xffffff] : [0xff6600, 0xffee55, 0xffaa22], 1, 40, { angle: Math.atan2(by, bx), spread: 1, up: 22, grav: -40, bounce: false, glow: true, life: .35, size: sz });
         if (Math.random() < .3) fx.burst(x + bx * 6, y + by * 6, [0x3a3438, 0x2a2428, 0x4a4248], 1, 14, { angle: -Math.PI / 2, spread: 1.2, up: 10, grav: -30, bounce: false, life: .6, size: sz + 1, drag: .95 });
         break;
       case 'leaf':   // 잎 부스러기
         if (Math.random() < .3) fx.burst(x, y, [0x62d44a, 0xc8ff9a, 0x2e963a], 1, 30, { up: 6, grav: 40, bounce: false, life: .5, size: sz, drag: .94 });
         break;
-      case 'water':   // 물방울이 아래로 톡톡 떨어져 튄다
+      case 'water': case 'shuriken':   // 물방울이 아래로 톡톡 떨어져 튄다
         if (Math.random() < .45) fx.burst(x + bx * 5, y + by * 5 + 1, [0x8ad8ff, 0xffffff, 0x3ab0ff], 1, 30, { angle: Math.atan2(by, bx), spread: .9, up: -10, grav: 460, bounce: true, life: .6, size: sz });
         break;
       case 'bubble':
@@ -417,7 +447,7 @@ export class ProjectileRenderer {
     const T = q.tier || 0, n = c => Math.round(c * (1 + T * .5)), sz = T >= 2 ? 2 : 1;
     if (reason === 'expire') { fx.glow(x, y, 6 + q.r, q.kind === 'shadow' ? 0x9a5aff : q.color, 160, .5); fx.burst(x, y, [q.color, 0xffffff], n(3), 40, { glow: true, life: .3, size: sz }); return; }
     switch (q.kind) {
-      case 'fire': {   // 작은 화염 폭발 + 바닥에 통통 튀며 구르는 불똥
+      case 'fire': case 'ball': {   // 작은 화염 폭발 + 바닥에 통통 튀며 구르는 불똥
         for (let i = 0, m = 4 + T * 2; i < m; i++) { const a = -Math.PI / 2 + (i - (m - 1) / 2) * (2.8 / m); this.flamePuff(x, y, Math.cos(a) * 40 * big, Math.sin(a) * 40 * big, .3 + T * .04, .5 * big, 1.1 * big, blue); }
         fx.glow(x, y, 16 * big, blue ? 0x5ab0ff : 0xff7a2a, 200, 1);
         fx.burst(x, y, blue ? [0x5ab0ff, 0xbfe6ff, 0xffffff] : [0xff6600, 0xffee55, 0xffaa22, 0xffffff], n(8 + Math.random() * 4), 150 * big, { up: 110, grav: 520, bounce: true, glow: true, life: .9, size: sz });
@@ -434,7 +464,7 @@ export class ProjectileRenderer {
         fx.burst(x, y, [0x62d44a, 0xc8ff9a, 0x2e963a, 0xffffff], n(8), 120 * big, { up: 40, grav: 120, bounce: false, life: .6, drag: .95, size: sz });
         break;
       }
-      case 'water': case 'bubble': {   // 물풍선이 터지듯 둥근 물보라 링 + 사방으로 튀는 물방울
+      case 'water': case 'bubble': case 'shuriken': {   // 물풍선이 터지듯 둥근 물보라 링 + 사방으로 튀는 물방울
         const k = q.kind === 'bubble' ? .6 : 1;
         fx.ring(x, y, 16 * big * k, 0x8ad8ff, 260);
         fx.ring(x, y, 9 * big * k, 0xffffff, 180);

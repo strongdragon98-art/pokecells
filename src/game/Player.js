@@ -25,6 +25,7 @@ import { megaUltAction, MEGA_ULT_CD, cinematic, magicCircle, legendFinisher, tie
 import { archetypeOf } from '../data/moveRules.js';
 import { MOVE_DB } from '../data/MoveDatabase.js';
 import { onDashTick } from './Perks.js';
+import { chargeSigOf } from './Signature.js';
 
 const SWAP_CD = 3;
 // 진화 단계별 보이는 크기 (1단 모습 기준): 2단 ×1.32 · 3단 ×1.72 · 메가는 3단의 ×1.1 (거다이맥스처럼 부풀지 않게)
@@ -547,7 +548,7 @@ export class Player extends Actor {
       action = SKILL_IMPL[id](this, step);
       action.comboStep = true;
       // 진화 단계별 평타 강화 (2단 이중 검기 · 3단 거대 검기·균열·전방 웨이브) — 첫 타격 순간에 덧붙인다
-      if (this.tierIdx >= 1) { const t0 = action.ev && action.ev.length ? Math.min(...action.ev.map(e => e[0])) : .05; (action.ev = action.ev || []).push([t0 + .005, () => tierComboFx(this, step)]); }
+      if (this.tierIdx >= 1 && !action.noTierFx) { const t0 = action.ev && action.ev.length ? Math.min(...action.ev.map(e => e[0])) : .05; (action.ev = action.ev || []).push([t0 + .005, () => tierComboFx(this, step)]); }
     } else {
       action = SKILL_IMPL[id](this, 0);
       m.cd[slot] = this.cdOf(id);
@@ -731,26 +732,33 @@ export class Player extends Actor {
   }
 
   fireCharge(lvl) {
-    const sc = this.scene, type = this.chargeType(), col = typeColor(type), spec = CHARGE_SHOT[lvl], evo = this.tierIdx, s = this.mods.sizeMul * this.T.proj * (evo >= 2 ? 1.2 : 1);   // 3단·메가는 탄이 더 크다
+    const sig = chargeSigOf(this);   // 계열 고유 차징 (game/Signature.js): 개굴닌자 거대 수리검 · 울머기 저격탄 …
+    const sc = this.scene, type = sig ? sig.type : this.chargeType(), col = typeColor(type), spec = CHARGE_SHOT[lvl], evo = this.tierIdx, s = this.mods.sizeMul * this.T.proj * (evo >= 2 ? 1.2 : 1);   // 3단·메가는 탄이 더 크다
     if (this.action) this.endAction(true);
     this.chgAura.setVisible(false);
     this.startAction({
       dur: lvl >= 3 ? .5 : .3, mm: lvl >= 3 ? 0 : .25, anim: 'Shoot', inv: lvl >= 3 ? .3 : 0, ev: [[.03, () => {
         const f = this.face, x = this.x + f * 12, y = this.y - 3;
-        const q = sc.combat.spawnProjectile({
-          owner: 'player', x, y, vx: f * spec.speed, vy: 0, r: spec.r * s, mul: spec.mul, type, kind: CHARGE_KIND[type] || 'wave', color: col,
-          life: spec.life, pierce: spec.pierce, ghost: !!spec.ghost, light: true, tier: Math.max(this.tierIdx, lvl), pow: s * (1 + lvl * .25), stream: false,
-          boom: spec.boom && { r: spec.boom.r * (1 + (s - 1) * .6), mul: spec.boom.mul }, kb: 200 + lvl * 80,
-          status: Object.assign({ heavy: true, hs: 50 + lvl * 25 }, lvl >= 2 ? { stun: .4 } : {}),
-          update: (q, dt) => {   // 꼬리: 속성 파편 · 3단은 굵은 빛줄기가 남는다
-            q.tt = (q.tt || 0) - dt;
-            if (q.tt <= 0) { q.tt = lvl >= 3 ? .012 : .03; sc.fx.burst(q.x - f * q.r, q.y + (Math.random() - .5) * q.r, [col, 0xffffff], lvl, 40, { grav: 0, bounce: false, glow: true, life: .3, size: lvl >= 2 ? 2 : 1 }); }
-            if (evo >= 1) { q.sp = (q.sp || 0) + dt * 22; for (const ph of [0, Math.PI]) sc.fx.burst(q.x - f * q.r * .6, q.y + Math.sin(q.sp + ph) * q.r * 1.3, [col, 0xffffff], 1, 10, { grav: 0, bounce: false, glow: true, life: .32, size: 2 }); }   // 2단부터: 탄 뒤로 회전 소용돌이 꼬리
-            if (q.beam) { const L = Math.min(q.x0, q.x), W = Math.abs(q.x - q.x0); q.beam.clear().fillStyle(col, .35).fillRect(L, q.y - q.r * .9, W, q.r * 1.8).fillStyle(0xffffff, .55).fillRect(L, q.y - q.r * .3, W, q.r * .6); }
-          },
-          onExpire: q => { if (evo >= 2) { sc.fx.ring(q.x, q.y, 30 * s, col, 300); sc.combat.hitCircle(q.x, q.y, 26 * s, .6 + lvl * .3, type, { kbx: 160, kby: -160, hs: 30, proc: true }); } if (q.beam) { const bm = q.beam; q.beam = null; sc.tweens.add({ targets: bm, alpha: 0, duration: 420, onComplete: () => bm.destroy() }); } }
-        });
-        if (lvl >= 3) { q.x0 = x; q.beam = sc.add.graphics().setDepth(28).setBlendMode(Phaser.BlendModes.ADD); sc.cameras.main.flash(180, 255, 255, 255, true); sc.fx.hitStop(60); }
+        if (sig) {
+          sig.fire(this, lvl, s, f);
+          if (lvl >= 2) sc.fx.floatText(this.x, this.b.y - 16, sig.name[lvl - 1] + '!', lvl >= 3 ? '#ffe36a' : '#ffffff', lvl >= 3 ? 12 : 10);
+          if (lvl >= 3) sc.fx.hitStop(60);
+        } else {
+          const q = sc.combat.spawnProjectile({
+            owner: 'player', x, y, vx: f * spec.speed, vy: 0, r: spec.r * s, mul: spec.mul, type, kind: CHARGE_KIND[type] || 'wave', color: col,
+            life: spec.life, pierce: spec.pierce, ghost: !!spec.ghost, light: true, tier: Math.max(this.tierIdx, lvl), pow: s * (1 + lvl * .25), stream: false,
+            boom: spec.boom && { r: spec.boom.r * (1 + (s - 1) * .6), mul: spec.boom.mul }, kb: 200 + lvl * 80,
+            status: Object.assign({ heavy: true, hs: 50 + lvl * 25 }, lvl >= 2 ? { stun: .4 } : {}),
+            update: (q, dt) => {   // 꼬리: 속성 파편 · 3단은 굵은 빛줄기가 남는다
+              q.tt = (q.tt || 0) - dt;
+              if (q.tt <= 0) { q.tt = lvl >= 3 ? .012 : .03; sc.fx.burst(q.x - f * q.r, q.y + (Math.random() - .5) * q.r, [col, 0xffffff], lvl, 40, { grav: 0, bounce: false, glow: true, life: .3, size: lvl >= 2 ? 2 : 1 }); }
+              if (evo >= 1) { q.sp = (q.sp || 0) + dt * 22; for (const ph of [0, Math.PI]) sc.fx.burst(q.x - f * q.r * .6, q.y + Math.sin(q.sp + ph) * q.r * 1.3, [col, 0xffffff], 1, 10, { grav: 0, bounce: false, glow: true, life: .32, size: 2 }); }   // 2단부터: 탄 뒤로 회전 소용돌이 꼬리
+              if (q.beam) { const L = Math.min(q.x0, q.x), W = Math.abs(q.x - q.x0); q.beam.clear().fillStyle(col, .35).fillRect(L, q.y - q.r * .9, W, q.r * 1.8).fillStyle(0xffffff, .55).fillRect(L, q.y - q.r * .3, W, q.r * .6); }
+            },
+            onExpire: q => { if (evo >= 2) { sc.fx.ring(q.x, q.y, 30 * s, col, 300); sc.combat.hitCircle(q.x, q.y, 26 * s, .6 + lvl * .3, type, { kbx: 160, kby: -160, hs: 30, proc: true }); } if (q.beam) { const bm = q.beam; q.beam = null; sc.tweens.add({ targets: bm, alpha: 0, duration: 420, onComplete: () => bm.destroy() }); } }
+          });
+          if (lvl >= 3) { q.x0 = x; q.beam = sc.add.graphics().setDepth(28).setBlendMode(Phaser.BlendModes.ADD); sc.cameras.main.flash(180, 255, 255, 255, true); sc.fx.hitStop(60); }
+        }
         // 발사 반동 · 섬광
         sc.fx.glow(x, y, (14 + lvl * 10) * s, col, 220, 1); sc.fx.ring(x, y, (12 + lvl * 10) * s, 0xffffff, 220);
         sc.fx.burst(x, y, [col, 0xffffff], 8 + lvl * 6, 140, { angle: f > 0 ? 0 : Math.PI, spread: .9, up: 10, glow: true, life: .3 });
