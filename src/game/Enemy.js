@@ -11,7 +11,12 @@ import { pxt as txt } from '../config.js';   // 월드 안 글자는 도트 글�
 //  1) 아주 옅은 보라 틴트 + 외곽선 둘레에만 어두운 기운   2) 또렷한 붉은 안광 + 움직일 때 얇고 날카롭게 끌리는 안광 실선
 //  3) 은은한 발밑 오라 + 드문 검붉은 도트 연기            4) 3.5~6초마다 0.1초 글리치(좌우 어긋남 + 옅은 RGB 분리)
 // 발밑 오라와 안광 궤적은 GameScene.drawCorruption 이 모든 적을 한 번에 그린다.
+// 침식 단계 Ⅰ~Ⅳ (o.cLv — 보스방에 가까울수록 높다, GameScene.corruptLevel): 단계가 오를수록 틴트가 보라 → 자홍 → 핏빛으로 짙어지고,
+//  검은 껍질 오라가 두꺼워지며, 연기·글리치가 잦아진다 (체력·공격력·속도 강화는 GameScene.spawnAt)
 const CORRUPT_RANGE = [0x8833aa, 0x993388, 0xaa2255];
+export const CLV_COLOR = [0x8a3ab0, 0xa02aa8, 0xc0226a, 0xd81a2a];       // 단계별 틴트
+const CLV_SHELL = [0x2a0840, 0x320838, 0x3a0628, 0x460410];              // 단계별 검은 껍질
+const CLV_TINT = [.1, .16, .24, .32], CLV_SHELL_A = [.26, .34, .44, .56];
 const EYE_COLOR = 0xff0044;
 const SMOKE = [0x5a0a22, 0x2a0612, 0x8a1a3a, 0x3a0a2a];
 
@@ -26,7 +31,8 @@ export class Enemy extends Actor {
     this.resizeBody(Math.max(10, Math.round(this.meta.bodyW * scale)), Math.max(12, Math.round(this.meta.bodyH * scale)));
     this.maxhp = this.hp = Math.round(def.hp * (o.hpMul || 1));
     this.dmg = def.dmg * (o.dmgMul || 1);
-    this.speed = def.speed || 50;
+    this.cLv = Math.max(1, Math.min(4, o.cLv || 1));   // 침식 단계
+    this.speed = (def.speed || 50) * (1 + .05 * (this.cLv - 1));
     this.status = { burn: 0, poison: 0, slow: 0, root: 0, stun: 0, curse: 0 };
     this.tickT = .5;
     this.state = 'spawn'; this.timer = .45; this.cd = .6 + Math.random();
@@ -37,7 +43,7 @@ export class Enemy extends Actor {
     // 세뇌 비주얼 레이어
     const d = this.sprite.depth;
     this.corrupt = true;
-    this.corruptColor = CORRUPT_RANGE[(key.length + Math.floor(x)) % CORRUPT_RANGE.length];
+    this.corruptColor = this.cLv > 1 ? CLV_COLOR[this.cLv - 1] : CORRUPT_RANGE[(key.length + Math.floor(x)) % CORRUPT_RANGE.length];
     this.aura = scene.add.sprite(x, y, 'px').setDepth(d - .2).setAlpha(0);                         // 몸을 감싼 세뇌 껍질(윤곽)
     this.overlay = scene.add.sprite(x, y, 'px').setDepth(d + .1).setAlpha(0);                      // 보라·자홍 틴트 블렌딩
     // 색수차(RGB Split): 몸 뒤에서 좌우로 어긋난 빨강·청록 복사본 → 가장자리에만 색이 번진다
@@ -150,14 +156,14 @@ export class Enemy extends Actor {
     const pulse = Math.sin(this.auraT * 5) * .5 + .5, alpha = s.alpha * (this.fade ? .4 : 1);
     // 1) 아주 옅은 틴트 (원본 색 88% 유지 · 피격 섬광 중에는 감춰 흰 점멸이 보이게)
     this.copyFrame(this.overlay, s).setPosition(s.x, s.y).setTintFill(this.boss && this.phase === 2 ? 0xaa2255 : this.corruptColor)
-      .setAlpha(this.flashT > 0 ? 0 : alpha * .12);
-    // 세뇌 껍질: 몸보다 살짝 큰 검보라 실루엣을 뒤에 깔아 외곽선 둘레에만 어두운 기운이 감돈다
-    const k = this.boss ? 1.04 : 1.07;
+      .setAlpha(this.flashT > 0 ? 0 : alpha * (this.boss ? .12 : CLV_TINT[this.cLv - 1]));
+    // 세뇌 껍질: 몸보다 살짝 큰 검보라 실루엣을 뒤에 깔아 외곽선 둘레에만 어두운 기운이 감돈다 (침식 단계가 높을수록 두껍고 짙다)
+    const lv = this.cLv - 1, k = this.boss ? 1.04 : 1.05 + lv * .025;
     this.copyFrame(this.aura, s).setPosition(s.x, s.y + 1).setScale(s.scaleX * k, s.scaleY * k)
-      .setTintFill(this.boss && this.phase === 2 ? 0x5a0a2a : 0x2a0840).setAlpha(alpha * (.3 + pulse * .14));
-    // 4) 글리치: 3.5~6초마다 0.1초간 좌우 어긋남 + 옅은 RGB 분리
+      .setTintFill(this.boss && this.phase === 2 ? 0x5a0a2a : this.boss ? 0x2a0840 : CLV_SHELL[lv]).setAlpha(alpha * ((this.boss ? .3 : CLV_SHELL_A[lv]) + pulse * .14));
+    // 4) 글리치: 3.5~6초마다 0.1초간 좌우 어긋남 + 옅은 RGB 분리 (침식 Ⅲ·Ⅳ는 더 자주)
     this.glitchT -= dt;
-    if (this.glitchT <= 0) { this.glitchDur = .1; this.glitchT = 3.5 + Math.random() * 2.5; }
+    if (this.glitchT <= 0) { this.glitchDur = .1; this.glitchT = (this.cLv >= 4 ? 1.4 : this.cLv >= 3 ? 2.4 : 3.5) + Math.random() * 2.5; }
     if (this.glitchDur > 0) {
       this.glitchDur -= dt;
       const j = (Math.random() < .5 ? -1 : 1) * (1 + Math.round(Math.random())) * s.scaleX, sp = 2 * s.scaleX;
@@ -166,7 +172,7 @@ export class Enemy extends Actor {
       this.copyFrame(this.rgbC, s).setPosition(s.x + sp, s.y).setTintFill(0x1ae8ff).setAlpha(alpha * .4).setVisible(true);
     } else { this.rgbR.setVisible(false); this.rgbC.setVisible(false); }
     // 2) 붉은 안광 + 궤적 (세뇌 표현의 핵심 — 또렷하게)
-    const ep = this.eyePos(), big = this.boss ? 1.8 : 1;
+    const ep = this.eyePos(), big = this.boss ? 1.8 : this.cLv >= 4 ? 1.35 : 1;
     this.eyeGlow.setPosition(ep.x, ep.y).setScale(.22 * big, .12 * big).setAlpha(alpha * (.85 + pulse * .15));
     this.eyeDot.setPosition(Math.round(ep.x), Math.round(ep.y)).setSize(2 * big, 2 * big).setAlpha(alpha);
     const active = Math.abs(this.b.velocity.x) + Math.abs(this.b.velocity.y) > 30 || this.state === 'wind' || this.striking || this.state === 'punch';
@@ -174,7 +180,7 @@ export class Enemy extends Actor {
     const keep = active ? 260 : 90;
     while (this.eyeTrail.length && now - this.eyeTrail[0].t > keep) this.eyeTrail.shift();
     // 3) 몸 주변에서 피어오르는 검붉은 도트 연기 (예전의 1/3)
-    if (Math.random() < dt * (this.boss ? 5.3 : 1.7)) {
+    if (Math.random() < dt * (this.boss ? 5.3 : 1.7 * (.6 + .4 * this.cLv))) {
       this.scene.fx.burst(this.x + (Math.random() - .5) * this.b.width * 1.2, this.bottom - Math.random() * this.b.height * .7, SMOKE, 1, 14,
         { angle: -Math.PI / 2, spread: .6, up: 14, grav: -26, bounce: false, life: .9 + Math.random() * .5, drag: .96, size: Math.random() < .35 ? 2 : 1 });
     }

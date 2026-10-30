@@ -2,7 +2,7 @@
 //  왼쪽 위: 몬스터볼 테두리 유리 그릇(출전 포켓몬 + 차오르는 진화 경험치) · 몬스터볼 HP 가면 · 대기 포켓몬 · 강화 아이템
 //  오른쪽 위: 스테이지·방 · 정화 진행도   오른쪽 아래: 스킬 구슬 (+ Z크리스탈을 얻으면 Q 구슬)   아래 가운데: 보스 체력
 //  지역/보스 타이틀, 알림, 도감 등록 팝업, 일시정지·결과 화면은 흐려지는 가는 선과 어둠 띠로 꾸민다.
-//  창: 지도(M, 다섯 지방 탭) · 가방(I) · 설정(O) · 기술머신 카드 · 아머까오 공중날기 · 디버그(F3, 챕터·보스 셀렉트)
+//  창: 지도(M, 다섯 지방 탭) · 가방(I) · 설정(O) · 기술머신 카드 · 아머까오 공중날기 · 디버그(F3, 챕터·보스 셀렉트) · 대화(마을 사람)
 import Phaser from 'phaser';
 import { txt, GAME_W, GAME_H, RES, uiCamera } from '../config.js';
 import { SKILLS, SPECIES, UNLOCKABLE, UNLOCK_KILLS, TIERS, ZMOVES, Z_CD, TAGS, EVO_EXP, BOSSES } from '../data/pokemon.js';
@@ -18,6 +18,7 @@ import { MapView, VP } from '../systems/MapView.js';
 import { TouchControls } from '../systems/TouchControls.js';
 import { tagIcon, roundPortrait, itemArt, hiTex, dashIcon } from '../systems/Textures.js';
 import { CHG_SHOW, CHG_AT } from '../game/Player.js';
+import { npcArt } from '../game/Npc.js';
 import { Save } from '../systems/Save.js';
 import { RosterPanel } from '../systems/RosterPanel.js';
 import { Sfx } from '../systems/Audio.js';
@@ -230,7 +231,7 @@ export default class UIScene extends Phaser.Scene {
       area: a => this.areaTitle(a),
       overlay: kind => kind === 'map' ? this.showMap() : kind === 'inv' ? (this.invMember = null, this.showInv()) :   // 가방은 열 때마다 출전 중인 포켓몬부터
          kind === 'tm' ? (this.tmSlot = false, this.showTM())
-        : kind === 'taxi' ? this.showTaxi() : kind === 'debug' ? this.showDebug() : kind === 'settings' ? this.showSettings(0) : kind === 'box' ? this.showBox() : this.clearOverlay(),
+        : kind === 'taxi' ? this.showTaxi() : kind === 'talk' ? this.showTalk() : kind === 'debug' ? this.showDebug() : kind === 'settings' ? this.showSettings(0) : kind === 'box' ? this.showBox() : this.clearOverlay(),
       lore: s => this.showLore(s),
       hurt: k => { this.hurtK = Math.max(this.hurtK, k); },
       say: (who, s) => this.showLore(s, who),   // 트레이너 대사 (난천 · 레드)
@@ -356,6 +357,7 @@ export default class UIScene extends Phaser.Scene {
     this.fpsT -= delta;
     if (this.fpsT <= 0) { this.fpsT = 500; this.fpsText.setText(`${Math.round(this.game.loop.actualFps)} FPS`); }
     if (!p) return;
+    if (this.overlayMode === 'talk') this.talkTick(dt);
     const m = p.m, mg = p.mega;
     // 심연 분위기 (진행도 · 보스방 거리)
     const deep = gs.overlay ? 0 : Math.max(0, (gs.atmo || 0) - .25) / .75;
@@ -538,6 +540,8 @@ export default class UIScene extends Phaser.Scene {
     this.tweens.killTweensOf(this.overlay.list);
     this.overlay.removeAll(true); this.gOver.clear(); this.overlay.setVisible(false); this.menu = null;
     this.overlayMode = null; this.tmBusy = false; this.boxPanel = null;
+    if (this.talkMask) { this.talkMask.destroy(); this.talkMask = null; }
+    this.talkText = null; this.talkArrow = null; this.talkFace = null;
     for (const ev of this.tmEvents || []) ev.remove();
     this.tmEvents = [];   // 기술머신 전설 카드 번개 타이머
     this.input.keyboard.off('keydown', this.onOverlayKey, this);
@@ -863,6 +867,84 @@ export default class UIScene extends Phaser.Scene {
     L.add(hkText(this, 34, 316, '◉ 포켓몬센터  ◉ 아머까오  ☠ 보스·중간 보스  ? 숨겨진 전설  ◉ 기술머신  ◉ 보물  ◉ 상처약  ◉ 현재 위치  ┆ 안 가 본 길', 8.5, HK.dim));
     L.add(hkText(this, 320, 340, `${st.short} 탐험 ${Math.round(this.mapView.progress * 100)}%   ·   1~5 지방   ·   ${keyLabel(Settings.key('map'))} · Esc 닫기   ·   끌어서 이동 · 휠 · Z · +– 확대`, 9, HK.faint, { origin: .5 }));
     this.overlayMode = 'map';
+  }
+
+  // ---------------- 대화 (마을 사람 · 오박사 — game/Npc.js · data/npcs.js) ----------------
+  //  아래쪽 대화창: 이름표 + 도트 초상 + 한 글자씩 써지는 대사 + ▼ (쪽 번호)
+  //  F · ↑ · Z · Space · Enter · 클릭/터치 = 다음 쪽 (써지는 중이면 그 쪽을 끝까지) · Esc 닫기
+  showTalk() {
+    const T = this.gs.talk;
+    if (!T) return;
+    this.clearOverlay();
+    this.toastT = 0;
+    const g = this.gOver, L = this.overlay.setVisible(true), X = 58, Y = 250, W = 524, H = 90;
+    g.fillStyle(0x05040a, .28); g.fillRect(0, 0, GAME_W, GAME_H);
+    g.fillStyle(0x000000, .35); g.fillRoundedRect(X + 3, Y + 4, W, H, 9);
+    g.fillStyle(0x0c0a16, .95); g.fillRoundedRect(X, Y, W, H, 9);
+    g.lineStyle(1.6, HK.goldN, .85); g.strokeRoundedRect(X, Y, W, H, 9);
+    g.lineStyle(1, 0xffffff, .07); g.strokeRoundedRect(X + 4, Y + 4, W - 8, H - 8, 6);
+    // 초상: 사람 도트를 크게 (어깨 위까지 보이게 잘라서)
+    const fx = X + 12, fy = Y + 11, fw = 58, fh = 68;
+    g.fillStyle(0x1c1830, 1); g.fillRoundedRect(fx, fy, fw, fh, 6);
+    g.fillStyle(0x2c2648, 1); g.fillRect(fx + 3, fy + fh - 22, fw - 6, 19);
+    g.lineStyle(1, HK.goldN, .5); g.strokeRoundedRect(fx, fy, fw, fh, 6);
+    const key = npcArt(this, T.look, T.tint);
+    const face = this.add.image(fx + fw / 2, fy + fh + 30, key + ':open').setOrigin(.5, 1).setScale(3);
+    const mk = this.make.graphics({ add: false }); mk.fillStyle(0xffffff); mk.fillRoundedRect(fx + 1, fy + 1, fw - 2, fh - 2, 5);
+    face.setMask(mk.createGeometryMask()); this.talkMask = mk;
+    L.add(face); this.talkFace = { img: face, key, t: 2 };
+    // 이름표
+    const name = hkText(this, X + 24, Y - 1, T.name, 10.5, HK.gold, { bold: true, origin: [0, .5], ls: 1 });
+    const nw = name.width + 24;
+    g.fillStyle(0x0c0a16, 1); g.fillRoundedRect(X + 12, Y - 10, nw, 19, 6);
+    g.lineStyle(1.3, HK.goldN, .9); g.strokeRoundedRect(X + 12, Y - 10, nw, 19, 6);
+    L.add(name);
+    // 대사 (한 글자씩)
+    const line = T.lines[T.page] || '';
+    this.talkText = hkText(this, X + 84, Y + 16, '', 11, '#efe6d0', { style: { wordWrap: { width: W - 108, useAdvancedWrap: true }, lineSpacing: 5 } });
+    L.add(this.talkText);
+    this.talkFull = line; this.talkShown = T.instant ? line.length : 0; this.talkAcc = 0; T.instant = false;
+    this.talkText.setText(line.slice(0, this.talkShown));
+    L.add(hkText(this, X + W - 14, Y + H - 9, `${T.page + 1} / ${T.lines.length}`, 8, HK.faint, { origin: [1, .5] }));
+    this.talkArrow = hkText(this, X + W - 50, Y + H - 10, '▼', 9, HK.gold, { origin: .5 }).setAlpha(0);
+    L.add(this.talkArrow);
+    const touch = this.gs.touchInput && this.gs.touchInput.on;
+    L.add(hkText(this, X + 84, Y + H - 9, touch ? '화면을 누르면 다음' : 'F · ↑ · Z · 클릭 다음   ·   Esc 닫기', 7.5, HK.faint, { origin: [0, .5] }));
+    const z = this.add.zone(0, 0, GAME_W, GAME_H).setOrigin(0).setInteractive(); L.add(z);
+    z.on('pointerdown', () => this.talkNext());
+    this.input.keyboard.on('keydown', this.onOverlayKey, this);
+    this.overlayMode = 'talk';
+  }
+  talkTick(dt) {
+    if (!this.talkText || !this.talkText.scene) return;
+    const full = this.talkFull || '';
+    if (this.talkShown < full.length) {
+      this.talkAcc += dt * 42;
+      const n = Math.min(full.length, this.talkShown + Math.floor(this.talkAcc));
+      if (n > this.talkShown) {
+        this.talkAcc -= n - this.talkShown;
+        if (Math.floor(n / 2) !== Math.floor(this.talkShown / 2) && full[n - 1] !== ' ') Sfx.play('talk');
+        this.talkShown = n; this.talkText.setText(full.slice(0, n));
+      }
+    }
+    const done = this.talkShown >= full.length;
+    if (this.talkArrow) this.talkArrow.setAlpha(done ? .55 + Math.sin(this.time.now / 160) * .45 : 0).setY(this.talkArrow.y);
+    // 초상은 말하는 동안 가끔 눈을 깜빡인다
+    const f = this.talkFace;
+    if (f && f.img.scene && (f.t -= dt) <= 0) {
+      const blink = f.img.texture.key.endsWith(':open');
+      f.img.setTexture(f.key + (blink ? ':blink' : ':open'));
+      f.t = blink ? .12 : 1.6 + Math.random() * 2.4;
+    }
+  }
+  talkNext() {
+    const T = this.gs.talk;
+    if (!T) return;
+    if (this.talkShown < (this.talkFull || '').length) { this.talkShown = this.talkFull.length; this.talkText.setText(this.talkFull); return; }
+    Sfx.play('select');
+    T.page++;
+    if (T.page >= T.lines.length) { this.gs.toggleOverlay('talk'); return; }
+    this.showTalk();
   }
 
   // ---------------- 아머까오 공중날기 (시내 정거장에서 F / ↑) ----------------
@@ -1619,6 +1701,11 @@ export default class UIScene extends Phaser.Scene {
       if (e.code === 'ArrowDown' || e.code === 'ArrowUp') { Sfx.play('select'); this.showSettings((f + (e.code === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length); }
       else if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && rows[f]) { rows[f].adjust(e.code === 'ArrowRight' ? 1 : -1); if (rows[f].toggle) return; this.showSettings(f); }
       else if ((e.code === 'Enter' || e.code === 'Space') && rows[f] && rows[f].toggle) rows[f].toggle();
+      return;
+    }
+    if (this.overlayMode === 'talk') {
+      const k = keyNameFromEvent(e);
+      if (['KeyF', 'ArrowUp', 'KeyZ', 'Space', 'Enter', 'NumpadEnter'].includes(e.code) || ['interact', 'up', 'jump', 'z'].some(a => Settings.key(a) === k)) this.talkNext();
       return;
     }
     if (this.overlayMode === 'taxi') {

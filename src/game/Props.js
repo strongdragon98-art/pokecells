@@ -236,6 +236,109 @@ function labArt(scene, w) {
   return { body, emis, W, H };
 }
 
+// 오박사 연구소 안 (관동 입구 방의 뒤 벽): 크림색 줄무늬 벽지 · 나무 징두리 · 창문(맑은 하늘 · 붉은 커튼) · 책장 · 연구 장비(초록 화면)
+//  · 몬스터볼 셋이 놓인 책상 · 관동 지도 · 화분 · 천장 등. 발광부(화면 · 계기 불빛 · 등 · 창빛)는 따로 그려 늘 밝다
+function labRoomArt(scene, w, h) {
+  const W = w * 16, H = h * 16, key = `prop:labroom:${w}:${h}`;
+  const wall = 0xe6dcc2, wallD = 0xd6caa8, wood = 0x9a7048, woodD = 0x6a4a2e, woodL = 0xc0925e, RAIL = H - 66, FL = H - 8;
+  const lerpC = (a, b, k) => { const ch = sh => Math.round(((a >> sh) & 255) + ((((b >> sh) & 255) - ((a >> sh) & 255)) * k)); return (ch(16) << 16) | (ch(8) << 8) | ch(0); };
+  const X = { win: [24, Math.round(W * .47), W - 120], shelf: [128, Math.round(W * .62)], machine: 214, poster: Math.round(W * .36), desk: Math.round(W * .47) + 2, pc: Math.round(W * .74), plant: W - 30 };
+  const body = canvasTex(scene, key, W, H, F => {
+    F(0, 0, W, H, wall);
+    for (let x = 0; x < W; x += 24) F(x, 9, 2, RAIL - 9, wallD);
+    F(0, 0, W, 7, woodD); F(0, 7, W, 2, wood); F(0, 9, W, 1, shade(wall, .85));
+    F(0, RAIL, W, H - RAIL, wood); F(0, RAIL - 2, W, 4, woodD); F(0, RAIL - 3, W, 1, woodL);
+    for (let x = 6; x < W - 44; x += 50) { F(x, RAIL + 8, 42, FL - RAIL - 14, shade(wood, 1.08)); F(x, RAIL + 8, 42, 1, woodD); F(x, RAIL + 8, 1, FL - RAIL - 14, woodD); F(x + 41, RAIL + 8, 1, FL - RAIL - 14, woodL); }
+    F(0, FL, W, 8, 0x4a3424); F(0, FL, W, 1, 0x6a4a30);
+    // 창문 (맑은 하늘 · 구름 · 붉은 커튼)
+    for (const x of X.win) {
+      F(x - 3, 19, 82, 64, woodD);
+      for (let y = 0; y < 56; y++) F(x + 2, 23 + y, 72, 1, lerpC(0x7ab8e8, 0xd8f0ff, y / 56));
+      F(x + 10, 34, 18, 4, 0xffffff, .85); F(x + 14, 31, 10, 3, 0xffffff, .85); F(x + 44, 46, 22, 4, 0xffffff, .7); F(x + 48, 43, 12, 3, 0xffffff, .7);
+      F(x + 2, 66, 72, 13, 0x6aa86a); F(x + 2, 63, 30, 4, 0x5a985a); F(x + 40, 62, 34, 5, 0x5a985a);   // 먼 언덕
+      F(x + 37, 23, 2, 56, woodD); F(x + 2, 50, 72, 2, woodD);
+      F(x - 6, 83, 88, 4, woodL); F(x - 6, 87, 88, 1, woodD);
+      for (const cx of [x - 9, x + 75]) { F(cx, 16, 10, 70, 0xa8343a); F(cx + 3, 16, 2, 70, 0x7a2028); F(cx + 7, 16, 1, 70, 0xc84a4a); }
+      F(x - 10, 14, 96, 3, woodD);
+    }
+    // 책장
+    for (const x of X.shelf) {
+      const y0 = FL - 120;
+      F(x, y0, 66, 120, woodD); F(x + 4, y0 + 4, 58, 112, 0x3a2618); F(x, y0, 66, 2, woodL);
+      for (let k = 0; k < 4; k++) {
+        const sy = y0 + 6 + k * 28;
+        F(x + 4, sy + 23, 58, 3, wood);
+        let bx = x + 6;
+        while (bx < x + 58) {
+          const bw = 3 + Math.floor(Math.random() * 3), bh = 14 + Math.floor(Math.random() * 7), col = [0xa83a3a, 0x3a5aa8, 0x3a8a4a, 0xd8a03a, 0x6a3a8a, 0xe8e0c8, 0x2a6a7a][Math.floor(Math.random() * 7)];
+          if (bx + bw > x + 60) break;
+          F(bx, sy + 23 - bh, bw, bh, col); F(bx, sy + 23 - bh, 1, bh, shade(col, 1.25)); F(bx, sy + 20 - Math.floor(bh / 2), bw, 1, shade(col, .7));
+          bx += bw + (Math.random() < .12 ? 3 : 0);
+        }
+      }
+    }
+    // 연구 장비 (큰 분석기)
+    { const x = X.machine, y0 = FL - 100;
+      F(x, y0, 112, 100, 0x5a6a78); F(x + 2, y0 + 2, 108, 96, 0x7a8a98); F(x, y0, 112, 2, 0xa8b8c4);
+      F(x + 8, y0 + 10, 44, 32, 0x14181c); F(x + 60, y0 + 10, 44, 32, 0x14181c);
+      F(x + 8, y0 + 52, 96, 18, 0x5a6a78); for (let k = 0; k < 8; k++) F(x + 12 + k * 12, y0 + 56, 8, 10, k % 3 ? 0x3a4450 : 0x2a323a);
+      for (let k = 0; k < 6; k++) F(x + 10 + k * 16, y0 + 78, 10, 4, 0x4a5662);
+      F(x - 6, y0 + 20, 6, 80, 0x3a3a44); F(x - 10, y0 + 60, 6, 40, 0x2a2a32);   // 굵은 전선
+      F(x + 112, y0 + 30, 3, 70, 0x2a2a32); }
+    // 관동 지도 액자
+    { const x = X.poster, y = 26;
+      F(x - 3, y - 3, 76, 52, woodD); F(x, y, 70, 46, 0x5a9ad8);
+      F(x + 6, y + 6, 26, 16, 0x6ab86a); F(x + 30, y + 10, 30, 24, 0x7ac87a); F(x + 12, y + 24, 22, 14, 0x6ab86a); F(x + 40, y + 30, 18, 10, 0x5aa85a);
+      F(x + 16, y + 14, 30, 1, 0xd8c890); F(x + 45, y + 14, 1, 18, 0xd8c890); F(x + 20, y + 30, 26, 1, 0xd8c890);
+      for (const [px, py] of [[16, 14], [45, 14], [45, 31], [20, 30]]) F(x + px - 1, y + py - 1, 3, 3, 0xe84a4a); }
+    // 몬스터볼 책상
+    { const x = X.desk, top = FL - 34;
+      F(x, top, 86, 6, woodL); F(x, top + 6, 86, 3, woodD); F(x + 4, top + 9, 6, 34 - 9, woodD); F(x + 76, top + 9, 6, 34 - 9, woodD); F(x + 28, top + 9, 30, 12, wood); F(x + 40, top + 14, 6, 2, woodL);
+      for (let i = 0; i < 3; i++) {
+        const bx = x + 16 + i * 22, by = top - 9;
+        F(bx + 1, by, 7, 1, 0x1a1418); F(bx, by + 1, 9, 7, 0x1a1418); F(bx + 1, by + 8, 7, 1, 0x1a1418);
+        F(bx + 1, by + 1, 7, 3, 0xe03a3a); F(bx + 2, by + 1, 2, 1, 0xff8a8a); F(bx + 1, by + 5, 7, 3, 0xf4f0ea); F(bx + 1, by + 4, 7, 1, 0x1a1418); F(bx + 3, by + 3, 3, 3, 0x1a1418); F(bx + 4, by + 4, 1, 1, 0xffffff);
+      } }
+    // 컴퓨터 책상 (PC)
+    { const x = X.pc, top = FL - 30;
+      F(x, top, 70, 5, woodL); F(x + 4, top + 5, 5, 25, woodD); F(x + 61, top + 5, 5, 25, woodD);
+      F(x + 14, top - 30, 40, 28, 0xd8d4c8); F(x + 17, top - 27, 34, 20, 0x10181c); F(x + 30, top - 2, 8, 2, 0xb8b4a8); F(x + 10, top - 4, 48, 3, 0xc8c4b8); }
+    // 화분
+    { const x = X.plant;
+      F(x, FL - 18, 18, 18, 0xb86a3a); F(x - 1, FL - 20, 20, 3, 0xd07a44); F(x + 2, FL - 14, 14, 1, 0x8a4a2a);
+      for (const [dx, dy, ww, hh] of [[2, -36, 6, 18], [9, -44, 5, 26], [12, -32, 7, 14], [-2, -28, 6, 10], [6, -50, 4, 12]]) { F(x + dx, FL + dy, ww, hh, 0x3a8a4a); F(x + dx, FL + dy, 1, hh, 0x5aa86a); } }
+    // 천장 등 (갓 · 줄)
+    for (const lx of [W * .2, W * .5, W * .8]) { F(lx - 1, 9, 2, 14, 0x3a3030); F(lx - 9, 23, 18, 5, 0x4a5a4a); F(lx - 11, 27, 22, 2, 0x3a4a3a); }
+  });
+  const emis = canvasTex(scene, key + ':e', W, H, F => {
+    for (const x of X.win) F(x + 2, 23, 72, 56, 0xffffff, .1);
+    const x = X.machine, y0 = FL - 100;
+    for (const sx of [x + 8, x + 60]) { F(sx, y0 + 10, 44, 32, 0x1a4a3a, .8); for (let k = 0; k < 44; k++) F(sx + k, y0 + 26 + Math.round(Math.sin(k * .5 + sx) * 6 * Math.sin(k * .13)), 1, 2, 0x6affb8); F(sx + 2, y0 + 12, 12, 2, 0x6affb8, .7); }
+    for (let k = 0; k < 6; k++) F(x + 12 + k * 16, y0 + 79, 4, 2, [0xff4a4a, 0xffd04a, 0x4aff8a][k % 3]);
+    const pc = X.pc, top = FL - 30;
+    F(pc + 17, top - 27, 34, 20, 0x2a5a8a, .9); for (let k = 0; k < 5; k++) F(pc + 20, top - 24 + k * 3, 10 + (k * 7) % 18, 1, 0xa8e0ff);
+    for (const lx of [W * .2, W * .5, W * .8]) { F(lx - 8, 28, 16, 2, 0xfff4d0); }
+  });
+  return { body, emis, W, H, lamps: [W * .2, W * .5, W * .8] };
+}
+
+// 침식 균열 (바닥 윗면에 덮는 빛나는 금)
+function veinArt(scene) {
+  return canvasTex(scene, 'fx:vein', 16, 6, F => {
+    F(0, 0, 4, 1, 0xffffff, .9); F(3, 1, 3, 1, 0xffffff, .9); F(6, 1, 1, 2, 0xffffff, .8); F(6, 2, 4, 1, 0xffffff, .9); F(9, 1, 3, 1, 0xffffff, .7); F(12, 0, 4, 1, 0xffffff, .8);
+    F(5, 3, 1, 2, 0xffffff, .5); F(10, 3, 1, 1, 0xffffff, .4);
+  });
+}
+
+// 연구소 마룻바닥 한 칸 (바닥 타일 위에 덮는다)
+function labFloorArt(scene) {
+  return canvasTex(scene, 'prop:labfloor', 16, 16, F => {
+    F(0, 0, 16, 16, 0x7a5232); F(0, 0, 16, 2, 0xc8986a); F(0, 2, 16, 1, 0x9a6a40);
+    F(0, 3, 16, 5, 0x9a6a42); F(0, 8, 16, 1, 0x5a3a22); F(0, 9, 16, 5, 0x8a5c38); F(0, 14, 16, 2, 0x4a3020);
+    F(5, 3, 1, 5, 0x6a4428); F(12, 9, 1, 5, 0x5a3a22); F(9, 4, 2, 1, 0xb08050, .6);
+  });
+}
+
 // 부서진 로어 표지판 (읽을 수 있다): 기울어진 나무판 + 긁힌 글씨 자국
 function loreArt(scene) {
   const wood = 0x6a4a2e;
@@ -455,6 +558,7 @@ export class Props {
     this.build();
   }
   areaOf(room) { return room ? this.stage.areas[room.ai] : null; }
+  depthOf(room) { return !room ? null : this.level.purified ? 0 : room.depth; }   // 정화한 지방은 어디든 맑다
 
   lit(o) { if (this.webgl) o.setPipeline('Light2D'); this.objs.push(o); return o; }
   add(o) { this.objs.push(o); return o; }
@@ -524,7 +628,7 @@ export class Props {
         }
         case 'tree': {
           // 고밀도 픽셀 고목 + 늘어진 덩굴(흔들림) + 균열 맥동 + 떨어지는 포자·피어오르는 반딧불이
-          const rm = roomAtCell(this.level, pr.x, pr.g - 1), stage = depthStage(rm && rm.depth);   // 입구 쪽은 푸르고, 보스방 쪽은 시들어 검붉다
+          const rm = roomAtCell(this.level, pr.x, pr.g - 1), stage = depthStage(this.depthOf(rm));   // 입구 쪽은 푸르고, 보스방 쪽은 시들어 검붉다
           const v = (pr.x * 7 + pr.g) % 4, a = treeArt(s, this.si, v, p, stage), x = X + 24, top = Y + 2 - a.H, left = x - a.baseX;
           this.lit(s.add.image(x, Y + 2, a.key).setOrigin(a.baseX / a.W, 1).setDepth(4));
           if (a.emis) { const e = this.add(s.add.image(x, Y + 2, `${a.key}:e`).setOrigin(a.baseX / a.W, 1).setDepth(4.1)); this.pulses.push({ o: e, base: .5, amp: .3, sp: 1.2 + Math.random() * .8 }); }   // 균열이 숨 쉬듯 은은하게
@@ -543,6 +647,16 @@ export class Props {
           const e = this.add(s.add.image(X, Y, a.emis).setOrigin(0, 1).setDepth(5.1));
           this.flickers.push({ objs: [e], base: [1], t: 0, off: 0, rate: 2.5 });
           this.add(s.add.text(X + a.W / 2, Y - a.H - 6, '오박사 연구소', { fontFamily: 'Galmuri9', fontSize: '9px', color: '#8a8478', stroke: '#0a0806', strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(5.2).setAlpha(.7));
+          break;
+        }
+        case 'labroom': {   // 오박사 연구소 안: 방 뒤 벽 전체 + 따뜻한 천장 등
+          const a = labRoomArt(s, pr.w, pr.h);
+          this.lit(s.add.image(X, Y, a.body).setOrigin(0, 1).setDepth(2.6));
+          const e = this.add(s.add.image(X, Y, a.emis).setOrigin(0, 1).setDepth(2.7));
+          this.flickers.push({ objs: [e], base: [1], t: 0, off: 0, rate: .25 });
+          const fk = labFloorArt(s);
+          for (let x = pr.x; x < pr.x + pr.w; x++) if (this.level.grid[pr.g][x] === 'S') this.lit(s.add.image(x * TILE, Y, fk).setOrigin(0).setDepth(10.3));   // 마룻바닥 (철창 자리는 비운다)
+          for (const lx of a.lamps) { this.light(X + lx, Y - a.H + 40, 260, 0xfff0d0, 1.5); const gl = this.glow(X + lx, Y - a.H + 30, .9, 0xfff0c0, .35, 2.75); this.pulses.push({ o: gl, base: .32, amp: .04, sp: 1.3 }); }
           break;
         }
         case 'lore': {
@@ -593,7 +707,7 @@ export class Props {
         }
         case 'tallgrass': {
           const g = this.lit(s.add.image(X + 16, Y + 2, tallGrassArt(s, this.si, p)).setOrigin(.5, 1).setDepth(13.5).setFlipX(Math.random() < .5));
-          const gr = roomAtCell(this.level, pr.x, pr.g - 1), gst = depthStage(gr && gr.depth);
+          const gr = roomAtCell(this.level, pr.x, pr.g - 1), gst = depthStage(this.depthOf(gr));
           if (gst === 2) g.setTint(0xc07a7a); else if (gst === 0) g.setTint(0xe8ffc8);   // 시든 풀은 검붉게 · 초입은 햇살 받은 연두빛
           g.ph = Math.random() * 6; this.grass.push(g);
           break;
@@ -646,6 +760,7 @@ export class Props {
       this.interacts.push({ kind: 'terminal', idx: i, data: tm, x, y: Y, range: 26, used: false, repeat: true, prompt: '[F 또는 ↑ : 간이 회복기]', promptY: Y - 50, holo, beam, lightObj: l, near: false });
     });
     this.buildSurfaceDecor();
+    this.buildVeins();
     this.buildRails();
     this.buildFireflies();
     this.buildAtmosphere();
@@ -697,13 +812,29 @@ export class Props {
   }
 
   // 위가 트인 벽 타일마다 수풀·돌멩이·버섯 (마을엔 꽃)
+  // 침식 균열: 보스방에 가까운 방(침식 깊이 0.5 이상)의 바닥에 보랏빛 · 핏빛으로 숨 쉬듯 빛나는 금 (깊을수록 촘촘하게 · 정화하면 사라진다)
+  buildVeins() {
+    if (this.level.purified) return;
+    const s = this.s, { grid, cols, rows } = this.level, key = veinArt(s);
+    for (const r of this.level.rooms) {
+      const d = r.depth || 0;
+      if (d < .5 || r.type === 'village') continue;
+      const p = (d - .45) * .32;
+      for (let y = r.ty0 + 1; y <= r.F && y < rows; y++) for (let x = r.tx0; x < r.tx1 && x < cols; x++) {
+        if (grid[y][x] !== 'S' || grid[y - 1][x] !== '.' || Math.random() > p) continue;
+        const v = this.add(s.add.image(x * TILE + 8, y * TILE + 1, key).setOrigin(.5, 0).setBlendMode(ADD).setTint(d > .75 ? 0xff3a5a : 0xb05aff).setDepth(10.25).setFlipX(Math.random() < .5));
+        this.pulses.push({ o: v, base: .45 + d * .2, amp: .3, sp: 1.5 + Math.random() * 1.5 });
+      }
+    }
+  }
+
   buildSurfaceDecor() {
     const s = this.s, { grid, cols, rows } = this.level, cave = this.si === 1;
     for (let x = 1; x < cols - 1; x++) {
       for (let y = 3; y < rows; y++) {
         if (grid[y][x] !== 'S' || grid[y - 1][x] !== '.') continue;
         const room = roomAt(this.level, x * TILE + 8, y * TILE - 8), village = room && room.type === 'village';
-        if (!room) continue;
+        if (!room || room.lab) continue;   // 연구소 안엔 풀·버섯이 없다
         const gy = y * TILE + 2;
         if (Math.random() < .5) {
           const g = this.lit(s.add.image(x * TILE + rand(1, 14), gy, `dec:grass:${this.si}:${Math.floor(Math.random() * 3)}`).setOrigin(.5, 1).setDepth(13).setFlipX(Math.random() < .5));

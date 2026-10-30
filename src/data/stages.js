@@ -1,5 +1,6 @@
 // 5대 지방 = 5개 챕터: 침식된 관동 → 어둠에 잠긴 성도 → 폭풍의 호연 → 시공이 뒤틀린 신오 → 종언의 하나·무한다이노의 심연
 // 챕터마다 메트로배니아식 2D 방 그래프를 만든다 (game/World.js). 지역(area)은 본길 순서대로 이어지고, 지역마다 샛길이 갈라진다.
+//  각 지방 첫 지역엔 결계에 지켜지는 안전한 시내(hub)가 있다 — 마을 사람들(data/npcs.js)이 이야기를 들려준다. 관동 입구는 오박사 연구소 안
 //  plan: 그 지역 본길의 방 차례. 토큰 —
 //   start 입구 · c 전투방(모양 무작위) · wide 넓은 방(2×1) · plaza 광장(2×2) · tower 위로 솟은 탑(1×3) · abyss 아래로 파고드는 갱도(1×3)
 //   stairs 계단(1×2, 한 줄 위로) · bridge 낭떠러지 다리 방(2×1) · hub 시내(포켓몬센터 · 아머까오 정거장, 적 없음)
@@ -17,9 +18,9 @@ export const STAGES = [
     plat: 'wood', roofs: [0x7a2a2a, 0x2a3a6a, 0x2a5a3a, 0x5a3a1a],
     palette: { sky: 0x0a0608, far: 0x1c0d14, wall: 0x2e3a36, wall2: 0x1a2420, edge: 0x5ad8a0, plat: 0x2c5a4a, light: 0x6affc8, accent: 0xd88aff, ambient: 0x3a4248, moss: 0x2e7a52 },
     areas: [
-      { name: '잿빛에 잠긴 태초마을', en: 'Ash-Covered Pallet Town', color: 0x3a4454, bg: 'town', ash: true, plan: ['start', 'c', 'c'], branches: ['fake'],
-        terrain: { house: 6, terrace: 2, flat: 2, pit: 1 }, props: { fence: 3, lamp: 2, statue: 1, tree: 1 },
-        lore: ['태초마을... 아무도 남아있지 않다...', '오박사 연구소 — 문이 안쪽에서 부서져 있다. 책상 위엔 빈 몬스터볼 세 개.'] },
+      { name: '태초마을 · 오박사 연구소', en: "Pallet Town · Oak's Lab", color: 0x3f5a48, bg: 'town', city: '태초마을', plan: ['start', 'hub', 'c', 'c'], branches: ['fake'],
+        terrain: { house: 6, terrace: 2, flat: 2, pit: 1 }, props: { fence: 3, lamp: 2, statue: 1, tree: 2 },
+        lore: ['태초마을 — 오박사의 결계가 마을을 지킨다. 결계 밖은 침식된 1번 도로.', '1번 도로 — 결계를 벗어나면 잿빛 안개가 짙어진다. 붉은 눈을 조심할 것.'] },
       { name: '심연이 드리운 상록숲', en: 'Abyssal Viridian Forest', color: 0x2f4f42, bg: 'forest', forest: true, plan: ['wide', 'abyss', 'c', 'stairs'], branches: ['tm', 'potion'],
         terrain: { island: 4, terrace: 3, tiers: 3, pit: 2, bridge: 1 }, props: { tree: 9, tallgrass: 3, statue: 1 },
         lore: ['상록숲 — 들어가지 마시오. 나무가 움직인다.'] },
@@ -39,8 +40,8 @@ export const STAGES = [
     plat: 'wood', roofs: [0x8a3a2a, 0x3a2a24, 0x6a4a2a, 0x2a3a3a],
     palette: { sky: 0x0e0806, far: 0x241510, wall: 0x4a3324, wall2: 0x2e1f16, edge: 0xffb04a, plat: 0x6a4428, light: 0xffc06a, accent: 0xffd8a0, ambient: 0x564434, moss: 0x7a6a2a },
     areas: [
-      { name: '고요한 연두마을', en: 'Silent New Bark Town', color: 0x3d5245, bg: 'shrine', plan: ['start', 'c', 'c'], branches: ['fake'],
-        terrain: { house: 5, terrace: 2, flat: 2 }, lore: ['연두마을 — 바람만이 마을을 지나간다.'] },
+      { name: '바람의 연두마을', en: 'New Bark Town', color: 0x3d5245, bg: 'shrine', city: '연두마을', plan: ['start', 'hub', 'c', 'c'], branches: ['fake'],
+        terrain: { house: 5, terrace: 2, flat: 2 }, lore: ['연두마을 — 새로운 바람이 부는 곳. 공박사 연구소의 결계가 마을을 지킨다.', '29번 도로 — 결계 밖. 바람에서 쇠 냄새가 난다.'] },
       { name: '금빛시티 라디오타워', en: 'Goldenrod Radio Tower', color: 0x63532b, bg: 'radio', city: '금빛시티', plan: ['hub', 'tower', 'c'], branches: ['tm', 'potion'],
         terrain: { tiers: 4, ziggurat: 2, bridge: 2 }, lore: ['라디오타워 — 같은 방송이 끝없이 되풀이된다: 「심연의 뜻대로...」', '멈춰 버린 리니어 기차역.'] },
       { name: '인주시티 불탄탑', en: 'Ecruteak Burned Tower', color: 0x5e2d24, bg: 'burnt', city: '인주시티', plan: ['hub', 'abyss', 'c', 'wide'], branches: ['hidden:ampharos', 'tm'], hiddenDir: 'down',

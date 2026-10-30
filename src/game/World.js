@@ -9,6 +9,8 @@
 //  grid 문자: 'S' 벽 · 'B' 부서지는 벽 · 'P' 통과 발판(보이는 다리·철창) · 'H' 통과 발판(집 지붕·발코니) · '.' 빈칸
 import { TILE } from '../config.js';
 import { T } from './Level.js';
+import { reach } from './Reach.js';
+import { LAB, TOWNS } from '../data/npcs.js';
 
 export const CW = 32, CH = 20;          // 셀 하나의 크기 (타일)
 const WALL = 2, GROUND = 6;             // 방 벽 두께 · 바닥 밑 땅 두께 (바닥 윗면 = 셀 아래 경계 - 6)
@@ -67,6 +69,7 @@ export function buildChapter(ch, ci, retry = 0) {
     const up = tok0.endsWith('^'), tok = up ? tok0.slice(0, -1) : tok0, [kind, arg] = tok.split(':');
     let [w, h] = kind === 'c' ? pick(C_SHAPES) : SHAPE[kind];
     if ((kind === 'boss' || kind === 'mini') && BIG_ARENA.has(arg)) [w, h] = [2, 2];
+    if (ci === 0 && !cur) [w, h] = [2, 1];   // 오박사 연구소는 넓게 (박사 · 연구원 둘 · 튜토리얼 철창)
     let gx, gy;
     if (!cur) { gx = 0; gy = 0; }
     else if (up) { gx = cur.gx; gy = cur.gy - h; }
@@ -82,6 +85,7 @@ export function buildChapter(ch, ci, retry = 0) {
     cur = r;
   }));
   const mainRooms = rooms.slice();
+  if (ci === 0) mainRooms[0].lab = true;   // 게임이 시작되는 곳 = 오박사 연구소 안
 
   // ---- 튜토리얼 기술머신: 첫 챕터 입구 바로 아래 막다른 굴에 100% 확정 ----
   //  입구 바닥의 철창으로 내려가면 곧바로 기술머신 캡슐 — '막다른 길·샛길 끝을 탐험하면 새 기술·카드를 얻는다'를 시작하자마자 배운다
@@ -216,6 +220,7 @@ export function buildChapter(ch, ci, retry = 0) {
       const prox = Math.max(0, 1 - (bossD.get(r.id) ?? 9) / 4);
       let c = Math.min(1, (r.prog || 0) * .8 + prox * .55);
       if (r.type === 'village') c *= .45;   // 시내는 결계 안이라 덜 침식
+      if (r.ai === 0) c = Math.min(c, .08);   // 지방의 첫 지역(결계 마을 둘레)은 침식이 거의 없다 — 밝은 햇살 · 따뜻한 빛
       if (r === mainRooms[0] || r.tutorial) c = 0;
       r.depth = Math.round(c * 100) / 100;
     }
@@ -300,6 +305,7 @@ export function buildChapter(ch, ci, retry = 0) {
       block(lx - 2, L.F - 2, 2, 2); block(rx + tw, L.F - 2, 2, 2);
       for (let i = 0; i < gap; i++) setGround(lx + tw + i, L.F + 3);
       setP(lx + tw, L.F - H, gap);
+      setP(lx + tw, L.F - 1, 2); setP(rx - 2, L.F - 1, 2);   // 다리 밑 구덩이(6~7칸)에 빠져도 기어 나오도록 양쪽 기둥 안쪽에 디딤 발판
       take(lx - 2, 2 * tw + gap + 4);
     },
     house(sx, sw) {
@@ -323,10 +329,17 @@ export function buildChapter(ch, ci, retry = 0) {
       prev = f; sx += sw;
     }
   };
+  const stalCells = [];   // 종유석 칸 (길 보장 마무리에서 막힌 틈을 만든 것만 걷어 낸다)
   const stalactites = (sx, ex, n) => {
     for (let k = 0; k < n; k++) {
       const w = ri(2, 4), x = ri(sx, Math.max(sx, ex - w)), len = ri(1, 3);
-      for (let j = 0; j < len; j++) { const shrink = Math.floor(j * w / (len + 1)); for (let i = shrink >> 1; i < w - Math.ceil(shrink / 2); i++) grid[L.top + j][x + i] = 'S'; }
+      for (let j = 0; j < len; j++) {
+        const shrink = Math.floor(j * w / (len + 1)), y = L.top + j;
+        for (let i = shrink >> 1; i < w - Math.ceil(shrink / 2); i++) {
+          let g = y + 1; while (g < L.F && grid[g][x + i] === '.') g++;
+          if (g - y - 1 >= 3) { grid[y][x + i] = 'S'; stalCells.push([x + i, y, L.room]); }   // 아래 바위·발판 위로 3칸 틈은 남긴다 (기어야만 지나가는 틈이 생기지 않게)
+        }
+      }
     }
   };
   const decorate = (sx, ex, every, crates = [3, 5]) => {
@@ -361,9 +374,13 @@ export function buildChapter(ch, ci, retry = 0) {
     propW = area.props || ch.props || DEFAULT_PROPS;
     L = { F: r.F, top: r.ty0, bottom: r.Y1 - 1, room: r };
     taken = new Set();
-    style.burnt = !!area.ash; style.ruined = r.type === 'village' || !!area.ash;
+    style.burnt = !!area.ash; style.ruined = (r.type === 'village' && r.ai > 0) || !!area.ash;   // 첫 지역 시내는 결계 덕에 멀쩡하다
     const x0 = r.tx0, x1 = r.tx1, tall = r.gh >= 2;
-    if (r.type === 'combat' || r.type === 'start') {
+    if (r.lab) {
+      // 오박사 연구소 안: 평평한 마룻바닥 + 실내 벽(책장 · 연구 장비 · 창문 · 몬스터볼 책상) — 사람들은 문을 다 뚫은 뒤에 세운다
+      for (let x = x0; x < x1; x++) setGround(x, r.F);
+      props.push({ kind: 'labroom', x: x0, g: r.F, w: x1 - x0, h: r.F - r.ty0 });
+    } else if (r.type === 'combat' || r.type === 'start') {
       if (!tall) {
         if (r.kind === 'bridge') { FEATURES.bridge(x0 + 6, Math.min(30, x1 - x0 - 12)); fillTerrain(x0 + 40, x1 - 6, { pit: 2, island: 1, flat: 1 }); }
         else if (r.type === 'combat') fillTerrain(x0 + 6, x1 - 6, terrain);
@@ -427,7 +444,7 @@ export function buildChapter(ch, ci, retry = 0) {
     }
     if (tall && r.type !== 'combat' && r.type !== 'start' && r.type !== 'mini' && r.type !== 'boss' && r.type !== 'sanctuary') zigzag(r);   // 아레나는 자기 발판만 (너무 빽빽하지 않게)
     // 벽 횃불
-    if (r.type !== 'village') for (let tx = x0 + 4; tx < x1 - 2; tx += ri(9, 12)) {
+    if (r.type !== 'village' && !r.lab) for (let tx = x0 + 4; tx < x1 - 2; tx += ri(9, 12)) {
       const ty = Math.max(r.ty0 + 1, r.F - 8);
       if (grid[ty][tx] === '.' && !taken.has(tx)) r.torches.push({ x: tx * TILE + 8, y: ty * TILE + 6 });
     }
@@ -449,8 +466,20 @@ export function buildChapter(ch, ci, retry = 0) {
       d.cells = []; for (let y = Fr - 5; y < Fr; y++) for (let x = bx - WALL; x < bx + WALL; x++) d.cells.push([x, y]);
       d.mx = bx; d.my = Fr - 2.5;
     } else {
-      const by = d.D.gy * CH, FU = by - GROUND, cx0 = Math.max(d.U.tx0 + 3, Math.max(d.D.tx0 + 3, Math.min(d.col * CW + (CW >> 1) - 2 + ri(-5, 5), Math.min(d.U.tx1, d.D.tx1) - 7)));
-      for (let x = cx0 - 2; x < cx0 + 6; x++) for (let y = FU - 4; y < FU; y++) if (y >= d.U.ty0) grid[y][x] = '.';   // 위 방: 구멍 둘레 비우기
+      const by = d.D.gy * CH, FU = by - GROUND, U = d.U, D = d.D;
+      const lo = Math.max(U.tx0, D.tx0) + 3, hi = Math.min(U.tx1, D.tx1) - 7;
+      let cx0 = Math.max(U.tx0 + 3, Math.max(D.tx0 + 3, Math.min(d.col * CW + (CW >> 1) - 2 + ri(-5, 5), Math.min(U.tx1, D.tx1) - 7)));
+      // 철창 자리 고르기: 위 방 구멍 위로 솟은 땅이 없고 · 아래 방 천장에 종유석이 없는 열을 처음 고른 자리에서 가까운 쪽부터 찾는다
+      //  (예전엔 종유석이 통로 바로 밑을 막거나 · 솟은 땅이 구멍을 덮어 들어갈 수 없는 방이 생겼다 — 회색시티 아래 보물방 등)
+      const clean = c => { for (let x = c - 2; x < c + 6; x++) { for (let y = FU - 6; y < FU; y++) if (y >= U.ty0 && grid[y][x] === 'S') return false; for (let y = D.ty0; y < D.F; y++) if (grid[y][x] === 'S') return false; } return true; };
+      for (let k = 0; k <= hi - lo && !clean(cx0); k++) for (const c of [cx0 + k, cx0 - k]) if (c >= lo && c <= hi && clean(c)) { cx0 = c; break; }
+      // 그래도 막혀 있으면 직접 판다: 아래 방은 통로 밑 사다리 자리(종유석 · 떠 있는 바위 · 솟은 땅)를 바닥까지 비우고,
+      //  위 방 구멍을 덮은 땅은 우물처럼 파낸다 (깊으면 중간 발판)
+      for (let x = cx0 - 2; x < cx0 + 6; x++) for (let y = D.ty0; y < D.F; y++) if (grid[y][x] === 'S') grid[y][x] = '.';
+      let well = 0;
+      for (let x = cx0 - 2; x < cx0 + 6; x++) { let y = FU - 5; while (y > U.ty0 && grid[y][x] === 'S') { grid[y][x] = '.'; y--; } well = Math.max(well, FU - 1 - y); }
+      for (let x = cx0 - 2; x < cx0 + 6; x++) for (let y = FU - 4; y < FU; y++) if (y >= U.ty0) grid[y][x] = '.';   // 위 방: 구멍 둘레 비우기
+      if (well >= 5) setP(cx0 - 2, FU - 3, 8);
       for (let x = cx0 - 2; x < cx0 + 6; x++) grid[FU][x] = 'S';
       for (let y = FU; y < by + WALL; y++) for (let x = cx0; x < cx0 + 4; x++) grid[y][x] = '.';
       for (let x = cx0; x < cx0 + 4; x++) grid[FU][x] = d.breakable ? 'B' : 'P';   // 철창 뚜껑 (↓ + Space) — 비밀 샛길이면 부서지는 바닥
@@ -470,6 +499,30 @@ export function buildChapter(ch, ci, retry = 0) {
     const U = d.U;
     const ok = x => (grid[U.F][x] === 'S' || grid[U.F][x] === 'B') && grid[U.F - 1][x] === '.' && grid[U.F - 2][x] === '.';
     for (const x of [d.cap - 4, d.cap - 5, d.cap - 3, d.cap - 6]) if (ok(x)) { props.push({ kind: 'sidesign', x, g: U.F, tutorial: true }); break; }   // 표지 오른쪽 4칸 = 철창 위 안내
+  }
+
+  // ---- 마을 사람들 (data/npcs.js): 오박사 연구소 안 · 시내 빈자리 (철창 · 표지 · 센터 문 · 자판기 · 정거장 앞은 비켜 선다) ----
+  const npcs = [];
+  {
+    const BUSY = { center: [4, 11], vending: [-1, 3], corvi: [0, 7], lore: [-1, 2], sign: [-1, 3], sidesign: [-2, 7], tm: [-3, 3] };
+    const placeNpcs = (r, ids, slots) => {
+      const busy = new Set();
+      for (const d of r.doors) if (d.dir === 'v' && d.U === r) for (let x = d.cap - (d.D.tutorial ? 7 : 3); x <= d.cap + 6; x++) busy.add(x);   // 철창 둘레 (튜토리얼은 표지까지)
+      for (const pr of props) { const b = BUSY[pr.kind]; if (b && pr.x >= r.tx0 && pr.x < r.tx1 && pr.g === r.F) for (let x = pr.x + b[0]; x <= pr.x + b[1]; x++) busy.add(x); }
+      const ok = x => x > r.tx0 + 3 && x < r.tx1 - 5 && !busy.has(x) && grid[r.F][x] === 'S' && [1, 2, 3].every(h => grid[r.F - h][x] === '.');
+      ids.forEach((id, i) => {
+        const want = slots[i % slots.length];
+        let x = null;
+        for (let k = 0; k < 40 && x === null; k++) for (const c of [want + k, want - k]) if (ok(c)) { x = c; break; }
+        if (x === null) return;
+        for (let o = -3; o <= 3; o++) busy.add(x + o);   // 사람끼리도 붙어 서지 않게
+        npcs.push({ id, x, g: r.F, room: r, face: i % 2 ? 1 : -1 });
+      });
+    };
+    for (const r of rooms) {
+      if (r.lab) placeNpcs(r, LAB, [r.tx0 + 12, r.tx0 + 26, r.tx0 + 40]);
+      else if (r.type === 'village' && TOWNS[r.city]) { const b = r.tx0 + 1; placeNpcs(r, TOWNS[r.city], [b + 13, b + 52, b + 18, b + 33]); }
+    }
   }
 
   // ---- 흙 덮개 (상처약·엘리트 굴: 방 안 + 들어오는 문 칸) ----
@@ -519,11 +572,13 @@ export function buildChapter(ch, ci, retry = 0) {
 
   // ---- 간이 포켓몬 회복기 (Field Recovery Terminal): 보스방(지방 보스·중간 보스·히든 성소)마다 반드시 하나 ----
   //  보스방에서 방 2~3칸 떨어진 안전한 방 바닥 → 없으면 바로 앞 방(1칸) → 그래도 바닥 자리가 없으면 가장 가까운 방 바닥을 2칸 평평하게 다진다
-  //  (시내가 가까워도 둔다 — 보스 직전 체크포인트를 확실히). 난수를 쓰지 않는다 (시드로 다시 만든 지형·저장 기록과 어긋나지 않게)
+  //  단, 보스방에서 TOWN_NEAR 칸 안에 시내(포켓몬센터)가 있으면 두지 않는다 — 센터가 그 역할을 한다
+  //  난수를 쓰지 않는다 (시드로 다시 만든 지형·저장 기록과 어긋나지 않게)
   const terminals = [], byId = new Map(rooms.map(r => [r.id, r]));
   const SKIP_ROOM = new Set(['boss', 'mini', 'sanctuary', 'tm', 'treasure', 'pocket']);
   const solid = (x, y) => grid[y] && (grid[y][x] === 'S' || grid[y][x] === 'B');
   const spot = (r, xx) => xx > r.tx0 + 2 && xx < r.tx1 - 3 && [0, 1].every(o => solid(xx + o, r.F) && [1, 2, 3].every(h => grid[r.F - h][xx + o] === '.'));
+  const TOWN_NEAR = 3;
   for (const boss of rooms.filter(r => r.type === 'boss' || r.type === 'mini' || r.type === 'sanctuary')) {
     const dist = new Map([[boss.id, 0]]), q = [boss];
     while (q.length) {
@@ -531,6 +586,7 @@ export function buildChapter(ch, ci, retry = 0) {
       if (d >= 3) continue;
       for (const id of r.links) if (!dist.has(id) && byId.has(id)) { dist.set(id, d + 1); q.push(byId.get(id)); }
     }
+    if ([...dist.entries()].some(([id, d]) => d <= TOWN_NEAR && byId.get(id).type === 'village')) { boss.nearTown = true; continue; }   // 시내가 너무 가깝다
     const order = d => d === 2 ? 0 : d === 3 ? 1 : 2;   // 2칸 → 3칸 → 1칸
     const cand = rooms.filter(r => dist.get(r.id) >= 1 && dist.get(r.id) <= 3 && !SKIP_ROOM.has(r.type) && !terminals.some(t => t.room === r))
       .sort((a, b) => order(dist.get(a.id)) - order(dist.get(b.id)) || (b.main ? 1 : 0) - (a.main ? 1 : 0) || a.id - b.id);
@@ -553,6 +609,36 @@ export function buildChapter(ch, ci, retry = 0) {
     }
   }
 
+  // ---- 길 보장 마무리 (game/Reach.js): 입구에서 걸어서(진화해 커진 몸 · 2단 점프) 닿는 칸을 계산해서 ----
+  //  · 방 안에 디딜 수 있는데 못 닿는 자리(바위 위가 종유석에 덮인 틈 등)가 있으면 그 둘레 종유석을 걷어 내고 다시 계산
+  //  · 바닥 가까이(바닥선 3칸 위부터 아래)에 남은 못 닿는 칸(바위에 덮인 다리 밑 구덩이 등)은 메워 '보이는데 못 가는 틈'을 없앤다
+  //  · 닿지 못하는 자리의 적 출현 지점은 지운다
+  {
+    const s0 = mainRooms[0], sx = s0.tx0 + 5;
+    let sy = s0.ty0 + 1; while (sy < s0.F && !(grid[sy][sx] === '.' && grid[sy - 1][sx] === '.' && grid[sy + 1][sx] !== '.')) sy++;
+    const win = { x0: 0, y0: 0, x1: cols, y1: rows };
+    let R = reach(grid, [[sx, sy]], win);
+    const standing = (x, y) => grid[y][x] === '.' && grid[y - 1][x] === '.' && grid[y + 1][x] !== '.';
+    for (let pass = 0; pass < 3 && R.has(sx, sy); pass++) {
+      let changed = false;
+      for (const r of rooms) {
+        let lo = Infinity, hi = -Infinity;
+        for (let y = r.ty0 + 1; y < r.F; y++) for (let x = r.tx0; x < r.tx1; x++) if (standing(x, y) && !R.has(x, y)) { lo = Math.min(lo, x); hi = Math.max(hi, x); }
+        if (lo > hi) continue;
+        for (const c of stalCells) if (c[2] === r && c[0] >= lo - 3 && c[0] <= hi + 3 && grid[c[1]][c[0]] === 'S') { grid[c[1]][c[0]] = '.'; changed = true; }
+      }
+      if (!changed) break;
+      R = reach(grid, [[sx, sy]], win);
+    }
+    if (R.has(sx, sy)) {
+      // 몸이 들어가지 않는 낮은 틈(천장까지 2칸)인데 못 닿는 자리는 바위로 메운다 — 못 닿는 칸은 어떤 길에도 쓰이지 않으니 메워도 안전하다
+      for (let k = 0; k < 2; k++) for (const r of rooms) for (let y = r.ty0 + 2; y < r.F; y++) for (let x = r.tx0; x < r.tx1; x++)
+        if (standing(x, y) && grid[y - 2][x] !== '.' && !R.has(x, y)) { grid[y][x] = 'S'; grid[y - 1][x] = 'S'; }
+      for (const r of rooms) for (let y = r.F - 3; y < r.Y1; y++) for (let x = r.tx0; x < r.tx1; x++) if (grid[y][x] === '.' && !R.has(x, y)) grid[y][x] = 'S';
+      for (let i = spawns.length - 1; i >= 0; i--) { const sp = spawns[i], x = Math.floor(sp.x / TILE), y = sp.y / TILE - 1; if (!R.has(x, y) && !R.has(x, y - 1)) spawns.splice(i, 1); }
+    }
+  }
+
   // ---- 타일 번호 (트인 방향마다 이끼·그림자·테두리) ----
   const S = (x, y) => y < 0 || y >= rows || x < 0 || x >= cols || grid[y][x] === 'S' || grid[y][x] === 'B';
   const tileOf = (x, y) => {
@@ -567,7 +653,7 @@ export function buildChapter(ch, ci, retry = 0) {
   const start = mainRooms[0];
   return {
     ci, chapter: ch, data, grid, cols, rows, width: cols * TILE, height: rows * TILE, ncx, ncy, cellRoom,
-    rooms, doors, sides, breakables, props, chests, spawns, marks, potions, hubs, tileOf, terminals,
+    rooms, doors, sides, breakables, props, chests, spawns, marks, potions, hubs, tileOf, terminals, npcs,
     start: { x: (start.tx0 + 5) * TILE, y: start.F * TILE - 12, room: start }, surfaceRow
   };
 }

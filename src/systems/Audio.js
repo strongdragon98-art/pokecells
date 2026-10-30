@@ -121,6 +121,9 @@ class AudioSys {
       case 'eshot': this.tone(500, .09, 'square', .03, -200); break;
       case 'clash': this.hiss(.07, .14, 3600, 0, 2); this.tone(1250, .06, 'square', .03, -700); break;   // 투사체끼리 부딪힘
       case 'select': this.tone(660, .05, 'square', .04); break;
+      case 'talk': this.tone(520 + Math.random() * 160, .03, 'square', .018); break;   // 대화창 글자 소리 (톡톡)
+      case 'purify_world': this.tone(130, 2.2, 'sawtooth', .05, 260); this.arp([523, 659, 784, 1047, 1319, 1568, 2093, 2637], .11, 'triangle', .06);   // 지방 정화: 낮은 울림 위로 맑은 화음이 번진다
+        this.arp([784, 1047, 1319, 1568], .32, 'sine', .05); this.tone(2093, 1.6, 'triangle', .035, 0, .9); this.hiss(1.4, .06, 2400, 0, .6); break;
       // 기술머신 카드 등급별 뒤집기 (커먼 → 전설) · 캡슐 증기 · 전설 팡파르
       case 'card_common': this.tone(880, .08, 'triangle', .05, 220); break;
       case 'card_rare': this.arp([988, 1319, 1760], .045, 'triangle', .05); this.hiss(.1, .06, 5200, 0, 3); break;

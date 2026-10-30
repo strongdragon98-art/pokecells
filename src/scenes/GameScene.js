@@ -15,6 +15,9 @@ import { Player } from '../game/Player.js';
 import { Enemy } from '../game/Enemy.js';
 import { Boss } from '../game/Boss.js';
 import { Trainer } from '../game/Trainer.js';
+import { Npcs } from '../game/Npc.js';
+import { Wanderer } from '../game/Wanderer.js';
+import { CLV_COLOR } from '../game/Enemy.js';
 
 // 트레이너 대사 (난천 · 레드)
 const TRAINER_LINES = {
@@ -50,6 +53,14 @@ function sunbeamTexture(scene) {
   }
   t.refresh();
 }
+// 맑은 낮 하늘 (지방 첫 지역 · 정화한 지방): 위는 파랗고 지평선 쪽은 따뜻한 금빛
+function daySkyTexture(scene) {
+  if (scene.textures.exists('fx:daysky')) return;
+  const t = scene.textures.createCanvas('fx:daysky', 4, 128), c = t.getContext(), g = c.createLinearGradient(0, 0, 0, 128);
+  g.addColorStop(0, '#3f86d0'); g.addColorStop(.45, '#8cc4ec'); g.addColorStop(.78, '#f4dcb0'); g.addColorStop(1, '#f0b880');
+  c.fillStyle = g; c.fillRect(0, 0, 4, 128);
+  t.refresh();
+}
 // 두 색을 k(0~1)만큼 섞는다
 const lerpColor = (a, b, k) => {
   const A = Phaser.Display.Color.IntegerToRGB(a), B = Phaser.Display.Color.IntegerToRGB(b);
@@ -71,14 +82,16 @@ export default class GameScene extends Phaser.Scene {
     this.lastCenter = null;                // 쓰러지면 다시 일어날 포켓몬센터
     this.runStats = { kills: 0, unlocked: [], start: this.time.now, items: 0, stage: 1 };
     this.seeds = [];                       // 챕터마다 지형 시드 (저장·이어하기에서 같은 지형을 다시 만든다)
+    this.purifiedSet = new Set();          // 최종 보스를 정화해 침식이 걷힌 지방 (밝고 맑게 · 야생 포켓몬은 평화롭게 · 마을 사람 대사가 바뀐다)
     const rs = this.resume;
     this.savedWorlds = rs ? rs.worlds.slice() : null;   // 챕터마다 저장해 둔 바뀐 것 (worldOf 가 그 챕터를 만들 때 덮어쓴다)
     if (rs) {
       this.stageIdx = rs.stageIdx; this.seeds = rs.seeds.slice(); this.unlockedHubs = rs.hubs.slice(); this.lastCenter = rs.lastCenter;
+      this.purifiedSet = new Set(rs.purified || []);
       Object.assign(this.runStats, { kills: rs.stats.kills, unlocked: rs.stats.unlocked.slice(), items: rs.stats.items, start: this.time.now - rs.stats.time * 1000 });
     }
     this.webgl = this.renderer.type === Phaser.WEBGL;
-    this.enemies = []; this.pickups = []; this.chests = []; this.worldObjs = [];
+    this.enemies = []; this.pickups = []; this.chests = []; this.worldObjs = []; this.wanderers = [];
     this.inp = {}; this.paused = false; this.transitioning = false; this.over = false; this.cleaned = false;
     this.dynLights = 0;
     this.keys = this.input.keyboard.addKeys('ONE,TWO,THREE,ESC,P,F2,F3,F4,N');   // 바꿀 수 없는 키 (나머지는 설정 → 키 설정, bindKeys)
@@ -117,14 +130,27 @@ export default class GameScene extends Phaser.Scene {
   worldOf(ci) {
     if (this.worlds[ci]) return this.worlds[ci];
     const seed = this.seeds[ci] ?? (this.seeds[ci] = newSeed());
-    const W = { seed, level: seeded(seed, () => buildChapter(STAGES[ci], ci)), explored: null, areasSeen: new Set() };
+    const W = { seed, level: seeded(seed, () => buildChapter(STAGES[ci], ci)), explored: null, areasSeen: new Set(), purified: this.purifiedSet.has(ci) };
     const saved = this.savedWorlds && this.savedWorlds[ci];
-    if (saved && !applyWorld(W, saved)) this.savedWorlds[ci] = null;   // 게임이 바뀌어 지형이 달라졌으면 그 챕터는 처음 상태로
+    if (saved && !applyWorld(W, saved)) { this.savedWorlds[ci] = null; W.reset = true; this.remapHubs(ci, W.level); }   // 게임이 바뀌어 지형이 달라졌으면 그 챕터는 처음 상태로
     return (this.worlds[ci] = W);
+  }
+  // 업데이트로 지형이 바뀐 챕터: 들른 시내(공중날기 정거장)를 이름으로 다시 찾아 잇는다 (없어졌으면 지운다) · 회복기 부활 자리는 풀린다
+  remapHubs(ci, level) {
+    this.unlockedHubs = this.unlockedHubs.filter(h => {
+      if (h.ci !== ci) return true;
+      const hub = level.hubs.find(q => q.name === h.name);
+      if (hub) h.roomId = hub.room.id;
+      return !!hub;
+    });
+    const c = this.lastCenter;
+    if (c && c.ci === ci) { const h = !c.terminal && this.unlockedHubs.find(q => q.ci === ci); this.lastCenter = h ? { ci, roomId: h.roomId } : null; }
   }
   buildWorld(at = null) {
     this.clearWorld();
     const si = this.stageIdx, st = STAGES[si], W = this.worldOf(si), level = W.level;
+    level.purified = !!W.purified;
+    if (W.reset) { W.reset = false; if (at) at = this.lastCenter && this.lastCenter.ci === si ? this.hubPos(this.lastCenter) : null; }   // 지형이 바뀐 챕터에서 이어하면 시내 · 입구에서
     this.stage = st; this.runStats.stage = si + 1;
     this.level = level;
     this.explored = W.explored || (W.explored = new Uint8Array(level.cols * level.rows));   // 지도: 화면에 한 번이라도 들어온 칸
@@ -144,6 +170,7 @@ export default class GameScene extends Phaser.Scene {
       r.map = map; r.ts = ts; r.layer = layer;
       this.layers.push(layer);
     }
+    this.tintRooms();
     if (this.webgl) this.lights.setAmbientColor(st.palette.ambient);
     this.ambient = Phaser.Display.Color.ValueToColor(st.palette.ambient).clone();
     // 방 사이 빈 셀은 단단한 암반 (오돌토돌한 점) · 지하 방 안쪽엔 동굴 벽 배경
@@ -154,6 +181,8 @@ export default class GameScene extends Phaser.Scene {
       rock.fillStyle(rc, 1); rock.fillRect(x0, y0, CW * TILE, CH * TILE);
       for (let k = 0; k < 40; k++) { rock.fillStyle(k % 3 ? shade(rc, 1.25) : shade(rc, .7), 1); rock.fillRect(x0 + ((k * 97 + cx * 31) % (CW * TILE)), y0 + ((k * 61 + cy * 17) % (CH * TILE)), 2, 2); }
     }
+    // 위아래 철창 통로(방 바닥 밑 땅을 뚫은 갱도) 뒤엔 어두운 흙벽 — 먼 하늘이 비쳐 보이지 않게
+    for (const d of level.doors) if (d.dir === 'v') { const xs = d.cells.map(c => c[0]), ys = d.cells.map(c => c[1]); rock.fillStyle(shade(st.palette.wall2, .4), 1); rock.fillRect(Math.min(...xs) * TILE, Math.min(...ys) * TILE, (Math.max(...xs) - Math.min(...xs) + 1) * TILE, (Math.max(...ys) - Math.min(...ys) + 1) * TILE); }
     this.worldObjs.push(rock);
     for (const r of level.rooms) if (r.under) this.worldObjs.push(this.add.tileSprite(r.left - 32, r.top - 32, r.right - r.left + 64, r.bottom - r.top + 64, `bgcave:${si}`).setOrigin(0).setDepth(2));
     // 상처약·페이크 굴: 안쪽엔 어두운 흙벽을 깔고, 들어서기 전까지는 흙 타일로 덮어 둔다 (환영 벽 너머 숨은 굴)
@@ -182,6 +211,7 @@ export default class GameScene extends Phaser.Scene {
     this.worldObjs.push(this.breakG);
     this.drawBreakables();
     this.props = new Props(this, level, st, si);
+    this.npcs = new Npcs(this, level, this.props);   // 마을 사람들 · 오박사 (말을 걸면 대화창)
     this.physics.world.setBounds(0, 0, level.width, level.height + 200);
 
     // 패럴랙스 배경 (보스전에서 가장 멀리 당긴 줌 기준으로도 화면을 채우도록 배치)
@@ -189,6 +219,9 @@ export default class GameScene extends Phaser.Scene {
     const vw = cw / z + 24, vh = ch / z + 24, ox = cw / 2 - vw / 2, oy = ch / 2 - vh / 2;
     this.bgFar = this.add.tileSprite(ox, oy, vw, vh, `bgfar:${si}`).setOrigin(0).setScrollFactor(0).setDepth(0);
     this.worldObjs.push(this.bgFar);
+    daySkyTexture(this);   // 맑은 하늘: 침식이 옅은 곳(첫 지역 · 정화한 지방)에서 먼 배경 위를 덮는다
+    this.daySky = this.add.image(ox, oy, 'fx:daysky').setOrigin(0).setDisplaySize(vw, vh).setScrollFactor(0).setDepth(.5).setAlpha(0);
+    this.worldObjs.push(this.daySky);
     // 중경은 지역 배경 종류마다 한 장씩 깔아 두고, 지역을 넘을 때 겹쳐 바꾼다
     this.bgMids = {};
     for (const kind of new Set(st.areas.map(a => a.bg || 'default'))) {
@@ -210,9 +243,10 @@ export default class GameScene extends Phaser.Scene {
       const glow = this.add.image(t.x, t.y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(st.palette.light).setScale(.6).setAlpha(.7).setDepth(11);
       const crystal = this.add.rectangle(t.x, t.y, 3, 6, st.palette.accent).setDepth(11);
       const light = this.webgl ? this.lights.addLight(t.x, t.y + 10, 130, st.palette.light, 1.3) : null;
-      this.torches.push({ glow, crystal, light, phase: Math.random() * 10 });
+      this.torches.push({ glow, crystal, light, phase: Math.random() * 10, room: r });
       this.worldObjs.push(glow, crystal);
     }
+    this.colorTorches();
 
     // 보물 상자 · 상처약 (연 상자·주운 약은 그대로 남아 있다)
     for (const c of level.chests) this.spawnChest(c);
@@ -249,6 +283,68 @@ export default class GameScene extends Phaser.Scene {
     this.time.delayedCall(450, () => { if (this.level === level) { this.enterArea(this.room, true); if (this.room.type === 'village') this.visitHub(this.room); } });
   }
 
+  // ---------------- 침식 (Room.depth 0 입구 ~ 1 보스방 앞) · 지방 정화 ----------------
+  // 방의 침식 깊이 (정화한 지방은 어디든 0)
+  depthOf(room) { return !room || (this.level && this.level.purified) ? 0 : room.depth || 0; }
+  // 몹의 침식 단계 Ⅰ~Ⅳ: 보스방에 가까울수록 높다
+  corruptLevel(room) { const d = this.depthOf(room); return d < .25 ? 1 : d < .5 ? 2 : d < .75 ? 3 : 4; }
+  // 타일 색: 초입은 햇살처럼 따뜻하게 → 중간은 본래 색 → 보스방 앞은 보랏빛 잿빛으로 가라앉는다 (정화한 지방은 맑게)
+  tintRooms() {
+    for (const r of this.level.rooms) {
+      if (!r.layer) continue;
+      const d = this.depthOf(r), t = d < .4 ? lerpColor(0xfff0d8, 0xffffff, d / .4) : lerpColor(0xffffff, 0xa088a8, (d - .4) / .6);
+      r.layer.forEachTile(tile => { tile.tint = t; });
+    }
+  }
+  // 횃불(네온 수정) 색: 초입은 따뜻한 등불 → 지방 고유의 빛 → 보스방 앞은 독기 어린 보라 · 핏빛 (정화하면 다시 따뜻하게)
+  colorTorches() {
+    const L = this.stage.palette.light;
+    for (const tc of this.torches) {
+      const d = this.depthOf(tc.room);
+      const col = d < .35 ? lerpColor(0xffd08a, L, d / .35) : d < .7 ? lerpColor(L, 0xb05aff, (d - .35) / .35) : lerpColor(0xb05aff, 0xff2a4a, (d - .7) / .3);
+      tc.glow.setTint(col); tc.crystal.setFillStyle(lerpColor(col, 0xffffff, .35));
+      if (tc.light) tc.light.setColor(col);
+    }
+  }
+  // 지방 정화: 최종 보스를 정화하면 그 지방 전체의 침식이 걷힌다 — 빛의 물결 · 하늘이 맑아지고 · 남은 세뇌 포켓몬도 풀려난다
+  //  상태는 진행 저장(RunSave 의 purified)에 남아, 아머까오로 다시 와도 밝고 맑은 그대로다 (야생은 평화롭게 거닐고 마을 사람 대사가 바뀐다)
+  purifyRegion() {
+    const si = this.stageIdx, W = this.worlds[si];
+    if (!W || W.purified || this.over) return;
+    W.purified = true; this.level.purified = true; this.purifiedSet.add(si);
+    const p = this.player, cam = this.cameras.main;
+    Sfx.play('purify_world');
+    cam.flash(1100, 255, 248, 225, true);
+    for (let k = 0; k < 6; k++) this.time.delayedCall(k * 200, () => { if (this.player) { this.fx.ring(p.x, p.y - 10, 120 + k * 110, k % 2 ? 0xfff4c0 : 0xb8ffd8, 1000); this.fx.glow(p.x, p.y - 10, 90 + k * 40, 0xfff4d0, 600, .5); } });
+    this.fx.burst(p.x, p.y - 20, [0xfff4c0, 0xffffff, 0xb8ffd8, 0xffd27a], 60, 220, { glow: true, up: 120, grav: -30, bounce: false, life: 1.6 });
+    for (const e of this.enemies) if (e.alive && !e.boss) {   // 남은 세뇌 포켓몬도 풀려난다 (보상은 없다)
+      e.alive = false; (e.colliders || []).forEach(c => c.destroy()); e.colliders = []; e.b.enable = false;
+      this.purify(e);
+    }
+    for (const sp of this.level.spawns) sp.spawned = false;   // 이제 그 자리엔 평화로운 야생 포켓몬이
+    this.time.delayedCall(900, () => this.events.emit('banner', `${this.stage.region} 정화!`, '침식이 걷히고 하늘이 맑아졌다 · 마을 사람들을 다시 찾아가 보자'));
+    this.time.delayedCall(500, () => this.repaintWorld());
+    this.time.delayedCall(2400, () => this.saveRun(true, 'purify'));
+  }
+  // 정화한 지방을 다시 칠한다: 타일 · 횃불 · 소품(나무가 푸르게 · 풀이 연둣빛 · 균열이 사라짐) · 마을 사람
+  repaintWorld() {
+    if (!this.level || this.overlay === 'tm') { this.time.delayedCall(600, () => this.repaintWorld()); return; }
+    this.tintRooms(); this.colorTorches();
+    if (this.npcs) { this.npcs.destroy(); this.npcs = null; }
+    if (this.props) this.props.destroy();
+    this.props = new Props(this, this.level, this.stage, this.stageIdx);
+    this.npcs = new Npcs(this, this.level, this.props);
+  }
+  // 정화한 지방의 평화로운 야생 포켓몬 (공격하지 않는다 · 공격 대상도 아니다)
+  spawnWanderer(s) {
+    let pk = pickWildStage(this.stage.pool, this.player.tierIdx);
+    const { key, def } = wildForm(pk.line, pk.stage), gy = s.y;
+    const w = new Wanderer(this, key, s.x, def.flying ? gy - rand(26, 40) : gy - 14, def);
+    if (!def.flying) w.b.reset(s.x, gy - w.b.height / 2 - 1);
+    if (!def.noclip) w.coll = this.physics.add.collider(w.obj, this.layers);
+    this.wanderers.push(w);
+  }
+
   // 새 지역에 들어서면: 배경을 겹쳐 바꾸고, 처음이면 할로우 나이트식 지역 타이틀
   enterArea(room, instant = false) {
     if (!room || room.ai === this.areaIdx) return;
@@ -271,6 +367,8 @@ export default class GameScene extends Phaser.Scene {
     if (this.combat) this.combat.clearAll();
     for (const e of this.enemies) { (e.colliders || []).forEach(dropCollider); e.colliders = []; e.destroy(); }
     this.enemies = [];
+    for (const w of this.wanderers || []) { dropCollider(w.coll); w.destroy(); }
+    this.wanderers = [];
     if (this.corruptG && this.corruptG.scene) { this.corruptG.clear(); this.eyeTrailG.clear(); }
     for (const p of this.pickups) { dropCollider(p.coll); p.img.destroy(); p.glow.destroy(); }
     this.pickups = [];
@@ -279,6 +377,7 @@ export default class GameScene extends Phaser.Scene {
     for (const o of this.worldObjs) o.destroy();
     this.worldObjs = [];
     if (this.portal) { this.portal.g.destroy(); this.portal.glow.destroy(); this.portal = null; }
+    if (this.npcs) { this.npcs.destroy(); this.npcs = null; }
     if (this.props) { this.props.destroy(); this.props = null; }
     if (this.promptText) { this.promptText.destroy(); this.promptText = null; }
     if (this.torches && this.webgl) for (const t of this.torches) if (t.light) this.lights.removeLight(t.light);
@@ -462,6 +561,7 @@ export default class GameScene extends Phaser.Scene {
   toggleOverlay(kind) {
     if (this.over || this.transitioning) return;
     if ((this.overlay === 'tm' || this.overlay === 'taxi' || this.overlay === 'debug') && kind !== this.overlay) return;   // 카드·공중날기·디버그 창이 열려 있으면 다른 창으로 넘어가지 않는다
+    if (this.overlay === kind && kind === 'talk') this.talkClosedAt = this.time.now;
     if (this.overlay === kind) { this.overlay = null; this.setFrozen(false); this.consumeInput(); this.player.zBuf = 0; this.events.emit('overlay', null); return; }   // 지도에서 누른 Z(확대)가 공격으로 새지 않게
     if (this.overlay) { this.overlay = kind; this.events.emit('overlay', kind); return; }   // 지도 ↔ 가방 바로 전환
     if (this.paused) return;
@@ -578,7 +678,7 @@ export default class GameScene extends Phaser.Scene {
     this.worlds.forEach((W, ci) => { if (W) worlds[ci] = snapshotWorld(W); });
     const ok = RunSave.write({
       v: 1, at: Date.now(), stageIdx: this.stageIdx, stageName: this.stage.name, pos, seeds: this.seeds.slice(), worlds,
-      hubs: this.unlockedHubs.slice(), lastCenter: c,
+      hubs: this.unlockedHubs.slice(), lastCenter: c, purified: [...this.purifiedSet],
       stats: { kills: this.runStats.kills, unlocked: this.runStats.unlocked.slice(), items: this.runStats.items, time: (this.time.now - this.runStats.start) / 1000 },
       player: snapshotPlayer(p)
     });
@@ -644,6 +744,7 @@ export default class GameScene extends Phaser.Scene {
     if (it.kind === 'hint') return;   // 안내만 띄운다 (↓ + Space 는 평소대로 발판 내려가기)
     this.inp.jumpP = false;
     if (it.kind === 'lore') { if (this.time.now - (this.loreAt || 0) > 500) { this.loreAt = this.time.now; this.events.emit('lore', it.text); Sfx.play('select'); } return; }
+    if (it.kind === 'npc') { this.talkTo(it); return; }   // 마을 사람 · 오박사와 대화
     if (it.kind === 'tm') { this.openTM(it); return; }   // 카드를 확정해야 다 쓴 제단이 된다
     if (it.kind === 'taxi') { this.toggleOverlay('taxi'); Sfx.play('select'); return; }   // 아머까오 공중날기 (몇 번이고)
     if (it.kind === 'terminal') {   // 간이 포켓몬 회복기: 파티 전원 회복 + 연결(자동 저장 · 부활 자리)
@@ -668,6 +769,16 @@ export default class GameScene extends Phaser.Scene {
       this.events.emit('toast', lucky ? '프렌들리숍 자판기에서 강화 아이템이 나왔다!' : '자판기에서 오렌열매가 나왔다  ·  강화 아이템은 가끔 나온다');
       Sfx.play(lucky ? 'unlock' : 'vend');
     }
+  }
+
+  // ---------------- 대화: 마을 사람 · 오박사 (data/npcs.js) ----------------
+  //  그 지방을 정화했으면 정화 뒤 대사(pure). 대화창은 UIScene.showTalk (게임은 멈춘다)
+  talkTo(it) {
+    if (this.overlay || this.paused || this.time.now - (this.talkClosedAt || 0) < 300) return;
+    const npc = it.npc, W = this.worlds[this.stageIdx], pure = !!(W && W.purified && npc.pure);
+    this.talk = { name: npc.name, look: npc.look, tint: npc.tint, lines: pure ? npc.pure : npc.lines, page: 0, id: it.id };
+    if (this.npcs) this.npcs.greet(it, this.player.x);
+    this.toggleOverlay('talk');
   }
 
   // ---------------- 기술머신: 카드 3장 뒤집기 → 1장 고르기 ----------------
@@ -738,8 +849,10 @@ export default class GameScene extends Phaser.Scene {
     this.player.update(dt, this.inp);
     this.consumeInput();
     this.props.update(time, dt);
+    if (this.npcs) this.npcs.update(dt, this.player);
     this.cullEnemies();
     for (const e of this.enemies) if (e.alive && !e.asleep) e.update(dt, this.player);
+    for (const w of this.wanderers) w.update(dt, this.player);
     this.drawCorruption();
     this.combat.updateProjectiles(dt);
     this.combat.updateZones(dt);
@@ -765,7 +878,7 @@ export default class GameScene extends Phaser.Scene {
   //  초입: 나뭇잎 사이로 비스듬히 내리쬐는 햇빛 줄기 + 떠다니는 금빛 먼지 · 따뜻하고 선명한 색
   //  보스방 쪽: 햇빛이 사라지고 채도가 빠지며 어두워진다 + 포스트 비네팅이 좁고 진해진다 (안개·검붉은 테두리는 UIScene)
   updateAtmosphere(dt) {
-    const want = this.room && this.room.depth != null ? this.room.depth : 0;
+    const want = this.depthOf(this.room);
     this.atmo = (this.atmo ?? want) + (want - (this.atmo ?? want)) * Math.min(1, dt * .6);
     const c = this.atmo, cam = this.cameras.main, v = cam.worldView, t = this.time.now / 1000;
     if (this.gradeFx) { const fx = this.gradeFx; fx.reset(); fx.saturate(.18 - c * .62, true); fx.brightness(1.06 - c * .2, true); }
@@ -784,6 +897,13 @@ export default class GameScene extends Phaser.Scene {
     });
     if (sun > .2 && Math.random() < sun * .5) {   // 햇빛 속을 떠다니는 금빛 먼지
       this.fx.burst(v.x + Math.random() * v.width, v.y + Math.random() * v.height * .8, [0xfff0c0, 0xffe08a], 1, 8, { grav: -6, bounce: false, glow: true, life: 1.6, size: 1, drag: .99 });
+    }
+    // 하늘: 침식이 옅으면 맑은 낮 하늘이 먼 배경을 덮고, 깊어질수록 먼·중간 배경이 검붉게 가라앉는다
+    if (this.daySky) this.daySky.setAlpha(Phaser.Math.Clamp(1 - c / .42, 0, 1) * .9);
+    const bgT = c < .45 ? 0xffffff : lerpColor(0xffffff, 0x6a3a4a, (c - .45) / .55);
+    this.bgFar.setTint(bgT); for (const t of Object.values(this.bgMids)) t.setTint(c < .45 ? lerpColor(0xd8e4f0, 0xffffff, c / .45) : bgT);
+    if (c > .45 && Math.random() < (c - .45) * .9) {   // 보스방에 가까울수록: 독기 어린 보라 · 핏빛 홀씨가 바닥에서 피어오른다
+      this.fx.burst(v.x + Math.random() * v.width, v.y + v.height * (.55 + Math.random() * .45), [0x9a3aff, 0xff3a6a, 0x6a1a4a], 1, 10, { angle: -Math.PI / 2, spread: .8, up: 12, grav: -12, bounce: false, glow: true, life: 2.2, size: Math.random() < .3 ? 2 : 1, drag: .99 });
     }
   }
 
@@ -851,15 +971,20 @@ export default class GameScene extends Phaser.Scene {
       const gy = e.flying || e.def.noclip ? this.groundBelow(e.x, e.bottom) : e.bottom;
       const far = Math.max(.25, 1 - Math.max(0, gy - e.bottom) / 140);
       // 발밑 오라는 은은하게: 예전 크기의 약 55% · 투명도 0.15~0.2 (포켓몬 도트가 먼저 보이도록)
-      const W = (e.b.width * .9 + 10) * (e.boss ? 1.3 : 1) * .55 * (.94 + Math.sin(t * 4 + e.auraT) * .06) * far;
+      const lv = e.cLv || 1, W = (e.b.width * .9 + 10) * (e.boss ? 1.3 : .85 + lv * .1) * .55 * (.94 + Math.sin(t * 4 + e.auraT) * .06) * far;
       if (!e.shadowA) { e.shadowA = this.add.image(0, 0, 'px').setOrigin(0).setDepth(17.99); e.shadowB = this.add.image(0, 0, 'px').setOrigin(0).setDepth(17.995); }
-      this.placeEllipse(e.shadowA, e.x, gy - 1, W, W * .24, 0x7a22c0, .15 * a * far);
-      this.placeEllipse(e.shadowB, e.x, gy - 1, W * .6, W * .16, 0x2a0a40, .2 * a * far);
-      const n = e.boss ? 3 : 2;
+      const aura = e.boss ? 0x7a22c0 : lv >= 4 ? 0xb01a3a : lv >= 3 ? 0x9a1a7a : 0x7a22c0;
+      this.placeEllipse(e.shadowA, e.x, gy - 1, W, W * .24, aura, (.12 + lv * .03) * a * far);
+      this.placeEllipse(e.shadowB, e.x, gy - 1, W * .6, W * .16, 0x2a0a40, (.16 + lv * .04) * a * far);
+      const n = e.boss ? 3 : Math.max(2, lv);
+      if (!e.boss && lv >= 2) {   // 침식 단계 점 (머리 위 · Ⅱ 보라 · Ⅲ 자홍 · Ⅳ 핏빛)
+        const col = CLV_COLOR[lv - 1], y0 = Math.round(e.top - (e.elite ? 16 : 6)), x0 = Math.round(e.x - (lv - 1) * 2);
+        for (let i = 0; i < lv; i++) { g.fillStyle(0x14081c, .8 * a); g.fillRect(x0 + i * 4 - 2, y0 - 1, 4, 4); g.fillStyle(col, a); g.fillRect(x0 + i * 4 - 1, y0, 2, 2); }
+      }
       for (let i = 0; i < n; i++) {
         const fx = Math.round(e.x + Math.sin(i * 12.9 + t * .7 + e.auraT) * W * .7);
         const fh = Math.round((2 + (Math.sin(t * 6 + i * 3.1 + e.auraT) * .5 + .5) * (e.boss ? 6 : 3)) * far);
-        g.fillStyle(0x7a22c0, .22 * a * far); g.fillRect(fx, gy - 1 - fh, 1, fh);
+        g.fillStyle(aura, (.18 + lv * .04) * a * far); g.fillRect(fx, gy - 1 - fh, 1, fh);
       }
       // 붉은 안광 궤적: 오래된 점일수록 가늘고 옅게
       const tr = e.eyeTrail;
@@ -978,6 +1103,7 @@ export default class GameScene extends Phaser.Scene {
     for (const s of this.level.spawns) {
       if (s.spawned || Math.abs(s.x - p.x) > reach || Math.abs(s.y - p.y) > reachY) continue;
       s.spawned = true;
+      if (this.level.purified) { if (!s.elite && Math.random() < .5) this.spawnWanderer(s); continue; }   // 정화한 지방: 세뇌된 적 대신 평화로운 야생 포켓몬
       if (s.elite && s.room && s.room.hidden && !(this.level.sides || []).some(sd => sd.room === s.room && sd.revealed)) { s.spawned = false; continue; }   // 숨은 굴의 수문장은 흙이 걷힌 뒤에
       if (!s.elite && (this.level.terminals || []).some(t => Math.abs(t.x * TILE - s.x) < 150 && Math.abs(t.g * TILE - s.y) < 90)) continue;   // 간이 회복기 둘레는 안전 구역
       this.spawnAt(s);
@@ -990,8 +1116,8 @@ export default class GameScene extends Phaser.Scene {
     let pk = pickWildStage(this.stage.pool, tier);
     for (let k = 0; k < 5 && WILD[pk.line].flying; k++) pk = pickWildStage(this.stage.pool, tier);   // 수문장은 되도록 땅에 버티고 선 쪽으로
     const top = WILD[pk.line].forms.length - 1, stage = Math.min(top, Math.max(pk.stage, Math.min(2, tier) + 1));
-    const { key, def } = wildForm(pk.line, stage), gy = s.y;
-    const e = new Enemy(this, key, s.x, def.flying ? gy - 40 : gy - 14, { def, scale: 1.25, hpMul: (1 + this.stageIdx * .4) * 3.4, dmgMul: (1 + this.stageIdx * .25) * 1.5 });
+    const { key, def } = wildForm(pk.line, stage), gy = s.y, lv = Math.min(4, this.corruptLevel(s.room) + 1);   // 엘리트는 침식이 한 단계 더 짙다
+    const e = new Enemy(this, key, s.x, def.flying ? gy - 40 : gy - 14, { def, cLv: lv, scale: 1.25, hpMul: (1 + this.stageIdx * .4) * 3.4 * (1 + .25 * (lv - 1)), dmgMul: (1 + this.stageIdx * .25) * 1.5 * (1 + .15 * (lv - 1)) });
     e.line = pk.line; e.stage = stage; e.elite = true;
     if (!def.flying) e.b.reset(s.x, gy - e.b.height / 2 - 1);
     this.addEnemy(e, s.room || this.room);
@@ -1009,8 +1135,8 @@ export default class GameScene extends Phaser.Scene {
     const { line, stage } = pk, { key, def } = wildForm(line, stage), gy = s.y;
     let x = s.x, y = def.flying ? gy - rand(30, 52) : gy - 14;
     for (let k = 0; k < 6 && def.flying && (this.isSolidAt(x, y) || this.isSolidAt(x, y - 12)); k++) y = gy - rand(20, 44);   // 날짐승: 바위·종유석 속 피하기
-    const room = s.room || this.room;
-    const e = new Enemy(this, key, x, y, { def, hpMul: 1 + this.stageIdx * .4, dmgMul: 1 + this.stageIdx * .25 });
+    const room = s.room || this.room, lv = this.corruptLevel(room);   // 침식 단계: 체력 +25% · 공격력 +15% · 속도 +5% (단계마다)
+    const e = new Enemy(this, key, x, y, { def, cLv: lv, hpMul: (1 + this.stageIdx * .4) * (1 + .25 * (lv - 1)), dmgMul: (1 + this.stageIdx * .25) * (1 + .15 * (lv - 1)) });
     e.line = line; e.stage = stage;
     if (!def.flying) e.b.reset(x, gy - e.b.height / 2 - 1);
     this.addEnemy(e, room);
@@ -1147,7 +1273,7 @@ export default class GameScene extends Phaser.Scene {
     // 진화 경험치: 정화할 때 출전 중이던 포켓몬이 받는다 (보스는 정화 연출이 끝날 무렵)
     const who = this.player.m;
     if (e.boss) this.time.delayedCall(1600, () => { if (this.player && !this.over) this.player.addExp(EXP_BOSS, who); });
-    else this.player.addExp(EXP_PURIFY, who);
+    else this.player.addExp(Math.round(EXP_PURIFY * (1 + .25 * ((e.cLv || 1) - 1))), who);   // 침식이 짙은 녀석일수록 경험치도 많다
     this.runStats.kills++;
     this.announceJoin(Save.addPurify());   // 누적 정화로 합류하는 특수 포켓몬 (롱스톤·스라크)
     const joinedBy = e.boss && Save.unlockByBoss(e.bossKey);   // 전설 보스 정화 → 그 전설이 플레이어블로 합류 (한카리아스 → 딥상어동 계열)
@@ -1289,6 +1415,7 @@ export default class GameScene extends Phaser.Scene {
     Save.data.bestStage = Math.max(Save.data.bestStage, this.stageIdx + 1); Save.write();
     if (final) {   // 지방 최종 보스 정화 = 그 지방 클리어 → 클리어로 합류하는 특수 포켓몬 (가디안·마기라스·망나뇽)
       Save.data.cleared = Math.max(Save.data.cleared || 0, this.stageIdx + 1);
+      if (this.stageIdx < STAGES.length - 1) this.time.delayedCall(2600, () => this.purifyRegion());   // 지방 전체의 침식이 걷힌다 (마지막 지방은 엔딩)
       const joined = Save.newlyJoined();
       this.time.delayedCall(5600, () => this.announceJoin(joined));
     }
