@@ -9,6 +9,7 @@ import { GAME_W, GAME_H, RES } from './config.js';
 import { setupMobile } from './systems/Mobile.js';
 import { installKeyFix } from './systems/KeyFix.js';
 import { installGuard } from './systems/Guard.js';
+import { ShockwaveFX } from './systems/PostFX.js';
 
 // 개발 서버(main.js)와 단일 HTML 빌드(main-single.js)가 함께 쓰는 시작 함수
 export async function startGame() {
@@ -35,6 +36,7 @@ export async function startGame() {
     roundPixels: true,
     fps: { target: 60, smoothStep: true },
     render: { antialias: false, maxLights: 16 },
+    pipeline: { ShockwaveFX },   // 화면 왜곡 충격파 후처리 (systems/PostFX.js)
     physics: { default: 'arcade', arcade: { gravity: { y: 900 }, fps: 60, debug: false, tileBias: 20 } },
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },   // 16:9 를 화면(안전 영역)에 꽉 맞추고 가운데로 — 회전·주소창 변화는 setupMobile 이 즉시 재계산
     input: { keyboard: true, mouse: true, touch: true, activePointers: 4 },   // 멀티터치: 이동하면서 점프·스킬·대시 동시에

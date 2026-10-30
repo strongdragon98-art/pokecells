@@ -4,8 +4,11 @@ import { typeMultiplier, effectiveness, typeColor } from '../data/types.js';
 import { Sfx } from '../systems/Audio.js';
 import { ProjectileRenderer } from '../systems/ProjectileRenderer.js';
 import { onHit as perkHit } from './Perks.js';
+import { txt } from '../config.js';
 const GROGGY_MUL = 1.35;   // game/Boss.js GROGGY_MUL 과 같은 값 (Boss → Combat 순환 import 를 피해 따로 둔다)
 
+// 다단히트 합계 글자 모양
+const txtStack = () => txt(11, '#ffe08a', { stroke: '#3a1a00', strokeThickness: 3, fontStyle: 'bold' });
 const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 const circRect = (cx, cy, r, b) => { const nx = Math.max(b.x, Math.min(cx, b.x + b.w)), ny = Math.max(b.y, Math.min(cy, b.y + b.h)); return (nx - cx) ** 2 + (ny - cy) ** 2 <= r * r; };
 export { overlap, circRect };
@@ -44,6 +47,7 @@ export class Combat {
     if (o.dot) this.fx.floatText(e.x, e.top, String(d), o.dot === 'burn' ? '#ffb070' : '#c8a0ff', 10);
     else {
       this.fx.damage(e.x, e.top - 2, d, eff, crit);
+      this.stackDamage(e, d);   // 다단히트: 0.45초 안에 이어 맞으면 머리 위에 합계를 쌓아 보여 준다
       e.flash(e.boss ? 50 : 90);   // 큰 보스는 짧게 번쩍여 화면을 덮지 않게
       this.fx.hitStop(o.hs ?? (eff === 'super' ? 70 : crit ? 60 : 50));
       if (eff === 'super') this.fx.shake(.009, 170, 'hit'); else if (eff === 'normal') this.fx.shake(.004, 90, 'hit'); else this.fx.shake(.002, 60, 'hit');
@@ -62,6 +66,21 @@ export class Combat {
     if (e.hp > 0) perkHit(this, e, d, type, o);   // 특성 카드: 화상·빙결·마비·독·저주 부여 · 연쇄 번개 · 장판 · 블랙홀
     if (e.hp <= 0 && !(e.cheatDeath && e.cheatDeath())) this.s.killEnemy(e);   // 칠색조 부활처럼 한 번 버티는 보스
     return d;
+  }
+
+  // 다단히트 데미지 합산: 같은 적이 0.45초 안에 2번 넘게 맞으면 「합계 (n히트)」 글자를 머리 위에 띄우고, 맞을 때마다 숫자를 키운다
+  stackDamage(e, d) {
+    const now = this.s.time.now, old = e.dmgStack, alive = old && now - old.t < 450 && (!old.text || (old.text.scene && !old.text.released));
+    const st = alive ? old : (e.dmgStack = { total: 0, n: 0, text: null, t: now });
+    st.total += d; st.n++; st.t = now;
+    if (st.n < 2) return;
+    const fx = this.fx, x = Math.round(e.x), y = Math.round(e.top - 18), str = `${st.total}  (${st.n}히트)`;
+    if (!st.text) st.text = fx.tpool.get(x, y, str, txtStack()).setOrigin(.5, 1).setDepth(62);
+    const t = st.text;
+    this.s.tweens.killTweensOf(t);
+    t.setText(str).setPosition(x, y).setAlpha(1).setScale(1.25);
+    this.s.tweens.add({ targets: t, scale: 1, duration: 120, ease: 'Back.easeOut' });
+    this.s.tweens.add({ targets: t, alpha: 0, y: y - 10, delay: 520, duration: 360, onComplete: () => { fx.tpool.release(t); if (e.dmgStack === st) e.dmgStack = null; } });
   }
 
   applyStatus(e, o) {

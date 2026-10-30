@@ -5,6 +5,7 @@
 //  카드는 '지금 출전 중인 포켓몬' 기준으로 뽑고, 받은 것은 그 포켓몬에게만 남는다 (Player.members[i].skills · ups)
 import { SKILLS } from './pokemon.js';
 import { PERKS } from '../game/Perks.js';
+import { LEARNSETS } from './MoveDatabase.js';
 
 // 계열(SPECIES 키)마다 기술머신으로 배울 수 있는 자속성 밖 기술 (원작 기술머신 습득 고증)
 export const TM_POOL = {
@@ -69,7 +70,19 @@ export const TM_LEARN = {
 export function learnableMoves(types, line) {
   const ts = new Set(types || []);
   const ids = Object.entries(TM_LEARN).filter(([, who]) => who === '*' || who.some(t => ts.has(t))).map(([id]) => id);
-  return [...new Set([...ids, ...(TM_POOL[line] || [])])].filter(id => SKILLS[id]);
+  // + GitHub(PokeAPI) 습득표: 그 계열이 역대 게임에서 기술머신·가르침·레벨업·알로 배우는 기술 (data/MoveDatabase.js · 기술 동작은 game/SkillGenerator.js)
+  const L = LEARNSETS[line] || {}, real = ['tm', 'tutor', 'level', 'egg'].flatMap(k => L[k] || []);
+  return [...new Set([...ids, ...(TM_POOL[line] || []), ...real])].filter(id => SKILLS[id]);
+}
+
+// 기술 카드 등급: 손으로 정한 값 → 없으면 GitHub 데이터의 위력으로 (130↑ 전설 · 100↑ 유니크 · 70↑ 레어 · 그 밖 커먼 · 변화 기술 레어)
+export function moveGrade(id) {
+  if (MOVE_GRADE[id]) return MOVE_GRADE[id];
+  const s = SKILLS[id];
+  if (!s || !s.gen) return '레어';
+  if (s.cls === 'status') return '레어';
+  const pw = s.power || 0;
+  return pw >= 130 ? '전설' : pw >= 100 ? '유니크' : pw >= 70 ? '레어' : '커먼';
 }
 
 // 카드가 모자랄 때 채우는 숙련 카드 (몇 번이고 겹친다 — 어떤 경우에도 카드 3장을 채운다)
@@ -112,7 +125,7 @@ function candidates(m, types) {
   const known = new Set([...Object.values(m.skills), ...(m.learned || [])]);   // 배웠다가 빼 둔 기술도 다시 나오지 않게
   const own = new Set(types || m.sp.types || []);
   const ids = learnableMoves([...own, ...(m.sp.types || [])], m.key).filter(id => !known.has(id));
-  const moves = ids.map(id => ({ kind: 'move', id, name: SKILLS[id].name, type: SKILLS[id].type, grade: MOVE_GRADE[id] || '레어', desc: SKILLS[id].desc, cd: SKILLS[id].cd,
+  const moves = ids.map(id => ({ kind: 'move', id, name: SKILLS[id].name, type: SKILLS[id].type, grade: moveGrade(id), desc: SKILLS[id].desc, cd: SKILLS[id].cd,
     cat: own.has(SKILLS[id].type) ? '새 기술 · 자속성' : '새 기술 · 습득' }));
   const ups = Object.entries(UPGRADES).filter(([id, u]) => known.has(u.skill) && !m.ups.has(id) && SKILLS[u.skill])
     .map(([id, u]) => ({ kind: 'up', id, name: u.name, type: SKILLS[u.skill].type, grade: u.grade, desc: u.desc, skill: u.skill, cat: '기술 강화' }));

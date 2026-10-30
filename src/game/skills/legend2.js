@@ -4,6 +4,7 @@ import Phaser from 'phaser';
 import { typeColor } from '../../data/types.js';
 import { Sfx } from '../../systems/Audio.js';
 import { sizeMul, slashHit, shoot, lineFx, dashAction, view, groundAt } from '../skillKit.js';
+import { shockwave } from '../../systems/PostFX.js';
 
 const ADD = Phaser.BlendModes.ADD;
 
@@ -700,5 +701,5 @@ function giraSpike(p, f, k, s, big, m) {
   sc.fx.burst(x, gy - 2, [RIFT_DARK, 0x4a0a2a, RIFT_RED], 8, 80, { angle: -Math.PI / 2, spread: .9, up: 90, life: .4 });
   sc.fx.glow(x, gy - h * .5, 20 * s, RIFT_RED, 200, .8);
   sc.fx.shake(.004 + k * .0012, 90, 'hit');
-  if (k === 4) { sc.fx.ring(x, gy - h * .5, 30 * s, RIFT_PURPLE, 280); Sfx.play('boom'); } else Sfx.play('crack');
+  if (k === 4) { sc.fx.ring(x, gy - h * .5, 30 * s, RIFT_PURPLE, 280); Sfx.play('boom'); if (big) shockwave(sc, x, gy - h * .5, .035, 600); } else Sfx.play('crack');
 }

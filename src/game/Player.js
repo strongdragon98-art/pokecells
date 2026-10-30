@@ -19,10 +19,16 @@ import * as legend1 from './skills/legend1.js';
 import * as legend2 from './skills/legend2.js';
 import * as typeMoves from './skills/typeMoves.js';
 import { Sfx } from '../systems/Audio.js';
+import { buildGenerated } from './SkillGenerator.js';
+import { shockwave } from '../systems/PostFX.js';
 
 const SWAP_CD = 3;
 // 라인별 전용 기술을 먼저, 기본·기술머신 기술(game/skills.js)로 덮는다 (같은 이름이면 기술머신판)
 const SKILL_IMPL = Object.assign({}, gen23.SKILL_IMPL, gen45.SKILL_IMPL, gen67.SKILL_IMPL, gen89.SKILL_IMPL, special.SKILL_IMPL, legend1.SKILL_IMPL, legend2.SKILL_IMPL, base.SKILL_IMPL);
+// GitHub(PokeAPI) 기술 데이터로 만든 기술 (game/SkillGenerator.js): 손으로 만든 기술이 없는 것만 더한다 → 기술머신 카드로 배울 수 있다
+const GENERATED = buildGenerated(Object.assign({}, SKILLS, SKILL_IMPL));
+Object.assign(SKILLS, GENERATED.SKILLS);
+Object.assign(SKILL_IMPL, GENERATED.SKILL_IMPL);
 const TAG_IMPL = Object.assign({}, typeMoves.TAG_IMPL, base.TAG_IMPL);
 const ZMOVE_IMPL = Object.assign({}, typeMoves.ZMOVE_IMPL, base.ZMOVE_IMPL);
 const LEGEND_BODY = { w: 22, h: 32 };   // 전설 플레이어블 히트박스 = 일반 최종진화(약 18×26)의 1.25배
@@ -720,6 +726,7 @@ export class Player extends Actor {
     if (this.z.cd > 0) { sc.events.emit('toast', `Z기술 재사용까지 ${Math.ceil(this.z.cd)}초`); Sfx.play('deny'); return; }
     if (this.dash) return;
     this.z.cd = Z_CD;
+    shockwave(sc, this.x, this.y, .045, 750);   // 화면이 물결치며 Z기술 시작
     this.startAction(ZMOVE_IMPL[this.sp.zmove](this, ZMOVES[this.sp.zmove]), 'zmove');
   }
 
@@ -744,6 +751,7 @@ export class Player extends Actor {
     for (let k = 0; k < 4; k++) sc.time.delayedCall(k * 90, () => sc.fx.ring(this.x, this.y, 30 + k * 18, [0xff8ad0, 0x9a7aff, 0x5ad0ff, 0xfff6c0][k], 360));
     sc.fx.burst(this.x, this.y, [0xff8ad0, 0x9a7aff, 0x5ad0ff, 0xfff6c0, 0xffffff], 40, 220, { glow: true });
     sc.fx.shake(.012, 300);
+    shockwave(sc, this.x, this.y, .04, 700);
     Sfx.play('mega');
     const mgv = this.megaOf(), title = mgv.item ? '폼체인지!' : mgv.bond ? '유대변화!' : mgv.awaken ? '각성!' : '메가진화!';
     const alt = this.sp.megas.length > 1 && !variant ? ` · ↑+V 는 ${this.sp.megas[1].name}` : '';

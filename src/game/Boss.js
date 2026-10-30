@@ -7,6 +7,7 @@ import { BOSSES } from '../data/pokemon.js';
 import { Sfx } from '../systems/Audio.js';
 import { overlap } from './Combat.js';
 import { bolt } from './Perks.js';
+import { shockwave } from '../systems/PostFX.js';
 
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const STRIKE = new Set(['dash', 'dive', 'spin', 'spark', 'glide', 'jet', 'serpent', 'skydive', 'lunge', 'volt', 'boltRun', 'fbDive']);
@@ -163,7 +164,7 @@ export class Boss extends Enemy {
     this.b.setAllowGravity(true); this.b.setVelocity(0, 300);   // 공중에 있어도 그대로 추락
     sc.fx.floatText(this.x, this.top - 26, '💥 GROGGY! (자세 무너짐)', '#ffd040', 14);
     sc.events.emit('banner', 'GROGGY!', `${this.name}의 자세가 무너졌다 · ${GROGGY_T}초 동안 무방비 · 받는 피해 ×${GROGGY_MUL}`);
-    sc.fx.shake(.02, 500); sc.fx.hitStop(160);
+    sc.fx.shake(.02, 500); sc.fx.hitStop(160); shockwave(sc, this.x, this.y, .05, 800);
     sc.fx.ring(this.x, this.y, 60, 0xffb040, 420); sc.fx.glow(this.x, this.y, 70, 0xffd040, 420, 1);
     sc.fx.burst(this.x, this.y, [0xffd040, 0xffb040, 0xffffff], 34, 220, { glow: true, up: 80 });
     Sfx.play('shatter'); Sfx.play('boom');
