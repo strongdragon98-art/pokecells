@@ -3,11 +3,12 @@ import Phaser from 'phaser';
 import { ZOOM, RES, TILE } from '../config.js';
 import { STAGES, areaLabel } from '../data/stages.js';
 import { FORM_ITEMS } from '../data/roster.js';
-import { WILD, DEX_ORDER, SPECIES, wildForm, pickWildStage, EXP_PURIFY, EXP_BOSS, DROPS, EVO_EXP, ZMOVES, BOSSES } from '../data/pokemon.js';
+import { WILD, DEX_ORDER, SPECIES, SKILLS, TIERS, wildForm, pickWildStage, EXP_PURIFY, EXP_BOSS, DROPS, EVO_EXP, ZMOVES, BOSSES } from '../data/pokemon.js';
 import { ITEMS, ITEM_KEYS, ITEM_DROP, CONSUMABLES, MAX_EQUIP } from '../data/items.js';
 import { typeColor } from '../data/types.js';
 import { PLAT_SET, groundYAt, T as TILE_ID } from '../game/Level.js';
 import { buildChapter, roomAt, CW, CH } from '../game/World.js';
+import { buildTestRoom, bossHome } from '../game/TestRoom.js';
 
 const ARENA_ZOOM = 1;   // 보스전 월드 배율 (평소 ZOOM 1.25 → 화면에 아레나가 더 많이 들어온다)
 import { Props } from '../game/Props.js';
@@ -71,6 +72,7 @@ export default class GameScene extends Phaser.Scene {
   constructor() { super('Game'); }
 
   init(data) {
+    this.test = !!(data && data.test);              // 테스트룸 (테스터 모드 · 로비의 「테스트룸」): game/TestRoom.js 의 빈 아레나 · 저장·도감에 남지 않는다
     this.resume = (data && data.resume) || null;   // 로비의 '이어하기': systems/RunSave.js 의 저장 내용
     this.partyKeys = this.resume ? this.resume.player.members.map(m => m.key) : data && data.party && data.party.length ? data.party : Save.data.party;
   }
@@ -90,11 +92,12 @@ export default class GameScene extends Phaser.Scene {
       this.purifiedSet = new Set(rs.purified || []);
       Object.assign(this.runStats, { kills: rs.stats.kills, unlocked: rs.stats.unlocked.slice(), items: rs.stats.items, start: this.time.now - rs.stats.time * 1000 });
     }
+    if (this.test) { this.testOpt = { ci: 0, ai: 0, arena: null, tall: false }; this.testGod = false; this.testNoCd = false; this.testChain = false; this.dummy = null; }
     this.webgl = this.renderer.type === Phaser.WEBGL;
     this.enemies = []; this.pickups = []; this.chests = []; this.worldObjs = []; this.wanderers = [];
     this.inp = {}; this.paused = false; this.transitioning = false; this.over = false; this.cleaned = false;
     this.dynLights = 0;
-    this.keys = this.input.keyboard.addKeys('ONE,TWO,THREE,ESC,P,F2,F3,F4,N');   // 바꿀 수 없는 키 (나머지는 설정 → 키 설정, bindKeys)
+    this.keys = this.input.keyboard.addKeys('ONE,TWO,THREE,ESC,P,F2,F3,F4,N' + (this.test ? ',T' : ''));   // 바꿀 수 없는 키 (나머지는 설정 → 키 설정, bindKeys) · 테스트룸은 T 패널
     this.bindKeys();
     const offKeys = Settings.on(k => { if (k === 'keys') this.bindKeys(); });
     this.events.once('shutdown', offKeys);
@@ -120,6 +123,7 @@ export default class GameScene extends Phaser.Scene {
     this.scene.bringToTop('UI');
     cam.fadeIn(350, 7, 6, 15);
     this.events.once('shutdown', () => this.cleanup());
+    if (this.test) this.testBegin();
   }
 
   // ---------------- 월드 구성 ----------------
@@ -129,6 +133,7 @@ export default class GameScene extends Phaser.Scene {
   //  지형은 챕터 시드로 만든다 (같은 시드 = 같은 지형). 이어하기면 저장해 둔 바뀐 것(연 상자·정화한 보스 등)을 덮어쓴다
   worldOf(ci) {
     if (this.worlds[ci]) return this.worlds[ci];
+    if (this.test) return (this.worlds[ci] = { seed: 0, level: buildTestRoom({ ...this.testOpt, ci }), explored: null, areasSeen: new Set(STAGES[ci].areas.map((a, i) => i)), purified: true });   // 테스트룸: 밝고 맑은 빈 아레나
     const seed = this.seeds[ci] ?? (this.seeds[ci] = newSeed());
     const W = { seed, level: seeded(seed, () => buildChapter(STAGES[ci], ci)), explored: null, areasSeen: new Set(), purified: this.purifiedSet.has(ci) };
     const saved = this.savedWorlds && this.savedWorlds[ci];
@@ -175,11 +180,20 @@ export default class GameScene extends Phaser.Scene {
     this.ambient = Phaser.Display.Color.ValueToColor(st.palette.ambient).clone();
     // 방 사이 빈 셀은 단단한 암반 (오돌토돌한 점) · 지하 방 안쪽엔 동굴 벽 배경
     const rock = this.add.graphics().setDepth(1.5), rc = shade(st.palette.wall2, .55);
-    for (let cy = 0; cy < level.ncy; cy++) for (let cx = 0; cx < level.ncx; cx++) {
-      if (level.cellRoom.has(cx + ',' + cy)) continue;
+    const rockCell = (g, cx, cy) => {
       const x0 = cx * CW * TILE, y0 = cy * CH * TILE;
-      rock.fillStyle(rc, 1); rock.fillRect(x0, y0, CW * TILE, CH * TILE);
-      for (let k = 0; k < 40; k++) { rock.fillStyle(k % 3 ? shade(rc, 1.25) : shade(rc, .7), 1); rock.fillRect(x0 + ((k * 97 + cx * 31) % (CW * TILE)), y0 + ((k * 61 + cy * 17) % (CH * TILE)), 2, 2); }
+      g.fillStyle(rc, 1); g.fillRect(x0, y0, CW * TILE, CH * TILE);
+      for (let k = 0; k < 40; k++) { g.fillStyle(k % 3 ? shade(rc, 1.25) : shade(rc, .7), 1); g.fillRect(x0 + ((k * 97 + cx * 31) % (CW * TILE)), y0 + ((k * 61 + cy * 17) % (CH * TILE)), 2, 2); }
+    };
+    for (let cy = 0; cy < level.ncy; cy++) for (let cx = 0; cx < level.ncx; cx++) if (!level.cellRoom.has(cx + ',' + cy)) rockCell(rock, cx, cy);
+    // 오박사 연구소(+ 지하의 튜토리얼 기술머신 굴)는 닫힌 실내: 밖에 있을 땐 그 자리를 암반으로 덮어 벽 너머로 비치지 않게 (updateLabCover)
+    this.labCover = null;
+    const indoor = level.rooms.filter(r => r.lab || (r.tutorial && r.doors.some(d => d.U && d.U.lab)));
+    if (indoor.length) {
+      const g = this.add.graphics().setDepth(15);
+      for (const r of indoor) for (let cy = r.gy; cy < r.gy + r.gh; cy++) for (let cx = r.gx; cx < r.gx + r.gw; cx++) rockCell(g, cx, cy);
+      this.labCover = { g, rooms: indoor };
+      this.worldObjs.push(g);
     }
     // 위아래 철창 통로(방 바닥 밑 땅을 뚫은 갱도) 뒤엔 어두운 흙벽 — 먼 하늘이 비쳐 보이지 않게
     for (const d of level.doors) if (d.dir === 'v') { const xs = d.cells.map(c => c[0]), ys = d.cells.map(c => c[1]); rock.fillStyle(shade(st.palette.wall2, .4), 1); rock.fillRect(Math.min(...xs) * TILE, Math.min(...ys) * TILE, (Math.max(...xs) - Math.min(...xs) + 1) * TILE, (Math.max(...ys) - Math.min(...ys) + 1) * TILE); }
@@ -271,12 +285,13 @@ export default class GameScene extends Phaser.Scene {
     ];
 
     const cam = this.cameras.main;
-    cam.setBounds(0, 0, level.width, level.height);
+    this.room = roomAt(level, pos.x, pos.y - 4) || level.start.room;
+    cam.setBounds(...this.camBounds());
+    this.updateLabCover();
     cam.startFollow(this.player.obj, true, .14, .16);
     cam.setFollowOffset(0, 10);
     cam.centerOn(pos.x, pos.y);
     for (const sp of level.spawns) sp.spawned = false;   // 챕터에 들어올 때마다 적이 다시 나온다
-    this.room = roomAt(level, pos.x, pos.y - 4) || level.start.room;
     this.boss = null; this.bosses = []; this.portal = null; this.lowSeen = false;
     this.events.emit('stage', si, st);
     Music.play(st.bgm);
@@ -375,7 +390,7 @@ export default class GameScene extends Phaser.Scene {
     for (const c of this.chests) { c.img.destroy(); c.glow.destroy(); }
     this.chests = [];
     for (const o of this.worldObjs) o.destroy();
-    this.worldObjs = [];
+    this.worldObjs = []; this.sunbeams = null;   // 햇빛 줄기도 worldObjs 와 함께 사라졌으니 새 월드에서 다시 만든다 (updateAtmosphere)
     if (this.portal) { this.portal.g.destroy(); this.portal.glow.destroy(); this.portal = null; }
     if (this.npcs) { this.npcs.destroy(); this.npcs = null; }
     if (this.props) { this.props.destroy(); this.props = null; }
@@ -553,14 +568,15 @@ export default class GameScene extends Phaser.Scene {
     i.mapP = false; i.invP = false;
     if (JD(k.N)) { Sfx.on = !Sfx.on; this.events.emit('toast', Sfx.on ? '소리 켬' : '소리 끔'); }
     if (JD(k.F2)) this.debugToBoss();
-    if (JD(k.F3)) this.toggleOverlay('debug');   // 챕터·보스 셀렉트 디버그 패널
+    if (JD(k.F3)) this.toggleOverlay(this.test ? 'test' : 'debug');   // 챕터·보스 셀렉트 디버그 패널 (테스트룸은 테스트 패널)
+    if (this.test && JD(k.T) && !Object.values(Settings.get('keys')).includes('T')) this.toggleOverlay('test');   // 조작키로 T 를 쓰고 있으면 F3 만
     if (JD(k.F4)) this.debugGrow();
   }
 
   // ---------------- 지도(M) · 가방(I): 게임을 멈추고 UI 가 그린다 ----------------
   toggleOverlay(kind) {
     if (this.over || this.transitioning) return;
-    if ((this.overlay === 'tm' || this.overlay === 'taxi' || this.overlay === 'debug') && kind !== this.overlay) return;   // 카드·공중날기·디버그 창이 열려 있으면 다른 창으로 넘어가지 않는다
+    if ((this.overlay === 'tm' || this.overlay === 'taxi' || this.overlay === 'debug' || this.overlay === 'test') && kind !== this.overlay) return;   // 카드·공중날기·디버그·테스트 창이 열려 있으면 다른 창으로 넘어가지 않는다
     if (this.overlay === kind && kind === 'talk') this.talkClosedAt = this.time.now;
     if (this.overlay === kind) { this.overlay = null; this.setFrozen(false); this.consumeInput(); this.player.zBuf = 0; this.events.emit('overlay', null); return; }   // 지도에서 누른 Z(확대)가 공격으로 새지 않게
     if (this.overlay) { this.overlay = kind; this.events.emit('overlay', kind); return; }   // 지도 ↔ 가방 바로 전환
@@ -633,8 +649,10 @@ export default class GameScene extends Phaser.Scene {
   teleport(pos) {
     const p = this.player;
     p.b.reset(pos.x, pos.y); p.b.setVelocity(0, 0);
-    this.cameras.main.centerOn(pos.x, pos.y);
     this.room = roomAt(this.level, pos.x, pos.y - 4) || this.room;
+    if (!this.arenaRoom) this.cameras.main.setBounds(...this.camBounds());   // 연구소 안 ↔ 밖
+    this.updateLabCover();
+    this.cameras.main.centerOn(pos.x, pos.y);
     this.enterArea(this.room, true);
     if (this.room.type === 'village') this.visitHub(this.room);   // 순간이동으로 바로 시내에 내려도 정거장 등록
   }
@@ -670,6 +688,7 @@ export default class GameScene extends Phaser.Scene {
   // auto: 포켓몬센터 자동 저장 (조용히 작은 알림만) · 아니면 일시정지 메뉴의 '저장하기' → 저장했으면 true
   //  자리: 자동 저장은 그 시내 포켓몬센터 앞, 직접 저장은 마지막으로 밟은 땅 (보스전 중에는 저장하지 않는다)
   saveRun(auto = false, where = 'center') {
+    if (this.test) { if (!auto) this.events.emit('toast', '테스트룸에서는 저장하지 않는다'); return false; }
     if (this.over || !this.player || !this.level) return false;
     if (this.arenaRoom) { if (!auto) this.events.emit('toast', '보스전 중에는 저장할 수 없다'); return false; }
     const p = this.player, c = this.lastCenter;
@@ -723,7 +742,7 @@ export default class GameScene extends Phaser.Scene {
   respawn() {
     if (this.transitioning) return;
     const p = this.player, c = this.lastCenter;
-    this.events.emit('banner', '눈앞이 캄캄해졌다…', c ? (c.terminal ? '마지막으로 연결한 간이 회복기 앞에서 다시 일어난다' : '마지막으로 들른 포켓몬센터로 돌아간다') : '챕터 입구로 돌아간다');
+    this.events.emit('banner', '눈앞이 캄캄해졌다…', this.test ? '테스트룸 입구에서 다시 일어난다' : c ? (c.terminal ? '마지막으로 연결한 간이 회복기 앞에서 다시 일어난다' : '마지막으로 들른 포켓몬센터로 돌아간다') : '챕터 입구로 돌아간다');
     for (const m of p.members) { m.hp = m.maxhp; m.alive = true; }
     p.inv = 2.5;
     Music.play(this.stage.bgm);
@@ -745,6 +764,7 @@ export default class GameScene extends Phaser.Scene {
     this.inp.jumpP = false;
     if (it.kind === 'lore') { if (this.time.now - (this.loreAt || 0) > 500) { this.loreAt = this.time.now; this.events.emit('lore', it.text); Sfx.play('select'); } return; }
     if (it.kind === 'npc') { this.talkTo(it); return; }   // 마을 사람 · 오박사와 대화
+    if (it.kind === 'door') { this.useDoor(it); return; }   // 오박사 연구소 문 (안 ↔ 밖)
     if (it.kind === 'tm') { this.openTM(it); return; }   // 카드를 확정해야 다 쓴 제단이 된다
     if (it.kind === 'taxi') { this.toggleOverlay('taxi'); Sfx.play('select'); return; }   // 아머까오 공중날기 (몇 번이고)
     if (it.kind === 'terminal') {   // 간이 포켓몬 회복기: 파티 전원 회복 + 연결(자동 저장 · 부활 자리)
@@ -769,6 +789,32 @@ export default class GameScene extends Phaser.Scene {
       this.events.emit('toast', lucky ? '프렌들리숍 자판기에서 강화 아이템이 나왔다!' : '자판기에서 오렌열매가 나왔다  ·  강화 아이템은 가끔 나온다');
       Sfx.play(lucky ? 'unlock' : 'vend');
     }
+  }
+
+  // ---------------- 오박사 연구소 문: 안 ↔ 밖 ----------------
+  //  문짝이 열리고 빛이 새어 나온다 → 어두워졌다가 → 반대편 문 앞에 서서 등 뒤로 문이 닫힌다 (적·보스전은 그대로)
+  useDoor(it) {
+    if (this.transitioning || this.time.now - (this.doorAt || 0) < 800) return;
+    const dst = this.props.interacts.find(q => q.kind === 'door' && q.side !== it.side);
+    if (!dst) return;
+    this.doorAt = this.time.now; this.transitioning = true;
+    const p = this.player, cam = this.cameras.main, props = this.props;
+    p.b.setVelocity(0, 0);
+    props.openDoor(it); Sfx.play('door');
+    this.time.delayedCall(230, () => {
+      cam.fadeOut(240, 7, 6, 15);
+      cam.once('camerafadeoutcomplete', () => {
+        if (this.props !== props) { this.transitioning = false; return; }
+        props.shutDoor(it, true);
+        props.openDoor(dst, true);
+        this.teleport({ x: dst.x, y: dst.y - 14 });
+        p.face = dst.side === 'out' ? 1 : -1; p.refacing();   // 마을로 나오면 오른쪽(마을 쪽), 연구소에 들어가면 왼쪽(박사님 쪽)을 본다
+        cam.fadeIn(300, 7, 6, 15);
+        this.transitioning = false;
+        this.doorAt = this.time.now;
+        this.time.delayedCall(260, () => { if (this.props === props) { props.shutDoor(dst); Sfx.play('doorshut'); } });
+      });
+    });
   }
 
   // ---------------- 대화: 마을 사람 · 오박사 (data/npcs.js) ----------------
@@ -848,6 +894,7 @@ export default class GameScene extends Phaser.Scene {
     this.updateInteract();
     this.player.update(dt, this.inp);
     this.consumeInput();
+    if (this.test) this.testUpdate();
     this.props.update(time, dt);
     if (this.npcs) this.npcs.update(dt, this.player);
     this.cullEnemies();
@@ -1069,7 +1116,10 @@ export default class GameScene extends Phaser.Scene {
   updateRooms(dt) {
     const p = this.player, room = roomAt(this.level, p.x, p.y - 4) || this.room;
     if (room !== this.room) {
+      const wasLab = this.room && this.room.lab;
       this.room = room;
+      if ((wasLab || room.lab) && !this.arenaRoom) this.cameras.main.setBounds(...this.camBounds());   // 연구소 지하(튜토리얼 기술머신)로 내려가거나 올라올 때
+      this.updateLabCover();
       for (const m of p.members) m.sturdyUsed = false;   // 기합의띠(특성 카드)는 방마다 1번
       this.events.emit('room', room);
       this.enterArea(room);
@@ -1166,8 +1216,9 @@ export default class GameScene extends Phaser.Scene {
   // 아레나 보스전 시작. 이어 싸우는 순서(chain): prelude(레드의 포켓몬들) → 방 보스 → then(디아루가 → 펄기아)
   startBoss(room) {
     const key = room.boss && BOSSES[room.boss] ? room.boss : 'mewtwo', def = BOSSES[key];
-    const list = [...(def.prelude || []), key];
-    for (let k = key; BOSSES[k].then; k = BOSSES[k].then) list.push(BOSSES[k].then);
+    const solo = this.test && !this.testChain;   // 테스트룸: 고른 보스 하나만 (이어 싸우기를 켜면 본편처럼 앞뒤 보스까지)
+    const list = solo ? [key] : [...(def.prelude || []), key];
+    if (!solo) for (let k = key; BOSSES[k].then; k = BOSSES[k].then) list.push(BOSSES[k].then);
     this.chain = { list, i: 0 };
     this.arenaRoom = room;
     this.lockArena(room);
@@ -1180,6 +1231,9 @@ export default class GameScene extends Phaser.Scene {
       Sfx.play('boss');
       return;
     }
+    const ent = solo && first.entrance;   // 테스트룸에서 바로 고른 펄기아 · 무한다이노: 등장 연출부터
+    if (ent === 'shatter') { this.spaceShatter(room); this.time.delayedCall(1200, () => this.beginBoss(list[0], room, room.cx + 80)); return; }
+    if (ent === 'abyss') { this.abyssRise(room); this.time.delayedCall(1700, () => this.beginBoss(list[0], room, room.cx)); return; }
     this.beginBoss(list[0], room, room.right - 70);
   }
   beginBoss(key, room, x) {
@@ -1255,9 +1309,19 @@ export default class GameScene extends Phaser.Scene {
     cam.setBounds(room.X0 * TILE, room.Y0 * TILE, (room.X1 - room.X0) * TILE, (room.Y1 - room.Y0) * TILE);
     cam.zoomTo(ARENA_ZOOM * RES, 700, 'Sine.easeInOut', true);
   }
+  // 연구소 덮개: 연구소 · 지하 튜토리얼 굴 안에 있을 때만 걷는다
+  updateLabCover() {
+    const c = this.labCover;
+    if (c) c.g.setVisible(!c.rooms.includes(this.room));
+  }
+  // 카메라가 다닐 범위: 월드 전체 (테스트룸은 방 안 — 둘레에 두른 바위가 비치지 않게 · 오박사 연구소 안에선 연구소 안만 — 벽 너머 마을이 비치지 않게)
+  camBounds() {
+    const lv = this.level, r = lv.test ? lv.rooms[0] : this.room && this.room.lab ? this.room : null;
+    return r ? [r.X0 * TILE, r.Y0 * TILE, (r.X1 - r.X0) * TILE, (r.Y1 - r.Y0) * TILE] : [0, 0, lv.width, lv.height];
+  }
   unlockArena() {
     const cam = this.cameras.main;
-    if (this.level) cam.setBounds(0, 0, this.level.width, this.level.height);
+    if (this.level) cam.setBounds(...this.camBounds());
     if (cam.zoom !== ZOOM * RES) cam.zoomTo(ZOOM * RES, 900, 'Sine.easeInOut', true);
   }
 
@@ -1270,6 +1334,7 @@ export default class GameScene extends Phaser.Scene {
     e.colliders = [];
     e.b.enable = false;
     this.purify(e);
+    if (this.test) { if (e.boss) this.bossDefeated(e); return; }   // 테스트룸: 경험치·도감·드랍 없이 정화 연출만
     // 진화 경험치: 정화할 때 출전 중이던 포켓몬이 받는다 (보스는 정화 연출이 끝날 무렵)
     const who = this.player.m;
     if (e.boss) this.time.delayedCall(1600, () => { if (this.player && !this.over) this.player.addExp(EXP_BOSS, who); });
@@ -1389,6 +1454,7 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
     if (this.chain && this.chain.i < this.chain.list.length - 1) { this.nextInChain(boss); return; }   // 이어 싸우기 (디아루가 → 펄기아 · 레드의 포켓몬 → 무한다이노)
+    if (this.test) { this.testBossDone(boss); return; }
     const room = boss.room, final = room.type === 'boss', hidden = room.type === 'sanctuary', tr = this.trainer;
     this.boss = null; this.bosses = []; this.chain = null; this.arenaRoom = null;
     if (this.player.flipT > 0) this.player.flipT = .001;
@@ -1593,10 +1659,131 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
+  // ---------------- 테스트룸 (game/TestRoom.js · 패널은 UIScene.showTest) ----------------
+  // 시작: Z크리스탈 · 메가스톤 · 폼체인지 아이템을 모두 쥐고 패널을 연다
+  testBegin() {
+    const p = this.player;
+    p.z.has = true; p.mega.stones = 9;
+    for (const id of Object.keys(FORM_ITEMS)) p.formItems.add(id);
+    this.time.delayedCall(450, () => { if (!this.overlay && !this.over) this.toggleOverlay('test'); });
+  }
+  // 매 프레임: 쿨타임 없음 · 샌드백 피해 기록 (최근 5초 · 2초 동안 안 맞으면 체력이 다시 찬다)
+  testUpdate() {
+    const p = this.player, now = this.time.now, d = this.dummy;
+    if (this.testNoCd) { for (const m of p.members) { m.cd.z = 0; m.cd.x = 0; m.cd.c = 0; } p.z.cd = 0; }
+    if (!d) return;
+    if (d.hp < d.lastHp) { d.log.push([now, d.lastHp - d.hp]); d.hitAt = now; }
+    if (d.hp < d.maxhp && now - (d.hitAt || 0) > 2000) d.hp = d.maxhp;
+    d.lastHp = d.hp;
+    while (d.log.length && now - d.log[0][0] > 5000) d.log.shift();
+  }
+  // 오른쪽 위 HUD 한 줄: 샌드백 피해 · 켜 둔 옵션
+  testInfo() {
+    const d = this.dummy, opts = [this.testGod && '무적', this.testNoCd && '쿨타임 없음'].filter(Boolean).join(' · ');
+    if (!d) return opts ? `테스트룸 · ${opts}` : '테스트룸 · T 패널';
+    const sum = d.log.reduce((s, l) => s + l[1], 0), span = d.log.length ? Math.max(1, (this.time.now - d.log[0][0]) / 1000) : 1;
+    return `샌드백 5초 피해 ${sum} · 초당 ${Math.round(sum / span)}${opts ? ' · ' + opts : ''}`;
+  }
+  // 파티 i번 자리를 key 포켓몬의 그 모습으로 (이미 파티에 있으면 그 자리를) → 바로 출전
+  testForm(i, key, tier, mega = -1) {
+    const p = this.player;
+    if (!SPECIES[key] || this.transitioning) return;
+    let j = p.members.findIndex(m => m.key === key);
+    if (j < 0) { p.replaceMember(Math.min(i, p.members.length), key); j = p.members.findIndex(m => m.key === key); }
+    const m = p.members[j];
+    p.setForm(m, tier, mega);
+    if (j !== p.idx) p.swapTo(j, true);
+    p.flash(300); p.squash(.6, 1.5);   // 진화처럼 하얗게 빛나며 새 모습으로
+    this.fx.ring(p.x, p.y, 34, 0xffffff, 380);
+    this.fx.burst(p.x, p.y, [0xffffff, 0xbfe6ff, 0xfff6c0], 26, 160, { glow: true, up: 70 });
+    Sfx.play(mega >= 0 ? 'mega' : 'evolve');
+    this.events.emit('banner', p.formName(m), `${TIERS[p.tierOf(m)].name} · ${['z', 'x', 'c'].map(sl => `${sl.toUpperCase()} ${SKILLS[m.skills[sl]].name}`).join(' · ')}`);
+  }
+  // 보스 고르기: 그 보스가 원래 싸우는 지방·아레나로 방을 다시 깔고(같으면 그대로) 입구에서 바로 보스전
+  testBoss(key, chain = false) {
+    if (this.transitioning || !BOSSES[key]) return;
+    const home = bossHome(key), o = this.testOpt;
+    const rebuild = o.ci !== home.ci || o.ai !== home.ai || o.arena !== home.arena || o.tall !== home.tall;
+    this.testOpt = home; this.testChain = chain;
+    this.testReset(rebuild, () => {
+      const room = this.level.rooms[0];
+      room.boss = key;
+      this.time.delayedCall(350, () => { if (!this.over && !this.arenaRoom) this.startBoss(room); });
+    });
+  }
+  // 하던 보스전 · 샌드백을 치우고 파티를 회복해 입구로 (rebuild 면 방을 다시 깐다)
+  testReset(rebuild, done) {
+    if (this.transitioning) return;
+    if (this.overlay) { this.overlay = null; this.setFrozen(false); this.events.emit('overlay', null); }
+    this.transitioning = true;
+    const cam = this.cameras.main;
+    cam.fadeOut(260, 7, 6, 15);
+    cam.once('camerafadeoutcomplete', () => {
+      this.resetArenaFight();
+      if (this.trainer) { this.trainer.destroy(); this.trainer = null; }
+      for (const e of this.enemies) { (e.colliders || []).forEach(c => c.destroy()); e.destroy(); }
+      this.enemies = []; this.dummy = null; this.boss = null; this.bosses = []; this.chain = null;
+      this.combat.clearAll();
+      this.events.emit('clearTitles');
+      this.testHeal(true);
+      if (rebuild) { this.worlds = []; this.stageIdx = this.testOpt.ci; this.buildWorld(); }
+      else { this.unlockArena(); this.teleport(this.level.start); }
+      Music.play(this.stage.bgm);
+      cam.fadeIn(320, 7, 6, 15);
+      this.transitioning = false;
+      if (done) done();
+    });
+  }
+  // 파티 전원 회복 (상태이상 · 뒤틀린 중력까지)
+  testHeal(quiet = false) {
+    const p = this.player;
+    for (const m of p.members) { m.hp = m.maxhp; m.alive = true; }
+    p.slowT = 0; p.windT = 0; if (p.flipT > 0) p.flipT = .001; p.buffs = p.buffs.filter(bf => bf.atk >= 1 && bf.speed >= 1 && bf.guard <= 1);
+    if (!quiet) { Sfx.play('heal'); this.events.emit('toast', '파티 전원 회복'); }
+  }
+  // 샌드백: 공격하지도 밀리지도 않는 무속성 과녁 (기술 피해 숫자 · 이펙트 보기). 있으면 치운다 → 놓았으면 true
+  testDummy() {
+    const d0 = this.dummy;
+    if (d0) { d0.alive = false; (d0.colliders || []).forEach(c => c.destroy()); d0.destroy(); this.enemies = this.enemies.filter(e => e !== d0); this.dummy = null; return false; }
+    if (this.arenaRoom) { this.events.emit('toast', '보스전 중에는 샌드백을 놓을 수 없다'); return false; }
+    const r = this.level.rooms[0], x = r.left + 230, gy = r.bottom;
+    const def = { name: '샌드백', types: [], hp: 99999, dmg: 0, speed: 0, ai: 'dummy', atkType: 'normal', kbRes: 1 };
+    const e = new Enemy(this, 'machamp', x, gy - 20, { def, cLv: 1 });
+    e.clearCorruption(); e.dummy = true;
+    e.ai = () => e.b.setVelocityX(0);
+    e.log = []; e.lastHp = e.maxhp;
+    e.cheatDeath = () => { e.log.push([this.time.now, e.lastHp - e.hp]); e.hitAt = this.time.now; e.hp = e.lastHp = e.maxhp; return true; };   // 쓰러지지 않고 다시 찬다
+    e.b.reset(x, gy - e.b.height / 2 - 1);
+    this.addEnemy(e, r);
+    this.dummy = e;
+    this.fx.ring(x, gy - 16, 26, 0xffe08a, 380);
+    return true;
+  }
+  // 보스 체력을 절반 아래로 (2페이즈 · 메가 모습 · 폭주 확인)
+  testBossHalf() {
+    const bs = (this.bosses || []).filter(b => b.alive);
+    if (!bs.length) { this.events.emit('toast', '싸우는 보스가 없다'); return false; }
+    for (const b of bs) b.hp = Math.min(b.hp, Math.floor(b.maxhp * .49));
+    return true;
+  }
+  // 보스 정화: 보상 · 포털 · 지방 정화 없이 → 카메라를 풀고 다시 고를 수 있게
+  testBossDone(boss) {
+    const tr = this.trainer;
+    this.boss = null; this.bosses = []; this.chain = null; this.arenaRoom = null;
+    if (this.player.flipT > 0) this.player.flipT = .001;
+    if (tr && !tr.freed) tr.release(TRAINER_LINES[tr.kind].freed);
+    this.events.emit('boss', null);
+    this.events.emit('banner', `${boss.name} 정화!`, `테스트룸 · ${this.touchInput && this.touchInput.on ? '테스트 버튼' : 'T'}로 다른 보스 · 포켓몬을 고른다`);
+    this.fx.hitStop(220);
+    this.time.delayedCall(700, () => this.unlockArena());
+    Music.play(this.stage.bgm);
+  }
+
   // quit: 일시정지 메뉴의 '포기하고 도감으로' (전멸과 달리 판을 끝낸다)
   gameOver(won, quit = false) {
     if (!won && !quit) { this.respawn(); return; }   // 전멸해도 끝이 아니다: 마지막 포켓몬센터에서 다시 일어난다
     if (this.over) return;
+    if (this.test) { this.over = true; this.backToLobby('테스트룸에서 나왔어요'); return; }   // 테스트룸은 기록 없이 바로 도감으로
     this.over = true;
     Music.stop();
     Save.recordRun(this.stageIdx + 1, won);
@@ -1608,9 +1795,9 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
-  backToLobby() {
+  backToLobby(message = '') {
     this.cleanup();
     this.scene.stop('UI');
-    this.scene.start('Lobby');
+    this.scene.start('Lobby', message ? { message } : undefined);
   }
 }

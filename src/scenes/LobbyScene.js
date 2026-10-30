@@ -1,6 +1,6 @@
 // 포켓몬 도감 로비 — 탭형 보관함(systems/RosterPanel.js)에서 최대 3마리를 골라 던전에 들어간다
 //  위: [🌱 세대별 포켓몬 (전체 · 1~9세대) | 👑 정화한 전설/보스]   왼쪽: 카드 격자   오른쪽: 진화 트리·배지·타입·스킬
-//  아래: 파티 3자리 + 던전 입장.  F1 · F3 디버그: 모든 스타팅 & 보스 캐릭터 전체 즉시 해금
+//  아래: 파티 3자리 + 던전 입장 (테스터 모드면 옆에 테스트룸).  F1 · F3 디버그: 모든 스타팅 & 보스 캐릭터 전체 즉시 해금
 //  배경: 심연 속 무한다이노 실루엣 · 빛기둥 · 안개 · 떠다니는 빛가루
 import Phaser from 'phaser';
 import { DEX_ORDER, SPECIES } from '../data/pokemon.js';
@@ -42,6 +42,7 @@ export default class LobbyScene extends Phaser.Scene {
       if (e.code === 'F1' || e.code === 'F3') this.debugUnlockAll();
       else if (e.code === 'Space') this.enter();
       else if (e.code === 'KeyC' && RunSave.has()) this.resume();
+      else if (e.code === 'KeyT' && Save.tester) this.enterTest();
       else if (e.code === 'Escape') this.toTitle();
       else this.panel.key(e);
     });
@@ -136,9 +137,12 @@ export default class LobbyScene extends Phaser.Scene {
       z.on('pointerdown', () => { if (this.party[i]) { this.party.splice(i, 1); Sfx.play('select'); this.message = ''; this.refreshAll(); } });
       L.add(z);
     });
-    L.add(hkText(this, 330, 326, this.message || '카드를 눌러 보고, 한 번 더 누르면 편성 · 전투 중 Tab 으로 교대\n←→↑↓ 선택 · Enter 편성 · Q/E 탭 · 0~9 세대 · Space 입장',
-      8.5, this.message ? HK.gold : HK.dim, { origin: .5, style: { align: 'center', lineSpacing: 3, wordWrap: { width: 250, useAdvancedWrap: true } } }));
-    this.enterBtn = glassButton(this, 486, 310, 134, 32, '던전 입장', () => this.enter(), { size: 13, bold: true, ls: 4, primary: true, layer: L });
+    // 테스터 모드: 던전 입장 옆에 테스트룸 (안내 글은 그만큼 왼쪽으로 좁힌다)
+    const test = Save.tester;
+    L.add(hkText(this, test ? 290 : 330, 326, this.message || (test ? '카드를 눌러 보고, 한 번 더 누르면 편성\nSpace 던전 입장 · T 테스트룸' : '카드를 눌러 보고, 한 번 더 누르면 편성 · 전투 중 Tab 으로 교대\n←→↑↓ 선택 · Enter 편성 · Q/E 탭 · 0~9 세대 · Space 입장'),
+      8.5, this.message ? HK.gold : HK.dim, { origin: .5, style: { align: 'center', lineSpacing: 3, wordWrap: { width: test ? 180 : 250, useAdvancedWrap: true } } }));
+    if (test) this.testBtn = glassButton(this, 392, 310, 106, 32, '테스트룸', () => this.enterTest(), { size: 12, bold: true, ls: 2, layer: L });
+    this.enterBtn = glassButton(this, test ? 504 : 486, 310, test ? 120 : 134, 32, '던전 입장', () => this.enter(), { size: 13, bold: true, ls: test ? 3 : 4, primary: true, layer: L });
     this.enterBtn.setEnabled(this.party.length > 0);
   }
 
@@ -167,6 +171,15 @@ export default class LobbyScene extends Phaser.Scene {
     Save.setParty(this.party);
     this.cameras.main.fadeOut(250, 7, 6, 15);
     this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Cutscene', { party: [...this.party] }));   // 인트로 컷신 → 전투
+  }
+  // 테스트룸 (테스터 모드 · T): 컷신 없이 빈 아레나로 — 포켓몬·진화 단계·보스를 바로 골라 본다. 저장·도감에는 남지 않는다 (game/TestRoom.js)
+  enterTest() {
+    if (!Save.tester || this.leaving) return;
+    this.leaving = true;
+    Sfx.unlock(); Sfx.play('swap');
+    const party = this.party.length ? [...this.party] : ['charmander'];   // 파티가 비어 있으면 파이리 한 마리로 (안에서 바꾼다)
+    this.cameras.main.fadeOut(250, 7, 6, 15);
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('Game', { test: true, party }));
   }
 
   update(t, dt) {

@@ -461,6 +461,27 @@ export class Player extends Actor {
     if (m.tier < EVO_EXP.length) { m.exp = EVO_EXP[m.tier]; this.evolve(m); return; }
     if (!this.mega.active) { this.mega.stones = Math.max(1, this.mega.stones); for (const mg of this.sp.megas) if (mg.item) this.formItems.add(mg.item); this.startMega(); }
   }
+  // 테스트룸: 이 포켓몬을 tier 단계(0 1단 · 1 2단 · 2 3단)로 · mega 가 0 이상이면 그 메가(폼체인지·유대변화·각성)로 — 연출 없이 바로
+  //  처음 모습부터 다시 진화시켜 모습마다 기술이 다른 라인(잉어킹 → 갸라도스)도 진화할 때처럼 기본 기술 자리를 바꾼다
+  setForm(m, tier, mega = -1) {
+    if (mega >= 0) tier = EVO_EXP.length;   // 메가는 3단에서
+    m.mega = false; m.megaPick = 0; m.tier = 0; m.exp = 0;
+    m.skills = { ...(m.sp.evo[0].skills || m.sp.skills) }; m.learned = Object.values(m.skills);
+    while (m.tier < Math.min(tier, EVO_EXP.length)) {
+      const oldSet = this.form(m).skills || m.sp.skills;
+      m.tier++; m.exp = EVO_EXP[m.tier - 1];
+      const newSet = this.form(m).skills || m.sp.skills;
+      if (oldSet !== newSet) for (const sl of ['z', 'x', 'c']) {
+        if (!m.learned.includes(newSet[sl])) m.learned.push(newSet[sl]);
+        if (m.skills[sl] === oldSet[sl]) m.skills[sl] = newSet[sl];
+      }
+    }
+    if (mega >= 0) { m.megaPick = m.sp.megas[mega] ? mega : 0; m.mega = true; }
+    m.cd = { z: 0, x: 0, c: 0 };
+    m.maxhp = m.hp = this.maxHpOf(m); m.alive = true;
+    if (m === this.m) { if (this.action) this.endAction(true); this.combo = 0; this.buffs = []; this.applyVisual(); }
+    this.scene.events.emit('swap', this);
+  }
 
   updateAnim(dt) {
     const a = this.action, vx = this.b.velocity.x;
@@ -739,6 +760,7 @@ export class Player extends Actor {
   takeHit(dmg, type, srcX, o = {}) {
     const sc = this.scene, a = this.action;
     if (!o.force && (this.inv > 0 || this.intangible || this.dash)) return false;
+    if (sc.testGod) return false;   // 테스트룸: 무적 (보스 패턴 구경)
     if (a && a.guard === 'counter') {
       this.endAction(true);
       sc.combat.hitCircle(this.x, this.y, 42 * this.mods.sizeMul, 3, 'fighting', { kbx: 320, kby: -200, hs: 120 });

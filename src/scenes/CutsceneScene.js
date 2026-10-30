@@ -1,24 +1,22 @@
 // 던전 입장 시네마틱 인트로 (약 20초, ESC/Space · 오른쪽 위 「건너뛰기」 버튼 · 화면 아무 데나 두 번 탭으로 스킵)
-//  1) 0~10초   무한다이노 영상 (assets/video/eternatus.mp4)
-//  2) 10~15초  레드가 포켓몬들에게 「유대의 불꽃」을 나눠 주는 영상 (bond.mp4, 포켓몬이 반응하기 직전까지)
-//  3) 15~20초  끌려가는 레드 (도트 연출): 어둠의 사슬에 끌려 차원문으로 사라지고, 모자·도감만 남음 → 포켓몬들이 던전으로 달려감
-//  영상을 못 틀면(파일 없음·재생 실패) 1·2 도 도트 연출(무한다이노 그림자·번개 / 불꽃 흡수)로 대신한다.
+//  1) 0~10초   무한다이노 영상 (assets/video/eternatus.mp4, 목소리·자막 없이 효과음만)
+//  2) 10~20초  레드가 포켓몬들에게 「유대의 불꽃」을 나눠 주고 어둠의 사슬에 끌려가는 영상 (bond.mp4, 끝에 「PokeCell.」)
+//  2번 영상이 끝나면 바로 게임이 시작된다.
+//  영상을 못 틀면(파일 없음·재생 실패) 도트 연출(무한다이노 그림자·번개 / 불꽃 흡수)로 대신한다.
 //  이때 공식 아트워크(npm run fetch-assets)가 있으면 도트 대신 큰 무한다이노 그림을 검붉게 깔아 쓴다.
 import Phaser from 'phaser';
-import { pxt, GAME_W, GAME_H, uiCamera } from '../config.js';
+import { GAME_W, GAME_H, uiCamera } from '../config.js';
 import { Fx } from '../systems/Fx.js';
 import { Sfx } from '../systems/Audio.js';
 import { Settings } from '../systems/Settings.js';
 import { HK, hkText, darkBand, fadeLine, glassButton } from '../systems/ui.js';
 
 const GROUND = 272;
-const PORTAL = { x: 320, y: 34 };
-const LINES = [
+const LINES = [   // 도트 연출일 때만 쓰는 자막 (영상은 자막을 따로 띄우지 않는다 — 유대의 불꽃 영상엔 자막이 들어 있다)
   '심연의 지배자 무한다이노가 뿜어낸 악의가 대륙을 삼키고, 모든 생명체의 정신을 지배하기 시작했다...',
-  '선택받은 트레이너 \'레드\'는 포켓몬들이 세뇌당하지 않도록, 자신의 정신력인 「유대의 불꽃」을 포켓몬들에게 나눠 주었다.',
-  '결국 어둠 속으로 끌려간 레드... 이제 유대의 불꽃을 품은 포켓몬들이 주인을 구하기 위해 오염된 심연으로 향한다!'
+  '선택받은 트레이너 \'레드\'는 자신의 포켓몬들에게 「유대의 불꽃」을 나누어 주고, 자신은 어둠 속으로 끌려가게 된다...'
 ];
-const CLIPS = ['eternatus', 'bond'];   // 영상 순서 (자막은 영상 안에 들어 있다)
+const CLIPS = ['eternatus', 'bond'];   // 영상 순서
 const rand = (a, b) => a + Math.random() * (b - a);
 const ADD = Phaser.BlendModes.ADD;
 
@@ -28,7 +26,7 @@ export default class CutsceneScene extends Phaser.Scene {
   init(data) {
     this.party = (data && data.party && data.party.length ? data.party : ['charmander', 'squirtle', 'bulbasaur']).slice(0, 3);
     this.done = false;
-    this.tendrils = []; this.chains = null; this.portalK = 0; this.miasmaOn = true; this.startedAt = 0;
+    this.tendrils = []; this.miasmaOn = true; this.startedAt = 0;
     this.art = null; this.useArt = false;
   }
 
@@ -43,8 +41,7 @@ export default class CutsceneScene extends Phaser.Scene {
     this.buildEternatus();
     this.loadArtwork();
     this.buildCast();
-    this.g = this.add.graphics().setDepth(8);                          // 촉수·사슬
-    this.gp = this.add.graphics().setDepth(3);                         // 차원문
+    this.g = this.add.graphics().setDepth(8);                          // 세뇌 파동(촉수)
     this.buildSubtitle();
     this.buildSkip();
     this.tweens.add({ targets: this.eter, y: '+=6', duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
@@ -174,12 +171,10 @@ export default class CutsceneScene extends Phaser.Scene {
     this.time.delayedCall(4000, () => { if (!(v.getCurrentTime() > .05)) fail(); });   // 4초가 지나도 재생이 시작되지 않으면 도트 연출로
   }
 
-  // 영상이 끝나면 그 자리의 도트 무대(무한다이노 그림자·레드·포켓몬)로 넘어가 끌려가는 장면을 잇는다
+  // 2번 영상(유대의 불꽃 → 끌려가는 레드 → 「PokeCell.」)이 끝나면 바로 게임으로 (마지막 화면에서 어두워진다)
   endClips() {
     this.clipToken++;
-    this.setStage();
-    if (this.video) this.tweens.add({ targets: this.video, alpha: 0, duration: 500, onComplete: () => { if (this.video) { this.video.stop(); this.video.setVisible(false); } } });
-    this.dragScene(.5);
+    this.finish(false);
   }
 
   // 영상을 못 틀 때: i 번째 영상 장면부터 도트 연출로
@@ -190,19 +185,12 @@ export default class CutsceneScene extends Phaser.Scene {
     this.useArt = true;
     this.showSubtitle(true);
     if (i === 0) this.pixelAbyss(0);
-    this.pixelBond(i === 0 ? 4 : 0);
-    this.dragScene(i === 0 ? 9 : 5);
+    const t0 = i === 0 ? 4 : 0;
+    this.pixelBond(t0);
+    this.at(t0 + 5, () => this.finish(false));
   }
 
   at(s, fn) { this.time.delayedCall(s * 1000, () => { if (!this.done) fn(); }); }
-
-  // 영상이 끝난 직후의 무대: 무한다이노 그림자와 눈동자, 레드와 포켓몬이 이미 서 있다
-  setStage() {
-    this.miasmaOn = true;
-    this.eter.setAlpha(.9); this.eterGlow.setAlpha(.55);
-    for (const e of this.eyes) { e.glow.setAlpha(1); e.core.setAlpha(1); }
-    for (const o of [this.red, ...this.mons]) o.setAlpha(1);
-  }
 
   // 건너뛰기: 오른쪽 위 유리 버튼 (휴대폰은 큼직하게, 화면 맨 위 가장자리에서 조금 내려서 — 사파리 가로 화면은 맨 위를 탭하면
   //  주소창이 나오느라 게임까지 탭이 오지 않는다) · 화면 아무 데나 한 번 누르면 안내, 한 번 더 누르면 건너뛰기 · ESC/Space
@@ -263,17 +251,6 @@ export default class CutsceneScene extends Phaser.Scene {
     });
     this.at(t0 + 1, () => this.sendTendrils());
     this.at(t0 + 1.5, () => this.bondFlames());
-  }
-
-  // 끌려가는 레드 → 포켓몬들이 던전으로 달려감 (아직 영상이 없어 도트 연출)
-  dragScene(t0) {
-    this.at(t0, () => { this.showSubtitle(true); this.type(2); });
-    this.at(t0 + .3, () => { this.red.setTexture('red-kneel'); this.fx.burst(this.red.x, GROUND - 2, 0x6a4a5a, 6, 40, { up: 30 }); Sfx.play('land'); });
-    this.at(t0 + .7, () => this.startChains());
-    this.at(t0 + 1.6, () => this.pullRed());
-    this.at(t0 + 3, () => this.react());
-    this.at(t0 + 3.9, () => this.runAway());
-    this.at(t0 + 4.9, () => this.finish(false));
   }
 
   lightning(big) {
@@ -354,67 +331,6 @@ export default class CutsceneScene extends Phaser.Scene {
     Sfx.play('gate');
   }
 
-  startChains() {
-    this.portalOn = true;
-    this.tweens.add({ targets: this, portalK: 1, duration: 600, ease: 'Back.easeOut' });
-    this.chains = { t: 0 };
-    this.tweens.add({ targets: this.chains, t: 1, duration: 750, ease: 'Sine.easeOut' });
-    Sfx.play('chain');
-  }
-
-  pullRed() {
-    this.cameras.main.shake(1100, .01 * Settings.get('shakeHurt'));
-    Sfx.play('boss'); Sfx.play('chain');
-    const sx = this.red.x;
-    this.tweens.add({ targets: this.red, y: PORTAL.y + 18, x: PORTAL.x, scale: 1.1, duration: 1250, ease: 'Cubic.easeIn' });
-    this.tweens.add({ targets: this.red, alpha: 0, duration: 300, delay: 1000 });
-    this.redGlow.setAlpha(0);
-    // 떨어져 남는 붉은 모자와 포켓몬 도감
-    this.time.delayedCall(180, () => {
-      this.cap = this.add.image(sx + 4, GROUND - 58, 'red-cap').setScale(2).setDepth(9);
-      this.dex = this.add.image(sx - 10, GROUND - 40, 'pokedex').setScale(2).setDepth(9).setOrigin(.5, 1);
-      this.tweens.add({ targets: this.cap, y: GROUND - 5, x: sx + 22, angle: 200, duration: 900, ease: 'Bounce.easeOut' });
-      this.tweens.add({ targets: this.dex, y: GROUND, x: sx - 16, duration: 750, ease: 'Bounce.easeOut', onComplete: () => Sfx.play('land') });
-    });
-    // 레드가 사라지면 차원문이 닫힌다
-    this.time.delayedCall(1300, () => {
-      this.chains = null;
-      this.fx.burst(PORTAL.x, PORTAL.y + 6, [0x5a1a8a, 0x2a0a3a, 0xff3a5a], 26, 160, { up: 0, grav: 60, bounce: false });
-      this.tweens.add({ targets: this, portalK: 0, duration: 500, ease: 'Back.easeIn', onComplete: () => { this.portalOn = false; } });
-    });
-  }
-
-  react() {
-    this.mons.forEach((m, i) => {
-      const ex = this.add.text(m.x, GROUND - m.h - 6, '!', pxt(15, '#ffdf4a', { stroke: '#1a0e00', strokeThickness: 4 })).setOrigin(.5, 1).setDepth(20).setScale(0);
-      this.tweens.add({ targets: ex, scale: 1, duration: 180, delay: i * 90, ease: 'Back.easeOut' });
-      this.tweens.add({ targets: ex, alpha: 0, duration: 300, delay: 1100, onComplete: () => ex.destroy() });
-      this.time.delayedCall(i * 90, () => {
-        Sfx.play('select');
-        this.tweens.add({ targets: m, y: GROUND - 16, duration: 160, yoyo: true, repeat: 1, ease: 'Quad.easeOut' });
-        this.time.delayedCall(480, () => this.playMon(m, 'Attack', 'right'));
-      });
-    });
-  }
-
-  runAway() {
-    if (this.dex) {
-      const glow = this.add.image(this.dex.x, this.dex.y - 10, 'glow').setTint(0x8ad8ff).setBlendMode(ADD).setScale(.2).setDepth(8);
-      this.tweens.add({ targets: glow, scale: .9, alpha: { from: 1, to: .2 }, duration: 500, yoyo: true });
-      this.fx.burst(this.dex.x, this.dex.y - 10, [0x8ad8ff, 0xffffff], 12, 90, { glow: true, up: 60 });
-      Sfx.play('item');
-    }
-    this.mons.forEach((m, i) => {
-      this.playMon(m, 'Walk', 'right');
-      m.anims.timeScale = 2;
-      this.tweens.add({
-        targets: m, x: m.x + 440, duration: 1100, delay: 120 + i * 80, ease: 'Quad.easeIn',
-        onUpdate: () => { if (Math.random() < .35) this.fx.ghost(m, 0xffb050, .4, 220); }
-      });
-    });
-    Sfx.play('dash');
-  }
-
   finish(skipped) {
     if (this.done) return;
     this.done = true;
@@ -451,31 +367,6 @@ export default class CutsceneScene extends Phaser.Scene {
       g.lineStyle(8, 0x1a0622, .85); g.strokePoints(pts, false);
       g.lineStyle(3, 0x8a3ad0, .8); g.strokePoints(pts, false);
       g.fillStyle(0xc070ff, .9); g.fillCircle(ex, ey, 3);
-    }
-    // 차원문
-    const gp = this.gp; gp.clear();
-    if (this.portalOn && this.portalK > .01) {
-      const k = this.portalK;
-      gp.fillStyle(0x020006, 1); gp.fillEllipse(PORTAL.x, PORTAL.y, 90 * k, 34 * k);
-      for (let r = 0; r < 3; r++) {
-        gp.lineStyle(2, [0x9a3ad0, 0x5a1a8a, 0xff3a5a][r], .8);
-        const a0 = t * (2 + r) + r * 2;
-        gp.beginPath(); gp.arc(PORTAL.x, PORTAL.y, (34 + r * 9) * k, a0, a0 + 2.2); gp.strokePath();
-      }
-    }
-    // 어둠의 사슬 (차원문 → 레드)
-    if (this.chains && this.chains.t > 0 && this.red.alpha > 0) {
-      const tx = this.red.x, ty = this.red.y - 30 * this.red.scale;
-      for (const off of [-14, 14]) {
-        const sx = PORTAL.x + off, sy = PORTAL.y + 8;
-        const ex = sx + (tx + off * .3 - sx) * this.chains.t, ey = sy + (ty - sy) * this.chains.t;
-        const len = Math.hypot(ex - sx, ey - sy), n = Math.floor(len / 7);
-        for (let i = 0; i <= n; i++) {
-          const u = n ? i / n : 0, x = Math.round(sx + (ex - sx) * u), y = Math.round(sy + (ey - sy) * u);
-          g.fillStyle(0x0a0412, 1); g.fillRect(x - 3, y - 3, 6, 6);
-          g.fillStyle(i % 2 ? 0x6a2a9a : 0x9a4ad0, 1); i % 2 ? g.fillRect(x - 2, y - 1, 4, 2) : g.fillRect(x - 1, y - 2, 2, 4);
-        }
-      }
     }
     this.fx.update(dt);
   }

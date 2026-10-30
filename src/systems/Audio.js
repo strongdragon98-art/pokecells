@@ -142,6 +142,8 @@ class AudioSys {
       case 'purify': this.arp([1047, 1319, 1568], .045, 'triangle', .05); break;
       case 'recall': this.tone(440, .22, 'sine', .07, 1300); this.tone(880, .18, 'square', .02, 1600, .03); this.hiss(.18, .05, 3800, .02, 3); break;
       case 'gate': this.hiss(.25, .12, 300); this.tone(140, .25, 'square', .05, 60); break;
+      case 'door': this.tone(1400, .03, 'square', .025); this.nz(.22, .1, 'bandpass', 700, 4, .03, 300); this.drop(320, 190, .2, 'triangle', .04, .03); break;   // 딸깍 + 끼이익
+      case 'doorshut': this.drop(150, 60, .14, 'sine', .22); this.nz(.08, .2, 'lowpass', 800, .8); this.tone(1100, .03, 'square', .02, 0, .07); break;   // 쿵 + 딸깍
       // 포켓몬센터 회복음: 띠리리- 띠리- (밝은 사각파 아르페지오 두 소절)
       case 'center': this.arp([784, 988, 1175, 1568], .09, 'square', .05); this.arp([1175, 1568], .16, 'square', .05); this.tone(1568, .5, 'triangle', .04, 0, .72); this.tone(784, .9, 'sine', .05, 0, .1); break;
       // 진화: 오르내리는 떨림음 → 밝은 팡파르

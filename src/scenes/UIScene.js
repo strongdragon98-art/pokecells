@@ -2,7 +2,7 @@
 //  왼쪽 위: 몬스터볼 테두리 유리 그릇(출전 포켓몬 + 차오르는 진화 경험치) · 몬스터볼 HP 가면 · 대기 포켓몬 · 강화 아이템
 //  오른쪽 위: 스테이지·방 · 정화 진행도   오른쪽 아래: 스킬 구슬 (+ Z크리스탈을 얻으면 Q 구슬)   아래 가운데: 보스 체력
 //  지역/보스 타이틀, 알림, 도감 등록 팝업, 일시정지·결과 화면은 흐려지는 가는 선과 어둠 띠로 꾸민다.
-//  창: 지도(M, 다섯 지방 탭) · 가방(I) · 설정(O) · 기술머신 카드 · 아머까오 공중날기 · 디버그(F3, 챕터·보스 셀렉트) · 대화(마을 사람)
+//  창: 지도(M, 다섯 지방 탭) · 가방(I) · 설정(O) · 기술머신 카드 · 아머까오 공중날기 · 디버그(F3, 챕터·보스 셀렉트) · 대화(마을 사람) · 테스트룸 패널(T)
 import Phaser from 'phaser';
 import { txt, GAME_W, GAME_H, RES, uiCamera } from '../config.js';
 import { SKILLS, SPECIES, UNLOCKABLE, UNLOCK_KILLS, TIERS, ZMOVES, Z_CD, TAGS, EVO_EXP, BOSSES } from '../data/pokemon.js';
@@ -19,6 +19,7 @@ import { TouchControls } from '../systems/TouchControls.js';
 import { tagIcon, roundPortrait, itemArt, hiTex, dashIcon } from '../systems/Textures.js';
 import { CHG_SHOW, CHG_AT } from '../game/Player.js';
 import { npcArt } from '../game/Npc.js';
+import { bossHome } from '../game/TestRoom.js';
 import { Save } from '../systems/Save.js';
 import { RosterPanel } from '../systems/RosterPanel.js';
 import { Sfx } from '../systems/Audio.js';
@@ -35,6 +36,7 @@ const TOAST_Y = 288;
 const AREA_Y = 134;                               // 지역 타이틀 (왼쪽 위 HUD 아래 빈 띠)
 const ROOM_NAME = { start: '입구', combat: '전투 구역', treasure: '보물방', village: '시내 · 포켓몬센터', mini: '중간 보스 아레나', boss: '지방 보스 아레나', sanctuary: '숨겨진 성소', tm: '기술머신 비밀방', pocket: '작은 굴' };
 const ARENA_TAG = { mini: '중보', boss: '보스', sanctuary: '히든' };
+const BOSS_TIER = { mini: ['중간 보스', '#ffc08a'], boss: ['지방 보스', '#ff8a8a'], hidden: ['히든 전설', '#d08aff'] };   // 테스트룸 보스 카드
 
 // 심연 어둠 테두리 텍스처: 가운데 투명 → 가장자리 검붉은 어둠
 function darkVignette(scene) {
@@ -136,7 +138,7 @@ export default class UIScene extends Phaser.Scene {
     this.itemZone.on('pointerout', () => { this.showItemTip = false; });
     this.itemZone.on('pointerdown', () => { this.showItemTip = false; this.gs.toggleOverlay('inv'); });   // 아이템 줄을 누르면 가방
     // 가방(I) · 지도(M) 바로가기
-    this.hudLinks = [['가방', 14, 'inv', 'bag'], ['지도', 58, 'map', 'map'], ['설정', 102, 'settings', 'settings']].map(([s, x, kind, act]) => {
+    this.hudLinks = [['가방', 14, 'inv', 'bag'], ['지도', 58, 'map', 'map'], ['설정', 102, 'settings', 'settings'], ...(this.gs.test ? [['테스트', 146, 'test', null]] : [])].map(([s, x, kind, act]) => {
       const t = hkText(this, x, 118, s, 9, HK.dim, { ls: 1 }).setDepth(3).setInteractive({ useHandCursor: true });
       t.on('pointerover', () => t.setColor(HK.ivory)); t.on('pointerout', () => t.setColor(HK.dim));
       t.on('pointerdown', () => this.gs.toggleOverlay(kind));
@@ -231,11 +233,12 @@ export default class UIScene extends Phaser.Scene {
       area: a => this.areaTitle(a),
       overlay: kind => kind === 'map' ? this.showMap() : kind === 'inv' ? (this.invMember = null, this.showInv()) :   // 가방은 열 때마다 출전 중인 포켓몬부터
          kind === 'tm' ? (this.tmSlot = false, this.showTM())
-        : kind === 'taxi' ? this.showTaxi() : kind === 'talk' ? this.showTalk() : kind === 'debug' ? this.showDebug() : kind === 'settings' ? this.showSettings(0) : kind === 'box' ? this.showBox() : this.clearOverlay(),
+        : kind === 'taxi' ? this.showTaxi() : kind === 'talk' ? this.showTalk() : kind === 'debug' ? this.showDebug() : kind === 'test' ? this.showTest() : kind === 'settings' ? this.showSettings(0) : kind === 'box' ? this.showBox() : this.clearOverlay(),
       lore: s => this.showLore(s),
       hurt: k => { this.hurtK = Math.max(this.hurtK, k); },
       say: (who, s) => this.showLore(s, who),   // 트레이너 대사 (난천 · 레드)
       boss: b => { if (b) this.bossTitle(b); },
+      clearTitles: () => { this.tweens.killTweensOf(this.loreBox); this.loreBox.setAlpha(0); this.bossTitleT = 0; },   // 테스트룸에서 보스를 바로 바꿀 때 앞 보스의 이름 · 트레이너 대사를 지운다
       unlock: (k, kind) => this.onUnlock(k, kind),
       killcount: (k, n) => { this.recent[k] = this.time.now; this.toast(`${SPECIES[k].name} 정화 진행도: ${n} / ${UNLOCK_KILLS}`); },
       pause: on => this.showPause(on),
@@ -259,7 +262,7 @@ export default class UIScene extends Phaser.Scene {
   refreshKeyLabels() {
     const kl = a => keyLabel(Settings.key(a));
     for (const s of this.slots) s.key.setText(kl(s.id === 'dash' ? 'dash' : s.id));
-    for (const h of this.hudLinks) h.t.setText(this.touchLayout ? h.s : `${h.s}  ${kl(h.act)}`);   // 터치패드일 때는 PC 키 글자를 뺀다
+    for (const h of this.hudLinks) h.t.setText(this.touchLayout ? h.s : `${h.s}  ${h.act ? kl(h.act) : 'T'}`);   // 터치패드일 때는 PC 키 글자를 뺀다 (테스트룸 패널은 T)
   }
 
   // 터치 기기: 오른쪽 아래 스킬 구슬은 터치 버튼이 대신하므로 숨기고, 알림은 아래 가운데(조이스틱과 버튼 사이)에 두 줄까지 접어서 띄운다
@@ -385,7 +388,8 @@ export default class UIScene extends Phaser.Scene {
       gm.lineStyle(1, 0xffffff, .65); gm.strokePoints(pts.slice(0, nWave), false);
     }
     this.vGlow.setAlpha(ready ? .45 + Math.sin(time / 140) * .2 : mg.active ? .35 : 0);
-    this.vHint.setText(ready ? (this.touch.visible ? '메가 버튼으로 메가진화!' : 'V  메가진화') : mg.active ? '메가진화 ★' : p.tier < 2 ? `${TIERS[p.tier].name} · 진화까지 ${p.expToNext()}` : '3단 진화 완료')
+    this.vHint.setText(ready ? (this.touch.visible ? '메가 버튼으로 메가진화!' : 'V  메가진화') : mg.active ? '메가진화 ★'
+      : gs.test ? `${TIERS[p.tier].name} · 테스트 패널에서 진화` : p.tier < 2 ? `${TIERS[p.tier].name} · 진화까지 ${p.expToNext()}` : '3단 진화 완료')   // 테스트룸은 경험치 대신 패널로 진화
       .setAlpha(ready ? .7 + Math.sin(time / 120) * .3 : .85);
 
     // ===== 몬스터볼 HP 가면 =====
@@ -459,7 +463,7 @@ export default class UIScene extends Phaser.Scene {
     // ===== 오른쪽 위: 스테이지 · 방 · 정화 진행도 =====
     const st = gs.stage, arenas = gs.level ? gs.level.rooms.filter(r => r.type === 'mini' || r.type === 'boss' || (r.type === 'sanctuary' && (r.entered || r.cleared))) : [];
     const ar = gs.room ? st.areas[gs.room.ai] : st.areas[0];
-    this.tStage.setText(`${areaLabel(gs.stageIdx, gs.room ? gs.room.ai : 0, ar)}   ${ar.name}`);
+    this.tStage.setText(gs.test ? `테스트룸 · ${st.short} ${ar.name}` : `${areaLabel(gs.stageIdx, gs.room ? gs.room.ai : 0, ar)}   ${ar.name}`);
     arenas.forEach((r, i) => {   // 이 지방의 보스 아레나: 정화하면 회색 (지방 보스는 크게 · 찾은 히든은 보라)
       const cur = r === gs.room, big = r.type === 'boss', x = 627 - (arenas.length - 1 - i) * 11;
       const col = r.cleared ? 0x9a96ac : r.type === 'sanctuary' ? 0xd08aff : big ? 0xff6a6a : 0xffb07a, rad = big ? 3.4 : 2.6;
@@ -467,17 +471,17 @@ export default class UIScene extends Phaser.Scene {
       g.fillStyle(col, 1); g.fillCircle(x, 28, rad + (cur ? .6 : 0));
       g.fillStyle(0xffffff, .5); g.fillCircle(x - .7, 27.2, rad * .33);
     });
-    this.tRoom.setText(gs.room ? (gs.room.under && gs.room.type === 'combat' ? '지하 · 전투 구역' : ROOM_NAME[gs.room.type] || '') : '');
+    this.tRoom.setText(gs.test ? gs.testInfo() : gs.room ? (gs.room.under && gs.room.type === 'combat' ? '지하 · 전투 구역' : ROOM_NAME[gs.room.type] || '') : '');
     let row = 0;
     UNLOCKABLE.forEach((k, i) => {
       const t = this.tDex[i];
-      if (Save.isUnlocked(k)) { t.setText(''); return; }
+      if (gs.test || Save.isUnlocked(k)) { t.setText(''); return; }   // 테스트룸엔 정화 진행도가 없다
       const n = Save.kills(k), hot = this.time.now - (this.recent[k] || -9999) < 1500, y = 70 + row * 13;
       t.setText(`${SPECIES[k].name}  ${n}/${UNLOCK_KILLS}`).setY(y).setColor(hot ? HK.gold : HK.ivory);
       bar3d(g, 600, y + 5, 29, 3, n / UNLOCK_KILLS, hot ? HK.goldN : 0xb490ff);
       row++;
     });
-    this.tDexTitle.setText(row ? '정화 진행도' : '도감 완성!');
+    this.tDexTitle.setText(gs.test ? '' : row ? '정화 진행도' : '도감 완성!');
 
     // ===== 보스 체력 =====
     const boss = gs.boss, showBoss = !!(boss && boss.alive), duo = gs.bosses && gs.bosses.length > 1 ? gs.bosses : null;
@@ -539,7 +543,7 @@ export default class UIScene extends Phaser.Scene {
     this.hideTypeTip();
     this.tweens.killTweensOf(this.overlay.list);
     this.overlay.removeAll(true); this.gOver.clear(); this.overlay.setVisible(false); this.menu = null;
-    this.overlayMode = null; this.tmBusy = false; this.boxPanel = null;
+    this.overlayMode = null; this.tmBusy = false; this.boxPanel = null; this.testPanel = null;
     if (this.talkMask) { this.talkMask.destroy(); this.talkMask = null; }
     this.talkText = null; this.talkArrow = null; this.talkFace = null;
     for (const ev of this.tmEvents || []) ev.remove();
@@ -802,7 +806,12 @@ export default class UIScene extends Phaser.Scene {
     L.add(hkText(this, 320, 50, '일시정지', 20, HK.ivory, { ls: 6, bold: true, origin: .5, glow: true }));
     L.add(fadeLine(this, 320, 72, 300));
     // Space·Z 는 게임 입력과 겹치므로 일시정지 메뉴는 Enter·클릭으로 고른다
-    this.menu = hkMenu(this, 320, 92, [
+    this.menu = hkMenu(this, 320, 92, this.gs.test ? [   // 테스트룸: 저장 없이 패널 · 도감으로
+      { label: '계속하기', onPick: () => this.gs.togglePause() },
+      { label: '테스트 패널', onPick: () => { this.gs.togglePause(); this.gs.toggleOverlay('test'); } },
+      { label: '설정', onPick: () => { this.gs.togglePause(); this.gs.toggleOverlay('settings'); } },
+      { label: '도감으로 돌아가기', onPick: () => { this.gs.paused = false; this.gs.gameOver(false, true); } }
+    ] : [
       { label: '계속하기', onPick: () => this.gs.togglePause() },
       { label: '저장하기', onPick: () => this.gs.saveRun(false) },
       { label: '저장하고 도감으로', onPick: () => { if (this.gs.saveRun(false)) { this.gs.paused = false; this.gs.backToLobby(); } } },
@@ -822,7 +831,7 @@ export default class UIScene extends Phaser.Scene {
       L.add(hkText(this, cx - 6, y, k, 10, HK.gold, { origin: [1, 0] }));
       L.add(hkText(this, cx + 6, y, d, 10, HK.ivory));
     });
-    this.pauseNote = hkText(this, 320, 314, 'Esc · P 로 돌아가기   ·   L 포기   ·   포켓몬센터에 가면 자동 저장', 9, HK.faint, { origin: .5 });
+    this.pauseNote = hkText(this, 320, 314, this.gs.test ? 'Esc · P 로 돌아가기   ·   L 도감으로   ·   테스트룸은 저장하지 않는다' : 'Esc · P 로 돌아가기   ·   L 포기   ·   포켓몬센터에 가면 자동 저장', 9, HK.faint, { origin: .5 });
     L.add(this.pauseNote);
     this.input.keyboard.on('keydown', this.onOverlayKey, this);
     this.overlayMode = 'pause';
@@ -1072,6 +1081,160 @@ export default class UIScene extends Phaser.Scene {
     const def = r.boss && BOSSES[r.boss];
     this.gs.warpToRoom(this.dbgCi, r.id, `[디버그] ${STAGES[this.dbgCi].short} · ${def ? def.name : ROOM_NAME[r.type]}`);
   }
+
+  // ---------------- 테스트룸 패널 (T · F3 · HUD 「테스트」 · 터치 「테스트」 버튼) ----------------
+  //  [포켓몬 · 진화] 보관함 카드를 고르고 아래 모습 버튼(1단 · 2단 · 3단 · 메가/폼체인지/유대변화/각성)을 누르면 고른 자리에 그 모습으로 바로 출전
+  //  [보스 대결] 지방별 보스 카드 → 한 번 더 누르거나 「대결 시작」 → 그 보스의 원래 아레나로 다시 깔고 바로 보스전
+  //  위 오른쪽 도구(샌드백 · 무적 · 쿨타임 0 · 파티 회복)는 게임에 바로 반영된다 · msg: 아래 줄에 잠깐 띄울 알림
+  showTest(tab = this.testTab || 'mon', msg = '') {
+    this.clearOverlay();
+    this.toastT = 0;
+    const gs = this.gs, p = gs.player, g = this.gOver, L = this.overlay.setVisible(true), touch = this.touchLayout;
+    this.testTab = tab;
+    g.fillStyle(0x05040a, .94); g.fillRect(0, 0, GAME_W, GAME_H);
+    L.add(hkText(this, 16, 7, '테스트룸', 13, HK.gold, { bold: true, ls: 3, glow: true }));
+    L.add(hkText(this, 100, 11, '저장 · 도감에 남지 않는 연습 공간', 8, HK.faint));
+    glassButton(this, 566, 8, 64, 20, '✕  닫기', () => gs.toggleOverlay('test'), { size: 9, layer: L });
+    [['mon', '🧪 포켓몬 · 진화'], ['boss', '👑 보스 대결']].forEach(([id, label], i) => {
+      const x = 16 + i * 128, on = id === tab, t = hkText(this, x, 32, label, 10, on ? HK.ivory : HK.dim, { bold: true });
+      L.add(t);
+      if (on) L.add(fadeLine(this, x + t.width / 2, 48, t.width + 26, .9));
+      const z = this.add.zone(x - 4, 28, t.width + 8, 22).setOrigin(0).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', () => this.testSetTab(id));
+      L.add(z);
+    });
+    // 바로 반영되는 도구 (켜져 있으면 금빛)
+    const tools = [
+      ['샌드백', !!gs.dummy, () => { const had = !!gs.dummy, on = gs.testDummy(); return had ? '샌드백을 치웠어요' : on ? '샌드백을 놓았어요 — 맞히면 오른쪽 위에 5초 피해 · 초당 피해' : '보스전 중에는 샌드백을 놓을 수 없어요'; }],
+      ['무적', gs.testGod, () => { gs.testGod = !gs.testGod; return gs.testGod ? '무적 — 보스 패턴을 맞아도 피해가 없어요' : '무적을 껐어요'; }],
+      ['쿨타임 0', gs.testNoCd, () => { gs.testNoCd = !gs.testNoCd; return gs.testNoCd ? '쿨타임 없음 — 기술 · Z기술을 바로 다시 쓸 수 있어요' : '쿨타임을 되돌렸어요'; }],
+      ['파티 회복', null, () => { gs.testHeal(true); return '파티 전원을 회복했어요'; }]
+    ];
+    tools.forEach(([label, on, fn], i) => glassButton(this, 300 + i * 66, 30, 62, 18, on == null ? label : `${label} ${on ? 'ON' : 'OFF'}`, () => { Sfx.play('select'); this.showTest(this.testTab, fn()); }, { size: 8, ls: 0, layer: L, primary: !!on }));
+    const hint = tab === 'mon'
+      ? (touch ? '카드를 고르고 아래 모습 버튼을 누르면 그 자리에 바로 출전 · 카드를 한 번 더 누르면 1단으로' : '←→↑↓ 카드 · Q/E 분류 · 0~9 세대 · Z X C V B 모습 · A S D 자리 · Enter 1단으로 · Tab 보스 대결 · T · Esc 닫기')
+      : (touch ? '카드를 고르고 한 번 더 누르거나 「대결 시작」 · 보스의 원래 아레나에서 바로 싸운다' : '←→↑↓ 보스 · Enter 대결 시작 · H 보스 체력 50% · Tab 포켓몬 · T · Esc 닫기');
+    L.add(hkText(this, 320, 351, msg || hint, 8, msg ? HK.gold : HK.faint, { origin: .5 }));
+    if (tab === 'mon') this.testMonTab(L); else this.testBossTab(L);
+    this.input.keyboard.on('keydown', this.onOverlayKey, this);
+    this.overlayMode = 'test';
+  }
+  // 포켓몬 · 진화 탭: 보관함 패널 + 아래 자리 3칸 · 모습 버튼
+  testMonTab(L) {
+    const p = this.gs.player;
+    if (this.testSlot == null || this.testSlot > p.members.length) this.testSlot = p.idx;
+    this.testFocus = SPECIES[this.testFocus] ? this.testFocus : p.m.key;
+    const bar = this.add.container(0, 0); L.add(bar);
+    const drawBar = () => {
+      bar.removeAll(true);
+      const key = this.testFocus, sp = SPECIES[key], m = p.members.find(q => q.key === key);
+      bar.add(fadeLine(this, 320, 279, 600, .35));
+      bar.add(hkText(this, 24, 308, '자리', 9, HK.dim, { bold: true, origin: .5 }));
+      [0, 1, 2].forEach(i => {
+        const mm = p.members[i], sx = 60 + i * 40, sy = 306, sel = i === this.testSlot;
+        if (sel) bar.add(this.add.image(sx, sy, 'glow').setBlendMode(ADD).setTint(0xffd890).setScale(.8).setAlpha(.45));
+        if (mm) bar.add(this.add.image(sx, sy, roundPortrait(this, p.portraitKey(mm))).setScale(.65));
+        bar.add(hiImage(this, sx, sy, 'gloss').setScale(.65 / RES));
+        bar.add(hiImage(this, sx, sy, sel ? 'slot3d-gold' : 'slot3d').setScale(.65 / RES).setAlpha(mm || sel ? 1 : .4));
+        if (!this.touchLayout) bar.add(hkText(this, sx - 11, sy - 13, 'ASD'[i], 7.5, sel ? HK.gold : HK.faint, { bold: true, origin: .5 }));
+        if (i === p.idx) bar.add(hkText(this, sx, sy + 18, '출전', 7, HK.gold, { origin: .5 }));
+        const z = this.add.zone(sx, sy, 36, 36).setInteractive({ useHandCursor: true });
+        z.on('pointerdown', () => this.testSetSlot(i));
+        bar.add(z);
+      });
+      const forms = this.testForms(key), x0 = 186, bw = Math.min(104, Math.floor(444 / forms.length) - 4);
+      bar.add(hkText(this, x0, 284, `${sp.evo[sp.evo.length - 1].name} — 누르면 ${this.testSlot + 1}번 자리에 그 모습으로 바로 출전`, 8, HK.dim));
+      forms.forEach((f, i) => {
+        const bx = x0 + i * (bw + 4), on = !!m && (f.mega >= 0 ? m.mega && (m.megaPick || 0) === f.mega : !m.mega && m.tier === f.tier);
+        const label = this.touchLayout || !'ZXCVB'[i] ? f.label : `${'ZXCVB'[i]}  ${f.label}`;   // PC 는 앞에 단축키
+        const b = glassButton(this, bx, 298, bw, 24, label, () => this.testPick(key, f.tier, f.mega), { size: 8.5, ls: 0, layer: bar, primary: on });
+        if (b.objs[1].width > bw - 8) b.objs[1].setScale((bw - 8) / b.objs[1].width, 1);
+        const T = TIERS[f.mega >= 0 ? 3 : f.tier];
+        bar.add(hkText(this, bx + bw / 2, 326, `${f.tag || T.name} · 공격 ×${T.atk} · 체력 ×${T.hp}`, 6.5, HK.faint, { origin: [.5, 0] }));
+      });
+    };
+    this.testPanel = new RosterPanel(this, {
+      layer: L, x: 16, y: 58, h: 214, infoX: 392, infoW: 234, focus: this.testFocus, tab: this.testRTab, gen: this.testGen,
+      picked: k => p.members.findIndex(m => m.key === k),
+      onToggle: k => this.testPick(k, 0),   // 카드를 한 번 더 누르거나 Enter: 1단으로
+      onFocus: k => { this.testFocus = k; this.testRTab = this.testPanel.tab; this.testGen = this.testPanel.gen; drawBar(); }
+    });
+    drawBar();
+  }
+  // 보스 대결 탭: 지방별 보스 카드 + 고른 보스 정보 · 대결 시작 · 이어 싸우기 · 체력 50% · 그만두기
+  testBossTab(L) {
+    const gs = this.gs, rows = STAGES.map(() => []);
+    for (const k of Object.keys(BOSSES)) rows[bossHome(k).ci].push(k);
+    this.testBossRows = rows; this.testBossList = rows.flat();
+    if (!BOSSES[this.testBossKey]) this.testBossKey = this.testBossList[0];
+    rows.forEach((keys, ci) => {
+      const y = 76 + ci * 38;
+      L.add(hkText(this, 16, y, STAGES[ci].short, 10, HK.dim, { bold: true, origin: [0, .5] }));
+      keys.forEach((k, i) => {
+        const def = BOSSES[k], x = 70 + i * 112, on = k === this.testBossKey, [tag, col] = BOSS_TIER[def.tier];
+        if (on) L.add(this.add.image(x + 40, y, 'glow').setBlendMode(ADD).setTint(0xffd27a).setDisplaySize(118, 36).setAlpha(.3));
+        L.add(this.add.image(x, y, roundPortrait(this, def.sprite || k)).setScale(.6));
+        L.add(hiImage(this, x, y, 'gloss').setScale(.6 / RES));
+        L.add(hiImage(this, x, y, on ? 'slot3d-gold' : 'slot3d').setScale(.6 / RES).setAlpha(on ? 1 : .6));
+        const nm = hkText(this, x + 17, y - 9, this.testBossName(k), 9, on ? HK.ivory : HK.dim, { bold: on });
+        if (nm.width > 86) nm.setScale(86 / nm.width, 1);
+        L.add(nm);
+        L.add(hkText(this, x + 17, y + 3, tag, 7.5, col));
+        const z = this.add.zone(x - 16, y - 17, 110, 34).setOrigin(0).setInteractive({ useHandCursor: true });
+        z.on('pointerdown', () => { if (k === this.testBossKey) this.testFight(); else this.testSelBoss(k); });
+        L.add(z);
+      });
+    });
+    // 고른 보스 정보
+    const k = this.testBossKey, def = BOSSES[k], home = bossHome(k), st = STAGES[home.ci];
+    L.add(fadeLine(this, 320, 266, 600, .35));
+    L.add(hkText(this, 18, 274, `${this.testBossName(k)}${def.title ? '  —  ' + def.title : ''}`, 11, HK.ivory, { bold: true }));
+    L.add(hkText(this, 18, 291, `${st.short} · ${st.areas[home.ai].name} · ${home.tall ? '2×2' : '2×1'} 아레나`, 8, HK.dim));
+    let tx = 18;
+    for (const t of def.types) tx += typePill(this, L, tx, 306, t, 8) + 4;
+    L.add(hkText(this, tx + 4, 306, `체력 ${def.hp} · 공격 ${def.dmg}`, 8, HK.dim));
+    const notes = [];
+    if (def.megaName || def.rage) notes.push(`체력 50%에서 ${def.megaName ? def.megaName + '(으)로' : '폭주'}`);
+    if (def.pair) notes.push(`${BOSSES[def.pair].name}와(과) 함께`);
+    if (def.trainer) notes.push(def.trainer === 'red' ? '레드가 지시' : '난천이 지시');
+    if (def.prelude) notes.push(`이어 싸우기: ${def.prelude.map(q => BOSSES[q].name).join(' → ')} → ${def.name}`);
+    if (def.then) notes.push(`이어 싸우기: ${def.name} → ${BOSSES[def.then].name}`);
+    if (notes.length) L.add(hkText(this, 18, 322, notes.join('  ·  '), 8, '#8ad8ff', { style: { wordWrap: { width: 360, useAdvancedWrap: true } } }));
+    const fighting = !!(gs.bosses && gs.bosses.some(b => b.alive)), chainable = !!(def.prelude || def.then);
+    glassButton(this, 400, 272, 112, 26, `⚔  ${fighting ? '다시 대결' : '대결 시작'}`, () => this.testFight(), { size: 10, ls: 0, bold: true, layer: L, primary: true });
+    const cb = glassButton(this, 518, 272, 112, 26, `이어 싸우기 ${this.testChainOn ? 'ON' : 'OFF'}`, () => { this.testChainOn = !this.testChainOn; Sfx.play('select'); this.showTest('boss'); }, { size: 8.5, ls: 0, layer: L, primary: chainable && !!this.testChainOn });
+    cb.setEnabled(chainable);
+    const hb = glassButton(this, 400, 304, 112, 22, '보스 체력 50%', () => this.testHalf(), { size: 8.5, ls: 0, layer: L });
+    const qb = glassButton(this, 518, 304, 112, 22, '보스전 그만두기', () => { Sfx.play('select'); gs.testReset(false); }, { size: 8.5, ls: 0, layer: L });
+    hb.setEnabled(fighting); qb.setEnabled(!!gs.arenaRoom || fighting);
+  }
+  // 그 포켓몬이 될 수 있는 모습: 1단 · 2단 · 3단 + 메가(폼체인지 · 유대변화) 또는 각성
+  testForms(key) {
+    const sp = SPECIES[key], out = sp.evo.map((f, t) => ({ label: `${TIERS[t].name} ${f.name}`, tier: t, mega: -1 }));
+    if (sp.megas.length) sp.megas.forEach((mg, i) => out.push({ label: mg.name, tier: 2, mega: i, tag: mg.item ? '폼체인지' : mg.bond ? '유대변화' : '메가' }));
+    else out.push({ label: sp.mega.name, tier: 2, mega: 0, tag: '각성' });
+    return out;
+  }
+  testBossName(k) { const d = BOSSES[k]; return d.trainer === 'red' ? `${d.name} (레드)` : d.name; }
+  testSetTab(id) {
+    if (this.testTab === id) return;
+    if (this.testPanel) { this.testRTab = this.testPanel.tab; this.testGen = this.testPanel.gen; }
+    Sfx.play('select'); this.showTest(id);
+  }
+  testSetSlot(i) { this.testSlot = Math.min(i, this.gs.player.members.length); Sfx.play('select'); this.testRTab = this.testPanel && this.testPanel.tab; this.testGen = this.testPanel && this.testPanel.gen; this.showTest('mon'); }
+  testSelBoss(k) { this.testBossKey = k; Sfx.play('select'); this.showTest('boss'); }
+  // 모습 고르기 → 패널을 닫고 (멈춘 게임을 풀고) 고른 자리에 그 모습으로 출전
+  testPick(key, tier, mega = -1) {
+    const gs = this.gs;
+    this.testFocus = key;
+    if (this.testPanel) { this.testRTab = this.testPanel.tab; this.testGen = this.testPanel.gen; }
+    const slot = this.testSlot ?? gs.player.idx;
+    gs.toggleOverlay('test');
+    gs.testForm(slot, key, tier, mega);
+    this.testSlot = gs.player.idx;   // 다음에 열면 지금 출전 중인 자리부터
+  }
+  testFight() { if (!this.testBossKey) return; Sfx.play('swap'); this.gs.testBoss(this.testBossKey, !!this.testChainOn); }
+  testHalf() { if (this.gs.testBossHalf()) { Sfx.play('select'); this.gs.toggleOverlay('test'); } else this.showTest('boss', '싸우는 보스가 없어요'); }
 
   // ---------------- 가방 (I) ----------------
   //  위: 포켓몬 한 마리씩 (1~3 탭으로 바꿔 보기) — 진화 단계 · 체력 · 경험치 · 능력치 · 아이템 효과
@@ -1683,6 +1846,22 @@ export default class UIScene extends Phaser.Scene {
 
   onOverlayKey(e) {
     if (this.overlayMode === 'box' && this.boxPanel) { this.boxPanel.key(e); return; }
+    if (this.overlayMode === 'test') {   // 테스트룸 패널 (닫기 T · F3 · Esc 는 GameScene 이 받는다)
+      if (e.code === 'Tab') { this.testSetTab(this.testTab === 'mon' ? 'boss' : 'mon'); return; }
+      if (this.testTab === 'mon') {
+        const fi = ['KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB'].indexOf(e.code), si = ['KeyA', 'KeyS', 'KeyD'].indexOf(e.code);
+        if (fi >= 0) { const f = this.testForms(this.testFocus)[fi]; if (f) this.testPick(this.testFocus, f.tier, f.mega); }
+        else if (si >= 0) this.testSetSlot(si);
+        else if (this.testPanel) this.testPanel.key(e);
+        return;
+      }
+      const rows = this.testBossRows || [], r = rows.findIndex(ks => ks.includes(this.testBossKey)), c = r >= 0 ? rows[r].indexOf(this.testBossKey) : 0, list = this.testBossList || [];
+      if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') { const k = list[(list.indexOf(this.testBossKey) + (e.code === 'ArrowRight' ? 1 : -1) + list.length) % list.length]; if (k) this.testSelBoss(k); }
+      else if (e.code === 'ArrowUp' || e.code === 'ArrowDown') { const nr = Phaser.Math.Clamp(r + (e.code === 'ArrowDown' ? 1 : -1), 0, rows.length - 1); if (nr !== r) this.testSelBoss(rows[nr][Math.min(c, rows[nr].length - 1)]); }
+      else if (e.code === 'Enter' || e.code === 'Space') this.testFight();
+      else if (e.code === 'KeyH') this.testHalf();
+      return;
+    }
     const digit = /^(Digit|Numpad)[1-5]$/.test(e.code) ? +e.code.slice(-1) - 1 : -1;
     if (this.overlayMode === 'map' && this.mapView) {
       if (digit >= 0) { if (this.mapOpen(digit) && digit !== this.mapCi) { Sfx.play('select'); this.showMap(digit); } return; }

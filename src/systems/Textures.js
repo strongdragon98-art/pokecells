@@ -514,19 +514,13 @@ function makePurifyTextures(scene) {
   pixelTexture(scene, 'sparkle', SPARKLE, { w: 0xfff2a0, y: 0xffe060, W: 0xffffff });
 }
 
-// 컷신용 도트: 트레이너 레드(옆모습, 오른쪽을 봄)·무릎 꿇은 레드·붉은 모자·포켓몬 도감
+// 컷신용 도트: 트레이너 레드(옆모습, 오른쪽을 봄) — 영상을 못 틀 때의 도트 연출에서만 쓴다
 const RED_PAL = { k: 0x1a1028, r: 0xd83030, R: 0x8a1a20, w: 0xf4f0e8, h: 0x3a2418, s: 0xf0c8a0, S: 0xc89070, v: 0xe04040, V: 0x9a2020, b: 0x2a2a38, j: 0x3a5aa8, J: 0x263c78, o: 0x3a3a48 };
 const RED_HEAD = ['....kkkkk.....', '...krrrrrk....', '..krrrrrrrk...', '..krwwrrrrrk..', '..kRRRRRRRRRRk', '..khhssssskk..', '..khsssksk....', '..khhsssSk....', '...kkssskk....', '..kvvvbbvk....', '.kvvvvbbvvk...'];
 const RED_STAND = RED_HEAD.concat(['.kvvvvbbvvk...', '.kvVvvbbvvkss.', '.kvVvvbbvvkss.', '.kvvvvbbvvk...', '..kbbbbbbk....', '..kjjjjjjk....', '..kjjjjjjk....', '..kjjJjjjk....', '..kjjJkjjk....', '..kjjJkjjk....', '..kjjJkjjk....', '..kjjkkjjk....', '..kookkook....', '..koookooook..', '..kkkkkkkkkk..']);
-const RED_KNEEL = RED_HEAD.concat(['.kvVvvbbvvkk..', '.kvVvvbbvvkssk', '..kbbbbbbk.kk.', '..kjjjjjjjjk..', '..kjjjjjjjjjk.', '..kjjJkkjjjjk.', '..kjjJk.kjjok.', '..koook..kook.', '..kkkkk..kkkk.']);
-const RED_CAP = ['...kkkk...', '..krrrrk..', '.krwwrrrk.', '.kRRRRRRRk', '..kkkkkkk.'];
-const DEX = ['kkkkkkkk', 'krrrrrrk', 'krbbrrrk', 'krbBbrrk', 'krrrrrrk', 'krwrwrrk', 'krrrrrrk', 'kRRRRRRk', 'krrrrrrk', 'kkkkkkkk'];
 
 function makeCutsceneTextures(scene) {
   pixelTexture(scene, 'red-stand', RED_STAND, RED_PAL);
-  pixelTexture(scene, 'red-kneel', RED_KNEEL, RED_PAL);
-  pixelTexture(scene, 'red-cap', RED_CAP, RED_PAL);
-  pixelTexture(scene, 'pokedex', DEX, { k: 0x1a1028, r: 0xd83030, R: 0x8a1a20, b: 0x8ad8ff, B: 0x2a8ad0, w: 0xffe08a });
 }
 
 // 타일셋 (Level.T 번호와 같은 순서, 16px 칸 24개)

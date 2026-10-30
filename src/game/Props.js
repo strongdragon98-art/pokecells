@@ -322,6 +322,40 @@ function labRoomArt(scene, w, h) {
   return { body, emis, W, H, lamps: [W * .2, W * .5, W * .8] };
 }
 
+// 여닫이 문 (오박사 연구소 안 · 마을의 연구소 건물): 문짝 + 문틀 안쪽(열리면 보이는 빛 — 안에선 바깥 햇살 · 밖에선 연구소 불빛)
+//  문짝은 왼쪽 경첩을 축으로 좁아지며 열린다 (Props.openDoor). 큰 문(연구소 안)은 위에 유리창 · 아래에 판넬, 작은 문(집)은 가운데 줄
+function doorArt(scene, w, h, wood) {
+  return canvasTex(scene, `prop:doorpanel:${w}:${h}:${wood}`, w, h, F => {
+    F(0, 0, w, h, shade(wood, .55)); F(1, 1, w - 2, h - 2, wood); F(1, 1, 1, h - 2, shade(wood, 1.3));
+    if (h >= 36) {
+      const gh = Math.round(h * .26);
+      F(4, 4, w - 8, gh, shade(wood, .45)); F(5, 5, w - 10, gh - 2, 0xbfe0f0); F(5, 5, 3, gh - 2, 0xffffff, .5); F(w / 2 - .5, 5, 1, gh - 2, shade(wood, .45));   // 유리창
+      const py = gh + 9, ph = h - py - 5;
+      F(4, py, w - 8, ph, shade(wood, .7)); F(5, py + 1, w - 10, ph - 2, shade(wood, 1.12)); F(5, py + 1, w - 10, 1, shade(wood, 1.4));   // 판넬
+    } else F(Math.floor(w / 2), 1, 1, h - 2, shade(wood, .6));
+    F(w - 5, Math.round(h * .52), 2, 2, 0xd8b060); F(w - 5, Math.round(h * .52), 1, 1, 0xfff0a0);   // 손잡이
+  });
+}
+function doorGapArt(scene, w, h, day) {
+  const mix = (a, b, k) => { const ch = sh => Math.round(((a >> sh) & 255) + ((((b >> sh) & 255) - ((a >> sh) & 255)) * k)); return (ch(16) << 16) | (ch(8) << 8) | ch(0); };
+  return canvasTex(scene, `prop:doorgap:${day ? 'day' : 'warm'}:${w}:${h}`, w, h, F => {
+    const sky = Math.round(h * .62);
+    for (let y = 0; y < h; y++) F(0, y, w, 1, day ? (y < sky ? mix(0x8ac8f0, 0xe8f6ff, y / sky) : 0x7ac070) : mix(0xfff2d0, 0xd88a40, y / h));   // 안: 파란 하늘 · 풀밭 / 밖: 따뜻한 실내 불빛
+    F(0, 0, 2, h, 0x05030a, .35);
+  });
+}
+// 연구소 안 문틀 (뒤 벽에 붙은 굵은 나무틀 · 위에 작은 채광창)
+function labDoorFrameArt(scene, w, h) {
+  return canvasTex(scene, `prop:labdoorframe:${w}:${h}`, w + 8, h + 12, F => {
+    const dark = 0x4a3020, mid = 0x7a5232, hi = 0xa87a4a;
+    F(0, 8, w + 8, h + 4, dark); F(1, 9, w + 6, h + 2, mid); F(1, 9, w + 6, 1, hi);
+    F(4, 12, w, h, 0x1a120c);
+    F(2, 0, w + 4, 8, dark); F(3, 1, w + 2, 6, 0xd8f0ff); F(3, 1, w + 2, 2, 0xffffff, .5); for (let x = 3; x < w + 5; x += 6) F(x, 1, 1, 6, dark);   // 채광창
+  });
+}
+// 문 앞 발판 매트
+function matArt(scene) { return canvasTex(scene, 'prop:doormat', 30, 3, F => { F(0, 0, 30, 3, 0x7a3a2a); F(1, 0, 28, 1, 0xa85a3a); for (let x = 3; x < 28; x += 4) F(x, 1, 2, 1, 0xd8a050); }); }
+
 // 침식 균열 (바닥 윗면에 덮는 빛나는 금)
 function veinArt(scene) {
   return canvasTex(scene, 'fx:vein', 16, 6, F => {
@@ -579,6 +613,28 @@ export class Props {
           this.lit(s.add.image(x, Y, a.body).setOrigin(0, 1).setDepth(5));
           this.add(s.add.image(x, Y, a.emis).setOrigin(0, 1).setDepth(5.1));
           a.winX.forEach((wx, i) => { for (let f = 0; f < a.floors; f++) if (a.lit[i][f] && Math.random() < .6) this.glow(x + wx + 5, Y - 48 * f - 30, .45, o.glass, .35, 5.2); });
+          break;
+        }
+        case 'oakhouse': {   // 태초마을의 오박사 연구소: 하얀 벽 · 갈색 지붕 · 현판 · 문이 정면 → 들어가면 연구소 안 (GameScene.useDoor)
+          const o = { w: pr.w, floors: pr.floors, side: pr.side, roof: 0x8a4a2a, wall: 0xece6d8, glass: 0xffd890, broken: false, burnt: false, ruined: false };
+          const a = houseArt(s, `prop:oakhouse:${pr.w}:${pr.floors}:${pr.side}`, o), x = X - 48;
+          this.lit(s.add.image(x, Y, a.body).setOrigin(0, 1).setDepth(5));
+          this.add(s.add.image(x, Y, a.emis).setOrigin(0, 1).setDepth(5.1));
+          a.winX.forEach((wx, i) => { for (let f = 0; f < a.floors; f++) if (a.lit[i][f]) this.glow(x + wx + 5, Y - 48 * f - 30, .45, o.glass, .35, 5.2); });
+          // 현판 (지붕 처마 바로 아래 가운데)
+          const cx = x + 48 + pr.w * 8, sy = Y - 3 * pr.floors * 16 + 12, board = this.add(s.add.graphics().setDepth(5.15));
+          board.fillStyle(0x3a2418, 1); board.fillRect(cx - 34, sy - 7, 68, 13); board.fillStyle(0x6a4428, 1); board.fillRect(cx - 33, sy - 6, 66, 11);
+          this.add(s.add.text(cx, sy, '오박사 연구소', { fontFamily: 'Galmuri9', fontSize: '9px', color: '#ffe8b0', stroke: '#2a1810', strokeThickness: 2, resolution: 1 }).setOrigin(.5).setDepth(5.2));
+          const dl = x + a.doorX, d = this.door(dl, Y, 14, 26, 0x6a4428, false, 5.05);
+          this.interacts.push({ kind: 'door', side: 'out', x: dl + 7, y: Y, range: 14, used: false, repeat: true, prompt: '[F 또는 ↑ : 오박사 연구소에 들어가기]', promptY: Y - 40, door: d });
+          break;
+        }
+        case 'labdoor': {   // 오박사 연구소 안 출입문 (뒤 벽) → 마을의 연구소 건물 앞
+          const w = 24, h = 44, x = X - 4;
+          this.lit(s.add.image(x - 4, Y, labDoorFrameArt(s, w, h)).setOrigin(0, 1).setDepth(2.75));
+          const d = this.door(x, Y, w, h, 0x9a6a3e, true, 2.8);
+          this.lit(s.add.image(x + w / 2, Y, matArt(s)).setOrigin(.5, 1).setDepth(10.4));
+          this.interacts.push({ kind: 'door', side: 'in', x: x + w / 2, y: Y, range: 18, used: false, repeat: true, prompt: '[F 또는 ↑ : 밖으로 나가기]', promptY: Y - h - 18, door: d });
           break;
         }
         case 'center': {
@@ -1009,6 +1065,31 @@ export class Props {
   }
 
   // ---------------- 상호작용 ----------------
+  // 여닫이 문 하나: 문틀 안쪽 빛(열렸을 때만) · 문짝(왼쪽 경첩) · 열리면 새어 나오는 빛. x·bottom 은 문 왼쪽 아래
+  door(x, bottom, w, h, wood, day, depth) {
+    const s = this.s;
+    const gap = this.add(s.add.image(x, bottom, doorGapArt(s, w, h, day)).setOrigin(0, 1).setDepth(depth).setVisible(false));
+    const panel = this.lit(s.add.image(x, bottom, doorArt(s, w, h, wood)).setOrigin(0, 1).setDepth(depth + .01));
+    const spill = this.glow(x + w / 2, bottom - h * .45, Math.max(.5, h / 60), day ? 0xe8f6ff : 0xffd890, 0, depth + .02);
+    return { gap, panel, spill };
+  }
+  // 문 열기 · 닫기 (instant: 연출 없이 바로)
+  openDoor(it, instant = false) {
+    const d = it.door, tw = this.s.tweens;
+    tw.killTweensOf([d.panel, d.spill]);
+    d.gap.setVisible(true);
+    if (instant) { d.panel.scaleX = .14; d.spill.setAlpha(.55); return; }
+    tw.add({ targets: d.panel, scaleX: .14, duration: 200, ease: 'Quad.easeOut' });
+    tw.add({ targets: d.spill, alpha: .55, duration: 200 });
+  }
+  shutDoor(it, instant = false) {
+    const d = it.door, tw = this.s.tweens;
+    tw.killTweensOf([d.panel, d.spill]);
+    if (instant) { d.panel.scaleX = 1; d.spill.setAlpha(0); d.gap.setVisible(false); return; }
+    tw.add({ targets: d.panel, scaleX: 1, duration: 220, ease: 'Quad.easeIn', onComplete: () => d.gap.setVisible(false) });
+    tw.add({ targets: d.spill, alpha: 0, duration: 260 });
+  }
+
   nearest(x, y) {
     for (const it of this.interacts) if (!it.used && Math.abs(x - it.x) < it.range && Math.abs(y - it.y) < 40) return it;
     return null;

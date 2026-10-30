@@ -39,7 +39,8 @@ export class TouchControls {
       { id: 'map', x: 228, y: 32, r: 18, label: '지도', press: 'mapP' },
       { id: 'inv', x: 270, y: 32, r: 18, label: '가방', press: 'invP' },
       { id: 'settings', x: 312, y: 32, r: 18, label: '설정', special: 'settings' },
-      { id: 'pause', x: 354, y: 32, r: 18, label: 'Ⅱ', special: 'pause' }
+      { id: 'pause', x: 354, y: 32, r: 18, label: 'Ⅱ', special: 'pause' },
+      ...(gs.test ? [{ id: 'test', x: 186, y: 32, r: 18, label: '테스트', special: 'test' }] : [])   // 테스트룸 패널
     ];
     this.toggleBtn = { x: 412, y: 32, w: 52, h: 28 };   // 터치패드 켜기/끄기
     for (const b of this.buttons) { b.bx = b.x; b.by = b.y; b.br = b.r; b.top = b.y < 100; }   // 크기 조절의 기준 (원래 자리)
@@ -123,6 +124,7 @@ export class TouchControls {
     if (b) {
       if (b.special === 'pause') { this.gs.togglePause(); return; }
       if (b.special === 'settings') { this.gs.toggleOverlay('settings'); return; }
+      if (b.special === 'test') { this.gs.toggleOverlay('test'); return; }
       if (this.gs.paused) return;
       this.active.set(p.id, b); b.down = true;
       if (b.press) this.state.pressed[b.press] = true;
