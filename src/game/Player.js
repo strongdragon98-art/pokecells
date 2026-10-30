@@ -323,9 +323,11 @@ export class Player extends Actor {
     }
 
     // 공중 내려찍기: 공중에서 ↓ + Z (모든 포켓몬 공통) — 바닥을 강타하는 충격파 · 적 머리 밟기 · 위기 탈출
-    if (inp.zP && (inp.downAim ?? inp.down) && !this.onGround && !this.dash && this.diveCd <= 0 && !(this.action && (this.action.dive || this.action.noDash || this.action.slot === 'zmove'))) {
+    //  ↓ + ← · → (조이스틱은 수평보다 아래 어느 쪽이든)이면 그 방향으로 대각선 강하
+    const diveAim = inp.diveAim || ((inp.downAim ?? inp.down) ? { x: dir, y: 1 } : null);
+    if (inp.zP && diveAim && !this.onGround && !this.dash && this.diveCd <= 0 && !(this.action && (this.action.dive || this.action.noDash || this.action.slot === 'zmove'))) {
       inp.zP = false; this.zBuf = 0;
-      this.startDive(dir);
+      this.startDive(diveAim);
     }
     this.updateCharge(dt, inp);
     // 스킬 (Z는 입력 버퍼로 콤보)
@@ -550,27 +552,32 @@ export class Player extends Actor {
   }
 
   // ---------------- 공중 내려찍기 (↓ + Z, 공중) ----------------
-  //  고른 속성(차징 속성) 기운을 두르고 바닥으로 초고속 강하 (좌우를 누르고 있으면 대각선).
+  //  고른 속성(차징 속성) 기운을 두르고 바닥으로 초고속 강하. aim: 아래쪽 방향 { x, y } — 바로 아래면 수직,
+  //   ↓ + ← · → 는 45° 대각선, 조이스틱은 가리킨 각도 그대로 (너무 얕으면 수평에서 30°까지 세운다)
   //  떨어지는 길에 적 머리를 밟으면 피해를 주고 위로 튕겨 오른다 (공중 대시·점프 회복 → 위기 탈출)
   //  바닥에 닿는 순간 충격파: 둘레 광역 피해 + 경직 (높이 떨어질수록 세다) · 금 간 벽·바닥·상자도 부순다
-  startDive(dir) {
+  startDive(aim) {
     const sc = this.scene, type = this.chargeType(), col = typeColor(type), y0 = this.y;
+    const side = Math.abs(aim.x) < .08 ? 0 : Math.sign(aim.x), th = Math.max(Math.PI / 6, Math.atan2(Math.max(aim.y, .01), Math.abs(aim.x)));
+    const vx = side ? Math.cos(th) * 760 * side : 0, vy = side ? Math.sin(th) * 760 : 720, dir = side;   // 수직이면 예전처럼 초속 720 으로 곧장
     if (this.action) this.endAction(true);
     this.chg.t = 0; this.chg.lvl = 0;
     this.diveCd = .45;
+    if (side) { this.face = side; this.refacing(); }
     Sfx.play('dive');
     this.squash(.7, 1.35);
     sc.fx.ring(this.x, this.y, 16, col, 200);
+    const trail = Math.atan2(-vy, -vx);   // 잔상 · 속도선은 날아가는 반대쪽으로
     this.startAction({
       dur: 1.6, ctrl: true, dive: true, anim: 'Strike', inv: .25,
       update: (p, a, dt) => {
         if (a.landed) { p.b.setVelocityX(p.b.velocity.x * .6); return; }
-        p.b.setVelocity(dir * 150, 720);
+        p.b.setVelocity((p.b.blocked.left && vx < 0) || (p.b.blocked.right && vx > 0) ? 0 : vx, vy);   // 벽에 막히면 그대로 미끄러져 내려간다
         a.gt = (a.gt || 0) - dt;
         if (a.gt <= 0) {   // 속성 잔상 + 속도선
           a.gt = .028;
           sc.fx.ghost(p.sprite, col, .5, 200);
-          sc.fx.burst(p.x + (Math.random() - .5) * 10, p.y - 10, [col, 0xffffff], 2, 30, { angle: -Math.PI / 2, spread: .4, grav: 0, bounce: false, glow: true, life: .22, size: 1 });
+          sc.fx.burst(p.x + (Math.random() - .5) * 10, p.y - 10, [col, 0xffffff], 2, 30, { angle: trail, spread: .4, grav: 0, bounce: false, glow: true, life: .22, size: 1 });
         }
         // 머리 밟기: 발밑에 닿은 적
         const foot = { x: p.x - p.b.width / 2 - 2, y: p.bottom - 6, w: p.b.width + 4, h: 12 };

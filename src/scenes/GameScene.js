@@ -561,6 +561,8 @@ export default class GameScene extends Phaser.Scene {
       t.pressed = {};
     }
     i.downAim = b.down.isDown || !!(t && t.on !== false && t.downAim);   // 하향 점프 판정용 '아래' (키보드 ↓ · 조이스틱 아래 ±45°)
+    // 공중 내려찍기 방향: 키보드 ↓ (+ ← · → 를 같이 누르면 45° 대각선) · 조이스틱이 수평보다 아래를 가리키면 그 방향 (Player.startDive)
+    i.diveAim = b.down.isDown ? { x: (b.right.isDown ? 1 : 0) - (b.left.isDown ? 1 : 0), y: 1 } : t && t.on !== false && t.diveAim ? t.diveAim : null;
     if (JD(k.ESC) || JD(k.P)) this.togglePause();
     if (JD(b.map) || i.mapP) this.toggleOverlay('map');
     if (JD(b.bag) || i.invP) this.toggleOverlay('inv');

@@ -16,6 +16,7 @@ import { Settings } from './Settings.js';
 const lx = p => p.x / RES, ly = p => p.y / RES;
 
 const STICK_R = 30, STICK_HOME = { x: 92, y: 282 };
+const DIVE_TAN = Math.tan(Math.PI / 8);   // 내려찍기로 치는 조이스틱 각도: 수평에서 22.5° 넘게 아래
 const PREF = 'pokecells.touchpad';   // 'on' · 'off' (없으면 기기에 맞춰: 터치 화면이면 켬)
 const readPref = () => { try { return localStorage.getItem(PREF); } catch (e) { return null; } };
 const writePref = v => { try { localStorage.setItem(PREF, v); } catch (e) { /* 저장소를 못 쓰면 이번 판만 */ } };
@@ -152,12 +153,14 @@ export class TouchControls {
 
   updateStick() {
     const s = this.state, st = this.stick;
-    if (!st) { s.left = s.right = s.up = s.down = s.downAim = false; return; }
+    if (!st) { s.left = s.right = s.up = s.down = s.downAim = false; s.diveAim = null; return; }
     let dx = st.x - st.bx, dy = st.y - st.by;
     const d = Math.hypot(dx, dy), lim = this.stickR * 1.5;
     if (d > lim) { st.bx += dx * (1 - lim / d); st.by += dy * (1 - lim / d); dx = st.x - st.bx; dy = st.y - st.by; }   // 손가락을 따라 받침이 끌려온다
     s.left = dx < -8; s.right = dx > 8; s.up = dy < -16; s.down = dy > 14;
     s.downAim = dy > 14 && dy >= Math.abs(dx);   // 하향 점프: 조이스틱이 아래쪽 ±45° 안 (대각선 아래로 걸으며 점프할 땐 보통 점프)
+    // 공중 내려찍기 방향: 조이스틱이 수평보다 22.5° 넘게 아래를 가리키면 (8방향의 왼쪽 아래 · 아래 · 오른쪽 아래) 그 방향 그대로
+    s.diveAim = d > 14 && dy > Math.abs(dx) * DIVE_TAN ? { x: dx / d, y: dy / d } : null;
   }
 
   // 유리 원: 어두운 속 + 상아색 테두리 + 왼쪽 위 얇은 광택 (눌리면 밝아진다)
