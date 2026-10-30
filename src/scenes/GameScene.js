@@ -25,7 +25,7 @@ import { Combat, overlap } from '../game/Combat.js';
 import { Fx } from '../systems/Fx.js';
 import { Sfx } from '../systems/Audio.js';
 import { Music } from '../systems/Music.js';
-import { Settings } from '../systems/Settings.js';
+import { Settings, keyLabel } from '../systems/Settings.js';
 import { Save } from '../systems/Save.js';
 import { RunSave, seeded, newSeed, snapshotWorld, applyWorld, snapshotPlayer, restorePlayer } from '../systems/RunSave.js';
 import { itemArt, shade } from '../systems/Textures.js';
@@ -34,6 +34,27 @@ import { onKill as perkKill } from '../game/Perks.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[Math.floor(Math.random() * a.length)];
+
+// 엘리트가 25% 확률로 떨어뜨리는 장착형 전술 도구
+const ELITE_TOOLS = ['leftovers', 'shell_bell', 'scope_lens', 'razor_claw', 'quick_claw'];
+
+// 햇빛 줄기 텍스처: 위는 밝고 아래로 갈수록 투명 · 가로로는 가운데가 밝고 양옆이 부드럽게 빠진다
+function sunbeamTexture(scene) {
+  if (scene.textures.exists('fx:sunbeam')) return;
+  const t = scene.textures.createCanvas('fx:sunbeam', 32, 128), c = t.getContext();
+  for (let x = 0; x < 32; x++) {
+    const k = Math.pow(Math.sin(Math.PI * (x + .5) / 32), 2);
+    const g = c.createLinearGradient(0, 0, 0, 128);
+    g.addColorStop(0, `rgba(255,255,255,${.9 * k})`); g.addColorStop(.55, `rgba(255,255,255,${.35 * k})`); g.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = g; c.fillRect(x, 0, 1, 128);
+  }
+  t.refresh();
+}
+// 두 색을 k(0~1)만큼 섞는다
+const lerpColor = (a, b, k) => {
+  const A = Phaser.Display.Color.IntegerToRGB(a), B = Phaser.Display.Color.IntegerToRGB(b);
+  return Phaser.Display.Color.GetColor(Math.round(A.r + (B.r - A.r) * k), Math.round(A.g + (B.g - A.g) * k), Math.round(A.b + (B.b - A.b) * k));
+};
 
 export default class GameScene extends Phaser.Scene {
   constructor() { super('Game'); }
@@ -73,7 +94,8 @@ export default class GameScene extends Phaser.Scene {
     if (this.webgl) {
       this.lights.enable();
       cam.postFX.addBloom(0xffffff, 1, 1, 1.1, .85, 2);
-      cam.postFX.addVignette(.5, .5, .92, .3);
+      this.vignetteFx = cam.postFX.addVignette(.5, .5, .92, .3);   // 보스방에 가까울수록 좁고 진해진다 (updateAtmosphere)
+      this.gradeFx = cam.postFX.addColorMatrix();                   // 색 보정: 초입은 따뜻하고 선명하게 · 보스 앞은 채도가 빠지고 어둡게
     }
     this.fx = new Fx(this);
     this.corruptG = this.add.graphics().setDepth(18);                                          // 세뇌된 적 발밑 침식 오라
@@ -403,6 +425,7 @@ export default class GameScene extends Phaser.Scene {
     }
     i.left = b.left.isDown; i.right = b.right.isDown; i.up = b.up.isDown; i.down = b.down.isDown;
     i.jumpH = b.jump.isDown || b.up.isDown;
+    i.zH = b.z.isDown;   // Z 홀드: 차징 샷 (Player.updateCharge)
     const upP = JD(b.up);   // JustDown 은 한 번 읽으면 꺼지므로 점프·상호작용이 같이 쓴다
     if (JD(b.jump) || upP) i.jumpP = true;
     if (upP) i.upP = true;   // ↑ 는 점프지만 포켓몬센터·자판기 앞에서는 상호작용
@@ -419,7 +442,7 @@ export default class GameScene extends Phaser.Scene {
     if (JD(b.interact)) i.useP = true;
     const t = this.touchInput;   // 모바일 터치 조작 (UIScene 의 TouchControls)
     if (t) {
-      i.left = i.left || t.left; i.right = i.right || t.right; i.up = i.up || t.up; i.down = i.down || t.down; i.jumpH = i.jumpH || t.jumpH;
+      i.left = i.left || t.left; i.right = i.right || t.right; i.up = i.up || t.up; i.down = i.down || t.down; i.jumpH = i.jumpH || t.jumpH; i.zH = i.zH || !!t.zH;
       for (const f in t.pressed) if (t.pressed[f]) i[f] = true;
       t.pressed = {};
     }
@@ -652,7 +675,7 @@ export default class GameScene extends Phaser.Scene {
   //  처음 가동하면 캡슐이 증기와 빛을 뿜으며 열린 뒤(Props.openTM) 카드 화면으로
   openTM(it) {
     if (this.tmOpening) return;
-    if (!it.cards) { it.member = this.player.m; it.cards = rollCards(it.member); it.flipped = [false, false, false]; it.sel = -1; }
+    if (!it.cards) { it.member = this.player.m; it.cards = rollCards(it.member, { types: this.player.typesOf(it.member) }); it.flipped = [false, false, false]; it.sel = -1; }
     this.tmOpening = true;
     this.player.b.setVelocityX(0);
     this.props.openTM(it, () => {
@@ -729,6 +752,7 @@ export default class GameScene extends Phaser.Scene {
     }
     this.updatePortal(dt);
     this.updateLights(dt);
+    this.updateAtmosphere(dt);
     this.fx.update(dt);
     const cam = this.cameras.main;
     cam.followOffset.x += (-this.player.face * 26 - cam.followOffset.x) * Math.min(1, dt * 3);
@@ -737,11 +761,41 @@ export default class GameScene extends Phaser.Scene {
     for (const t of Object.values(this.bgMids)) { t.tilePositionX = cam.scrollX * .4; t.tilePositionY = Phaser.Math.Clamp(ry * .06, 0, 16); }
   }
 
+  // 진행도에 따른 분위기 (방의 depth 를 2초쯤에 걸쳐 따라간다)
+  //  초입: 나뭇잎 사이로 비스듬히 내리쬐는 햇빛 줄기 + 떠다니는 금빛 먼지 · 따뜻하고 선명한 색
+  //  보스방 쪽: 햇빛이 사라지고 채도가 빠지며 어두워진다 + 포스트 비네팅이 좁고 진해진다 (안개·검붉은 테두리는 UIScene)
+  updateAtmosphere(dt) {
+    const want = this.room && this.room.depth != null ? this.room.depth : 0;
+    this.atmo = (this.atmo ?? want) + (want - (this.atmo ?? want)) * Math.min(1, dt * .6);
+    const c = this.atmo, cam = this.cameras.main, v = cam.worldView, t = this.time.now / 1000;
+    if (this.gradeFx) { const fx = this.gradeFx; fx.reset(); fx.saturate(.18 - c * .62, true); fx.brightness(1.06 - c * .2, true); }
+    if (this.vignetteFx) { this.vignetteFx.radius = .92 - c * .26; this.vignetteFx.strength = .3 + c * .45; }
+    // 햇빛 줄기: 화면 위에서 비스듬히 (깊어질수록 옅어지다 사라진다)
+    const sun = Phaser.Math.Clamp(1 - c / .45, 0, 1) * (this.room && this.room.under ? .25 : 1);
+    if (!this.sunbeams) {
+      sunbeamTexture(this);
+      this.sunbeams = [0, 1, 2, 3, 4].map(i => this.add.image(0, 0, 'fx:sunbeam').setOrigin(.5, 0).setBlendMode(Phaser.BlendModes.ADD).setTint(0xfff0c0).setDepth(23.5).setAngle(-22).setAlpha(0));
+      this.worldObjs.push(...this.sunbeams);
+    }
+    this.sunbeams.forEach((b, i) => {
+      const fx = ((i * .23 + .08 + v.x / (v.width * 6)) % 1.15) - .05, sway = Math.sin(t * .35 + i * 1.7);
+      b.setVisible(sun > .01).setPosition(v.x + fx * v.width * 1.2 + v.height * .2, v.y - 6)
+        .setDisplaySize(v.width * (.07 + (i % 3) * .035), v.height * 1.35).setAlpha(sun * (.16 + .07 * sway));
+    });
+    if (sun > .2 && Math.random() < sun * .5) {   // 햇빛 속을 떠다니는 금빛 먼지
+      this.fx.burst(v.x + Math.random() * v.width, v.y + Math.random() * v.height * .8, [0xfff0c0, 0xffe08a], 1, 8, { grav: -6, bounce: false, glow: true, life: 1.6, size: 1, drag: .99 });
+    }
+  }
+
   updateLights(dt) {
     const t = this.time.now / 1000;
     // 마을에선 주변광이 따뜻하고 밝게 바뀐다 (천천히)
     if (this.webgl && this.ambient) {
-      const base = this.room && this.room.type === 'village' ? 0x8a7258 : this.room && this.room.under ? shade(this.stage.palette.ambient, .72) : this.stage.palette.ambient;   // 시내는 따뜻하게 · 지하는 어둡게
+      const amb = this.stage.palette.ambient, c = this.atmo || 0;
+      // 침식 깊이: 초입은 햇살처럼 밝고 따뜻하게(×1.45 + 금빛) → 보스방 앞은 검붉고 어둡게(×0.62 + 핏빛)
+      const deep = c < .5 ? lerpColor(lerpColor(amb, 0xffe2b0, .35), amb, c / .5) : lerpColor(amb, 0x5a1a24, (c - .5) / .5 * .55);
+      const lit = c < .5 ? shade(deep, 1.45 - c * .9) : shade(deep, 1 - (c - .5) * .76);
+      const base = this.room && this.room.type === 'village' ? 0x8a7258 : this.room && this.room.under ? shade(lit, .72) : lit;   // 시내는 따뜻하게 · 지하는 어둡게
       const tgt = Phaser.Display.Color.IntegerToRGB(base), a = this.ambient, k = Math.min(1, dt * 1.5);
       a.setTo(Math.round(a.red + (tgt.r - a.red) * k), Math.round(a.green + (tgt.g - a.green) * k), Math.round(a.blue + (tgt.b - a.blue) * k));
       this.lights.setAmbientColor(a.color);
@@ -771,9 +825,25 @@ export default class GameScene extends Phaser.Scene {
   // 발밑: 검보라 그림자 타원 3겹 + 바닥에서 일렁이는 침식 불꽃 / 머리: 붉은 안광이 남기는 실선 궤적
   // 발밑 타원 그림자는 크기별로 한 번 구운 텍스처(흰색)를 적마다 두 장의 이미지로 띄워 색·투명도·위치만 바꾼다
   //  (예전엔 매 프레임 그래픽에 한 줄씩 fillRect). 일렁이는 침식 불꽃 몇 줄과 안광 궤적만 그래픽에 그린다
+  // 엘리트: 몸을 감싸 일렁이는 붉은 오라 + 위로 피어오르는 불티 + 머리 위 '🔥 엘리트' 이름표
+  drawElite(e, t) {
+    if (!e.eliteGlow) {
+      e.eliteGlow = this.add.image(e.x, e.y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(0xff2a1a).setDepth(e.sprite.depth - .3);
+      e.eliteTag = this.add.text(e.x, e.top, '🔥 엘리트', { fontFamily: 'Galmuri9', fontSize: '8px', color: '#ff7a5a', stroke: '#1a0404', strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(56);
+    }
+    const on = e.alive && e.sprite.alpha > .05;
+    e.eliteGlow.setVisible(on); e.eliteTag.setVisible(on);
+    if (!on) return;
+    const s = (e.b.height / 18) * (1 + Math.sin(t * 7 + e.auraT) * .1);
+    e.eliteGlow.setPosition(e.x, e.y).setScale(s * .9, s * 1.1).setAlpha(.55 + Math.sin(t * 11) * .12);
+    e.eliteTag.setPosition(Math.round(e.x), Math.round(e.top - 6));
+    if (Math.random() < .5) this.fx.embers(e.x + (Math.random() - .5) * e.b.width, e.bottom - 2, [0xff3a2a, 0xffa040, 0xffe08a], 1, { speed: 45 });
+  }
+
   drawCorruption() {
     const g = this.corruptG, tg = this.eyeTrailG, t = this.time.now / 1000;
     g.clear(); tg.clear();
+    for (const e of this.enemies) if (e.elite) this.drawElite(e, t);
     for (const e of this.enemies) {
       const a = e.corrupt && !e.asleep ? e.sprite.alpha * (e.fade ? .45 : 1) : 0;
       if (a <= .02) { if (e.shadowA) { e.shadowA.setVisible(false); e.shadowB.setVisible(false); } continue; }
@@ -883,7 +953,11 @@ export default class GameScene extends Phaser.Scene {
         if (!room.entered) { room.entered = true; this.time.delayedCall(4200, () => this.events.emit('toast', '결계 안은 독기가 닿지 않는다 · 포켓몬센터에서 쉬어 가자')); }
       }
       if (room.type === 'treasure' && !room.entered) { room.entered = true; this.events.emit('toast', '보물방이다! 상자를 열어 보자'); }
-      if (room.type === 'tm' && !room.entered) { room.entered = true; this.events.emit('toast', '고대 석판이 빛난다 — 기술머신 비밀방'); }
+      if (room.type === 'tm' && !room.entered) {
+        room.entered = true;
+        if (room.tutorial) this.events.emit('banner', '기술머신 발견!', '막다른 길·샛길 끝을 탐험하면 새 기술과 카드를 얻는다 — F 또는 ↑ 로 가동');
+        else this.events.emit('toast', '고대 석판이 빛난다 — 기술머신 비밀방');
+      }
       if (room.type === 'sanctuary' && !room.entered && !room.cleared) this.events.emit('toast', '공기가 무겁다… 전설의 기척');
     }
     // 아레나: 안쪽으로 조금 들어서면 문이 닫히고 보스전
@@ -904,12 +978,31 @@ export default class GameScene extends Phaser.Scene {
     for (const s of this.level.spawns) {
       if (s.spawned || Math.abs(s.x - p.x) > reach || Math.abs(s.y - p.y) > reachY) continue;
       s.spawned = true;
-      if ((this.level.terminals || []).some(t => Math.abs(t.x * TILE - s.x) < 150 && Math.abs(t.g * TILE - s.y) < 90)) continue;   // 간이 회복기 둘레는 안전 구역
+      if (s.elite && s.room && s.room.hidden && !(this.level.sides || []).some(sd => sd.room === s.room && sd.revealed)) { s.spawned = false; continue; }   // 숨은 굴의 수문장은 흙이 걷힌 뒤에
+      if (!s.elite && (this.level.terminals || []).some(t => Math.abs(t.x * TILE - s.x) < 150 && Math.abs(t.g * TILE - s.y) < 90)) continue;   // 간이 회복기 둘레는 안전 구역
       this.spawnAt(s);
     }
   }
 
+  // 🔥 엘리트 수문장 (기술머신이 없는 막다른 길 끝): 출전 포켓몬보다 한 단계 위 · 체력 3.4배 · 피해 1.5배 · 몸집 1.25배 · 붉은 오라
+  spawnElite(s) {
+    const tier = this.player.tierIdx;
+    let pk = pickWildStage(this.stage.pool, tier);
+    for (let k = 0; k < 5 && WILD[pk.line].flying; k++) pk = pickWildStage(this.stage.pool, tier);   // 수문장은 되도록 땅에 버티고 선 쪽으로
+    const top = WILD[pk.line].forms.length - 1, stage = Math.min(top, Math.max(pk.stage, Math.min(2, tier) + 1));
+    const { key, def } = wildForm(pk.line, stage), gy = s.y;
+    const e = new Enemy(this, key, s.x, def.flying ? gy - 40 : gy - 14, { def, scale: 1.25, hpMul: (1 + this.stageIdx * .4) * 3.4, dmgMul: (1 + this.stageIdx * .25) * 1.5 });
+    e.line = pk.line; e.stage = stage; e.elite = true;
+    if (!def.flying) e.b.reset(s.x, gy - e.b.height / 2 - 1);
+    this.addEnemy(e, s.room || this.room);
+    this.fx.ring(s.x, e.y, 34, 0xff3a2a, 460); this.fx.glow(s.x, e.y, 40, 0xff3a2a, 520, 1);
+    this.fx.burst(s.x, e.y, [0xff3a2a, 0xffa040, 0xffffff], 20, 130, { glow: true, up: 80 });
+    this.events.emit('toast', `🔥 엘리트 ${def.name}이(가) 길을 막아섰다! 쓰러뜨리면 이상한사탕`);
+    Sfx.play('boss');
+  }
+
   spawnAt(s) {
+    if (s.elite) return this.spawnElite(s);
     // 계열은 지방 pool 에서, 진화 단계는 지금 출전 중인 포켓몬 단계 ±1 안에서 (두 단계 차이는 안 남)
     let pk = pickWildStage(this.stage.pool, this.player.tierIdx);
     if (WILD[pk.line].flying && Math.random() < .5) pk = pickWildStage(this.stage.pool, this.player.tierIdx);   // 날짐승·고스트는 잡기 번거로워 등장 빈도 절반쯤으로
@@ -1061,7 +1154,12 @@ export default class GameScene extends Phaser.Scene {
     if (joinedBy) this.time.delayedCall(2800, () => this.announceJoin([joinedBy]));
     if (e.boss) this.dropFormItem(e);
     if (e.boss) { this.bossDefeated(e); return; }
-    if (Math.random() < ITEM_DROP.wild) this.spawnPickup('item', e.x, e.y, pick(ITEM_KEYS));   // 야생은 아이템 대신 가끔 오렌열매
+    if (e.elite) {   // 엘리트 보상: 이상한사탕 100% · 장착형 전술 도구 25%
+      this.spawnPickup('candy', e.x, e.y - 4);
+      if (Math.random() < .25) this.spawnPickup('item', e.x + 6, e.y - 4, pick(ELITE_TOOLS));
+      this.fx.ring(e.x, e.y, 40, 0xffd27a, 420);
+    }
+    else if (Math.random() < ITEM_DROP.wild) this.spawnPickup('item', e.x, e.y, pick(ITEM_KEYS));   // 야생은 아이템 대신 가끔 오렌열매
     else if (Math.random() < .16) this.spawnPickup('oran', e.x, e.y);
     const r = Save.addKill(e.line || e.key);   // 정화 진행도는 진화 계열로 센다 (피카츄를 정화해도 피츄 계열 +1)
     if (r) {
@@ -1216,7 +1314,7 @@ export default class GameScene extends Phaser.Scene {
   openLegendCards() {
     if (this.over || this.transitioning || this.overlay) { this.time.delayedCall(800, () => this.openLegendCards()); return; }
     const m = this.player.m;   // 히든 전설 보상: 유니크 이상 · 한 장은 반드시 전설
-    const it = { kind: 'tm', legend: true, used: false, member: m, cards: rollCards(m, { floor: '유니크', legend: true }), flipped: [false, false, false], sel: -1 };
+    const it = { kind: 'tm', legend: true, used: false, member: m, cards: rollCards(m, { floor: '유니크', legend: true, types: this.player.typesOf(m) }), flipped: [false, false, false], sel: -1 };
     this.tmActive = it;
     this.toggleOverlay('tm');
     Sfx.play('mega');
@@ -1224,14 +1322,14 @@ export default class GameScene extends Phaser.Scene {
 
   spawnPickup(kind, x, y, id, still = false) {
     // 아이템·상처약은 가방과 같은 본가 그림을 16칸 크기로 (월드 배율만큼 곱게 줄여 둔다). 그림이 없으면 도트 아이콘
-    const artId = kind === 'item' ? id : kind === 'potion' ? 'potion' : null, art = artId && itemArt(this, artId, 16 * ZOOM);
+    const artId = kind === 'item' ? id : kind === 'potion' ? 'potion' : kind === 'candy' ? 'rare_candy' : null, art = artId && itemArt(this, artId, 16 * ZOOM);
     const img = this.physics.add.image(x, y, art || (kind === 'item' ? `it:${id}` : kind === 'potion' ? 'oran' : kind === 'formitem' ? 'megastone' : kind)).setDepth(19);   // 폼체인지 아이템은 구슬 모양 (색으로 구분)
     if (kind === 'formitem') img.setTint(FORM_ITEMS[id].color);
     if (art) { img.setDisplaySize(16, 16); img.body.setSize(10 / img.scaleX, 16 / img.scaleY); }   // 몸통도 그림 크기에 맞춰 바닥에 딱 놓이게
     else img.body.setSize(10, 10);
     if (!still) img.setVelocity(rand(-70, 70), -190);
     img.body.setBounce(.35); img.body.setDragX(120);
-    const col = kind === 'formitem' ? FORM_ITEMS[id].color : kind === 'megastone' ? 0xff8ad0 : kind === 'zcrystal' ? 0xfff6a0 : kind === 'oran' ? 0x4a7aff : kind === 'potion' ? 0xd88aff : 0xffe08a;
+    const col = kind === 'formitem' ? FORM_ITEMS[id].color : kind === 'megastone' ? 0xff8ad0 : kind === 'zcrystal' ? 0xfff6a0 : kind === 'oran' ? 0x4a7aff : kind === 'potion' ? 0xd88aff : kind === 'candy' ? 0x9ad8ff : 0xffe08a;
     const glow = this.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(col).setScale(.5).setDepth(18);
     const coll = this.physics.add.collider(img, this.layers);
     const pk = { kind, id, img, glow, coll, t: 0 };
@@ -1252,7 +1350,7 @@ export default class GameScene extends Phaser.Scene {
       this.tweens.add({ targets: c.layers, alpha: 0, duration: 380, onComplete: () => c.layers.forEach(l => l.destroy()) });
       for (let k = 0; k < 10; k++) { const [x, y] = c.sd.cells[(Math.random() * c.sd.cells.length) | 0]; this.fx.burst(x * TILE + 8, y * TILE + 8, [0x6a5a48, 0x4a4036], 1, 40, { up: 10, grav: 300, life: .5, size: 1 }); }
       Sfx.play('land');
-      if (!c.sd.reward) this.events.emit('toast', '숨겨진 굴… 하지만 막다른 길이다');
+      if (c.sd.reward === 'elite') this.events.emit('toast', '숨겨진 굴… 붉은 기운의 수문장이 지키고 있다!');
     }
   }
 
@@ -1278,6 +1376,10 @@ export default class GameScene extends Phaser.Scene {
       const worn = pl.addItem(p.id); this.runStats.items++;   // 출전 중인 포켓몬이 바로 장착 (5칸이 차 있으면 가방으로)
       this.events.emit('toast', worn ? `${ITEMS[p.id].name} → ${pl.formName()} 장착! ${ITEMS[p.id].desc}` : `${ITEMS[p.id].name} → 가방에 넣었다 (${pl.formName()} 장착 칸 ${MAX_EQUIP}개가 가득) · 가방에서 다른 포켓몬에게 장착`, p.id);
       Sfx.play('item'); this.fx.burst(pl.x, pl.y, [0xffe08a, 0xffffff], 14, 120, { glow: true });
+    } else if (p.kind === 'candy') {   // 이상한사탕: 가방에 모아 두고, 가방에서 먹일 포켓몬을 골라 경험치를 크게 채운다
+      pl.candy = (pl.candy || 0) + 1;
+      this.events.emit('toast', `이상한사탕을 얻었다! (${pl.candy}개) · 가방(${keyLabel(Settings.key('bag'))} · 초상화 터치)에서 먹일 포켓몬을 고르자`, 'rare_candy');
+      Sfx.play('item'); this.fx.burst(pl.x, pl.y, [0x9ad8ff, 0xff8ad0, 0xffffff], 16, 120, { glow: true, up: 70 });
     } else if (p.kind === 'oran') {
       pl.heal(pl.m.maxhp * .2); Sfx.play('heal');
     } else if (p.kind === 'potion') {   // 상처약: 출전 중인 포켓몬 체력 40%

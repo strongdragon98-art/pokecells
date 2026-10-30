@@ -45,6 +45,7 @@ export const PERKS = {
   u_clone: { grade: '유니크', cat: '기동', name: '분신 대시', desc: '대시한 길에 분신이 남아 지나간 적을 벤다.', max: 1, mods: { dashClone: 1 } },
   u_berserk: { grade: '유니크', cat: '능력치', name: '역린의 비늘', desc: '체력 50% 이하일 때 공격력 +35%.', max: 1, mods: { berserk: .35 } },
   u_execute: { grade: '유니크', cat: '능력치', name: '마무리 일격', desc: '체력 25% 이하인 적에게 주는 피해 +50%.', max: 1, mods: { execute: .5 } },
+  u_charge: { grade: '유니크', cat: '스킬 변이', name: '⚡ 초고압 차징 코어', desc: 'Z 홀드 차징이 3단까지 찬다 — 2단 중형 관통탄 · 3단 화면을 가르는 초대형 폭발 속성포 (피해 300%).', max: 1, mods: { chargeCore: true } },
   u_thorns: { grade: '유니크', cat: '유틸', name: '가시 갑옷', desc: '맞으면 주변 적에게 공격력 ×1.2 피해를 되돌려 준다.', max: 1, mods: { thorns: 1.2 } },
 
   // ================= 🟡 전설 (태고의 유물) =================

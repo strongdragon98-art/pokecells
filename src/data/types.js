@@ -50,6 +50,13 @@ export function typeMultiplier(atk, defTypes) {
   return m === 0 ? 0.25 : m;
 }
 
+// 상성 요약 (스킬·속성 배지 툴팁): 이 속성 기술이 강한(2배) · 약한(0.5배) · 안 통하는(0배 → 게임에선 0.25배) 상대 속성
+export function matchups(atk) {
+  const row = CHART[atk] || {}, out = { strong: [], weak: [], immune: [] };
+  for (const t of Object.keys(TYPES)) { const m = row[t]; if (m === 2) out.strong.push(t); else if (m === .5) out.weak.push(t); else if (m === 0) out.immune.push(t); }
+  return out;
+}
+
 // 배율 → 표시 등급
 export function effectiveness(m) {
   if (m >= 2) return 'super';

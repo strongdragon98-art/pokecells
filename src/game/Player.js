@@ -27,6 +27,17 @@ const TAG_IMPL = Object.assign({}, typeMoves.TAG_IMPL, base.TAG_IMPL);
 const ZMOVE_IMPL = Object.assign({}, typeMoves.ZMOVE_IMPL, base.ZMOVE_IMPL);
 const LEGEND_BODY = { w: 22, h: 32 };   // 전설 플레이어블 히트박스 = 일반 최종진화(약 18×26)의 1.25배
 const TELEPORT = 78;                    // 순간이동 거리
+// Z 홀드 차징 샷: CHG_SHOW 초부터 기운이 모이고, 단계별 시각(초)에 1·2·3단 (2·3단은 '초고압 차징 코어' 특성 카드가 있어야)
+const CHG_SHOW = .22, CHG_AT = [.72, 1.45, 2.25];
+export { CHG_SHOW, CHG_AT };   // UIScene 스킬 바: Z 칸의 차징 게이지
+// 속성 → 차징 탄 그림 (systems/ProjectileRenderer.js 의 kind)
+const CHARGE_KIND = { fire: 'fire', water: 'water', ice: 'bubble', grass: 'leaf', bug: 'leaf', electric: 'bolt', ghost: 'shadow', dark: 'shadow', poison: 'bubble', psychic: 'wave',
+  rock: 'rock', ground: 'rock', steel: 'steel', fighting: 'wave', normal: 'wave', flying: 'wave', dragon: 'wave', fairy: 'wave' };
+// 단계별 차징 탄: 1단 기본 탄 · 2단 중형 관통탄 · 3단 화면을 가르는 초대형 폭발 속성포 (피해 1단의 300%)
+const CHARGE_SHOT = [null,
+  { r: 7, mul: 3.2, speed: 330, pierce: 1, life: .9, boom: { r: 30, mul: 1.1 }, sfx: 'cshot1', shake: .006 },
+  { r: 9, mul: 4.6, speed: 440, pierce: 6, life: 1, sfx: 'cshot2', shake: .01 },
+  { r: 17, mul: 9.6, speed: 560, pierce: 99, life: 1.25, ghost: true, boom: { r: 92, mul: 4 }, sfx: 'cshot3', shake: .022 }];
 
 export class Player extends Actor {
   constructor(scene, partyKeys, x, y) {
@@ -37,9 +48,11 @@ export class Player extends Actor {
     this.formItems = new Set();                        // 폼체인지 아이템 (큰금강옥·큰백옥·큰백금옥 — data/roster.js 의 FORM_ITEMS, 그 판 동안 파티 공용)
     this.sandT = 0; this.flopT = 0;
     this.bag = {};                                      // 가방: 아무도 장착하지 않은 아이템
+    this.candy = 0;                                     // 이상한사탕 (엘리트 처치 보상 · 가방에서 먹인다)
     this.inv = 0; this.dash = null; this.dashCd = 0; this.airDash = true; this.swapCd = 0;
     this.jumpsUsed = 0; this.coyote = 0; this.jbuf = 0; this.dropT = 0; this.hurtT = 0; this.speedBuff = 0;
     this.action = null; this.combo = 0; this.comboT = 0; this.zBuf = 0;
+    this.chg = { t: 0, lvl: 0, st: 0 }; this.diveCd = 0;   // Z 홀드 차징 · 공중 내려찍기
     const self = this;                                 // mega.active = 출전 포켓몬이 메가진화했는가 (포켓몬마다, 그 판 끝까지 유지)
     this.mega = { stones: 0, get active() { return self.m.mega; }, set active(v) { self.m.mega = v; } };
     this.z = { has: false, cd: 0 };                    // Z크리스탈 · Z기술 재사용 대기
@@ -50,6 +63,7 @@ export class Player extends Actor {
     this.b.setCollideWorldBounds(true);
     this.sprite.setDepth(22);
     this.aura = scene.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setDepth(21).setVisible(false);
+    this.chgAura = scene.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setDepth(23).setVisible(false);   // 차징 기운
     for (const m of this.members) m.maxhp = m.hp = this.maxHpOf(m);   // 모습별 체력 배율(잉어킹 0.55)까지 반영
     this.applyVisual();
   }
@@ -61,7 +75,8 @@ export class Player extends Actor {
       key: k, sp, maxhp: sp.hp, hp: sp.hp, cd: { z: 0, x: 0, c: 0 }, alive: true,
       tier: 0, exp: 0, mega: false, megaPick: 0, items: {}, perks: {}, mods: computeMods({}, {}),   // perks: 기술머신 특성 카드 (game/Perks.js)
       skills: { ...(sp.evo[0].skills || sp.skills) }, ups: new Set(), atkBonus: 1, cdBonus: 1,   // 기술머신: 바꿔 단 기술 · 받은 강화 카드 · 숙련 보너스
-      learned: Object.values(sp.evo[0].skills || sp.skills)   // 배운 기술 전부 (가방 → 기술에서 Z·X·C 자리에 골라 넣는다)
+      learned: Object.values(sp.evo[0].skills || sp.skills),   // 배운 기술 전부 (가방 → 기술에서 Z·X·C 자리에 골라 넣는다)
+      chargeType: null   // 차징 샷·내려찍기 속성 (듀얼 타입은 가방에서 두 속성 중 고른다 · null 이면 첫 속성)
     };
   }
 
@@ -86,6 +101,9 @@ export class Player extends Actor {
   // 고른 메가(리자몽·뮤츠 X/Y) · 모습별 타입 · 모습별 능력치 배율(잉어킹 → 갸라도스 10배)
   megaOf(m = this.m) { return m.sp.megas[m.megaPick || 0] || m.sp.mega; }
   typesOf(m = this.m) { return (m.mega && this.megaOf(m).types) || this.form(m).types || m.sp.types; }
+  // 차징 샷·내려찍기 속성: 듀얼 타입이면 가방에서 고른 쪽 (모습이 바뀌어 그 속성이 없어지면 첫 속성)
+  chargeType(m = this.m) { const t = this.typesOf(m); return t.includes(m.chargeType) ? m.chargeType : t[0]; }
+  setChargeType(m, type) { if (!this.typesOf(m).includes(type)) return false; m.chargeType = type; return true; }
   statOf(k, m = this.m) { const s = this.form(m).stat; return s && s[k] !== undefined ? s[k] : 1; }
   // 일시 강화: 똬리틀기·용의춤 등 (atk·speed 배율, guard = 받는 피해 배율)
   addBuff(o) {
@@ -213,6 +231,17 @@ export class Player extends Actor {
     sc.events.emit('swap', this);
   }
 
+  // ---------------- 이상한사탕 (파티 공용 · 가방에서 먹일 포켓몬을 고른다) ----------------
+  //  다음 진화까지 필요한 경험치의 40%를 바로 채운다 (차면 그 자리에서 진화). 3단(최종)이면 체력을 모두 회복하고 공격력 +3%
+  feedCandy(m) {
+    if (!this.candy) return null;
+    this.candy--;
+    if (m.tier >= EVO_EXP.length) { m.atkBonus = (m.atkBonus || 1) * 1.03; m.alive = true; m.hp = m.maxhp; return { maxed: true }; }
+    const lo = m.tier ? EVO_EXP[m.tier - 1] : 0, gain = Math.ceil((EVO_EXP[m.tier] - lo) * .4), t0 = m.tier;
+    this.addExp(gain, m);
+    return { gain, evolved: m.tier > t0 };
+  }
+
   // ---------------- 아이템 장착 (포켓몬마다) ----------------
   // 주운 아이템은 출전 중인 포켓몬이 바로 장착한다 (장착 칸 5개가 차 있으면 가방으로). 가방(I)에서 장착하거나 빼 둘 수 있다.
   //  반환: true 장착 · false 가방에 넣음
@@ -258,7 +287,7 @@ export class Player extends Actor {
   update(dt, inp) {
     const sc = this.scene, b = this.b, sp = this.sp;
     this.lastInput = inp;
-    this.inv -= dt; this.dashCd -= dt; this.swapCd -= dt; this.comboT -= dt; this.zBuf -= dt; this.dropT -= dt; this.hurtT -= dt; this.speedBuff -= dt;
+    this.inv -= dt; this.dashCd -= dt; this.swapCd -= dt; this.diveCd -= dt; this.comboT -= dt; this.zBuf -= dt; this.dropT -= dt; this.hurtT -= dt; this.speedBuff -= dt;
     this.z.cd = Math.max(0, this.z.cd - dt);
     for (const m of this.members) for (const k in m.cd) m.cd[k] = Math.max(0, m.cd[k] - dt);
     for (const bf of this.buffs) bf.t -= dt;
@@ -293,6 +322,12 @@ export class Player extends Actor {
       else { Sfx.play('dash'); this.squash(1.3, .75); }
     }
 
+    // 공중 내려찍기: 공중에서 ↓ + Z (모든 포켓몬 공통) — 바닥을 강타하는 충격파 · 적 머리 밟기 · 위기 탈출
+    if (inp.zP && (inp.downAim ?? inp.down) && !this.onGround && !this.dash && this.diveCd <= 0 && !(this.action && (this.action.dive || this.action.noDash || this.action.slot === 'zmove'))) {
+      inp.zP = false; this.zBuf = 0;
+      this.startDive(dir);
+    }
+    this.updateCharge(dt, inp);
     // 스킬 (Z는 입력 버퍼로 콤보)
     if (inp.zP) this.zBuf = .25;
     if (!this.dash && (!this.action || this.action.cancel)) {
@@ -325,7 +360,12 @@ export class Player extends Actor {
       const mm = a ? (a.mm ?? .3) : 1;
       const target = dir * speed * mm + (this.windT > 0 ? this.windV : 0), acc = (this.onGround ? 1500 : 1000) * dt, v = b.velocity.x;   // 칠색조 폭풍 날개짓 등 바람에 밀린다
       b.setVelocityX(v < target ? Math.min(v + acc, target) : Math.max(v - acc, target));
-      if (dir && !(a && a.lockFace) && dir !== this.face) { this.face = dir; this.refacing(); }
+      // 방향 전환: 행동 중에도 좌우 입력으로 바로 돌아선다 (불꽃세례·화염방사·연사·시전 대기 중 조준 전환 — 뒤따르는 탄도 새 방향으로)
+      //  lockFace: 'hard' 인 행동만 막는다 (돌진처럼 속도를 직접 다루는 ctrl 행동은 위에서 따로 처리)
+      if (dir && !(a && a.lockFace === 'hard') && dir !== this.face) {
+        this.face = dir; this.refacing();
+        if (a && a.t > .02) this.scene.fx.ghost(this.sprite, typeColor(this.types[0]), .3, 120);   // 시전 중 돌아서는 잔상
+      }
     }
 
     // 점프 (코요테 타임 + 입력 버퍼 + 다단 점프 + 발판 내려가기)
@@ -456,6 +496,10 @@ export class Player extends Actor {
     } else {
       action = SKILL_IMPL[id](this, 0);
       m.cd[slot] = this.cdOf(id);
+      // 시전 오라: 기술 속성 색 고리 + 발밑에서 피어오르는 불티 (X·C 기술 공통)
+      const col = typeColor(SKILLS[id].type), sc = this.scene;
+      sc.fx.ring(this.x, this.y, 22, col, 220); sc.fx.glow(this.x, this.y, 22, col, 180, .6);
+      sc.fx.embers(this.x, this.bottom - 4, [col, 0xffffff], 6, { speed: 50 });
       if (this.mods.orbCost && slot !== 'z') this.selfDamage(m.maxhp * .03);
     }
     this.startAction(action, slot);
@@ -482,6 +526,133 @@ export class Player extends Actor {
     this.sprite.anims.timeScale = 1;
     if (a.end) a.end(this, a);
     if (a.comboStep && !interrupted) { this.combo = (this.combo + 1) % 3; this.comboT = .45; }
+  }
+
+  // ---------------- 공중 내려찍기 (↓ + Z, 공중) ----------------
+  //  고른 속성(차징 속성) 기운을 두르고 바닥으로 초고속 강하 (좌우를 누르고 있으면 대각선).
+  //  떨어지는 길에 적 머리를 밟으면 피해를 주고 위로 튕겨 오른다 (공중 대시·점프 회복 → 위기 탈출)
+  //  바닥에 닿는 순간 충격파: 둘레 광역 피해 + 경직 (높이 떨어질수록 세다) · 금 간 벽·바닥·상자도 부순다
+  startDive(dir) {
+    const sc = this.scene, type = this.chargeType(), col = typeColor(type), y0 = this.y;
+    if (this.action) this.endAction(true);
+    this.chg.t = 0; this.chg.lvl = 0;
+    this.diveCd = .45;
+    Sfx.play('dive');
+    this.squash(.7, 1.35);
+    sc.fx.ring(this.x, this.y, 16, col, 200);
+    this.startAction({
+      dur: 1.6, ctrl: true, dive: true, anim: 'Strike', inv: .25,
+      update: (p, a, dt) => {
+        if (a.landed) { p.b.setVelocityX(p.b.velocity.x * .6); return; }
+        p.b.setVelocity(dir * 150, 720);
+        a.gt = (a.gt || 0) - dt;
+        if (a.gt <= 0) {   // 속성 잔상 + 속도선
+          a.gt = .028;
+          sc.fx.ghost(p.sprite, col, .5, 200);
+          sc.fx.burst(p.x + (Math.random() - .5) * 10, p.y - 10, [col, 0xffffff], 2, 30, { angle: -Math.PI / 2, spread: .4, grav: 0, bounce: false, glow: true, life: .22, size: 1 });
+        }
+        // 머리 밟기: 발밑에 닿은 적
+        const foot = { x: p.x - p.b.width / 2 - 2, y: p.bottom - 6, w: p.b.width + 4, h: 12 };
+        const hit = sc.combat.enemiesIn(foot).find(e => !e.intangible);
+        if (hit && !a.stomped) {
+          a.stomped = true;
+          sc.combat.damageEnemy(hit, p.atk * 1.8, type, { heavy: true, stun: .5, kb: dir * 60, kby: 120, hx: p.x, hy: p.bottom, hs: 70 });
+          sc.fx.ring(p.x, p.bottom, 26, col, 260); sc.fx.starburst(p.x, p.bottom, col, 1.1, { debris: true });
+          p.b.setVelocity(dir * 90, -330); p.airDash = true; p.jumpsUsed = Math.min(p.jumpsUsed, 1);   // 튕겨 올라 다시 움직일 수 있다
+          p.inv = Math.max(p.inv, .35); p.squash(1.35, .7);
+          a.landed = true; a.dur = a.t + .12;
+          return;
+        }
+        if (p.onGround && a.t > .02) this.diveSlam(a, type, col, Math.max(0, p.y - y0));
+      }
+    }, 'dive');
+  }
+  diveSlam(a, type, col, fall) {
+    const sc = this.scene, s = this.mods.sizeMul * this.fxMul, R = (50 + Math.min(40, fall * .12)) * s, x = this.x, by = this.bottom;
+    a.landed = true; a.dur = a.t + .26;
+    this.b.setVelocity(0, 0); this.squash(1.55, .58); this.inv = Math.max(this.inv, .3);
+    const mul = 2.2 + Math.min(1.4, fall / 220);   // 높이 떨어질수록 세다
+    sc.combat.hitCircle(x, by - 8, R, mul, type, { heavy: true, stun: .7, kbx: 240, kby: -280, hs: 90 });
+    // 충격파: 바닥을 따라 양쪽으로 퍼지는 흙먼지 · 속성 고리 2겹 · 섬광
+    sc.fx.ring(x, by - 4, R, col, 340); sc.fx.ring(x, by - 4, R * .62, 0xffffff, 260);
+    sc.fx.glow(x, by - 6, R * .8, col, 300, .9);
+    for (const d of [-1, 1]) for (let k = 1; k <= 6; k++) {
+      const gx = x + d * k * R / 6, gb = sc.groundBelow(gx, by - 24);
+      sc.time.delayedCall(k * 22, () => sc.fx.burst(gx, gb - 1, [col, 0xd8c8a8, 0xffffff], 3, 90, { angle: -Math.PI / 2 + d * .5, spread: .7, up: 60, life: .45 }));
+    }
+    sc.fx.starburst(x, by - 4, col, 1.4, { debris: true });
+    sc.fx.burst(x, by - 2, [col, 0xffffff], 18, 180, { up: 120, glow: true });
+    sc.fx.hitStop(70); sc.fx.shake(.016, 260, 'hit');
+    Sfx.play('slam');
+  }
+
+  // ---------------- Z 홀드 차징 샷 ----------------
+  //  Z 를 짧게 누르면 평소 평타. 꾹 누르고 있으면 몸 둘레에 속성 기운이 모이고(소리도 단계마다 높아진다), 떼는 순간 앞으로 차징 탄을 쏜다
+  //  1단 기본 탄 · 2단 중형 관통탄 · 3단 화면을 가르는 초대형 폭발 속성포 (2·3단은 '초고압 차징 코어' 특성 카드)
+  updateCharge(dt, inp) {
+    const c = this.chg, a = this.action, sc = this.scene;
+    const blocked = this.dash || (a && (a.dive || a.slot === 'zmove' || a.slot === 'charge'));
+    if (inp.zH && !blocked) {
+      c.t += dt;
+      const max = this.mods.chargeCore ? 3 : 1;
+      let lvl = 0; for (let k = 0; k < max; k++) if (c.t >= CHG_AT[k]) lvl = k + 1;
+      const col = typeColor(this.chargeType());
+      if (lvl > c.lvl) {   // 한 단계 찼다: 칭! + 고리
+        c.lvl = lvl;
+        Sfx.play('charged');
+        sc.fx.ring(this.x, this.y, 18 + lvl * 8, lvl >= 3 ? 0xffffff : col, 260);
+        sc.fx.burst(this.x, this.y, [col, 0xffffff], 8 + lvl * 4, 70 + lvl * 20, { glow: true, grav: 0, bounce: false, life: .35 });
+      }
+      if (c.t >= CHG_SHOW) {
+        // 기운이 몸 쪽으로 빨려 든다 (단계가 오를수록 많이 · 크게)
+        const n = 1 + (c.lvl >= 2 ? 1 : 0) + (c.lvl >= 3 ? 1 : 0), R = 30 + c.lvl * 6;
+        for (let k = 0; k < n; k++) {
+          const ang = Math.random() * Math.PI * 2, px = this.x + Math.cos(ang) * R, py = this.y + Math.sin(ang) * R * .8;
+          sc.fx.burst(px, py, [col, 0xffffff], 1, R * 3.4, { angle: ang + Math.PI, spread: .15, up: 0, grav: 0, bounce: false, glow: true, life: .26, size: c.lvl >= 2 ? 2 : 1 });
+        }
+        const pulse = 1 + Math.sin(sc.time.now / (c.lvl >= 3 ? 40 : 70)) * .12, full = c.lvl >= max;
+        this.chgAura.setVisible(true).setPosition(this.x, this.y).setTint(c.lvl >= 3 ? 0xffffff : col)
+          .setScale((.5 + Math.min(1, c.t / CHG_AT[max - 1]) * .55 + c.lvl * .18) * pulse).setAlpha(full ? .75 : .45);
+        c.st -= dt;
+        if (c.st <= 0 && c.lvl < max) { c.st = .3; Sfx.play('charge' + Math.min(3, c.lvl + 1)); }   // 모이는 소리 (단계마다 높아진다)
+        if (full && Math.floor(sc.time.now / 70) % 3 === 0) this.flash(40);   // 다 찼으면 몸이 하얗게 깜빡인다
+      }
+      return;
+    }
+    if (!inp.zH && c.lvl > 0 && !blocked) this.fireCharge(c.lvl);
+    c.t = 0; c.lvl = 0; c.st = 0;
+    this.chgAura.setVisible(false);
+  }
+
+  fireCharge(lvl) {
+    const sc = this.scene, type = this.chargeType(), col = typeColor(type), spec = CHARGE_SHOT[lvl], s = this.mods.sizeMul * this.T.proj;
+    if (this.action) this.endAction(true);
+    this.chgAura.setVisible(false);
+    this.startAction({
+      dur: lvl >= 3 ? .5 : .3, mm: lvl >= 3 ? 0 : .25, anim: 'Shoot', inv: lvl >= 3 ? .3 : 0, ev: [[.03, () => {
+        const f = this.face, x = this.x + f * 12, y = this.y - 3;
+        const q = sc.combat.spawnProjectile({
+          owner: 'player', x, y, vx: f * spec.speed, vy: 0, r: spec.r * s, mul: spec.mul, type, kind: CHARGE_KIND[type] || 'wave', color: col,
+          life: spec.life, pierce: spec.pierce, ghost: !!spec.ghost, light: true, tier: Math.max(this.tierIdx, lvl), pow: s * (1 + lvl * .25), stream: false,
+          boom: spec.boom && { r: spec.boom.r * (1 + (s - 1) * .6), mul: spec.boom.mul }, kb: 200 + lvl * 80,
+          status: Object.assign({ heavy: true, hs: 50 + lvl * 25 }, lvl >= 2 ? { stun: .4 } : {}),
+          update: (q, dt) => {   // 꼬리: 속성 파편 · 3단은 굵은 빛줄기가 남는다
+            q.tt = (q.tt || 0) - dt;
+            if (q.tt <= 0) { q.tt = lvl >= 3 ? .012 : .03; sc.fx.burst(q.x - f * q.r, q.y + (Math.random() - .5) * q.r, [col, 0xffffff], lvl, 40, { grav: 0, bounce: false, glow: true, life: .3, size: lvl >= 2 ? 2 : 1 }); }
+            if (q.beam) { const L = Math.min(q.x0, q.x), W = Math.abs(q.x - q.x0); q.beam.clear().fillStyle(col, .35).fillRect(L, q.y - q.r * .9, W, q.r * 1.8).fillStyle(0xffffff, .55).fillRect(L, q.y - q.r * .3, W, q.r * .6); }
+          },
+          onExpire: q => { if (q.beam) { const bm = q.beam; q.beam = null; sc.tweens.add({ targets: bm, alpha: 0, duration: 420, onComplete: () => bm.destroy() }); } }
+        });
+        if (lvl >= 3) { q.x0 = x; q.beam = sc.add.graphics().setDepth(28).setBlendMode(Phaser.BlendModes.ADD); sc.cameras.main.flash(180, 255, 255, 255, true); sc.fx.hitStop(60); }
+        // 발사 반동 · 섬광
+        sc.fx.glow(x, y, (14 + lvl * 10) * s, col, 220, 1); sc.fx.ring(x, y, (12 + lvl * 10) * s, 0xffffff, 220);
+        sc.fx.burst(x, y, [col, 0xffffff], 8 + lvl * 6, 140, { angle: f > 0 ? 0 : Math.PI, spread: .9, up: 10, glow: true, life: .3 });
+        this.b.setVelocityX(-f * (60 + lvl * 50));
+        sc.fx.shake(spec.shake, 160 + lvl * 60, 'hit');
+        Sfx.play(spec.sfx);
+        this.squash(.8, 1.2);
+      }]]
+    }, 'charge');
   }
 
   // ---------------- 교대 (Tag) ----------------
@@ -586,7 +757,9 @@ export class Player extends Actor {
     this.flash(100); this.hurtT = .25; this.inv = .85;
     sc.fx.hitStop(60); sc.fx.shake(eff === 'super' ? .012 : .007, 160);
     sc.fx.burst(this.x, this.y, [0xff5a5a, 0xffffff], 8, 100);
-    Sfx.play('hurt');
+    const big = eff === 'super' || d >= this.m.maxhp * .22;   // 큰 피격: 더 깊은 충격음 + 더 진한 붉은 테두리
+    Sfx.play(big ? 'hurt_big' : 'hurt');
+    sc.events.emit('hurt', big ? .9 : .58);   // UIScene: 화면 가장자리 붉은 비네팅 점멸 (충격음과 같은 순간)
     if (o.slow) this.slowT = o.slow;
     if ((!this.mega.active && !this.pas.superArmor) || o.force) {   // 메가·슈퍼아머(애버라스 계열)는 경직·넉백 없음
       const dir = Math.sign(this.x - srcX) || -this.face;
@@ -613,7 +786,7 @@ export class Player extends Actor {
     else sc.gameOver(false);
   }
 
-  destroy() { this.aura.destroy(); super.destroy(); }
+  destroy() { this.aura.destroy(); this.chgAura.destroy(); super.destroy(); }
 }
 
 export { ITEMS };

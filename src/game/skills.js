@@ -322,13 +322,29 @@ export const SKILL_IMPL = {
       tick(p, a, dt, set) {
         for (const e of set) if (!a.done?.has(e)) {
           a.done = a.done || new Set(); a.done.add(e);
-          if (e.alive) p.scene.combat.damageEnemy(e, Math.max(1, e.hp * (e.boss ? bpct : pct)), 'none', { hs: 90 });
+          if (!e.alive) continue;
+          p.scene.combat.damageEnemy(e, Math.max(1, e.hp * (e.boss ? bpct : pct)), 'none', { hs: 90, heavy: true });
+          // 위아래 송곳니가 맞물리는 두 줄 검기 + 피처럼 튀는 파편
+          const fx = p.scene.fx, s = sizeMul(p);
+          fx.slash(e.x - p.face * 10, e.y - 6, 12 * s, p.face, 0, { pal: [0xfff0c0, 0xffffff, 0xffffff], a0: -.9, a1: .9, thick: 6 * s, ms: 160 });
+          fx.slash(e.x - p.face * 10, e.y + 4, 12 * s, p.face, 0, { pal: [0xfff0c0, 0xffffff, 0xffffff], a0: -.9, a1: .9, flipV: true, thick: 6 * s, ms: 160, delay: 40 });
+          fx.burst(e.x, e.y, [0xff5a5a, 0xfff0c0, 0xffffff], 14, 140, { up: 70, size: 2 });
+          fx.ring(e.x, e.y, 20 * s, 0xfff0c0, 220);
         }
       }
     });
   },
   quick_attack(p) {
-    return dashAction(p, { dur: .13, vx: 640, mul: 1.2, type: 'normal', color: 0xffffff, end(p) { p.jumpsUsed = Math.min(p.jumpsUsed, 1); } });
+    // 전광석화: 흰 빛줄기 잔상을 길게 남기며 순식간에 내달린다 (출발·도착에 섬광 고리)
+    const sc = p.scene, x0 = p.x, y0 = p.y;
+    sc.fx.ring(x0, y0, 16, 0xffffff, 200); sc.fx.glow(x0, y0, 20, 0xffffff, 160, .9);
+    return dashAction(p, { dur: .13, vx: 640, mul: 1.2, type: 'normal', color: 0xffffff,
+      tick(p) { sc.fx.burst(p.x - p.face * 8, p.y + (Math.random() - .5) * 10, [0xffffff, 0xfff6c0], 2, 30, { angle: p.face > 0 ? Math.PI : 0, spread: .2, up: 0, grav: 0, bounce: false, glow: true, life: .25, size: 1 }); },
+      end(p) {
+        p.jumpsUsed = Math.min(p.jumpsUsed, 1);
+        lineFx(sc, x0, y0, p.x, p.y, 0xfff6c0, { seg: 3, jag: 2, w: 3, ms: 220 });
+        sc.fx.ring(p.x, p.y, 18, 0xffffff, 220); sc.fx.burst(p.x, p.y, [0xffffff, 0xfff6c0], 10, 90, { glow: true, life: .3 });
+      } });
   },
 
   // ===== 피카츄 =====
@@ -360,15 +376,33 @@ export const SKILL_IMPL = {
     const m = p.mega.active;
     return dashAction(p, {
       dur: .3, vx: 420, mul: 2.4, type: 'electric', status: { paralyze: .3 }, color: 0xffe040,
-      tick(p) { p.scene.fx.embers(p.x, p.y, [0xffe040, 0xffffff], 2, { speed: 60 }); },
-      end(p) { if (!m) p.selfDamage(p.m.maxhp * .04); }
+      tick(p, a) {
+        const sc = p.scene;
+        sc.fx.embers(p.x, p.y, [0xffe040, 0xffffff], 2, { speed: 60 });
+        a.zt = (a.zt || 0) - .016;   // 몸을 휘감는 번개 갈래
+        if (a.zt <= 0) { a.zt = .05; const ang = Math.random() * Math.PI * 2; lineFx(sc, p.x, p.y, p.x + Math.cos(ang) * 22, p.y + Math.sin(ang) * 18, 0xffe040, { seg: 4, jag: 6, w: 2, ms: 90 }); }
+      },
+      end(p) {
+        const sc = p.scene;
+        sc.fx.ring(p.x, p.y, 30, 0xffe040, 260); sc.fx.glow(p.x, p.y, 30, 0xfff6a0, 220, 1);
+        for (let k = 0; k < 4; k++) { const ang = Math.PI * 2 * k / 4 + .4; lineFx(sc, p.x, p.y, p.x + Math.cos(ang) * 40, p.y + Math.sin(ang) * 30, 0xffe040, { seg: 5, jag: 7, w: 2, ms: 180 }); }
+        Sfx.play('zap');
+        if (!m) p.selfDamage(p.m.maxhp * .04);
+      }
     });
   },
 
   // ===== 주뱃 =====
   leech_life(p, i) {
     const vf = up(p, 'vampire_fang');   // 강화 카드 흡혈귀의 송곳니: 흡혈 +20% · 사거리 +30%
-    return { dur: .22, mm: .4, anim: 'Attack', ev: [[.07, () => slashHit(p, { fwd: 12, w: 22, h: 18, mul: 1, type: 'poison', status: { lifesteal: (p.mega.active ? .4 : .25) + (vf ? .2 : 0) }, color: 0xd07aff, flipV: i === 1, reach: vf ? 1.3 : 1 })]] };
+    return { dur: .22, mm: .4, anim: 'Attack', ev: [[.07, () => {
+      const n = slashHit(p, { fwd: 12, w: 22, h: 18, mul: 1, type: 'poison', status: { lifesteal: (p.mega.active ? .4 : .25) + (vf ? .2 : 0) }, color: 0xd07aff, flipV: i === 1, reach: vf ? 1.3 : 1 });
+      if (n) {   // 빨아들인 생명력: 붉은 알갱이가 적에게서 몸으로 흘러 들어온다
+        const sc = p.scene, ex = p.x + p.face * 18;
+        for (let k = 0; k < 6; k++) sc.time.delayedCall(k * 25, () => sc.fx.burst(ex + (Math.random() - .5) * 10, p.y + (Math.random() - .5) * 10, [0xff5a8a, 0xd07aff], 1, 160, { angle: p.face > 0 ? Math.PI : 0, spread: .3, up: 0, grav: 0, bounce: false, glow: true, life: .16, size: 2 }));
+        sc.fx.glow(p.x, p.y, 16, 0xff7aa0, 200, .7);
+      }
+    }]] };
   },
   supersonic(p) {
     const st = up(p, 'sonic_storm'), m = p.mega.active || st;   // 강화 카드 음파 폭풍: 사방 · 범위 ×1.6 · 위력 ×1.5
@@ -378,6 +412,9 @@ export const SKILL_IMPL = {
         if (m) sc.combat.hitCircle(p.x, p.y, 90 * s, st ? 2.1 : 1.4, 'normal', { confuse: 1.6, kbx: 60, kby: -40 });
         else sc.combat.hitRect({ x: p.face > 0 ? p.x : p.x - 92 * s, y: p.y - 22 * s, w: 92 * s, h: 44 * s }, 1.4, 'normal', { confuse: 1.6, kbx: 60, kby: -40 });
         for (let k = 1; k <= 4; k++) sc.time.delayedCall(k * 45, () => sc.fx.ring(m ? p.x : p.x + p.face * k * 20 * s, p.y, (m ? 22 * k : 10 + k * 5) * s, 0xc8b0ff, 220));
+        // 음파 알갱이: 퍼지는 고리 사이로 보랏빛·흰 알갱이가 진동하며 흩어진다
+        sc.fx.burst(m ? p.x : p.x + p.face * 30 * s, p.y, [0xc8b0ff, 0xffffff, 0x9a7aff], 18, 160 * s, m ? { grav: 0, bounce: false, glow: true, life: .4 } : { angle: p.face > 0 ? 0 : Math.PI, spread: .8, grav: 0, bounce: false, glow: true, life: .4 });
+        sc.fx.glow(p.x + p.face * 12, p.y, 18 * s, 0xc8b0ff, 200, .8);
         Sfx.play('wave');
       }]]
     };
@@ -428,7 +465,15 @@ export const SKILL_IMPL = {
     };
   },
   counter(p) {
-    return { dur: p.mega.active ? .9 : .6, mm: 0, anim: 'Idle', guard: 'counter', tintFill: 0x8ad8ff };
+    // 카운터 자세: 몸 둘레에 하늘색 방어 결계가 맥박치고, 결계 위로 빛 알갱이가 돈다 (맞으면 Player.takeHit 가 반격)
+    const sc = p.scene;
+    return { dur: p.mega.active ? .9 : .6, mm: 0, anim: 'Idle', guard: 'counter', tintFill: 0x8ad8ff,
+      update(p, a, dt) {
+        a.rt = (a.rt || 0) - dt;
+        if (a.rt <= 0) { a.rt = .14; sc.fx.ring(p.x, p.y, 22, 0x8ad8ff, 200); }
+        const ang = a.t * 12;
+        for (let k = 0; k < 2; k++) sc.fx.burst(p.x + Math.cos(ang + k * Math.PI) * 18, p.y + Math.sin(ang + k * Math.PI) * 14, [0x8ad8ff, 0xffffff], 1, 6, { grav: 0, bounce: false, glow: true, life: .16, size: 1 });
+      } };
   },
 
   // ===== 고오스 =====
@@ -698,7 +743,9 @@ export const SKILL_IMPL = {
   // 강철날개(강철): 은빛 날개를 펴고 비스듬히 치고 나간다
   steel_wing(p) {
     p.scene.fx.slash(p.x - p.face * 4, p.y - 2, 15 * sizeMul(p), p.face, 0, { pal: SLASH_PAL.steel, a0: -1.6, a1: .4, thick: 7 });
-    return dashAction(p, { dur: .24, vx: 380, vy: -40, mul: 1.9, type: 'steel', color: 0xd8e4f4, end(p) { p.jumpsUsed = Math.min(p.jumpsUsed, 1); } });
+    return dashAction(p, { dur: .24, vx: 380, vy: -40, mul: 1.9, type: 'steel', color: 0xd8e4f4,
+      tick(p) { if (Math.random() < .6) p.scene.fx.burst(p.x - p.face * 6, p.y, [0xd8e4f4, 0xffffff, 0x8a94b0], 1, 50, { up: 10, grav: 200, glow: true, life: .3, size: 1 }); },   // 강철 날개에서 튀는 쇳가루
+      end(p) { p.jumpsUsed = Math.min(p.jumpsUsed, 1); p.scene.fx.slash(p.x - p.face * 4, p.y - 2, 15 * sizeMul(p), p.face, 0, { pal: SLASH_PAL.steel, a0: -.4, a1: 1.6, flipV: true, thick: 7 }); } });
   },
   // 냉동펀치(얼음): 얼음 주먹 — 맞은 적을 가끔 얼린다
   ice_punch(p) {
@@ -717,6 +764,43 @@ export const SKILL_IMPL = {
         const s = sizeMul(p);
         for (let k = 0; k < 5; k++) rockPillar(p, p.x + p.face * (20 + k * 18) * s, { delay: k * .07, type: 'rock', mul: 1.4, h: 28 + k * 4, w: 9, sharp: true, crit: .25 });
       }]]
+    };
+  },
+  // 기가임팩트: 몸을 웅크려 황금빛 기운을 모았다가(0.28초) 앞으로 폭주 돌진 → 멈춰 서는 자리에서 거대한 충격 폭발. 쓴 뒤 반동으로 잠깐 굳는다
+  giga_impact(p) {
+    const sc = p.scene, s = sizeMul(p), set = new Set(), GOLD = [0xffe08a, 0xfff6d0, 0xffffff];
+    return {
+      dur: 1.25, ctrl: true, anim: 'Attack', inv: .75, noDash: true,
+      update(p, a, dt) {
+        if (a.t < .28) {   // 모으기: 금빛 알갱이가 몸으로 빨려 들고 몸이 납작해진다
+          p.b.setVelocity(0, p.b.velocity.y);
+          const ang = Math.random() * Math.PI * 2;
+          sc.fx.burst(p.x + Math.cos(ang) * 30, p.y + Math.sin(ang) * 24, GOLD, 1, 100, { angle: ang + Math.PI, spread: .2, up: 0, grav: 0, bounce: false, glow: true, life: .25 });
+          if (!a.sq) { a.sq = true; p.squash(1.3, .75); Sfx.play('charge2'); }
+          return;
+        }
+        if (a.t < .62) {   // 폭주 돌진: 길에 닿는 적을 모두 들이받는다
+          if (!a.go) { a.go = true; sc.fx.sonicBoom(p.x, p.y - 2, p.face, s * 1.3); sc.fx.shake(.008, 160, 'hit'); Sfx.play('dash'); }
+          p.b.setVelocity(p.face * 430, 0); p.b.setAllowGravity(false);
+          sc.combat.hitRect({ x: p.b.x - 8 * s, y: p.b.y - 6 * s, w: p.b.width + 16 * s, h: p.b.height + 12 * s }, 2.6, 'normal', { set, heavy: true, kbx: 340, kby: -200, onHit: e => sc.fx.starburst(e.x, e.y - 2, 0xffe08a, 1.2, { debris: true }) });
+          a.gt = (a.gt || 0) - dt;
+          if (a.gt <= 0) { a.gt = .025; sc.fx.ghost(p.sprite, 0xffe08a, .6, 240); sc.fx.burst(p.x - p.face * 10, p.y, GOLD, 2, 60, { grav: 0, bounce: false, glow: true, life: .3 }); }
+          return;
+        }
+        if (!a.boom) {   // 충격 폭발: 금빛 고리 3겹 + 파편 + 땅 울림
+          a.boom = true; p.b.setAllowGravity(true); p.b.setVelocity(-p.face * 120, -80);
+          const x = p.x + p.face * 18 * s, y = p.y, R = 64 * s;
+          sc.combat.hitCircle(x, y, R, 3.4, 'normal', { heavy: true, stun: .6, kbx: 320, kby: -260, hs: 110 });
+          [0, 70, 140].forEach((d, k) => sc.time.delayedCall(d, () => sc.fx.ring(x, y, R * (.6 + k * .25), k === 1 ? 0xffffff : 0xffd860, 320)));
+          sc.fx.glow(x, y, R, 0xffe08a, 360, 1); sc.fx.starburst(x, y, 0xfff0b0, 1.8, { debris: true });
+          sc.fx.burst(x, y, GOLD, 34, 240, { up: 120, glow: true });
+          sc.fx.hitStop(110); sc.fx.shake(.02, 380, 'hit'); sc.cameras.main.flash(160, 255, 240, 200, true);
+          Sfx.play('hit_heavy'); Sfx.play('boom');
+        }
+        p.b.setVelocityX(p.b.velocity.x * .85);   // 반동: 남은 시간 동안 굳는다
+        if (Math.random() < .3) sc.fx.embers(p.x, p.y, [0xffe08a, 0xffffff], 1, { speed: 20 });
+      },
+      end(p) { p.b.setAllowGravity(true); }
     };
   }
 };

@@ -234,8 +234,8 @@ export class ProjectileRenderer {
     q.frames = q.kind === 'fire' && isBlue(q.color) ? ['pj-fire-blue0', 'pj-fire-blue1', 'pj-fire-blue2'] : c.frames;
     q.tier = q.tier || 0; q.pow = q.pow || 1;   // 진화 단계(0~3)·크기 배율 — 적 투사체는 0·1
     q.glow = this.pool.get(q.x, q.y, 'glow').setBlendMode(ADD).setTint(q.kind === 'shadow' ? 0x9a5aff : q.color).setAlpha(c.glow + q.tier * .06).setDepth(29);
-    // 2단부터: 같은 모양의 큰 기운이 투사체를 감싼다 (단계가 오를수록 진하게)
-    if (q.tier >= 1) q.aura = this.pool.get(q.x, q.y, q.frames[0]).setDepth(30).setBlendMode(ADD).setTintFill(c.tint && q.color != null ? q.color : c.col[0]);
+    // 같은 모양의 큰 기운이 투사체를 감싼다 — 내 투사체는 1단부터(속성 오라 레이어), 적 투사체는 2단부터 (단계가 오를수록 진하게)
+    if (q.tier >= 1 || q.owner === 'player') q.aura = this.pool.get(q.x, q.y, q.frames[0]).setDepth(30).setBlendMode(ADD).setTintFill(c.tint && q.color != null ? q.color : c.col[0]);
     q.spr = this.pool.get(q.x, q.y, q.frames[0]).setDepth(31);
     if (c.blend) q.spr.setBlendMode(c.blend);
     if (c.tint && q.color != null) q.spr.setTint(q.color);
@@ -262,7 +262,7 @@ export class ProjectileRenderer {
     if (c.wobble) q.spr.setScale(sc * (1 + Math.sin(q.t * 18) * .08), sc * (1 - Math.sin(q.t * 18) * .08));
     else q.spr.setScale(sc);
     if (q.aura) q.aura.setTexture(q.spr.texture.key).setPosition(q.spr.x, q.spr.y).setRotation(q.spr.rotation)
-      .setScale(q.spr.scaleX * 1.3, q.spr.scaleY * 1.3).setAlpha((.14 + q.tier * .07) * (.8 + .2 * Math.sin(q.t * 24 + q.seed)));
+      .setScale(q.spr.scaleX * 1.3, q.spr.scaleY * 1.3).setAlpha((.18 + q.tier * .07) * (.8 + .2 * Math.sin(q.t * 24 + q.seed)));
     q.glow.setPosition(q.x, q.y).setScale(Math.max(.3, q.r / 8) * (1 + q.tier * .15));
   }
 
@@ -279,6 +279,16 @@ export class ProjectileRenderer {
       if (q.ghostT <= 0) { q.ghostT = .035; this.afterimage(q, 0x9aff7a); }
     }
     for (let i = q.tier >= 3 ? 3 : q.tier >= 1 ? 2 : 1; i > 0; i--) this.emit(q);
+    if (q.owner === 'player' && q.kind !== 'leaf') {
+      // 잔상 꼬리: 속성 색으로 지나온 자리에 투사체 모양이 남았다 빠진다
+      q.ghostT -= .016;
+      if (q.ghostT <= 0) { q.ghostT = q.tier >= 2 ? .03 : .045; this.afterimage(q, q.kind === 'shadow' ? 0x9a5aff : q.color); }
+      // 속성 오라: 투사체 둘레를 맴도는 불티 (밝은 속성색 + 흰색)
+      if (Math.random() < .5) {
+        const a = q.t * 16 + q.seed * 3, R = q.r * 1.7 + 2;
+        this.fx.burst(q.x + Math.cos(a) * R, q.y + Math.sin(a) * R, [q.kind === 'shadow' ? 0xc89aff : q.color, 0xffffff], 1, 12, { grav: 0, bounce: false, glow: true, life: .18, size: 1 });
+      }
+    }
   }
 
   // 꼬리 파티클 한 번 (큰 투사체는 몸통 전체에서 흩뿌린다)
@@ -474,6 +484,9 @@ export class ProjectileRenderer {
     // 단계 보너스: 2단부터 바깥으로 번지는 충격파 고리, 메가는 십자 섬광까지
     const col = q.kind === 'shadow' ? 0x9a5aff : blue ? 0x5ab0ff : q.cfg && !q.cfg.tint ? q.cfg.col[0] : q.color;
     if (T >= 1) fx.ring(x, y, (12 + T * 8) * big * .7, col, 200 + T * 50);
+    else if (q.owner === 'player') fx.ring(x, y, 9 * big, col, 170);   // 1단도 작은 충격 고리
+    // 내 투사체가 맞으면 속성 파편이 튄다 (바닥에 튕기는 굵은 조각 + 흰 불티)
+    if (q.owner === 'player') fx.burst(x, y, [col, 0xffffff, q.kind === 'shadow' ? 0x4a2a7a : col], n(5), 120 * Math.min(2, big), { up: 80, size: 2, life: .5 });
     if (T >= 3) {
       const im = this.pool.get(x, y, 'pj-flash').setBlendMode(ADD).setTint(col).setDepth(34).setScale(big * .8).setAngle(45);
       this.s.tweens.add({ targets: im, scale: big * 2.2, alpha: { from: 1, to: 0 }, duration: 180, onComplete: () => this.pool.release(im) });

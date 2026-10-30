@@ -1,6 +1,7 @@
 // 기술머신(TM): 맵 샛길 끝 제단에서 카드 3장을 뒤집어 보고 1장을 고른다 (UI 는 scenes/UIScene.showTM)
-//  카드 세 종류 — move: 타 속성 기술 습득(Z·X·C 중 하나와 교체) · up: 지금 가진 기술 강화 · perk: 특성 카드(game/Perks.js, 40종 이상)
-//  등급 4단계: 커먼 · 레어 · 유니크 · 전설 (뽑힐 확률 55 · 28 · 13 · 4%)
+//  카드 세 종류 — move: 새 액티브 기술 습득(X·C 자리에 장착/교체 · 연타 기술이 아니면 Z 도) · up: 지금 가진 기술 강화 · perk: 특성 카드(game/Perks.js, 40종 이상)
+//  3장 중 1~2장은 반드시 [기술 습득 카드] (2장일 확률 55% → 평균 절반 이상). 기술은 그 포켓몬이 원작·타입상 배울 수 있는 것만 (TM_LEARN)
+//  등급 4단계: 커먼 · 레어 · 유니크 · 전설 (특성·강화 카드가 뽑힐 확률 55 · 28 · 13 · 4%)
 //  카드는 '지금 출전 중인 포켓몬' 기준으로 뽑고, 받은 것은 그 포켓몬에게만 남는다 (Player.members[i].skills · ups)
 import { SKILLS } from './pokemon.js';
 import { PERKS } from '../game/Perks.js';
@@ -34,9 +35,42 @@ export const UPGRADES = {
   nightmare_orb: { skill: 'shadow_ball', name: '섀도볼 개조: 악몽의 구슬', grade: '전설', desc: '섀도볼 2개 추가, 폭발 반경 ×1.3.' }
 };
 
-// 다른 포켓몬도 배울 수 있는 범용 기술머신 (TM_POOL 에 없는 계열 · 자기 타입 기술은 빼고 '타 속성'만)
-const GENERIC_TM = ['crunch', 'earthquake', 'surf', 'psychic', 'flash_cannon', 'earth_power', 'iron_tail', 'stone_edge', 'dragon_claw', 'dark_pulse',
-  'ice_beam', 'thunderbolt', 'sludge_bomb', 'giga_drain', 'heat_wave', 'hurricane', 'play_rough', 'thunder_punch', 'ice_punch', 'solar_beam', 'steel_wing'];
+// 기술머신으로 배우는 액티브 기술 45종 → 배울 수 있는 포켓몬 타입 ('*' 는 거의 모두 — 파괴광선·기가임팩트·지진·유턴)
+//  포켓몬의 타입(진화·메가로 바뀐 타입 포함) 중 하나라도 들어 있으면 그 기술 카드가 나온다 (원작 기술머신·가르침 습득 경향을 타입으로 묶었다)
+export const TM_LEARN = {
+  flamethrower: ['fire', 'dragon', 'normal', 'ground', 'dark', 'poison'], fire_blast: ['fire', 'dragon', 'normal', 'ground'], heat_wave: ['fire', 'flying', 'dragon'],
+  will_o_wisp: ['fire', 'ghost', 'psychic'],
+  surf: ['water', 'ice', 'normal', 'dragon', 'ground', 'psychic'], hydro_pump: ['water', 'ice', 'dragon'], aqua_tail: ['water', 'dragon', 'ground', 'normal'],
+  solar_beam: ['grass', 'fire', 'normal', 'bug', 'dragon', 'psychic', 'rock', 'ground'], giga_drain: ['grass', 'bug', 'poison', 'ghost'], leaf_storm: ['grass', 'dragon'],
+  thunderbolt: ['electric', 'water', 'normal', 'psychic', 'dragon', 'ghost', 'steel', 'fairy'], thunder: ['electric', 'water', 'normal', 'psychic', 'dragon', 'ghost', 'steel', 'flying'],
+  thunder_punch: ['electric', 'fighting', 'fire', 'normal', 'ghost', 'ground', 'psychic', 'dragon'], wild_charge: ['electric', 'normal', 'ground', 'fighting'],
+  ice_beam: ['ice', 'water', 'normal', 'psychic', 'dragon', 'ghost', 'dark', 'steel', 'fairy'], ice_punch: ['ice', 'fighting', 'water', 'normal', 'ghost', 'psychic', 'ground', 'dragon'],
+  shadow_ball: ['ghost', 'psychic', 'dark', 'normal', 'poison', 'dragon', 'fairy', 'water', 'fire', 'electric', 'grass', 'ice'],
+  crunch: ['dark', 'dragon', 'water', 'ground', 'rock', 'normal', 'fire', 'poison', 'electric'], dark_pulse: ['dark', 'ghost', 'dragon', 'psychic', 'poison', 'water', 'fire'],
+  night_slash: ['dark', 'bug', 'grass', 'dragon', 'ghost', 'steel', 'normal'],
+  psychic: ['psychic', 'ghost', 'fairy', 'normal', 'water', 'grass', 'electric', 'poison', 'dragon', 'ice'], psyshock: ['psychic', 'fairy', 'ghost', 'dragon'],
+  close_combat: ['fighting', 'normal', 'dragon', 'grass', 'fire', 'water', 'steel', 'dark', 'bug'], drain_punch: ['fighting', 'grass', 'ghost', 'normal', 'water', 'fire', 'poison'],
+  body_press: ['fighting', 'rock', 'steel', 'ground', 'water', 'normal', 'dragon', 'grass'],
+  earthquake: '*', earth_power: ['ground', 'fire', 'rock', 'poison', 'psychic', 'grass', 'dragon', 'electric', 'steel', 'normal'],
+  stone_edge: ['rock', 'ground', 'fighting', 'dragon', 'steel', 'normal', 'fire', 'dark', 'bug'], rock_tomb: ['rock', 'ground', 'fighting', 'dragon', 'steel', 'normal', 'fire', 'water', 'ice', 'poison', 'dark'],
+  flash_cannon: ['steel', 'water', 'electric', 'psychic', 'dragon', 'rock', 'ground', 'fairy', 'ghost', 'normal'],
+  iron_tail: ['steel', 'electric', 'ground', 'rock', 'dragon', 'normal', 'water', 'fire', 'grass', 'dark', 'poison'], steel_wing: ['flying', 'steel', 'dragon', 'bug', 'poison'],
+  dragon_claw: ['dragon', 'fire', 'ground', 'rock', 'water', 'dark', 'steel', 'normal', 'grass', 'fighting'],
+  dragon_pulse: ['dragon', 'water', 'fire', 'electric', 'psychic', 'normal', 'steel', 'poison', 'flying'], draco_meteor: ['dragon'],
+  outrage: ['dragon', 'water', 'ground', 'rock', 'normal', 'fighting', 'dark', 'fire', 'grass', 'steel'],
+  hurricane: ['flying', 'dragon', 'bug', 'fire', 'water', 'psychic'], brave_bird: ['flying', 'fire', 'fighting', 'normal', 'dark'],
+  x_scissor: ['bug', 'steel', 'dark', 'grass', 'fighting', 'normal', 'ground', 'rock', 'dragon', 'water'], u_turn: '*',
+  sludge_bomb: ['poison', 'grass', 'ghost', 'water', 'dark', 'dragon', 'ground', 'rock', 'normal', 'bug', 'fire'],
+  play_rough: ['fairy', 'normal', 'dark', 'fighting', 'water', 'fire', 'grass', 'electric', 'psychic', 'dragon', 'steel', 'bug'],
+  moonblast: ['fairy', 'psychic', 'normal', 'water', 'grass', 'dragon', 'ice'],
+  hyper_beam: '*', giga_impact: '*'
+};
+// 이 포켓몬이 기술머신으로 배울 수 있는 기술 (타입 + 계열 전용 TM_POOL)
+export function learnableMoves(types, line) {
+  const ts = new Set(types || []);
+  const ids = Object.entries(TM_LEARN).filter(([, who]) => who === '*' || who.some(t => ts.has(t))).map(([id]) => id);
+  return [...new Set([...ids, ...(TM_POOL[line] || [])])].filter(id => SKILLS[id]);
+}
 
 // 카드가 모자랄 때 채우는 숙련 카드 (몇 번이고 겹친다 — 어떤 경우에도 카드 3장을 채운다)
 export const MASTERY = {
@@ -55,9 +89,16 @@ export const GRADE_STYLE = {
   전설: { en: 'LEGENDARY', border: ['#ffb703', '#ff0054'], bg: ['#3e2208', '#1e0612'], glow: 0xffb703 }
 };
 const WEIGHT = { 커먼: 55, 레어: 28, 유니크: 13, 전설: 4 };
-const MOVE_GRADE = { solar_beam: '전설', earthquake: '전설', hurricane: '유니크', psychic: '유니크', surf: '유니크', dragon_claw: '유니크', ice_beam: '유니크', thunderbolt: '유니크', stone_edge: '유니크' };
+// 기술 카드 등급: 대기술은 전설 · 주력기는 유니크 · 나머지는 레어
+const MOVE_GRADE = {
+  solar_beam: '전설', earthquake: '전설', draco_meteor: '전설', hyper_beam: '전설', giga_impact: '전설', thunder: '전설', fire_blast: '전설', hydro_pump: '전설', close_combat: '전설',
+  outrage: '전설', leaf_storm: '전설', brave_bird: '전설',
+  hurricane: '유니크', psychic: '유니크', surf: '유니크', dragon_claw: '유니크', dragon_pulse: '유니크', ice_beam: '유니크', thunderbolt: '유니크', stone_edge: '유니크', flamethrower: '유니크',
+  shadow_ball: '유니크', earth_power: '유니크', moonblast: '유니크', play_rough: '유니크', dark_pulse: '유니크', sludge_bomb: '유니크', flash_cannon: '유니크', x_scissor: '유니크',
+  drain_punch: '유니크', wild_charge: '유니크', body_press: '유니크', psyshock: '유니크', night_slash: '유니크'
+};
 // 특성 카드 분류 → 카드에 붙는 알약 글자 · 속성 부여 카드는 그 속성 색
-const PERK_TYPE = { r_burn: 'fire', r_freeze: 'ice', r_para: 'electric', r_poison: 'poison', u_curse: 'ghost', u_chain: 'electric', l_storm: 'electric', u_flame: 'fire', u_toxic: 'poison', l_hole: 'dark' };
+const PERK_TYPE = { u_charge: 'electric', r_burn: 'fire', r_freeze: 'ice', r_para: 'electric', r_poison: 'poison', u_curse: 'ghost', u_chain: 'electric', l_storm: 'electric', u_flame: 'fire', u_toxic: 'poison', l_hole: 'dark' };
 
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 function rollGrade() {
@@ -67,11 +108,12 @@ function rollGrade() {
 }
 
 // 이 포켓몬(m)이 지금 받을 수 있는 모든 카드
-function candidates(m) {
+function candidates(m, types) {
   const known = new Set([...Object.values(m.skills), ...(m.learned || [])]);   // 배웠다가 빼 둔 기술도 다시 나오지 않게
-  const types = new Set(m.sp.types || []);
-  const ids = [...new Set([...(TM_POOL[m.key] || []), ...GENERIC_TM])].filter(id => SKILLS[id] && !known.has(id) && !types.has(SKILLS[id].type));
-  const moves = ids.map(id => ({ kind: 'move', id, name: SKILLS[id].name, type: SKILLS[id].type, grade: MOVE_GRADE[id] || '레어', desc: SKILLS[id].desc, cd: SKILLS[id].cd, cat: '새 기술 · 타 속성' }));
+  const own = new Set(types || m.sp.types || []);
+  const ids = learnableMoves([...own, ...(m.sp.types || [])], m.key).filter(id => !known.has(id));
+  const moves = ids.map(id => ({ kind: 'move', id, name: SKILLS[id].name, type: SKILLS[id].type, grade: MOVE_GRADE[id] || '레어', desc: SKILLS[id].desc, cd: SKILLS[id].cd,
+    cat: own.has(SKILLS[id].type) ? '새 기술 · 자속성' : '새 기술 · 습득' }));
   const ups = Object.entries(UPGRADES).filter(([id, u]) => known.has(u.skill) && !m.ups.has(id) && SKILLS[u.skill])
     .map(([id, u]) => ({ kind: 'up', id, name: u.name, type: SKILLS[u.skill].type, grade: u.grade, desc: u.desc, skill: u.skill, cat: '기술 강화' }));
   const perks = Object.entries(PERKS).filter(([id, pk]) => ((m.perks || {})[id] || 0) < pk.max)
@@ -80,22 +122,32 @@ function candidates(m) {
 }
 
 // 출전 중인 포켓몬 m 에게 맞는 서로 다른 카드 '반드시 3장'
-//  칸마다 등급을 굴려 그 등급에서 하나 → 그 등급이 비면 가까운 등급부터 → 그래도 없으면 숙련 카드로 채운다
-//  기술 카드(습득·강화)가 있으면 첫 칸은 60% 확률로 기술 카드 중에서 고른다
-//  o.floor: 이 등급보다 낮게 나오면 끌어올린다 · o.legend: 한 장은 반드시 전설 (히든 전설 정화 보상)
+//  ① 신기술 카드 1~2장 (2장일 확률 55%) — 배울 수 있는 기술이 남아 있는 한 무조건. 등급은 대기술일수록 드물게(전설 1 : 유니크 3 : 레어 6)
+//  ② 남은 칸: 등급을 굴려 강화·특성 카드에서 하나 → 그 등급이 비면 가까운 등급부터 → 그래도 없으면 남은 기술 카드 → 숙련 카드
+//  o.floor: 이 등급보다 낮게 나오면 끌어올린다 · o.legend: 한 장은 반드시 전설 (히든 전설 정화 보상) · o.types: 지금 모습의 타입
 export function rollCards(m, o = {}) {
-  const { moves, ups, perks } = candidates(m), out = [], used = new Set(), floor = GRADES.indexOf(o.floor || '커먼');
+  const { moves, ups, perks } = candidates(m, o.types), out = [], used = new Set(), floor = GRADES.indexOf(o.floor || '커먼');
   const key = c => c.kind + ':' + c.id;
   const take = list => { const c = shuffle(list.filter(q => !used.has(key(q))))[0]; if (c) { used.add(key(c)); out.push(c); } return c; };
-  const skillCards = moves.concat(ups), all = skillCards.concat(perks);
+  const others = ups.concat(perks), all = moves.concat(others);
+  const MOVE_W = { 레어: 6, 유니크: 3, 전설: 1, 커먼: 6 };
+  const takeMove = () => {
+    const pool = moves.filter(c => !used.has(key(c)) && GRADES.indexOf(c.grade) >= floor);
+    const list = pool.length ? pool : moves.filter(c => !used.has(key(c)));
+    if (!list.length) return null;
+    let r = Math.random() * list.reduce((s, c) => s + MOVE_W[c.grade], 0);
+    for (const c of shuffle(list.slice())) { if ((r -= MOVE_W[c.grade]) < 0) { used.add(key(c)); out.push(c); return c; } }
+    return take(list);
+  };
   if (o.legend) take(all.filter(c => c.grade === '전설'));
-  else if (skillCards.length && Math.random() < .6) take(skillCards.filter(c => GRADES.indexOf(c.grade) >= floor).length ? skillCards.filter(c => GRADES.indexOf(c.grade) >= floor) : skillCards);
+  const wantMoves = Math.random() < .55 ? 2 : 1;
+  while (out.filter(c => c.kind === 'move').length < wantMoves && out.length < 3 && takeMove());
   while (out.length < 3) {
     const gi = Math.max(floor, GRADES.indexOf(rollGrade())), g = GRADES[gi];
     const order = [g, ...GRADES.slice(0, gi).reverse(), ...GRADES.slice(gi + 1)];   // 같은 등급 → 낮은 등급 → 높은 등급
     let got = null;
-    for (const gg of order) if ((got = take(all.filter(c => c.grade === gg)))) break;
-    if (!got) break;
+    for (const gg of order) if ((got = take(others.filter(c => c.grade === gg)))) break;
+    if (!got && !takeMove()) break;
   }
   for (const [id, c] of Object.entries(MASTERY)) if (out.length < 3) out.push({ kind: 'mastery', id, name: c.name, type: 'normal', grade: c.grade, desc: c.desc, cat: '숙련' });
   return shuffle(out).slice(0, 3);

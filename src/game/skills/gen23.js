@@ -342,37 +342,78 @@ export const SKILL_IMPL = {
       }]]
     };
   },
+  // 하이드로 와류 (아쿠아제트 돌격): 물줄기를 휘감고(0.1초) 아쿠아제트로 돌진 — 길의 적을 다단히트로 밀어붙인다
+  //  → 멈춘 자리 앞에 고압 물기둥 소용돌이가 솟아 둘레 적을 빨아들이며 다단히트 → 파란 충격파로 터지며 날려 보낸다
+  //  물보라 파티클 · 3겹 나선 물줄기 · 파란 쇼크웨이브 링 · 넉백. 메가: 소용돌이 1.35배 + 두 번 터진다
   muddy_water(p) {
-    const m = p.mega.active;
+    const m = p.mega.active, sc = p.scene, s = sizeMul(p) * (m ? 1.35 : 1);
+    const AQUA = [0x1a6ad0, 0x3ab0ff, 0x8ad8ff, 0xffffff];
+    const vortex = (x, delay = 0) => sc.time.delayedCall(delay, () => {
+      const gy = groundAt(p, x), H = 76 * s, W = 30 * s, cx = x;
+      const g = sc.add.graphics().setDepth(43).setBlendMode(Phaser.BlendModes.ADD), gb = sc.add.graphics().setDepth(19);
+      sc.fx.ring(cx, gy - 6, 26 * s, 0x3ab0ff, 260); sc.fx.burst(cx, gy - 2, AQUA, 16, 140, { up: 160, size: 2 });
+      Sfx.play('water');
+      sc.combat.spawnZone({
+        x: cx - W, y: gy - H, w: W * 2, h: H, life: m ? 1.15 : .95, tick: .08, type: 'water',
+        onTick: z => {   // 빨아들이며 다단히트 (가운데로 끌어당긴다)
+          sc.combat.hitRect({ x: cx - W * 1.6, y: gy - H, w: W * 3.2, h: H }, .42, 'water', { kbx: -110, kby: -70, fromX: cx, hs: 0, slow: 1.5 });
+          sc.fx.ring(cx, gy - H * (.25 + Math.random() * .6), W * (.8 + Math.random() * .5), 0x8ad8ff, 160);
+        },
+        onUpdate: (z, dt) => {
+          const k = Math.min(1, z.t * 5, (z.life - z.t) * 6), N = 16;
+          g.clear(); gb.clear();
+          gb.fillStyle(0x0a3a7a, .35 * k); gb.fillEllipse(cx, gy - 1, W * 2.6, 6);   // 바닥 물웅덩이 그림자
+          g.fillStyle(0x1a6ad0, .22 * k); g.fillRect(cx - W * .55, gy - H, W * 1.1, H);   // 물기둥 몸통
+          for (let j = 0; j < 3; j++) for (let i = 0; i <= N; i++) {   // 3겹 나선 물줄기 (위로 갈수록 넓게 휘돈다)
+            const u = i / N, ph = z.t * 15 + u * 7 + j * 2.09, wide = W * (.35 + .75 * u), px = cx + Math.sin(ph) * wide, py = gy - u * H;
+            const front = Math.cos(ph) > 0, col = front ? (j === 0 ? 0xffffff : 0x8ad8ff) : 0x3ab0ff;
+            g.fillStyle(col, (front ? .95 : .5) * k); g.fillRect(Math.round(px - 1.5), Math.round(py - 1.5), front ? 4 : 3, 3);
+          }
+          g.fillStyle(0xffffff, .8 * k); g.fillEllipse(cx, gy - H, W * 2.2 * (1 + Math.sin(z.t * 20) * .08), 7);   // 꼭대기 물보라 거품
+          if (Math.random() < .9) sc.fx.burst(cx + (Math.random() - .5) * W * 2, gy - H + Math.random() * 10, AQUA, 2, 110, { up: 120, grav: 380, life: .5, size: Math.random() < .4 ? 2 : 1 });
+          if (Math.random() < .5) sc.fx.burst(cx + (Math.random() < .5 ? -1 : 1) * W, gy - Math.random() * H, [0x8ad8ff, 0xffffff], 1, 70, { up: 30, grav: 300, life: .35, size: 1 });
+        },
+        onEnd: () => {   // 파란 쇼크웨이브로 터진다: 바깥으로 크게 날려 보낸다
+          g.destroy(); gb.destroy();
+          const cy = gy - H * .45, R = 62 * s;
+          sc.combat.hitCircle(cx, cy, R, m ? 2.6 : 2.2, 'water', { heavy: true, stun: .35, kbx: 340, kby: -260, hs: 80, onHit: e => sc.fx.starburst(e.x, e.y, 0x8ad8ff, 1.1, { debris: false }) });
+          [0, 60, 120].forEach((d, k) => sc.time.delayedCall(d, () => sc.fx.ring(cx, cy, R * (.55 + k * .3), k === 1 ? 0xffffff : 0x3ab0ff, 320)));
+          sc.fx.glow(cx, cy, R, 0x3ab0ff, 320, 1);
+          sc.fx.burst(cx, cy, AQUA, 40, 260, { up: 150, size: 2, life: .7 });
+          sc.fx.shake(.014, 260, 'hit'); Sfx.play('boom'); Sfx.play('water');
+        }
+      });
+    });
     return {
-      dur: .4, mm: .2, anim: 'Shoot', ev: [[.12, () => {
-        const sc = p.scene, s = sizeMul(p) * (m ? 1.5 : 1), dir = p.face, w = 22 * s, h = 26 * s, set = new Set(), spd = m ? 210 : 180;
-        const g = sc.add.graphics().setDepth(19), gy = groundAt(p, p.x + dir * 14);
-        sc.combat.spawnZone({
-          x: p.x + dir * 10 - w / 2, y: gy - h, w, h, life: m ? 1.7 : 1.2, tick: .05, type: 'water',
-          onTick: z => {
-            if (m && !z.re && z.t > z.life / 2) { z.re = true; set.clear(); }   // 메가: 남은 적을 한 번 더 휩쓴다
-            sc.combat.hitRect(z, m ? 2 : 2.4, 'water', { set, slow: 3, kbx: 240, kby: -140, fromX: dir > 0 ? -1e9 : 1e9 });   // 파도 방향으로 밀어낸다
-          },
-          onUpdate: (z, dt) => {
-            const nx = z.x + dir * spd * dt;
-            if (sc.isSolidAt(dir > 0 ? nx + z.w : nx, z.y + z.h * .4)) { z.t = z.life; return; }   // 벽에 부딪히면 부서진다
-            const gb = sc.groundBelow(nx + z.w / 2, z.y);
-            if (gb - (z.y + z.h) > 40) { z.t = z.life; return; }   // 낭떠러지에서 흩어진다
-            z.x = nx; z.y = gb - z.h;
-            // 흙탕물 파도: 몸통 + 앞으로 말리는 물마루
-            const k = Math.min(1, z.t * 6, (z.life - z.t) * 4), fx = dir > 0 ? z.x + z.w : z.x;
-            g.clear();
-            g.fillStyle(0x7a5a30, .75 * k); g.fillRect(z.x, z.y + z.h * .3, z.w, z.h * .7);
-            g.fillStyle(0x9a7a48, .85 * k); g.fillTriangle(z.x + (dir > 0 ? 0 : z.w), z.y + z.h * .3, fx, z.y + z.h * .3, fx + dir * 6 * s, z.y);
-            g.fillStyle(0xd8c090, .9 * k); g.fillRect(z.x, z.y + z.h * .3, z.w, 2);
-            if (Math.random() < .8) sc.fx.burst(fx, z.y + z.h * .3, [...MUD, 0x6a8ab0], 2, 50, { up: 70, grav: 300, life: .35, size: 2 });
-          },
-          onEnd: z => { g.destroy(); sc.fx.burst(z.x + z.w / 2, z.y + z.h / 2, [...MUD, 0x6a8ab0], 16, 120, { up: 80 }); }
-        });
-        sc.fx.burst(p.x + dir * 12, gy - 2, MUD, 12, 110, { up: 90 });
-        sc.fx.shake(.005, 120); Sfx.play('water');
-      }]]
+      dur: .5, ctrl: true, anim: 'Attack', inv: .3,
+      update(p, a, dt) {
+        if (a.t < .1) {   // 물줄기를 휘감는다: 파란 알갱이가 몸으로 빨려 든다
+          p.b.setVelocityX(0);
+          const ang = Math.random() * Math.PI * 2;
+          sc.fx.burst(p.x + Math.cos(ang) * 26, p.y + Math.sin(ang) * 20, AQUA, 2, 140, { angle: ang + Math.PI, spread: .2, up: 0, grav: 0, bounce: false, glow: true, life: .18 });
+          return;
+        }
+        if (a.t < .34) {   // 아쿠아제트 돌격: 몸 둘레를 나선 물줄기가 감싸고, 길의 적을 0.06초마다 때리며 밀어붙인다
+          if (!a.go) { a.go = true; sc.fx.sonicBoom(p.x, p.y - 2, p.face, s); sc.fx.ring(p.x, p.y, 20 * s, 0x3ab0ff, 220); Sfx.play('water'); }
+          p.b.setAllowGravity(false); p.b.setVelocity(p.face * 300, 0);
+          for (let j = 0; j < 3; j++) { const ph = a.t * 46 + j * 2.09; sc.fx.burst(p.x + Math.cos(ph) * 4 - p.face * 4, p.y + Math.sin(ph) * 13 * s, j ? [0x3ab0ff, 0x8ad8ff] : [0xffffff], 1, 20, { angle: p.face > 0 ? Math.PI : 0, spread: .3, up: 0, grav: 0, bounce: false, glow: true, life: .22, size: 2 }); }
+          a.tk = (a.tk || 0) - dt;
+          if (a.tk <= 0) {
+            a.tk = .06;
+            sc.combat.hitRect({ x: p.b.x - 6 * s, y: p.b.y - 6 * s, w: p.b.width + 12 * s, h: p.b.height + 12 * s }, .45, 'water', { kbx: 160, kby: -60, hs: 20, onHit: e => sc.fx.burst(e.x, e.y, AQUA, 6, 90, { up: 60, size: 2 }) });
+          }
+          a.gt = (a.gt || 0) - dt; if (a.gt <= 0) { a.gt = .03; sc.fx.ghost(p.sprite, 0x3ab0ff, .5, 200); }
+          return;
+        }
+        if (!a.vort) {   // 멈춰 서며 앞에 소용돌이를 일으킨다
+          a.vort = true; p.b.setAllowGravity(true); p.b.setVelocityX(p.face * 30);
+          const vx = p.x + p.face * 34 * s;
+          vortex(vx);
+          if (m) vortex(vx + p.face * 46 * s, 520);   // 메가: 한 번 더 앞에서
+          p.squash(1.25, .82);
+        }
+      },
+      end(p) { p.b.setAllowGravity(true); }
     };
   },
   earthquake(p) {

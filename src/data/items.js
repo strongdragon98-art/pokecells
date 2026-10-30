@@ -20,6 +20,7 @@ export const ITEMS = {
   leftovers: { name: '먹다남은음식', desc: '출전 중인 포켓몬 매초 HP 0.6% 회복', icon: 'food', art: 'leftovers' },
   shell_bell: { name: '조개껍질방울', desc: '준 피해의 6%만큼 회복', icon: 'bell', art: 'shellbell' },
   razor_claw: { name: '예리한손톱', desc: '급소율 +15%', icon: 'claw', art: 'razorclaw' },
+  scope_lens: { name: '피트렌즈', desc: '급소율 +12% · 급소 피해 +20%', icon: 'claw', art: 'scopelens' },   // 그림은 systems/Textures.js 의 도트 (엘리트 드랍)
   quick_claw: { name: '선제공격손톱', desc: '교대 쿨타임 -40%', icon: 'claw2', art: 'quickclaw' }
 };
 
@@ -54,7 +55,7 @@ export function computeMods(items, perks) {
     sizeMul: (1 + .3 * n('core_giant') + (pm.sizeAdd || 0)) * (pm.sizeMul || 1),
     regen: .006 * n('leftovers') + (pm.regen || 0),
     lifesteal: .06 * n('shell_bell') + (pm.lifesteal || 0),
-    crit: .15 * n('razor_claw') + (pm.crit || 0),
+    crit: .15 * n('razor_claw') + .12 * n('scope_lens') + (pm.crit || 0), critMul: 1 + .2 * n('scope_lens'),
     swapCdMul: Math.pow(.6, n('quick_claw')) * (pm.swapCdMul || 1)
   });
 }

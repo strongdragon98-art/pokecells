@@ -77,17 +77,148 @@ export function pixelTexture(scene, key, rows, pal, scale = 1) {
   return key;
 }
 
-export function skillIcon(scene, id) {
-  const s = SKILLS[id];
-  return pixelTexture(scene, `sk:${id}`, MAPS[s.icon] || MAPS.orb, iconPalette(typeColor(s.type)));
+// ---- 스킬 초상화: 32×32 도트 (가장 가까운 픽셀로 키워 쓴다) ----
+//  ① 속성 무늬 배경: 둥근 사각 판(속성색 3단 그라데이션 · 위 반사광 · 테두리) + 속성마다 다른 도트 무늬
+//     불꽃 소용돌이 · 물 해일 물마루 · 풀 잎사귀 · 전기 황금빛 번개 줄기 · 얼음 결정 · 고스트 보랏빛 차원 발톱 · 악 그믐 발톱 ·
+//     에스퍼 파동 고리 · 격투 충격 방사선 · 땅/바위 갈라진 지층 · 비행 바람결 · 드래곤 비늘 + 발톱 · 강철 사선 광택 · 독 거품 · 벌레 벌집 · 페어리 반짝임 · 노말 방사광
+//  ② 기술 실루엣(game-icons SVG 또는 도트 맵)을 4단 명암(반사광 · 밝음 · 중간 · 그림자) + 1px 검은 외곽선 + 바깥 빛 테두리로
+export const SKILL_ICON_PX = 32;
+const ICON_N = 32, ICON_IN = 22;
+function iconPal(type) {
+  const c = typeColor(type);
+  return { deep: shade(c, .22), dark: shade(c, .42), mid: shade(c, .75), base: c, light: shade(c, 1.4), glow: shade(c, 1.9), white: 0xffffff, ink: 0x0a0810 };
 }
-// game-icons.net 단색 SVG → 타입 색 스킬 아이콘 (64px, 매끈하게 줄여 쓴다)
-//  흰 실루엣을 틀로 삼아: 어두운 외곽선 → 타입 색 빛무리 → 위는 밝고 아래는 짙은 타입 색 그라데이션 → 윗부분 반사광
-export const SKILL_ICON_PX = 64;
+// 속성 무늬: (x, y) → 칠할 색 키 또는 null
+function iconMotif(type) {
+  const d = (x, y, cx, cy) => Math.hypot(x - cx, y - cy);
+  const nearLine = (x, y, pts, w) => { for (let i = 1; i < pts.length; i++) { const [ax, ay] = pts[i - 1], [bx, by] = pts[i], L = (bx - ax) ** 2 + (by - ay) ** 2, t = Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / L)); if (Math.hypot(x - ax - t * (bx - ax), y - ay - t * (by - ay)) <= w) return true; } return false; };
+  switch (type) {
+    case 'fire': return (x, y) => {   // 불꽃 소용돌이 + 아래에서 혀처럼 솟는 불길
+      const a = Math.atan2(y - 15, x - 16), r = d(x, y, 16, 15), sp = ((a + Math.PI * 2) % (Math.PI * 2)) * 2.1 + 3;
+      if (Math.abs(r - sp) < 1.2 || Math.abs(r - sp - 13) < 1.2) return r < 9 ? 'glow' : 'light';
+      const h = 5 + (Math.sin(x * .9) + 1) * 3.2;
+      return y > 31 - h ? (y > 31 - h * .45 ? 'light' : 'base') : null;
+    };
+    case 'water': return (x, y) => {   // 푸른 파도 해일: 두 겹 물마루 + 하얀 거품
+      const c1 = 17 + Math.sin(x * .42) * 3.2 - (x / 31) * 3, c2 = 24 + Math.sin(x * .5 + 2) * 2;
+      if (Math.abs(y - c1) < .8) return 'white';
+      if (y > c1 && y < c1 + 2.2) return 'light';
+      if (Math.abs(y - c2) < .8) return 'glow';
+      return y > c2 ? 'base' : y > c1 ? 'mid' : null;
+    };
+    case 'grass': case 'bug': if (type === 'grass') return (x, y) => {   // 잎사귀 셋 + 잎맥
+      for (const [cx, cy, an] of [[7, 8, .7], [25, 10, -.6], [8, 25, -.5], [25, 25, .6]]) {
+        const u = (x - cx) * Math.cos(an) + (y - cy) * Math.sin(an), v = -(x - cx) * Math.sin(an) + (y - cy) * Math.cos(an);
+        if ((u / 6) ** 2 + (v / 2.8) ** 2 <= 1) return Math.abs(v) < .6 ? 'glow' : v < 0 ? 'light' : 'base';
+      }
+      return null;
+    };
+    return (x, y) => {   // 벌레: 벌집 무늬
+      const q = (x + (Math.floor(y / 5) % 2) * 3) % 6, r = y % 5;
+      return r === 0 || q === 0 ? 'mid' : null;
+    };
+    case 'electric': return (x, y) => {   // 황금빛 번개 줄기 두 갈래
+      if (nearLine(x, y, [[4, 0], [11, 9], [6, 12], [14, 22], [9, 24], [16, 31]], .9)) return 'white';
+      if (nearLine(x, y, [[4, 0], [11, 9], [6, 12], [14, 22], [9, 24], [16, 31]], 1.9)) return 'glow';
+      if (nearLine(x, y, [[30, 2], [24, 10], [28, 12], [21, 21]], 1.3)) return 'light';
+      return null;
+    };
+    case 'ice': return (x, y) => {   // 얼음 결정 (눈송이 + 가지)
+      const dx = x - 16, dy = y - 16, r = Math.hypot(dx, dy), a = Math.atan2(dy, dx);
+      for (let k = 0; k < 6; k++) { const b = k * Math.PI / 3, off = Math.abs(Math.sin(a - b)) * r; if (Math.cos(a - b) > 0 && off < .8 && r < 15) return r > 11 ? 'white' : 'light'; if (Math.cos(a - b) > 0 && r > 6 && r < 13 && Math.abs(off - (r - 6) * .6) < .7) return 'glow'; }
+      return null;
+    };
+    case 'ghost': case 'dark': return (x, y) => {   // 보랏빛 차원 발톱: 세 줄 휘어진 발톱 자국 (가장자리 빛 · 속은 공허)
+      for (let k = 0; k < 3; k++) {
+        const ox = 6 + k * 8, cy = (yy) => ox + (yy - 2) * .55 + Math.sin(yy * .18) * 3;
+        if (y > 2 && y < 30) { const dd = Math.abs(x - cy(y)), w = 1.6 * Math.sin((y - 2) / 28 * Math.PI); if (dd < w * .45) return 'ink'; if (dd < w) return type === 'ghost' ? 'glow' : 'light'; }
+      }
+      return (x * 7 + y * 13) % 29 === 0 ? 'light' : null;
+    };
+    case 'psychic': return (x, y) => { const r = d(x, y, 16, 16); for (const R of [6, 10.5, 15]) if (Math.abs(r - R) < .7) return R === 10.5 ? 'glow' : 'light'; return null; };   // 파동 고리
+    case 'fighting': case 'normal': return (x, y) => {   // 충격 방사선 · 방사광
+      const a = Math.atan2(y - 16, x - 16), r = d(x, y, 16, 16), k = Math.abs(Math.sin(a * (type === 'fighting' ? 4 : 6)));
+      return r > 9 && k < (type === 'fighting' ? .12 : .09) ? (r > 13 ? 'glow' : 'light') : null;
+    };
+    case 'ground': case 'rock': return (x, y) => {   // 갈라진 지층 + 금
+      const band = Math.floor((y + Math.sin(x * .35) * 1.5) / 6);
+      if (Math.abs(x - (13 + Math.sin(y * .7) * 2)) < .7 && y > 4) return 'ink';
+      if (((y + Math.sin(x * .35) * 1.5) % 6) < 1) return 'light';
+      return band % 2 ? 'mid' : null;
+    };
+    case 'flying': return (x, y) => { for (const [cy, A] of [[9, 3], [17, 4], [25, 3]]) if (Math.abs(y - cy - Math.sin(x * .35 + cy) * A) < .7 && (x + cy) % 11 < 8) return cy === 17 ? 'white' : 'light'; return null; };   // 바람결
+    case 'dragon': return (x, y) => {   // 비늘 + 대각선 발톱
+      if (nearLine(x, y, [[3, 26], [26, 3]], .9) || nearLine(x, y, [[8, 30], [30, 8]], .9)) return 'glow';
+      const sx = (x + (Math.floor(y / 4) % 2) * 2) % 4, sy = y % 4;
+      return sy === 3 && sx < 3 ? 'mid' : null;
+    };
+    case 'steel': return (x, y) => { const k = (x + y) % 10; return k < 1 ? 'white' : k < 3 ? 'light' : null; };   // 사선 광택
+    case 'poison': return (x, y) => { for (const [cx, cy, R] of [[7, 24, 4], [24, 22, 5], [14, 8, 3], [26, 7, 2.5], [5, 12, 2]]) { const r = d(x, y, cx, cy); if (Math.abs(r - R) < .7) return 'light'; if (r < R * .4 && x < cx) return 'white'; } return null; };   // 거품
+    case 'fairy': return (x, y) => { for (const [cx, cy, R] of [[7, 7, 4], [25, 9, 3], [9, 25, 3], [24, 24, 4]]) { const ax = Math.abs(x - cx), ay = Math.abs(y - cy); if ((ax < .6 && ay <= R) || (ay < .6 && ax <= R)) return ax + ay < 1.5 ? 'white' : 'glow'; } return null; };   // 반짝임
+    default: return () => null;
+  }
+}
+// 실루엣(ICON_IN × ICON_IN 0/1) + 속성 → 32×32 초상화 텍스처
+function buildPortrait(scene, key, mask, type, fallback) {
+  // 실루엣 다듬기: 거의 꽉 찼거나(배경 사각형이 같이 그려진 SVG) 거의 비었으면 도트 맵으로 · 가는 선 그림은 한 칸 굵게 (작은 크기에서도 읽히게)
+  let fill = mask.reduce((a, v) => a + v, 0) / mask.length;
+  if ((fill > .6 || fill < .04) && fallback) { mask = maskFromRows(fallback); fill = mask.reduce((a, v) => a + v, 0) / mask.length; }
+  if (fill < .3) {
+    const m2 = mask.slice();
+    for (let y = 0; y < ICON_IN; y++) for (let x = 0; x < ICON_IN; x++) if (!mask[y * ICON_IN + x] && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => x + dx >= 0 && y + dy >= 0 && x + dx < ICON_IN && y + dy < ICON_IN && mask[(y + dy) * ICON_IN + x + dx])) m2[y * ICON_IN + x] = 1;
+    mask = m2;
+  }
+  const N = ICON_N, P = iconPal(type), img = new Uint32Array(N * N), motif = iconMotif(type);
+  const put = (x, y, col) => { if (x >= 0 && y >= 0 && x < N && y < N) img[y * N + x] = (0xff << 24) | ((col & 255) << 16) | (col & 0xff00) | ((col >> 16) & 255); };
+  const R = 8, inBox = (x, y) => { const cx = Math.max(R, Math.min(N - 1 - R, x)), cy = Math.max(R, Math.min(N - 1 - R, y)); return (x - cx) ** 2 + (y - cy) ** 2 <= R * R + 2; };
+  // ① 배경 판
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    if (!inBox(x, y)) continue;
+    const edge = !inBox(x - 1, y) || !inBox(x + 1, y) || !inBox(x, y - 1) || !inBox(x, y + 1);
+    const k = (y / (N - 1)) * .8 + (Math.hypot(x - 16, y - 12) / 22) * .5;
+    let col = edge ? P.ink : k < .45 ? P.mid : k < .85 ? P.dark : P.deep;
+    if (!edge && y <= 2 && x > 5 && x < 26) col = P.light;   // 위 반사광
+    const m = !edge && motif(x, y);
+    if (m) col = P[m];
+    put(x, y, col);
+  }
+  // ② 실루엣
+  const o = (N - ICON_IN) >> 1, M = (x, y) => x >= 0 && y >= 0 && x < ICON_IN && y < ICON_IN && mask[y * ICON_IN + x];
+  for (let y = -2; y < ICON_IN + 2; y++) for (let x = -2; x < ICON_IN + 2; x++) {
+    if (M(x, y)) continue;
+    let near = 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (M(x + dx, y + dy)) near = 1;
+    let far = 0; if (!near) for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (Math.abs(dx) + Math.abs(dy) <= 2 && M(x + dx, y + dy)) far = 1;
+    if (near) put(x + o, y + o, P.ink); else if (far && inBox(x + o, y + o)) put(x + o, y + o, P.glow);   // 외곽선 · 바깥 빛 테두리
+  }
+  for (let y = 0; y < ICON_IN; y++) for (let x = 0; x < ICON_IN; x++) {
+    if (!M(x, y)) continue;
+    // 4단 명암: 위쪽 가장자리 반사광(왼쪽 위 모서리만 흰색) · 아래·오른쪽 가장자리 그림자 · 안쪽은 위에서 아래로 밝음 → 중간
+    const top = !M(x, y - 1), bot = !M(x, y + 1) || !M(x + 1, y), corner = top && !M(x - 1, y);
+    const k = (y / ICON_IN) * .8 + (x / ICON_IN) * .2;
+    put(x + o, y + o, corner && k < .5 ? P.white : top ? P.glow : bot ? P.mid : k < .45 ? P.light : P.base);
+  }
+  const t = scene.textures.createCanvas(key, N, N), c = t.getContext(), id = c.createImageData(N, N);
+  new Uint32Array(id.data.buffer).set(img);
+  c.putImageData(id, 0, 0);
+  t.refresh(); t.setFilter(Phaser.Textures.FilterMode.NEAREST);
+  return key;
+}
+// 도트 맵(MAPS) → 실루엣
+function maskFromRows(rows) {
+  const h = rows.length, w = rows[0].length, out = new Uint8Array(ICON_IN * ICON_IN), sc = Math.min(ICON_IN / w, ICON_IN / h), ox = (ICON_IN - w * sc) / 2, oy = (ICON_IN - h * sc) / 2;
+  for (let y = 0; y < ICON_IN; y++) for (let x = 0; x < ICON_IN; x++) {
+    const sx = Math.floor((x - ox) / sc), sy = Math.floor((y - oy) / sc);
+    if (sx >= 0 && sy >= 0 && sx < w && sy < h && rows[sy][sx] !== '.' && rows[sy][sx] !== 'k') out[y * ICON_IN + x] = 1;   // 외곽선(k)은 빼고 속만 — 손가락 사이 같은 선이 살아난다
+  }
+  return out;
+}
+export function skillIcon(scene, id) {
+  const s = SKILLS[id], key = `sk:${id}`;
+  if (scene.textures.exists(key)) return key;
+  return buildPortrait(scene, key, maskFromRows(MAPS[s.icon] || MAPS.orb), s.type, null);
+}
+// game-icons.net 단색 SVG → 실루엣 → 스킬 초상화 (못 받은 스킬은 skillIcon 이 도트 맵으로)
 export async function composeSkillIcons(scene, svgs) {
-  const S = SKILL_ICON_PX, pad = 6;
-  const canvas = () => { const c = document.createElement('canvas'); c.width = c.height = S; return c; };
-  const rgba = (n, a) => `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
   await Promise.all(Object.entries(svgs).map(async ([id, svg]) => {
     const key = `sk:${id}`, s = SKILLS[id];
     if (!s || scene.textures.exists(key)) return;
@@ -96,32 +227,52 @@ export async function composeSkillIcons(scene, svgs) {
       const img = new Image();
       img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(clean);
       await img.decode();
-      const col = typeColor(s.type);
-      const mask = canvas(), mc = mask.getContext('2d');
-      mc.drawImage(img, pad, pad, S - pad * 2, S - pad * 2);
-      const tint = (fill) => { const c = canvas(), x = c.getContext('2d'); x.drawImage(mask, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = fill; x.fillRect(0, 0, S, S); return c; };
-      const dark = tint('#0a0810');
-      const g = mc.createLinearGradient(0, pad, 0, S - pad);
-      g.addColorStop(0, css(shade(col, 1.75))); g.addColorStop(.45, css(shade(col, 1.15))); g.addColorStop(1, css(shade(col, .7)));
-      const body = tint(g);
-      const hl = canvas(), hx = hl.getContext('2d');   // 윗부분 반사광
-      hx.drawImage(mask, 0, 0); hx.globalCompositeOperation = 'source-in';
-      const hg = hx.createLinearGradient(0, pad, 0, S * .55); hg.addColorStop(0, 'rgba(255,255,255,.55)'); hg.addColorStop(1, 'rgba(255,255,255,0)');
-      hx.fillStyle = hg; hx.fillRect(0, 0, S, S);
-      const t = scene.textures.createCanvas(key, S, S), c = t.getContext();
-      for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5]]) c.drawImage(dark, dx, dy);
-      c.save(); c.shadowColor = rgba(col, .85); c.shadowBlur = 7; c.drawImage(body, 0, 0); c.restore();
-      c.drawImage(body, 0, 0); c.drawImage(hl, 0, 0);
-      t.refresh(); t.setFilter(Phaser.Textures.FilterMode.LINEAR);
+      const c = document.createElement('canvas'); c.width = c.height = ICON_IN;
+      const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(img, 0, 0, ICON_IN, ICON_IN);
+      const a = x.getImageData(0, 0, ICON_IN, ICON_IN).data, mask = new Uint8Array(ICON_IN * ICON_IN);
+      for (let i = 0; i < mask.length; i++) mask[i] = a[i * 4 + 3] > 110 ? 1 : 0;
+      buildPortrait(scene, key, mask, s.type, MAPS[s.icon] || MAPS.orb);
     } catch (e) { console.warn('[icon] 스킬 아이콘을 그리지 못함 (도트 아이콘으로 대신)', id, e); }
   }));
 }
 
+// 스킬 바 대시 칸 아이콘: 대시 화살표 실루엣 + 출전 포켓몬 속성 무늬
+export function dashIcon(scene, type) {
+  const key = `hud:dash:${type}`;
+  return scene.textures.exists(key) ? key : buildPortrait(scene, key, maskFromRows(MAPS.dash), type, null);
+}
 export function tagIcon(scene, type) { return pixelTexture(scene, `tag:${type}`, MAPS.dash, iconPalette(typeColor(type))); }
 // 가방·HUD 아이템 그림: 본가 가방 아이콘(itm:<id>, 160px)을 화면에 보일 크기(size × RES 픽셀)로 곱게 줄인 텍스처.
 //  반씩 여러 번 줄여서 가장자리가 깨지지 않게 한다. 그림을 못 받았으면 null (도트 아이콘 it:<id> 로 대신)
+// 본가 가방 그림을 받지 않은 도구는 직접 그린다 (64×64 → itemArt 가 원하는 크기로 줄인다)
+//  이상한사탕: 양끝이 꼬인 파란 포장 + 하늘색 사탕 몸통에 흰 사선 줄무늬 · 피트렌즈: 은테 외알 안경 + 청록 렌즈 + 금 사슬
+const PROC_ITEM = {
+  rare_candy(c) {
+    c.lineJoin = 'round'; c.lineWidth = 4; c.strokeStyle = '#13235a';
+    for (const d of [-1, 1]) {   // 꼬인 포장 끝
+      c.beginPath(); c.moveTo(32 + d * 14, 32); c.lineTo(32 + d * 30, 14); c.lineTo(32 + d * 26, 32); c.lineTo(32 + d * 30, 50); c.closePath();
+      c.fillStyle = '#2f6fe0'; c.fill(); c.stroke();
+      c.beginPath(); c.moveTo(32 + d * 17, 32); c.lineTo(32 + d * 27, 21); c.lineTo(32 + d * 24, 32); c.closePath(); c.fillStyle = '#8ad0ff'; c.fill();
+    }
+    c.beginPath(); c.ellipse(32, 32, 17, 14, 0, 0, Math.PI * 2); c.fillStyle = '#6ab8ff'; c.fill();
+    c.save(); c.clip(); c.fillStyle = '#ffffff';
+    for (const o of [-14, 0, 14]) { c.beginPath(); c.moveTo(22 + o, 14); c.lineTo(30 + o, 14); c.lineTo(42 + o, 50); c.lineTo(34 + o, 50); c.closePath(); c.fill(); }
+    c.fillStyle = 'rgba(20,60,160,.35)'; c.fillRect(14, 38, 36, 12); c.restore();
+    c.beginPath(); c.ellipse(32, 32, 17, 14, 0, 0, Math.PI * 2); c.stroke();
+    c.fillStyle = 'rgba(255,255,255,.9)'; c.fillRect(22, 22, 6, 3);
+  },
+  scope_lens(c) {
+    c.strokeStyle = '#c8a040'; c.lineWidth = 3; c.beginPath(); c.moveTo(46, 44); c.quadraticCurveTo(58, 52, 54, 62); c.stroke();   // 금 사슬
+    const g = c.createRadialGradient(26, 24, 3, 30, 30, 20); g.addColorStop(0, '#d8fff6'); g.addColorStop(.5, '#4ad8c8'); g.addColorStop(1, '#14607a');
+    c.beginPath(); c.arc(30, 30, 18, 0, Math.PI * 2); c.fillStyle = g; c.fill();
+    c.lineWidth = 6; c.strokeStyle = '#d8e0f0'; c.stroke(); c.lineWidth = 2; c.strokeStyle = '#3a4258'; c.beginPath(); c.arc(30, 30, 21, 0, Math.PI * 2); c.stroke();
+    c.fillStyle = 'rgba(255,255,255,.85)'; c.beginPath(); c.ellipse(23, 22, 6, 3, -.6, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#d8e0f0'; c.fillRect(44, 40, 6, 6);
+  }
+};
 export function itemArt(scene, id, size) {
   const src = `itm:${id}`;
+  if (!scene.textures.exists(src) && PROC_ITEM[id]) { const t = scene.textures.createCanvas(src, 64, 64); PROC_ITEM[id](t.getContext()); t.refresh(); }
   if (!scene.textures.exists(src)) return null;
   const px = Math.round(size * RES), key = `${src}@${px}`;
   if (scene.textures.exists(key)) return key;

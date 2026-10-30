@@ -2,6 +2,7 @@
 //  volume: 효과음·컷신 영상 볼륨 0~1 · sound: 소리 켬/끔 (N 키와 같다)
 //  shakeHit: 내 공격이 맞을 때 카메라 흔들림 배율 0~1.5 · shakeHurt: 내가 맞을 때 · 보스 공격 · 폭발 흔들림 배율 0~1.5
 //  uiScale: 화면 버튼(터치 조이스틱·버튼·위쪽 버튼) 크기 0.8~1.4 · padAlpha: 터치 패드 불투명도 0~1 (위쪽 줄은 0.4 아래로는 안 내려간다)
+//  hudStyle: PC 스킬 바 디자인 'A' 모던 택티컬 · 'B' 본가 기술창 · 'C' 미니멀 픽셀 카드
 //  keys: PC 조작키 { 동작: Phaser 키 이름 } — 바꿀 때 다른 동작과 겹치면 서로 맞바꾼다 (bindKey)
 import Phaser from 'phaser';
 
@@ -19,7 +20,7 @@ export const DEFAULT_KEYS = {
 };
 // 고정 키 (바꿀 수 없다): 1~3 포켓몬 · Esc/P 일시정지(창 닫기) · N 소리 · F1~F12 디버그·브라우저
 export const FIXED_KEYS = new Set(['ESC', 'P', 'N', 'ONE', 'TWO', 'THREE', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12']);
-export const SETTING_DEFAULTS = { volume: .8, sound: true, shakeHit: 1, shakeHurt: 1, uiScale: 1, padAlpha: 1, keys: DEFAULT_KEYS };
+export const SETTING_DEFAULTS = { volume: .8, sound: true, shakeHit: 1, shakeHurt: 1, uiScale: 1, padAlpha: 1, hudStyle: 'A', keys: DEFAULT_KEYS };
 
 function load() {
   try {

@@ -92,7 +92,7 @@ export function drawDetailedPixelTree(o = {}) {
   clusters.push({ x: top.x, y: top.y - 4, R: 13 + r() * 5 });
   clusters.sort((a, b) => b.y - a.y);   // 아래 덩어리부터 (위가 덮는다)
   for (const cl of clusters) {
-    const rx = cl.R * 1.25, ry = cl.R * .85, n = Math.round(cl.R * cl.R * 1.6);
+    const rx = cl.R * 1.25, ry = cl.R * .85, n = Math.round(cl.R * cl.R * 1.6 * (o.leafMul ?? 1));   // leafMul: 시든 나무는 잎이 듬성듬성
     for (let k = 0; k < n; k++) {
       const a = r() * Math.PI * 2, d = Math.sqrt(r());
       const dx = Math.cos(a) * rx * d, dy = Math.sin(a) * ry * d;

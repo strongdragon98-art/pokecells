@@ -14,7 +14,11 @@ class AudioSys {
     if (this.ac) { if (this.ac.state === 'suspended') this.ac.resume(); return; }
     try {
       this.ac = new (window.AudioContext || window.webkitAudioContext)();
-      this.master = this.ac.createGain(); this.master.gain.value = BASE_GAIN * Settings.get('volume'); this.master.connect(this.ac.destination);
+      this.master = this.ac.createGain(); this.master.gain.value = BASE_GAIN * Settings.get('volume');
+      // 묵직한 타격음이 겹쳐도 찢어지지 않게 마지막에 리미터를 건다
+      const lim = this.ac.createDynamicsCompressor();
+      lim.threshold.value = -10; lim.knee.value = 6; lim.ratio.value = 8; lim.attack.value = .002; lim.release.value = .12;
+      this.master.connect(lim); lim.connect(this.ac.destination);
       const n = this.ac.sampleRate; this.noise = this.ac.createBuffer(1, n, n);
       const d = this.noise.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
     } catch (e) { this.ac = null; }
@@ -39,6 +43,26 @@ class AudioSys {
     s.onended = () => { s.disconnect(); f.disconnect(); g.disconnect(); };
   }
 
+  // 피치 드롭: f0 → f1 로 뚝 떨어지는 몸통음 (타격의 '쿵' · 폭발의 '웅')
+  drop(f0, f1, dur, type = 'sine', vol = .2, delay = 0) {
+    if (!this.ac || !this.on) return;
+    const t = this.ac.currentTime + delay, o = this.ac.createOscillator(), g = this.ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur * .85);
+    g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .004); g.gain.exponentialRampToValueAtTime(.0008, t + dur);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + dur + .03);
+    o.onended = () => { o.disconnect(); g.disconnect(); };
+  }
+  // 노이즈 버퍼 + 필터 (lowpass 둔탁한 퍽 · highpass 날카로운 파열 · bandpass 중역 부서짐). sweep: 필터가 그 주파수까지 내려간다
+  nz(dur, vol, type = 'lowpass', freq = 900, q = .7, delay = 0, sweep = 0) {
+    if (!this.ac || !this.on) return;
+    const t = this.ac.currentTime + delay, s = this.ac.createBufferSource(), f = this.ac.createBiquadFilter(), g = this.ac.createGain();
+    s.buffer = this.noise; f.type = type; f.frequency.setValueAtTime(freq, t); f.Q.value = q;
+    if (sweep) f.frequency.exponentialRampToValueAtTime(Math.max(40, sweep), t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur);
+    s.connect(f); f.connect(g); g.connect(this.master); s.start(t, Math.random() * .5); s.stop(t + dur + .03);
+    s.onended = () => { s.disconnect(); f.disconnect(); g.disconnect(); };
+  }
+
   arp(notes, step = .07, type = 'square', vol = .06) { notes.forEach((n, i) => this.tone(n, step * 1.7, type, vol, 0, i * step)); }
 
   play(name) {
@@ -52,10 +76,28 @@ class AudioSys {
       case 'land': this.hiss(.05, .08, 500); break;
       case 'dash': this.hiss(.12, .1, 2200); this.tone(900, .1, 'triangle', .03, -500); break;
       case 'swing': this.hiss(.07, .12, 2800); break;
-      case 'hit_super': this.hiss(.14, .3, 700); this.tone(150, .16, 'square', .1, -90); this.tone(1100, .1, 'square', .05, -600, .02); break;
-      case 'hit_normal': this.hiss(.08, .2, 1000); this.tone(190, .08, 'square', .06, -90); break;
-      case 'hit_weak': this.hiss(.05, .1, 1800); this.tone(320, .05, 'triangle', .03, -60); break;
-      case 'crit': this.tone(1300, .1, 'square', .05, -700); break;
+      // ---- 타격음: 노이즈 + 피치 드롭으로 '퍽' 하고 묵직하게 ----
+      //  일반: 둔탁한 몸통 쿵 + 저역 퍽 + 짧은 클릭(살에 박히는 순간)
+      case 'hit_normal': this.drop(170, 48, .17, 'sine', .34); this.nz(.09, .42, 'lowpass', 1500, .8, 0, 260); this.drop(1900, 500, .02, 'square', .05); this.nz(.035, .14, 'bandpass', 3200, 1.2); break;
+      //  약점(효과 굉장): 날카로운 파열 + 고음 스파크 + 깊은 쿵
+      case 'hit_super': this.drop(150, 38, .26, 'sine', .4); this.nz(.13, .46, 'highpass', 2600, .9, 0, 900); this.nz(.12, .36, 'lowpass', 1100, .9, 0, 180);
+        this.drop(3400, 1300, .07, 'square', .07, .005); this.tone(4200, .09, 'triangle', .05, -1800, .02); this.tone(2900, .12, 'triangle', .04, 900, .05); break;
+      //  별로(반감): 가볍게 튕겨 나가는 둔한 소리
+      case 'hit_weak': this.drop(240, 110, .08, 'triangle', .14); this.nz(.05, .14, 'lowpass', 700, .7); break;
+      //  급소: 금속성 파열음
+      case 'crit': this.nz(.08, .3, 'highpass', 4200, 1, 0, 1500); this.drop(2600, 900, .06, 'sawtooth', .06); this.tone(5200, .07, 'triangle', .04, -2200, .02); break;
+      //  차징 샷 · 내려찍기: 저음 폭발 (땅이 울린다)
+      case 'hit_heavy': this.drop(120, 26, .5, 'sine', .5); this.drop(260, 60, .22, 'triangle', .2); this.nz(.42, .5, 'lowpass', 1800, .7, 0, 120); this.nz(.12, .3, 'bandpass', 900, 1.4, .01); break;
+      case 'slam': this.drop(95, 24, .55, 'sine', .55); this.nz(.5, .55, 'lowpass', 1300, .7, 0, 90); this.nz(.16, .32, 'bandpass', 2000, 1.2, 0, 500); this.drop(400, 80, .12, 'square', .06); break;
+      case 'dive': this.nz(.26, .2, 'bandpass', 1800, 2, 0, 5000); this.drop(300, 900, .22, 'sawtooth', .04); break;   // 하강하며 바람을 가르는 소리
+      // 차징: 모이는 소리(단계마다 높아진다) · 다 모였을 때 '칭' · 발사
+      case 'charge1': this.drop(180, 360, .3, 'sawtooth', .05); this.nz(.3, .07, 'bandpass', 900, 3, 0, 2400); break;
+      case 'charge2': this.drop(260, 620, .3, 'sawtooth', .06); this.nz(.3, .09, 'bandpass', 1400, 3, 0, 3600); break;
+      case 'charge3': this.drop(360, 980, .32, 'sawtooth', .07); this.nz(.32, .11, 'bandpass', 2000, 3, 0, 5200); break;
+      case 'charged': this.tone(1568, .16, 'triangle', .06); this.tone(2093, .22, 'triangle', .05, 0, .06); break;
+      case 'cshot1': this.drop(320, 90, .26, 'sawtooth', .1); this.nz(.22, .34, 'lowpass', 2400, .8, 0, 300); this.drop(140, 40, .3, 'sine', .3); break;
+      case 'cshot2': this.drop(420, 70, .32, 'sawtooth', .12); this.nz(.3, .4, 'lowpass', 3000, .8, 0, 260); this.drop(120, 32, .4, 'sine', .4); this.tone(2400, .1, 'square', .04, -1600); break;
+      case 'cshot3': this.drop(90, 22, 1.1, 'sine', .6); this.drop(600, 50, .6, 'sawtooth', .14); this.nz(.9, .55, 'lowpass', 2600, .6, 0, 70); this.nz(.3, .3, 'highpass', 3000, .8, 0, 900); break;
       case 'fire': this.hiss(.22, .16, 600); break;
       case 'water': this.tone(780, .13, 'sine', .12, -420); break;
       case 'leaf': this.tone(1300, .07, 'triangle', .07, -600); break;
@@ -64,7 +106,9 @@ class AudioSys {
       case 'punch': this.hiss(.09, .22, 400); this.tone(110, .12, 'square', .08, -40); break;
       case 'boom': this.hiss(.5, .32, 260); this.tone(80, .45, 'sine', .22, -40); break;
       case 'beam': this.tone(220, .5, 'sawtooth', .05, 300); this.hiss(.45, .08, 1600); break;
-      case 'hurt': this.tone(220, .2, 'sawtooth', .1, -140); break;
+      // 피격: 둔탁한 충격 + 낮게 신음하듯 꺾이는 톱니파 (위기감)
+      case 'hurt': this.drop(210, 55, .26, 'sine', .42); this.nz(.16, .42, 'lowpass', 900, .8, 0, 160); this.drop(170, 80, .24, 'sawtooth', .07, .01); this.nz(.04, .16, 'bandpass', 2400, 1.5); break;
+      case 'hurt_big': this.drop(190, 35, .42, 'sine', .5); this.nz(.3, .5, 'lowpass', 1100, .8, 0, 110); this.drop(150, 60, .38, 'sawtooth', .09, .01); this.nz(.08, .3, 'highpass', 2600, 1, 0, 900); break;
       case 'swap': this.arp([523, 784], .05, 'triangle', .07); this.hiss(.12, .08, 3000); break;
       case 'pickup': this.tone(880, .06, 'square', .04, 320); break;
       case 'item': this.arp([659, 784, 988, 1319], .06, 'square', .05); break;

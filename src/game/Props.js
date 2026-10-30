@@ -10,7 +10,7 @@ import { TILE } from '../config.js';
 import { css, shade } from '../systems/Textures.js';
 import { drawDetailedPixelTree, drawVine } from '../systems/TreeArt.js';
 import { Sfx } from '../systems/Audio.js';
-import { roomAt } from './World.js';
+import { roomAt, roomAtCell } from './World.js';
 
 const ADD = Phaser.BlendModes.ADD;
 const WARM = 0xffc070;
@@ -188,11 +188,16 @@ export function treePalette(si, p) {
   const m = p.moss || 0x2a6a4a;
   return { leaf: [shade(m, .16), shade(m, .38), shade(m, .72), shade(m, 1.7)], leafAlt: p.accent, rim: shade(p.accent, .7) };
 }
-function treeArt(scene, si, v, p) {
-  const key = `tree:${si}:${v}`;
+// 침식 깊이 단계별 나무 (Room.depth): 0 = 햇살 받은 푸릇푸릇한 숲(따뜻한 수피 · 연두 잎 · 금빛 림라이트 · 균열 없음)
+//  1 = 지역 기본 나무 · 2 = 보스방 앞: 잎이 듬성하게 말라 검붉고 창백해진 고목 + 붉게 빛나는 균열
+const LUSH_PAL = { base: 0x4a3424, hi: 0x7a5a3a, shadow: 0x24180f, rim: 0xffe8a8, leaf: [0x183a12, 0x2f6a22, 0x5aa83a, 0xc0f080], leafAlt: 0xfff0a0 };
+const WITHER_PAL = { base: 0x2a1818, hi: 0x5a3434, shadow: 0x120808, rim: 0xa04040, leaf: [0x1a0606, 0x3a0c12, 0x6a1c1c, 0xd8b0b0], leafAlt: 0xe8dce4, glow: [0xff2a3a, 0xc81a5a] };
+export const depthStage = d => d == null ? 1 : d < .3 ? 0 : d < .66 ? 1 : 2;
+function treeArt(scene, si, v, p, stage = 1) {
+  const key = `tree:${si}:${v}:${stage}`;
   if (treeCache.has(key) && scene.textures.exists(key)) return treeCache.get(key);
-  const big = v % 2 === 0;
-  const t = drawDetailedPixelTree({ seed: 101 + si * 31 + v * 7, pal: treePalette(si, p), gw: big ? 92 : 78, gh: big ? 124 : 104, trunk: big ? 7.5 : 6, corrupt: v !== 1 });
+  const big = v % 2 === 0, pal = stage === 0 ? LUSH_PAL : stage === 2 ? Object.assign({}, treePalette(si, p), WITHER_PAL) : treePalette(si, p);
+  const t = drawDetailedPixelTree({ seed: 101 + si * 31 + v * 7, pal, gw: big ? 92 : 78, gh: big ? 124 : 104, trunk: big ? 7.5 : 6, corrupt: stage === 0 ? false : stage === 2 ? true : v !== 1, leafMul: stage === 2 ? .38 : 1 });
   if (scene.textures.exists(key)) scene.textures.remove(key);
   scene.textures.addCanvas(key, t.canvas);
   if (t.emis) { if (scene.textures.exists(`${key}:e`)) scene.textures.remove(`${key}:e`); scene.textures.addCanvas(`${key}:e`, t.emis); }
@@ -280,6 +285,16 @@ function terminalArt(scene) {
     F(8, 6, 2, 1, 0xffffff, .7); F(7, 7, 1, 3, 0xffffff, .5);                                                                       // 돔 반사광
     F(5, 13, 20, 2, shade(steel, .4)); F(5, 13, 20, 1, 0xd8a63a);                                                                   // 돔 테
     F(21, 27, 2, 3, 0xd8e0f0); F(20, 27, 1, 1, 0xd8e0f0); F(22, 29, 1, 1, 0xd8e0f0);                                               // S 로고(실프)
+  });
+}
+// 간이 회복기 표지판: 쇠기둥 + 청록 판(테두리 금색) + 하얀 회복 십자 + 아래 화살표
+function termSignArt(scene) {
+  const teal = 0x2ac0a8;
+  return canvasTex(scene, 'prop:termsign', 18, 30, F => {
+    F(8, 12, 2, 18, 0x3e4a5a); F(8, 12, 1, 18, 0x6a7890);                                 // 기둥
+    F(0, 0, 18, 14, 0xd8a63a); F(1, 1, 16, 12, shade(teal, .7)); F(1, 1, 16, 1, 0x9affe8);   // 판 · 금테
+    F(7, 3, 4, 9, 0xffffff); F(4, 6, 10, 3, 0xffffff); F(8, 4, 2, 7, 0x7dff9a); F(5, 7, 8, 1, 0x7dff9a);   // 회복 십자
+    F(6, 22, 6, 1, 0x7dffd8); F(7, 23, 4, 1, 0x7dffd8); F(8, 24, 2, 1, 0x7dffd8);         // ↓
   });
 }
 // 기술머신 제단 (Grand TM Shrine): 고대 실프주식회사 하이테크 캡슐 — 예전 제단의 2배가 넘는 크기
@@ -509,7 +524,8 @@ export class Props {
         }
         case 'tree': {
           // 고밀도 픽셀 고목 + 늘어진 덩굴(흔들림) + 균열 맥동 + 떨어지는 포자·피어오르는 반딧불이
-          const v = (pr.x * 7 + pr.g) % 4, a = treeArt(s, this.si, v, p), x = X + 24, top = Y + 2 - a.H, left = x - a.baseX;
+          const rm = roomAtCell(this.level, pr.x, pr.g - 1), stage = depthStage(rm && rm.depth);   // 입구 쪽은 푸르고, 보스방 쪽은 시들어 검붉다
+          const v = (pr.x * 7 + pr.g) % 4, a = treeArt(s, this.si, v, p, stage), x = X + 24, top = Y + 2 - a.H, left = x - a.baseX;
           this.lit(s.add.image(x, Y + 2, a.key).setOrigin(a.baseX / a.W, 1).setDepth(4));
           if (a.emis) { const e = this.add(s.add.image(x, Y + 2, `${a.key}:e`).setOrigin(a.baseX / a.W, 1).setDepth(4.1)); this.pulses.push({ o: e, base: .5, amp: .3, sp: 1.2 + Math.random() * .8 }); }   // 균열이 숨 쉬듯 은은하게
           a.vines.forEach((vn, k) => { const vi = this.lit(s.add.image(left + vn.x, top + vn.y - 1, a.vineKeys[k]).setOrigin(.5, 0).setDepth(4.2)); vi.ph = Math.random() * 6; this.vines.push(vi); });
@@ -559,9 +575,12 @@ export class Props {
           break;
         }        case 'sidesign': {   // 마을 끝 샛길 갱도 옆 표지
           this.lit(s.add.image(X + 8, Y + 1, sideSignArt(s)).setOrigin(.5, 1).setDepth(7));
-          const mark = this.glow(X + 8, Y - 22, .35, 0x9ad8ff, .5, 7.3);
+          const mark = this.glow(X + 8, Y - 22, pr.tutorial ? .6 : .35, pr.tutorial ? 0xffd27a : 0x9ad8ff, .5, 7.3);
           this.pulses.push({ o: mark, base: .35, amp: .25, sp: 2.5 });
-          this.interacts.push({ kind: 'hint', x: X + 64, y: Y, range: 34, used: false, repeat: true, prompt: '↓ + Space : 샛길로 내려가기 (기술머신)', promptY: Y - 30 });
+          // 튜토리얼(첫 입구 바로 아래 기술머신): 아래에서 금빛이 새어 나오고, 샛길 탐험이 핵심이라는 안내
+          if (pr.tutorial) { const up = this.add(s.add.image(X + 72, Y - 4, 'glow').setBlendMode(ADD).setTint(0xffd27a).setScale(1.4, .5).setAlpha(.5).setDepth(5.8)); this.pulses.push({ o: up, base: .45, amp: .25, sp: 2 }); }
+          this.interacts.push({ kind: 'hint', x: X + 64, y: Y, range: pr.tutorial ? 46 : 34, used: false, repeat: true,
+            prompt: pr.tutorial ? '↓ + Space : 아래 굴의 기술머신으로! (샛길·막다른 길 끝엔 늘 보상이 있다)' : '↓ + Space : 샛길로 내려가기 (기술머신)', promptY: Y - 30 });
           break;
         }
         case 'dropsign': {
@@ -574,6 +593,8 @@ export class Props {
         }
         case 'tallgrass': {
           const g = this.lit(s.add.image(X + 16, Y + 2, tallGrassArt(s, this.si, p)).setOrigin(.5, 1).setDepth(13.5).setFlipX(Math.random() < .5));
+          const gr = roomAtCell(this.level, pr.x, pr.g - 1), gst = depthStage(gr && gr.depth);
+          if (gst === 2) g.setTint(0xc07a7a); else if (gst === 0) g.setTint(0xe8ffc8);   // 시든 풀은 검붉게 · 초입은 햇살 받은 연두빛
           g.ph = Math.random() * 6; this.grass.push(g);
           break;
         }
@@ -614,8 +635,13 @@ export class Props {
       const pad = this.add(s.add.image(x, Y - 1, 'glow').setBlendMode(ADD).setTint(0x4affd8).setScale(1.6, .3).setAlpha(.5).setDepth(5.9));
       this.lit(s.add.image(x, Y + 1, terminalArt(s)).setOrigin(.5, 1).setDepth(6.4));
       const holo = this.glow(x, Y - 30, .8, 0x7dffb0, .45, 6.5);
-      const beam = this.add(s.add.image(x, Y - 50, 'glow').setBlendMode(ADD).setTint(0x4affd8).setScale(.3, 1.6).setAlpha(.12).setDepth(6.3));
-      const l = this.light(x, Y - 26, 120, 0x6affc8, 1.3);
+      const beam = this.add(s.add.image(x, Y - 50, 'glow').setBlendMode(ADD).setTint(0x4affd8).setScale(.36, 2.2).setAlpha(.22).setDepth(6.3));   // 멀리서도 보이는 청록 빛기둥
+      const l = this.light(x, Y - 26, 150, 0x6affc8, 1.6);
+      // 표지판: 청록 판에 하얀 회복 십자 (옆 바닥이 있는 쪽) + 머리 위 '회복기' 글자
+      const G = this.level.grid, ok = tx => G[tm.g] && (G[tm.g][tx] === 'S' || G[tm.g][tx] === 'B') && G[tm.g - 1][tx] === '.' && G[tm.g - 2][tx] === '.';
+      const sx = ok(tm.x - 2) ? x - 30 : ok(tm.x + 3) ? x + 30 : null;
+      if (sx !== null) { this.lit(s.add.image(sx, Y + 1, termSignArt(s)).setOrigin(.5, 1).setDepth(6.4)); this.pulses.push({ o: this.glow(sx, Y - 22, .35, 0x4affd8, .5, 6.5), base: .35, amp: .2, sp: 2 }); }
+      this.add(s.add.text(x, Y - 62, '간이 회복기', { fontFamily: 'Galmuri9', fontSize: '9px', color: '#7dffd8', stroke: '#0a1a1c', strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(6.6));
       this.pulses.push({ o: holo, base: .4, amp: .18, sp: 2.2 }, { o: pad, base: .4, amp: .15, sp: 1.4 });
       this.interacts.push({ kind: 'terminal', idx: i, data: tm, x, y: Y, range: 26, used: false, repeat: true, prompt: '[F 또는 ↑ : 간이 회복기]', promptY: Y - 50, holo, beam, lightObj: l, near: false });
     });

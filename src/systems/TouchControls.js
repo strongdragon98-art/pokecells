@@ -28,7 +28,7 @@ export class TouchControls {
     const pref = readPref();
     this.buttons = [
       { id: 'jump', x: 596, y: 302, r: 27, label: '점프', press: 'jumpP', hold: 'jumpH' },
-      { id: 'z', x: 528, y: 318, r: 23, slot: 'z', press: 'zP' },
+      { id: 'z', x: 528, y: 318, r: 23, slot: 'z', press: 'zP', hold: 'zH' },   // 꾹 누르면 차징 샷
       { id: 'x', x: 540, y: 254, r: 19, slot: 'x', press: 'xP' },
       { id: 'c', x: 596, y: 232, r: 19, slot: 'c', press: 'cP' },
       { id: 'dash', x: 466, y: 324, r: 18, label: '대시', press: 'dashP' },
@@ -99,7 +99,7 @@ export class TouchControls {
     if (!v) this.gTop.clear();
     if (!v) {   // 끄는 순간 눌려 있던 것도 모두 놓는다
       this.active.clear(); this.stick = null; this.updateStick();
-      this.state.jumpH = false; this.buttons.forEach(b => { b.down = false; });
+      this.state.jumpH = false; this.state.zH = false; this.buttons.forEach(b => { b.down = false; });
     }
   }
 

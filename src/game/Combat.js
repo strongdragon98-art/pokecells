@@ -37,7 +37,7 @@ export class Combat {
     if (e.groggyT > 0) d *= GROGGY_MUL;   // 보스 그로기(약점 누적으로 자세 무너짐): 받는 피해 ×1.35
     if (e.guardMul) d *= e.guardMul;
     const crit = !o.dot && Math.random() < .06 + (o.crit || 0) + mods.crit;
-    if (crit) d *= 1.6;
+    if (crit) d *= 1.6 * (mods.critMul || 1);   // 피트렌즈: 급소 피해 +20%
     d += o.flat || 0;
     d = Math.max(1, Math.round(d * (.92 + Math.random() * .16)));
     e.hp -= d;
@@ -50,7 +50,9 @@ export class Combat {
       const hx = o.hx ?? e.x, hy = o.hy ?? e.y;
       this.fx.burst(hx, hy, [typeColor(type), 0xffffff], eff === 'super' ? 18 : eff === 'weak' ? 4 : 10, eff === 'super' ? 170 : 110, { up: 60 });
       if (eff === 'super') { this.fx.glow(hx, hy, 26, typeColor(type), 220, .9); this.fx.ring(hx, hy, 30, 0xffb050, 240); }
-      Sfx.play(eff === 'super' ? 'hit_super' : eff === 'weak' ? 'hit_weak' : 'hit_normal');
+      // 타격 파편: 굵은 속성색 조각이 튀어 바닥에 튕긴다 (반감은 적게 · 묵직한 타격은 많이)
+      this.fx.burst(hx, hy, [typeColor(type), 0xffffff, 0x2a2438], eff === 'weak' ? 2 : o.heavy ? 9 : 5, o.heavy ? 200 : 140, { up: 90, size: 2, life: .45 });
+      Sfx.play(o.heavy ? 'hit_heavy' : eff === 'super' ? 'hit_super' : eff === 'weak' ? 'hit_weak' : 'hit_normal');   // heavy: 차징 샷 · 내려찍기 (저음 폭발)
       if (crit) Sfx.play('crit');
       if (!e.boss && (o.kb || o.kby)) e.knock(o.kb || 0, o.kby || 0);
       const steal = (mods.lifesteal || 0) + (o.lifesteal || 0);

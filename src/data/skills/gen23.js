@@ -27,6 +27,6 @@ export const SKILLS = {
 
   // ===== 물짱이 =====
   mud_slap: { name: '진흙뿌리기', type: 'ground', cd: 0, icon: 'drop', desc: '진흙 따귀 2연타 후 3타째에 진흙덩이를 던져 둔화시킨다.', mega: '진흙덩이 3갈래' },
-  muddy_water: { name: '탁류', type: 'water', cd: 7, icon: 'wave', desc: '땅을 따라 나아가는 흙탕물 파도. 적을 휩쓸어 밀어내고 둔화.', mega: '파도 1.5배 크기 + 더 멀리 + 2번 타격' },
+  muddy_water: { name: '하이드로 와류', type: 'water', cd: 7, icon: 'wave', desc: '물줄기를 휘감고 아쿠아제트로 돌진해 길의 적을 다단히트한 뒤, 앞에 고압 물기둥 소용돌이를 일으켜 빨아들이며 연타 → 파란 충격파로 날려 보낸다.', mega: '소용돌이 1.35배 + 앞에서 한 번 더 터진다' },
   earthquake: { name: '지진', type: 'ground', cd: 9, icon: 'boom', desc: '땅을 내리쳐 넓은 범위의 땅 위 적을 모두 띄운다. 공중이면 먼저 내리꽂는다. 날아다니는 적은 피한다.', mega: '범위 증가 + 여진 한 번 더' }
 };

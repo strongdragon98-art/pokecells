@@ -71,6 +71,7 @@ export const SKILLS = {
 
   // ---- 기술머신으로 배우는 타 속성 기술 (data/tm.js 의 TM_POOL · 동작은 game/skills.js) ----
   crunch: { name: '깨물어부수기', type: 'dark', cd: 4, icon: 'fang', tm: true, desc: '파고들며 검보라 송곳니로 물어뜯는다. 상성 반감을 무시하고 풀죽게 한다.' },
+  giga_impact: { name: '기가임팩트', type: 'normal', cd: 10, icon: 'fist', tm: true, desc: '금빛 기운을 모아 폭주 돌진한 뒤 거대한 충격 폭발. 쓴 뒤 잠깐 반동으로 굳는다.' },
   solar_beam: { name: '솔라빔', type: 'grass', cd: 9, icon: 'thunder', tm: true, desc: '햇빛을 모았다가 앞을 꿰뚫는 거대한 노란 광선을 쏜다.' },
   hurricane: { name: '폭풍', type: 'flying', cd: 8, icon: 'spin', tm: true, desc: '천천히 나아가는 회오리가 적을 빨아들이며 여러 번 친다.' },
   thunder_punch: { name: '번개펀치', type: 'electric', cd: 3, icon: 'fist', tm: true, desc: '전기를 두른 주먹 3연타. 맞은 적을 마비시킨다.' },

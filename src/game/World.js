@@ -29,7 +29,6 @@ const SHAPE = { start: [1, 1], wide: [2, 1], plaza: [2, 2], tower: [1, 3], abyss
 const C_SHAPES = [[1, 1], [1, 1], [1, 1], [2, 1], [1, 2]];
 const BIG_ARENA = new Set(['ho-oh', 'rayquaza', 'eternatus', 'latias', 'giratina', 'mewtwo', 'darkrai']);   // 날아다니는 보스는 2×2 아레나
 const END = { tm: { shape: [1, 1], type: 'tm' }, treasure: { shape: [1, 1], type: 'treasure' }, potion: { shape: [1, 1], type: 'pocket' }, fake: { shape: [1, 1], type: 'pocket' }, sanctuary: { shape: [2, 1], type: 'sanctuary' } };
-const FAKE_LORE = ['막다른 길이다. 차가운 바람만 새어 든다.', '누군가 먼저 다녀간 흔적… 아무것도 남지 않았다.', '벽에 긁힌 글씨: "여긴 아무것도 없어"', '무너진 흙더미뿐이다. 괜히 들어왔다.'];
 
 export function buildChapter(ch, ci, retry = 0) {
   // ================= ① 방 배치 (셀 격자 그래프) =================
@@ -83,6 +82,16 @@ export function buildChapter(ch, ci, retry = 0) {
     cur = r;
   }));
   const mainRooms = rooms.slice();
+
+  // ---- 튜토리얼 기술머신: 첫 챕터 입구 바로 아래 막다른 굴에 100% 확정 ----
+  //  입구 바닥의 철창으로 내려가면 곧바로 기술머신 캡슐 — '막다른 길·샛길 끝을 탐험하면 새 기술·카드를 얻는다'를 시작하자마자 배운다
+  if (ci === 0) {
+    const s0 = mainRooms[0];
+    if (free(s0.gx, s0.gy + 1, 1, 1)) {
+      const r = place({ gx: s0.gx, gy: s0.gy + 1, gw: 1, gh: 1, kind: 'tm', type: 'tm', ai: s0.ai, branch: true, seg: 0, tutorial: true });
+      link(s0, r, { col: s0.gx });
+    }
+  }
 
   // ---- 샛길: anchor 방에서 len 방을 지나 끝방(end)까지 빈칸으로 자란다 ----
   const grow = (anchors, endKind, o = {}) => {
@@ -143,6 +152,8 @@ export function buildChapter(ch, ci, retry = 0) {
   for (let k = 0; k < 20 && rooms.filter(r => r.reward === 'potion').length < 1; k++) grow(anyAnchors, 'potion', { len: [0, 1] });
   for (let k = 0; k < 30 && rooms.filter(r => r.type === 'pocket' && r.reward === null).length < 2; k++) grow(anyAnchors, 'fake', { len: [0, 1] });
   if ((failed || rooms.filter(r => r.reward === 'potion').length < 1 || rooms.filter(r => r.type === 'pocket' && r.reward === null).length < 2) && retry < 20) return buildChapter(ch, ci, retry + 1);
+  // 무보상 막다른 길 없애기: 비어 있던 굴은 모두 엘리트 수문장이 지키는 굴이 된다 (처치하면 이상한사탕 100% · 도구 25%)
+  for (const r of rooms) if (r.type === 'pocket' && r.reward === null) r.reward = 'elite';
 
   // ---- 갈림길 고리: 같은 구간의 본길 방 A 에서 위나 아래로 돌아 뒤쪽 본길 방 B 로 다시 이어지는 다른 길 (빈칸 BFS, 7칸까지) ----
   const roundabout = (A, B) => {
@@ -190,6 +201,25 @@ export function buildChapter(ch, ci, retry = 0) {
     for (const [dx, dy] of [[1, 0], [0, 1]]) { const o = occ.get(ck(x + dx, y + dy)); if (o && o !== r) pairs.set(Math.min(r.id, o.id) + '-' + Math.max(r.id, o.id), [r, o]); }
   }
   for (const [a, b] of pairs.values()) if (!a.links.has(b.id) && loopable(a) && loopable(b) && a.seg === b.seg && Math.random() < .35) link(a, b);
+
+  // ---- 침식 깊이 r.depth (0 = 입구의 햇살 비치는 숲 · 1 = 보스방 앞 심연): 본길 진행도 + 보스방까지의 방 거리 ----
+  //  Props(나무: 푸릇푸릇 → 시들어 검붉게 · 풀) · GameScene(햇빛 줄기 · 주변광 · 색 보정 · 안개 · 어두운 비네팅)이 쓴다
+  {
+    const byIdD = new Map(rooms.map(r => [r.id, r])), n = mainRooms.length;
+    mainRooms.forEach((r, i) => { r.prog = n > 1 ? i / (n - 1) : 0; });
+    const q = mainRooms.slice(), seen = new Set(mainRooms.map(r => r.id));   // 샛길·고리 방은 가장 가까운 본길 방의 진행도
+    while (q.length) { const r = q.shift(); for (const id of r.links) if (!seen.has(id)) { seen.add(id); const o = byIdD.get(id); o.prog = r.prog; q.push(o); } }
+    const bossD = new Map(), bq = [];
+    for (const r of rooms) if (r.type === 'boss' || r.type === 'mini' || r.type === 'sanctuary') { bossD.set(r.id, 0); bq.push(r); }
+    while (bq.length) { const r = bq.shift(), d = bossD.get(r.id); for (const id of r.links) if (!bossD.has(id)) { bossD.set(id, d + 1); bq.push(byIdD.get(id)); } }
+    for (const r of rooms) {
+      const prox = Math.max(0, 1 - (bossD.get(r.id) ?? 9) / 4);
+      let c = Math.min(1, (r.prog || 0) * .8 + prox * .55);
+      if (r.type === 'village') c *= .45;   // 시내는 결계 안이라 덜 침식
+      if (r === mainRooms[0] || r.tutorial) c = 0;
+      r.depth = Math.round(c * 100) / 100;
+    }
+  }
 
   // ================= ② 격자 → 타일 =================
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -393,7 +423,6 @@ export function buildChapter(ch, ci, retry = 0) {
       // 막다른 굴: 상처약이 있거나 아무것도 없다(페이크). 들어가기 전엔 흙 덮개
       r.end = Math.random() < .5 ? x0 + 3 : x1 - 4;
       if (r.reward === 'potion') { potions.push({ x: r.end * TILE + 8, y: r.F * TILE, room: r }); marks.push({ kind: 'potion', x: r.end, y: r.F, room: r }); }
-      else if (Math.random() < .5) props.push({ kind: 'lore', x: r.end, g: r.F, text: pick(FAKE_LORE) });
       stalactites(x0 + 3, x1 - 3, ri(1, 3));
     }
     if (tall && r.type !== 'combat' && r.type !== 'start' && r.type !== 'mini' && r.type !== 'boss' && r.type !== 'sanctuary') zigzag(r);   // 아레나는 자기 발판만 (너무 빽빽하지 않게)
@@ -435,7 +464,15 @@ export function buildChapter(ch, ci, retry = 0) {
     }
   }
 
-  // ---- 흙 덮개 (상처약·페이크 굴: 방 안 + 들어오는 문 칸) ----
+  // ---- 튜토리얼 기술머신으로 내려가는 철창 옆 표지 (입구) ----
+  for (const d of doors) {
+    if (d.dir !== 'v' || !d.D.tutorial) continue;
+    const U = d.U;
+    const ok = x => (grid[U.F][x] === 'S' || grid[U.F][x] === 'B') && grid[U.F - 1][x] === '.' && grid[U.F - 2][x] === '.';
+    for (const x of [d.cap - 4, d.cap - 5, d.cap - 3, d.cap - 6]) if (ok(x)) { props.push({ kind: 'sidesign', x, g: U.F, tutorial: true }); break; }   // 표지 오른쪽 4칸 = 철창 위 안내
+  }
+
+  // ---- 흙 덮개 (상처약·엘리트 굴: 방 안 + 들어오는 문 칸) ----
   const sides = [];
   for (const r of rooms) {
     if (r.type !== 'pocket') continue;
@@ -466,6 +503,56 @@ export function buildChapter(ch, ci, retry = 0) {
     }
   }
 
+  // ---- 엘리트 수문장: 기술머신이 없는 모든 막다른 길 끝 (보물방 · 상처약 굴 · 엘리트 굴) ----
+  //  붉은 오라를 두른 강한 야생 포켓몬 1마리 — 처치하면 이상한사탕 100% · 장착 도구 25% (GameScene.killEnemy)
+  for (const r of rooms) {
+    if (r.type !== 'treasure' && r.type !== 'pocket') continue;
+    const mid = (r.tx0 + r.tx1) >> 1;
+    for (let k = 0; k < 12; k++) {
+      const x = mid + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 2;
+      if (!grid[r.F] || (grid[r.F][x] !== 'S' && grid[r.F][x] !== 'B') || grid[r.F - 1][x] !== '.' || grid[r.F - 2][x] !== '.') continue;
+      spawns.push({ x: x * TILE + 8, y: r.F * TILE, room: r, spawned: false, elite: true });
+      r.elite = true;
+      break;
+    }
+  }
+
+  // ---- 간이 포켓몬 회복기 (Field Recovery Terminal): 보스방(지방 보스·중간 보스·히든 성소)마다 반드시 하나 ----
+  //  보스방에서 방 2~3칸 떨어진 안전한 방 바닥 → 없으면 바로 앞 방(1칸) → 그래도 바닥 자리가 없으면 가장 가까운 방 바닥을 2칸 평평하게 다진다
+  //  (시내가 가까워도 둔다 — 보스 직전 체크포인트를 확실히). 난수를 쓰지 않는다 (시드로 다시 만든 지형·저장 기록과 어긋나지 않게)
+  const terminals = [], byId = new Map(rooms.map(r => [r.id, r]));
+  const SKIP_ROOM = new Set(['boss', 'mini', 'sanctuary', 'tm', 'treasure', 'pocket']);
+  const solid = (x, y) => grid[y] && (grid[y][x] === 'S' || grid[y][x] === 'B');
+  const spot = (r, xx) => xx > r.tx0 + 2 && xx < r.tx1 - 3 && [0, 1].every(o => solid(xx + o, r.F) && [1, 2, 3].every(h => grid[r.F - h][xx + o] === '.'));
+  for (const boss of rooms.filter(r => r.type === 'boss' || r.type === 'mini' || r.type === 'sanctuary')) {
+    const dist = new Map([[boss.id, 0]]), q = [boss];
+    while (q.length) {
+      const r = q.shift(), d = dist.get(r.id);
+      if (d >= 3) continue;
+      for (const id of r.links) if (!dist.has(id) && byId.has(id)) { dist.set(id, d + 1); q.push(byId.get(id)); }
+    }
+    const order = d => d === 2 ? 0 : d === 3 ? 1 : 2;   // 2칸 → 3칸 → 1칸
+    const cand = rooms.filter(r => dist.get(r.id) >= 1 && dist.get(r.id) <= 3 && !SKIP_ROOM.has(r.type) && !terminals.some(t => t.room === r))
+      .sort((a, b) => order(dist.get(a.id)) - order(dist.get(b.id)) || (b.main ? 1 : 0) - (a.main ? 1 : 0) || a.id - b.id);
+    let placed = false;
+    for (const r of cand) {
+      const mid = (r.tx0 + r.tx1) >> 1, half = (r.tx1 - r.tx0) >> 1;
+      let x = null;
+      for (let k = 0; k < half && x === null; k++) for (const xx of [mid + k, mid - k]) if (spot(r, xx)) { x = xx; break; }
+      if (x === null) continue;
+      terminals.push({ x, g: r.F, room: r, boss });
+      marks.push({ kind: 'terminal', x, y: r.F, room: r });
+      placed = true;
+      break;
+    }
+    if (!placed && cand.length) {   // 바닥을 다진다: 방 가운데 2칸 바닥을 단단하게, 그 위 4칸을 비운다
+      const r = cand[0], x = Math.max(r.tx0 + 4, Math.min(r.tx1 - 6, (r.tx0 + r.tx1) >> 1));
+      for (const o of [0, 1]) { grid[r.F][x + o] = 'S'; for (let h = 1; h <= 4; h++) if (r.F - h > r.ty0) grid[r.F - h][x + o] = '.'; }
+      terminals.push({ x, g: r.F, room: r, boss, flattened: true });
+      marks.push({ kind: 'terminal', x, y: r.F, room: r });
+    }
+  }
+
   // ---- 타일 번호 (트인 방향마다 이끼·그림자·테두리) ----
   const S = (x, y) => y < 0 || y >= rows || x < 0 || x >= cols || grid[y][x] === 'S' || grid[y][x] === 'B';
   const tileOf = (x, y) => {
@@ -476,33 +563,6 @@ export function buildChapter(ch, ci, retry = 0) {
     return T.SOLID + (!S(x, y - 1) ? 1 : 0) + (!S(x, y + 1) ? 2 : 0) + (!S(x - 1, y) ? 4 : 0) + (!S(x + 1, y) ? 8 : 0);
   };
   const data = grid.map((row, y) => row.map((c, x) => tileOf(x, y)));
-
-  // ---- 간이 포켓몬 회복기 (Field Recovery Terminal): 보스방(지방 보스·중간 보스·히든 성소)에서 방 2~3칸 떨어진 안전한 방 바닥 ----
-  //  바로 앞 방(1칸)은 보스의 위압감을 위해 비운다 · 3칸 안에 시내(포켓몬센터)가 있으면 두지 않는다
-  //  난수를 쓰지 않고 지형을 다 만든 뒤 정한다 (시드로 다시 만든 지형·저장 기록과 어긋나지 않게 props 와도 따로 둔다)
-  const terminals = [], byId = new Map(rooms.map(r => [r.id, r]));
-  const SKIP_ROOM = new Set(['boss', 'mini', 'sanctuary', 'village', 'tm', 'treasure', 'pocket']);
-  for (const boss of rooms.filter(r => r.type === 'boss' || r.type === 'mini' || r.type === 'sanctuary')) {
-    const dist = new Map([[boss.id, 0]]), q = [boss];
-    while (q.length) {
-      const r = q.shift(), d = dist.get(r.id);
-      if (d >= 3) continue;
-      for (const id of r.links) if (!dist.has(id) && byId.has(id)) { dist.set(id, d + 1); q.push(byId.get(id)); }
-    }
-    if ([...dist.entries()].some(([id, d]) => d <= 3 && byId.get(id).type === 'village')) continue;
-    const cand = rooms.filter(r => (dist.get(r.id) === 2 || dist.get(r.id) === 3) && !SKIP_ROOM.has(r.type) && !terminals.some(t => t.room === r))
-      .sort((a, b) => dist.get(a.id) - dist.get(b.id) || (b.main ? 1 : 0) - (a.main ? 1 : 0) || a.id - b.id);
-    for (const r of cand) {
-      const mid = (r.tx0 + r.tx1) >> 1, half = (r.tx1 - r.tx0) >> 1, free = xx => xx > r.tx0 + 2 && xx < r.tx1 - 3
-        && [0, 1].every(o => grid[r.F] && (grid[r.F][xx + o] === 'S' || grid[r.F][xx + o] === 'B') && grid[r.F - 1][xx + o] === '.' && grid[r.F - 2][xx + o] === '.' && grid[r.F - 3][xx + o] === '.');
-      let x = null;
-      for (let k = 0; k < half && x === null; k++) for (const xx of [mid + k, mid - k]) if (free(xx)) { x = xx; break; }
-      if (x === null) continue;
-      terminals.push({ x, g: r.F, room: r, boss });
-      marks.push({ kind: 'terminal', x, y: r.F, room: r });
-      break;
-    }
-  }
 
   const start = mainRooms[0];
   return {
