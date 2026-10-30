@@ -30,7 +30,7 @@ function shuriken(p, o) {
       owner: 'player', x: p.x + p.face * 10, y: p.y + (o.oy ?? -4), vx: Math.cos(a) * sp * p.face, vy: Math.sin(a) * sp, r: (o.r ?? 4) * s, mul: o.mul ?? 1,
       type: 'water', kind: 'leaf', life: o.life ?? .6, pierce: o.pierce ?? 1, boomerang: o.boomerang, color: o.color ?? 0x4ac0ff, kb: o.kb ?? 90, light: o.light, status: o.status || {}
     });
-    q.core.setFillStyle(0xeaf6ff);   // 잎 색 대신 물빛 심
+    if (q.spr) q.spr.setTint(0xeaf6ff);   // 잎 색 대신 물빛 (예전엔 q.core 였는데 투사체 그림이 바뀌며 없어졌다 — 그대로 부르면 오류로 게임이 멈췄다)
   }
   p.squash(.88, 1.1);
 }

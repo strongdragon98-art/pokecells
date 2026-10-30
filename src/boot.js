@@ -8,6 +8,7 @@ import UIScene from './scenes/UIScene.js';
 import { GAME_W, GAME_H, RES } from './config.js';
 import { setupMobile } from './systems/Mobile.js';
 import { installKeyFix } from './systems/KeyFix.js';
+import { installGuard } from './systems/Guard.js';
 
 // 개발 서버(main.js)와 단일 HTML 빌드(main-single.js)가 함께 쓰는 시작 함수
 export async function startGame() {
@@ -23,6 +24,7 @@ export async function startGame() {
     ]);
   } catch (e) { /* 글꼴을 못 불러와도 기본 글꼴로 진행 */ }
 
+  installGuard();   // 한 프레임에서 오류가 나도 게임 루프가 멈추지 않게 (systems/Guard.js)
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game',
