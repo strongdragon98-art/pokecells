@@ -89,7 +89,7 @@ export function snapshotPlayer(p) {
     idx: p.idx, stageBonus: p.stageBonus, bag: { ...p.bag }, stones: p.mega.stones, z: p.z.has, formItems: [...p.formItems], candy: p.candy || 0,
     members: p.members.map(m => ({
       key: m.key, hp: Math.round(m.hp), alive: m.alive, tier: m.tier, exp: m.exp, mega: m.mega, megaPick: m.megaPick || 0,
-      items: { ...m.items }, perks: { ...(m.perks || {}) }, skills: { ...m.skills }, ups: [...m.ups], atkBonus: m.atkBonus, cdBonus: m.cdBonus, learned: [...m.learned], chargeType: m.chargeType || null
+      items: { ...m.items }, perks: { ...(m.perks || {}) }, skills: { ...m.skills }, ups: [...m.ups], atkBonus: m.atkBonus, cdBonus: m.cdBonus, learned: [...m.learned], chargeType: m.chargeType || null, cardGrade: { ...(m.cardGrade || {}) }
     }))
   };
 }
@@ -101,7 +101,7 @@ export function restorePlayer(p, s) {
     if (!m || m.key !== d.key) return;
     Object.assign(m, {
       tier: d.tier, exp: d.exp, mega: !!d.mega, megaPick: d.megaPick || 0, alive: d.alive !== false,
-      items: { ...d.items }, perks: { ...(d.perks || {}) }, mods: computeMods(d.items || {}, d.perks || {}), skills: { ...m.skills, ...d.skills }, ups: new Set(d.ups || []),
+      items: { ...d.items }, perks: { ...(d.perks || {}) }, mods: computeMods(d.items || {}, d.perks || {}), skills: { ...m.skills, ...d.skills }, ups: new Set(d.ups || []), cardGrade: { ...(d.cardGrade || {}) },
       atkBonus: d.atkBonus || 1, cdBonus: d.cdBonus || 1, learned: d.learned && d.learned.length ? [...d.learned] : m.learned, chargeType: d.chargeType || null
     });
   });

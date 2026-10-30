@@ -37,6 +37,7 @@ export class TouchControls {
       { id: 'use', x: 624, y: 176, r: 15, label: '조사', press: 'useP' },
       { id: 'zmove', x: 550, y: 194, r: 15, label: 'Z기술', press: 'zmoveP' },
       { id: 'mega', x: 500, y: 222, r: 15, label: '메가', press: 'mega' },
+      { id: 'ult', x: 500, y: 222, r: 18, label: 'MEGA\nSKILL', press: 'ultP', ult: true },   // 메가진화하면 메가 버튼 자리에 나타나는 전용 필살기
       { id: 'map', x: 228, y: 32, r: 18, label: '지도', press: 'mapP' },
       { id: 'inv', x: 270, y: 32, r: 18, label: '가방', press: 'invP' },
       { id: 'settings', x: 312, y: 32, r: 18, label: '설정', special: 'settings' },
@@ -209,7 +210,7 @@ export class TouchControls {
     const near = this.gs.props && this.gs.props.nearest(p.x, p.bottom), canUse = !!(near && near.kind !== 'hint'), pulse = .5 + Math.sin(this.ui.time.now / 160) * .3;
     for (const b of this.buttons) {
       // Z기술: Z크리스탈을 얻어야 보인다 · 메가: 메가스톤을 얻었고 아직 메가진화 전일 때만 (3단 진화 전이면 흐리게)
-      b.hidden = (b.id === 'zmove' && !p.z.has) || (b.id === 'mega' && (!p.mega.stones || p.mega.active));
+      b.hidden = (b.id === 'zmove' && !p.z.has) || (b.id === 'mega' && (!p.mega.stones || p.mega.active)) || (b.id === 'ult' && !p.mega.active);
       if (b.hidden) { b.text.setVisible(false); if (b.down) { b.down = false; this.active.forEach((v, k) => { if (v === b) this.active.delete(k); }); } continue; }
       b.text.setVisible(true).setAlpha(1);
       let fillA = b.down ? .55 : .32, ring = 0xefeae0, ringA = b.down ? .95 : .5;

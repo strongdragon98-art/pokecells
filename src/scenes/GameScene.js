@@ -549,6 +549,7 @@ export default class GameScene extends Phaser.Scene {
     if (JD(b.c)) i.cP = true;
     if (JD(b.swap) || JD(b.swap2)) i.swapNext = true;
     if (JD(b.zmove)) i.zmoveP = true;   // Z기술 (Z크리스탈 획득 후)
+    if (b.ult && JD(b.ult)) i.ultP = true;   // 메가 전용 필살기 (메가진화 중 · R)
     if (JD(k.ONE)) i.s1 = true;
     if (JD(k.TWO)) i.s2 = true;
     if (JD(k.THREE)) i.s3 = true;
@@ -751,7 +752,7 @@ export default class GameScene extends Phaser.Scene {
     const pos = c ? this.hubPos(c) : this.worldOf(this.stageIdx).level.start;
     this.moveTo(c ? c.ci : this.stageIdx, { x: pos.x, y: pos.y }, () => { this.player.inv = 2; });
   }
-  consumeInput() { for (const f of ['jumpP', 'dashP', 'zP', 'xP', 'cP', 'swapNext', 'swapPrev', 's1', 's2', 's3', 'mega', 'zmoveP', 'useP', 'upP']) this.inp[f] = false; }
+  consumeInput() { for (const f of ['ultP', 'jumpP', 'dashP', 'zP', 'xP', 'cP', 'swapNext', 'swapPrev', 's1', 's2', 's3', 'mega', 'zmoveP', 'useP', 'upP']) this.inp[f] = false; }
 
   // ---------------- 마을: 포켓몬센터 · 자판기 ----------------
   updateInteract() {

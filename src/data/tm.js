@@ -72,10 +72,14 @@ export function learnableMoves(types, line) {
   const ids = Object.entries(TM_LEARN).filter(([, who]) => who === '*' || who.some(t => ts.has(t))).map(([id]) => id);
   // + GitHub(PokeAPI) 습득표: 그 계열이 역대 게임에서 기술머신·가르침·레벨업·알로 배우는 기술 (data/MoveDatabase.js · 기술 동작은 game/SkillGenerator.js)
   const L = LEARNSETS[line] || {}, real = ['tm', 'tutor', 'level', 'egg'].flatMap(k => L[k] || []);
-  return [...new Set([...ids, ...(TM_POOL[line] || []), ...real])].filter(id => SKILLS[id]);
+  return [...new Set([...ids, ...(TM_POOL[line] || []), ...real])].filter(id => SKILLS[id] && !DASH_ONLY.has(id) && SKILLS[id].arch !== 'dash');
 }
 
 // 기술 카드 등급: 손으로 정한 값 → 없으면 GitHub 데이터의 위력으로 (130↑ 전설 · 100↑ 유니크 · 70↑ 레어 · 그 밖 커먼 · 변화 기술 레어)
+// 대시와 다를 바 없는 단순 돌진 기술: 기술머신 카드로 나오지 않는다 (그 기믹은 '대시 진화' 특성 카드로 — game/Perks.js)
+//  순간이동·잠복처럼 사라졌다 나타나는 기술(팬텀 그림자 잠복 등)은 여기에 넣지 않는다
+export const DASH_ONLY = new Set(['flame_charge', 'quick_attack', 'steel_wing', 'play_rough', 'super_fang', 'volt_tackle', 'night_slash', 'grassy_glide', 'wild_charge', 'flare_blitz', 'fake_out', 'u_turn']);
+
 export function moveGrade(id) {
   if (MOVE_GRADE[id]) return MOVE_GRADE[id];
   const s = SKILLS[id];
@@ -171,6 +175,7 @@ export function applyCard(player, m, card, slot) {
   if (card.kind === 'move') {
     const old = SKILLS[m.skills[slot]].name;
     m.skills[slot] = card.id; m.cd[slot] = 0;
+    (m.cardGrade = m.cardGrade || {})[card.id] = card.grade;   // 유니크·전설 카드로 배운 기술은 시전 연출이 달라진다 (Player.gradeCast)
     if (m.learned && !m.learned.includes(card.id)) m.learned.push(card.id);   // 원래 기술은 배운 기술 목록에 그대로 남는다
     return `${old} → ${card.name} (${slot.toUpperCase()}) · 원래 기술은 가방 → 기술에서 다시 넣을 수 있다`;
   }

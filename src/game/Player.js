@@ -21,8 +21,15 @@ import * as typeMoves from './skills/typeMoves.js';
 import { Sfx } from '../systems/Audio.js';
 import { buildGenerated } from './SkillGenerator.js';
 import { shockwave } from '../systems/PostFX.js';
+import { megaUltAction, MEGA_ULT_CD, cinematic, magicCircle, legendFinisher, tierComboFx, magmaEruption, megaSymbol } from './Spectacle.js';
+import { archetypeOf } from '../data/moveRules.js';
+import { MOVE_DB } from '../data/MoveDatabase.js';
+import { onDashTick } from './Perks.js';
 
 const SWAP_CD = 3;
+// 진화 단계별 보이는 크기 (1단 모습 기준): 2단 ×1.32 · 3단 ×1.72 · 메가는 3단의 ×1.1 (거다이맥스처럼 부풀지 않게)
+//  모습마다 도트 크기가 제각각이라 1단 도트의 몸 높이(bodyH)에 맞춰 키운다 → 진화할 때마다 확실히 커지고, 거대 도트도 지나치게 커지지 않는다
+export const TIER_SIZE = [1, 1.32, 1.72], MEGA_SIZE = 1.1;
 // 라인별 전용 기술을 먼저, 기본·기술머신 기술(game/skills.js)로 덮는다 (같은 이름이면 기술머신판)
 const SKILL_IMPL = Object.assign({}, gen23.SKILL_IMPL, gen45.SKILL_IMPL, gen67.SKILL_IMPL, gen89.SKILL_IMPL, special.SKILL_IMPL, legend1.SKILL_IMPL, legend2.SKILL_IMPL, base.SKILL_IMPL);
 // GitHub(PokeAPI) 기술 데이터로 만든 기술 (game/SkillGenerator.js): 손으로 만든 기술이 없는 것만 더한다 → 기술머신 카드로 배울 수 있다
@@ -70,6 +77,9 @@ export class Player extends Actor {
     this.sprite.setDepth(22);
     this.aura = scene.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setDepth(21).setVisible(false);
     this.chgAura = scene.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setDepth(23).setVisible(false);   // 차징 기운
+    // 메가진화 장식: 등 뒤에서 도는 메가 심볼 홀로그램 · 무지갯빛 오라 · 눈빛 (몸을 키우는 대신 이것들로 멋을 낸다)
+    this.megaSym = scene.add.image(x, y, megaSymbol(scene)).setBlendMode(Phaser.BlendModes.ADD).setDepth(21.4).setVisible(false);
+    this.megaEye = scene.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setDepth(22.6).setVisible(false);
     for (const m of this.members) m.maxhp = m.hp = this.maxHpOf(m);   // 모습별 체력 배율(잉어킹 0.55)까지 반영
     this.applyVisual();
   }
@@ -78,7 +88,7 @@ export class Player extends Actor {
   makeMember(k) {
     const sp = SPECIES[k];
     return {
-      key: k, sp, maxhp: sp.hp, hp: sp.hp, cd: { z: 0, x: 0, c: 0 }, alive: true,
+      key: k, sp, maxhp: sp.hp, hp: sp.hp, cd: { z: 0, x: 0, c: 0, r: 0 }, alive: true, cardGrade: {},   // r: 메가 필살기 쿨타임 · cardGrade: 기술 카드로 배운 기술의 등급
       tier: 0, exp: 0, mega: false, megaPick: 0, items: {}, perks: {}, mods: computeMods({}, {}),   // perks: 기술머신 특성 카드 (game/Perks.js)
       skills: { ...(sp.evo[0].skills || sp.skills) }, ups: new Set(), atkBonus: 1, cdBonus: 1,   // 기술머신: 바꿔 단 기술 · 받은 강화 카드 · 숙련 보너스
       learned: Object.values(sp.evo[0].skills || sp.skills),   // 배운 기술 전부 (가방 → 기술에서 Z·X·C 자리에 골라 넣는다)
@@ -165,9 +175,19 @@ export class Player extends Actor {
   //  거대 몸집(롱스톤 계열)은 판정도 크게, 전설은 도트 크기와 상관없이 히트박스를 고정한다 (좁은 길·발판을 지나가도록)
   applyVisual() {
     const key = this.visualKey(), mg = this.megaOf(), big = this.pas.big || 1;
-    let scale = this.T.size * (this.mega.active && !mg.sprite ? (mg.scale || 1.1) : 1) * (!this.mega.active && this.form().aura ? 1.06 : 1);
-    const meta0 = this.scene.registry.get('spriteMeta')[key];
-    if (this.sp.legend && meta0) scale *= Phaser.Math.Clamp(40 / Math.max(10, meta0.height), .55, 1.4);
+    const metas = this.scene.registry.get('spriteMeta'), meta0 = metas[key];
+    let scale;
+    if (this.sp.legend) {   // 전설은 모습이 하나라 예전 배율 (도트 높이를 맞춘 뒤 단계마다 조금씩) · 폼체인지·메가는 ×1.1
+      scale = this.T.size * (this.mega.active ? MEGA_SIZE : 1);
+      if (meta0) scale *= Phaser.Math.Clamp(40 / Math.max(10, meta0.height), .55, 1.4);
+    } else {
+      const k0 = this.sp.evo[0].key, base = metas[k0] && metas[k0].hasSprite ? metas[k0] : metas[this.m.key];
+      const ref = (base && base.bodyH) || 20, now = (meta0 && meta0.bodyH) || ref;
+      scale = TIER_SIZE[Math.min(2, this.m.tier)] * (this.mega.active ? MEGA_SIZE : 1) * ref / Math.max(4, now);
+      if (!this.mega.active && this.form().aura) scale *= 1.06;
+      scale = Phaser.Math.Clamp(scale, .45, 3.2);
+    }
+    void mg;
     this.setSpecies(key, scale * big);
     const meta = this.meta;
     if (this.sp.legend) { this.resizeBody(LEGEND_BODY.w, LEGEND_BODY.h); return; }
@@ -304,6 +324,7 @@ export class Player extends Actor {
     for (const m of this.members) if (m !== this.m && m.alive && m.hp < m.maxhp) m.hp = Math.min(m.maxhp, m.hp + m.maxhp * .005 * dt);
     // 메가 (영구): 발밑에서 무지갯빛 불씨
     if (this.mega.active && Math.random() < .35) sc.fx.embers(this.x + (Math.random() - .5) * 20, this.bottom - 4, [0xff8ad0, 0x9a7aff, 0xfff6c0], 1, { speed: 30 });
+    this.updateMegaDeco();
 
     // 교대
     if (!this.dash) {
@@ -314,6 +335,7 @@ export class Player extends Actor {
     }
     if (inp.mega) this.startMega(inp.up ? 1 : 0);   // ↑ + V : 두 번째 메가 (메가리자몽Y · 메가뮤츠Y)
     if (inp.zmoveP) this.useZMove();
+    if (inp.ultP) this.useMegaUlt();
 
     // 대시(회피) — 파괴광선 반동 등(action.noDash)은 끊을 수 없다. 랄토스 계열은 순간이동
     const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
@@ -360,6 +382,7 @@ export class Player extends Actor {
       b.setAllowGravity(false); b.setVelocity(this.dash.dir * 330, 0);
       this.dash.gt = (this.dash.gt || 0) - dt;
       if (this.dash.gt <= 0) { this.dash.gt = .025; sc.fx.ghost(this.sprite, typeColor(this.types[0]), .55, 240); }
+      onDashTick(this, this.dash, dt);   // 대시 진화 카드 (game/Perks.js): 아쿠아 제트 다단히트 · 화염 길 …
       if (this.dash.t >= .19) { this.dash = null; b.setAllowGravity(true); b.setVelocityX(b.velocity.x * .45); }
     } else if (a && a.ctrl) {
       b.setAllowGravity(!a.noGrav);
@@ -520,8 +543,11 @@ export class Player extends Actor {
     let action;
     if (combo) {
       if (this.comboT <= 0) this.combo = 0;
-      action = SKILL_IMPL[id](this, this.combo % 3);
+      const step = this.combo % 3;
+      action = SKILL_IMPL[id](this, step);
       action.comboStep = true;
+      // 진화 단계별 평타 강화 (2단 이중 검기 · 3단 거대 검기·균열·전방 웨이브) — 첫 타격 순간에 덧붙인다
+      if (this.tierIdx >= 1) { const t0 = action.ev && action.ev.length ? Math.min(...action.ev.map(e => e[0])) : .05; (action.ev = action.ev || []).push([t0 + .005, () => tierComboFx(this, step)]); }
     } else {
       action = SKILL_IMPL[id](this, 0);
       m.cd[slot] = this.cdOf(id);
@@ -530,8 +556,52 @@ export class Player extends Actor {
       sc.fx.ring(this.x, this.y, 22, col, 220); sc.fx.glow(this.x, this.y, 22, col, 180, .6);
       sc.fx.embers(this.x, this.bottom - 4, [col, 0xffffff], 6, { speed: 50 });
       if (this.mods.orbCost && slot !== 'z') this.selfDamage(m.maxhp * .03);
+      this.gradeCast(action, id, (m.cardGrade || {})[id]);
     }
     this.startAction(action, slot);
+  }
+
+  // 기술 카드로 배운 유니크·전설 기술: 시전 연출을 덧씌운다
+  //  유니크: 마법진 + 충격파 고리 · 이 기술 동안 투사체·판정 크기 ×2 · 맞힐 때마다 연쇄 폭발(Combat) · 보랏빛 번짐 · 묵직한 흔들림
+  //  전설: 시네마틱 컷인(0.15초 정지 · 화면 어둡게 · 스포트라이트) + 기술 형태·속성에 맞는 초대형 마무리(레이저 · 운석 · 번개 기둥 · 마그마 분출 …)
+  gradeCast(action, id, grade) {
+    if (grade !== '유니크' && grade !== '전설') return;
+    const sk = SKILLS[id], col = typeColor(sk.type), m = this.m, legend = grade === '전설';
+    const arch = sk.arch || (MOVE_DB[id] && archetypeOf(MOVE_DB[id], id)) || 'projectile';
+    if (legend) cinematic(this, col, sk.name); else magicCircle(this, col);
+    const s0 = m.mods.sizeMul;
+    m.mods.sizeMul = s0 * 2;   // 기술이 끝나면(끊겨도) 되돌린다
+    this.castGrade = grade;
+    const end0 = action.end;
+    action.end = (p, a) => { m.mods.sizeMul = s0; this.castGrade = null; if (end0) end0(p, a); };
+    const t0 = action.ev && action.ev.length ? Math.min(...action.ev.map(e => e[0])) : .05;
+    (action.ev = action.ev || []).push([t0 + .02, () => {
+      this.scene.fx.shake(legend ? .022 : .012, legend ? 420 : 240, 'hit');
+      if (legend) legendFinisher(this, sk.type, arch, 1.6);
+    }]);
+    if (legend) action.inv = Math.max(action.inv || 0, .35);
+  }
+
+  // ---------------- 메가 전용 필살기 (R · 모바일 MEGA SKILL) ----------------
+  useMegaUlt() {
+    const sc = this.scene, m = this.m;
+    if (!this.mega.active) { sc.events.emit('toast', '메가 필살기는 메가진화(폼체인지·유대변화) 중에만 쓸 수 있다'); Sfx.play('deny'); return; }
+    if ((m.cd.r || 0) > 0) { sc.events.emit('toast', `메가 필살기 재사용까지 ${Math.ceil(m.cd.r)}초`); Sfx.play('deny'); return; }
+    if (this.dash) return;
+    m.cd.r = MEGA_ULT_CD;
+    this.startAction(megaUltAction(this), 'ult');
+  }
+
+  // 메가 장식: 등 뒤 메가 심볼 홀로그램(천천히 돈다) · 무지갯빛 오라 · 눈빛
+  updateMegaDeco() {
+    const on = this.mega.active && this.sprite.visible && this.sprite.alpha > .3, t = this.scene.time.now / 1000;
+    this.megaSym.setVisible(on); this.megaEye.setVisible(on);
+    if (!on) return;
+    const col = Phaser.Display.Color.HSVToRGB((t * .15) % 1, .55, 1).color, h = this.sprite.displayHeight;
+    this.megaSym.setPosition(this.x, this.bottom - h * .5).setScale(Math.max(.35, h / 96) * (1 + Math.sin(t * 3) * .04)).setRotation(t * .6).setTint(col).setAlpha(.15 + Math.sin(t * 4) * .05);
+    const e = (this.meta && this.meta.eye) || { dx: 4, dy: -16 };
+    this.megaEye.setPosition(this.sprite.x + e.dx * this.face * this.sprite.scaleX, this.sprite.y + e.dy * this.sprite.scaleY).setScale(.16, .09).setTint(0xfff0ff).setAlpha(.7 + Math.sin(t * 9) * .3);
+    if (Math.random() < .25) this.scene.fx.burst(this.x + (Math.random() - .5) * this.b.width * 1.6, this.bottom - Math.random() * h, [col, 0xffffff], 1, 20, { angle: -Math.PI / 2, spread: .6, up: 30, grav: -30, bounce: false, glow: true, life: .6 });
   }
 
   startAction(a, slot) {
@@ -617,6 +687,8 @@ export class Player extends Actor {
     sc.fx.starburst(x, by - 4, col, 1.4, { debris: true });
     sc.fx.burst(x, by - 2, [col, 0xffffff], 18, 180, { up: 120, glow: true });
     sc.fx.hitStop(70); sc.fx.shake(.016, 260, 'hit');
+    if (this.tierIdx >= 1) { sc.fx.ring(x, by - 4, R * 1.3, col, 420); sc.fx.burst(x, by - 2, [col, 0xffffff], 14, 220, { up: 160, glow: true }); }
+    if (this.tierIdx >= 2) { magmaEruption(this, { type, n: 3, both: true, mul: 1.2, proc: true }); shockwave(sc, x, by - 8, .03, 500); }   // 3단: 지면이 쪼개지며 양옆으로 분출
     Sfx.play('slam');
   }
 
@@ -659,7 +731,7 @@ export class Player extends Actor {
   }
 
   fireCharge(lvl) {
-    const sc = this.scene, type = this.chargeType(), col = typeColor(type), spec = CHARGE_SHOT[lvl], s = this.mods.sizeMul * this.T.proj;
+    const sc = this.scene, type = this.chargeType(), col = typeColor(type), spec = CHARGE_SHOT[lvl], evo = this.tierIdx, s = this.mods.sizeMul * this.T.proj * (evo >= 2 ? 1.2 : 1);   // 3단·메가는 탄이 더 크다
     if (this.action) this.endAction(true);
     this.chgAura.setVisible(false);
     this.startAction({
@@ -673,9 +745,10 @@ export class Player extends Actor {
           update: (q, dt) => {   // 꼬리: 속성 파편 · 3단은 굵은 빛줄기가 남는다
             q.tt = (q.tt || 0) - dt;
             if (q.tt <= 0) { q.tt = lvl >= 3 ? .012 : .03; sc.fx.burst(q.x - f * q.r, q.y + (Math.random() - .5) * q.r, [col, 0xffffff], lvl, 40, { grav: 0, bounce: false, glow: true, life: .3, size: lvl >= 2 ? 2 : 1 }); }
+            if (evo >= 1) { q.sp = (q.sp || 0) + dt * 22; for (const ph of [0, Math.PI]) sc.fx.burst(q.x - f * q.r * .6, q.y + Math.sin(q.sp + ph) * q.r * 1.3, [col, 0xffffff], 1, 10, { grav: 0, bounce: false, glow: true, life: .32, size: 2 }); }   // 2단부터: 탄 뒤로 회전 소용돌이 꼬리
             if (q.beam) { const L = Math.min(q.x0, q.x), W = Math.abs(q.x - q.x0); q.beam.clear().fillStyle(col, .35).fillRect(L, q.y - q.r * .9, W, q.r * 1.8).fillStyle(0xffffff, .55).fillRect(L, q.y - q.r * .3, W, q.r * .6); }
           },
-          onExpire: q => { if (q.beam) { const bm = q.beam; q.beam = null; sc.tweens.add({ targets: bm, alpha: 0, duration: 420, onComplete: () => bm.destroy() }); } }
+          onExpire: q => { if (evo >= 2) { sc.fx.ring(q.x, q.y, 30 * s, col, 300); sc.combat.hitCircle(q.x, q.y, 26 * s, .6 + lvl * .3, type, { kbx: 160, kby: -160, hs: 30, proc: true }); } if (q.beam) { const bm = q.beam; q.beam = null; sc.tweens.add({ targets: bm, alpha: 0, duration: 420, onComplete: () => bm.destroy() }); } }
         });
         if (lvl >= 3) { q.x0 = x; q.beam = sc.add.graphics().setDepth(28).setBlendMode(Phaser.BlendModes.ADD); sc.cameras.main.flash(180, 255, 255, 255, true); sc.fx.hitStop(60); }
         // 발사 반동 · 섬광
@@ -823,7 +896,7 @@ export class Player extends Actor {
     else sc.gameOver(false);
   }
 
-  destroy() { this.aura.destroy(); this.chgAura.destroy(); super.destroy(); }
+  destroy() { this.aura.destroy(); this.chgAura.destroy(); this.megaSym.destroy(); this.megaEye.destroy(); super.destroy(); }
 }
 
 export { ITEMS };

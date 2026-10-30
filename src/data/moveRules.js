@@ -21,7 +21,7 @@ export function archetypeOf(m, id) {
   }
   if (!m.power) return null;   // 위력이 정해지지 않은 특수 계산 기술(카운터·지구던지기 등)은 건너뛴다
   if (m.cls === 'physical') {
-    if (m.pri > 0) return 'dash';
+    if (m.pri > 0) return 'strike';   // 선공기: 예전엔 돌진이었지만 단순 이동기는 대시 진화 카드로 옮겼다 → 한 방 펀치형
     if (has(m, 'punch')) return 'strike';
     if (has(m, 'bite')) return 'fang';
     if (m.hits && m.hits[1] >= 2) return has(m, 'contact') ? 'flurry' : 'volley';
@@ -29,7 +29,7 @@ export function archetypeOf(m, id) {
     if (re(id, /slam|crash|smash|hammer|body_press|stomp|drop|fall|dive_bomb|meteor_mash/)) return 'slam';
     if (re(id, /claw|slash|cut|blade|cross|scissor|sword|razor|edge_shell|night|aerial_ace|fury_cutter|false_swipe|x_scissor|leaf_blade|sacred_sword|kowtow|ceaseless/) && has(m, 'contact')) return 'slash';
     if (re(id, /rock_slide|stone_edge|rock_tomb|avalanche|icicle_crash|diamond_storm|meteor|sky_attack|thousand|dragon_darts|stone_axe/)) return 'sky_fall';
-    if (has(m, 'contact')) return re(id, /rush|charge|tackle|take_down|double_edge|flare_blitz|brave_bird|wild_charge|head|horn|drill|wave_crash|u_turn|fly|bounce|outrage|thrash|spin|roll|volt|giga_impact|close_combat|superpower/) ? 'dash' : 'slash';
+    if (has(m, 'contact')) return re(id, /rush|charge|tackle|take_down|double_edge|flare_blitz|brave_bird|wild_charge|head|horn|drill|wave_crash|u_turn|fly|bounce|outrage|thrash|spin|roll|volt|giga_impact|close_combat|superpower/) ? (m.power >= 90 ? 'burst' : 'slam') : 'slash';   // 몸통 돌진기 → 온몸을 터뜨리는 주변 폭발 · 내려찍기 (단순 이동형은 만들지 않는다)
     return 'projectile';
   }
   // 특수

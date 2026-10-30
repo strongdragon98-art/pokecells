@@ -11,12 +11,12 @@ const KEY = 'pokecells.settings';
 export const KEY_ACTIONS = [
   ['left', '왼쪽'], ['right', '오른쪽'], ['up', '위 (점프 · 조사)'], ['down', '아래 (발판 내려가기)'],
   ['jump', '점프'], ['dash', '대시 회피'], ['z', '스킬 Z칸 (연타)'], ['x', '스킬 X칸'], ['c', '스킬 C칸'],
-  ['swap', '교대'], ['swap2', '교대 (보조)'], ['interact', '조사 (센터 · 표지판)'], ['zmove', 'Z기술'], ['mega', '메가진화'],
+  ['swap', '교대'], ['swap2', '교대 (보조)'], ['interact', '조사 (센터 · 표지판)'], ['zmove', 'Z기술'], ['mega', '메가진화'], ['ult', '메가 필살기 (메가 중)'],
   ['map', '지도'], ['bag', '가방'], ['settings', '설정']
 ];
 export const DEFAULT_KEYS = {
   left: 'LEFT', right: 'RIGHT', up: 'UP', down: 'DOWN', jump: 'SPACE', dash: 'SHIFT', z: 'Z', x: 'X', c: 'C',
-  swap: 'TAB', swap2: 'E', interact: 'F', zmove: 'Q', mega: 'V', map: 'M', bag: 'I', settings: 'O'
+  swap: 'TAB', swap2: 'E', interact: 'F', zmove: 'Q', mega: 'V', ult: 'R', map: 'M', bag: 'I', settings: 'O'
 };
 // 고정 키 (바꿀 수 없다): 1~3 포켓몬 · Esc/P 일시정지(창 닫기) · N 소리 · F1~F12 디버그·브라우저
 export const FIXED_KEYS = new Set(['ESC', 'P', 'N', 'ONE', 'TWO', 'THREE', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12']);

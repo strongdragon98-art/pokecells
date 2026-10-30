@@ -63,9 +63,25 @@ export class Combat {
       if (steal > 0) p.heal(d * steal, true);
     }
     if (e.boss && e.addStagger && !o.dot) e.addStagger(m === 0 ? 'immune' : eff);   // 보스 그로기 게이지 (약점 속성은 3.5배)
-    if (e.hp > 0) perkHit(this, e, d, type, o);   // 특성 카드: 화상·빙결·마비·독·저주 부여 · 연쇄 번개 · 장판 · 블랙홀
+    if (e.hp > 0) perkHit(this, e, d, type, o);
+    if (p.castGrade && !o.proc && !o.dot && e.alive) this.gradeBurst(e, type, p.castGrade === '전설');   // 유니크·전설 기술 카드: 맞힌 자리마다 연쇄 폭발   // 특성 카드: 화상·빙결·마비·독·저주 부여 · 연쇄 번개 · 장판 · 블랙홀
     if (e.hp <= 0 && !(e.cheatDeath && e.cheatDeath())) this.s.killEnemy(e);   // 칠색조 부활처럼 한 번 버티는 보스
     return d;
+  }
+
+  // 유니크·전설 등급 기술이 맞힌 자리: 속성색 연쇄 폭발 (같은 적은 0.12초에 한 번)
+  gradeBurst(e, type, legend) {
+    const now = this.s.time.now;
+    if (now - (e.gradeAt || 0) < 120) return;
+    e.gradeAt = now;
+    const col = typeColor(type), r = legend ? 34 : 24, x = e.x, y = e.y;
+    this.s.time.delayedCall(60, () => {
+      if (!this.s.player) return;
+      this.hitCircle(x, y, r, legend ? .45 : .3, type, { kbx: 90, kby: -90, hs: 0, proc: true });
+      this.fx.ring(x, y, r, col, 260); this.fx.glow(x, y, r, col, 220, .9);
+      this.fx.burst(x, y, [col, 0xffffff, legend ? 0xffd25a : 0xc08aff], legend ? 16 : 10, 170, { glow: true, grav: 0, bounce: false, life: .4 });
+      Sfx.play('boom');
+    });
   }
 
   // 다단히트 데미지 합산: 같은 적이 0.45초 안에 2번 넘게 맞으면 「합계 (n히트)」 글자를 머리 위에 띄우고, 맞을 때마다 숫자를 키운다

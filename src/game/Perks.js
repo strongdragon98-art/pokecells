@@ -30,7 +30,7 @@ export const PERKS = {
   r_proj: { grade: '레어', cat: '스킬 변이', name: '확산 렌즈', desc: '투사체 +1개.', max: 2, mods: { extraProj: 1 } },
   r_haste: { grade: '레어', cat: '능력치', name: '가속 회로', desc: '모든 기술 쿨타임 -18%.', max: 2, mods: { cdMul: .82 } },
   r_shell: { grade: '레어', cat: '유틸', name: '조개껍질 방울', desc: '준 피해의 6%만큼 회복.', max: 2, mods: { lifesteal: .06 } },
-  r_bomb: { grade: '레어', cat: '기동', name: '대시 폭탄', desc: '대시를 시작한 자리에 폭탄을 남긴다 (0.45초 뒤 폭발).', max: 1, mods: { dashBomb: 1 } },
+  r_bomb: { grade: '레어', cat: '대시 진화', name: '⚡ 대시 진화: 대시 폭탄', desc: '대시를 시작한 자리에 폭탄을 남긴다 (0.45초 뒤 폭발).', max: 1, mods: { dashBomb: 1 } },
   r_tough: { grade: '레어', cat: '유틸', name: '강철 몸', desc: '받는 피해 -15%.', max: 2, mods: { guard: .85 } },
   r_crit: { grade: '레어', cat: '능력치', name: '예리한 발톱', desc: '급소율 +15%.', max: 2, mods: { crit: .15 } },
 
@@ -42,11 +42,20 @@ export const PERKS = {
   u_flame: { grade: '유니크', cat: '스킬 변이', name: '화염 장판', desc: '적중 시 20% 확률로 그 자리에 2초간 불타는 장판이 생긴다.', max: 1, mods: { flameZone: .2 } },
   u_toxic: { grade: '유니크', cat: '스킬 변이', name: '독 늪', desc: '적중 시 20% 확률로 그 자리에 2.5초간 독 늪이 생긴다.', max: 1, mods: { toxicZone: .2 } },
   u_homing: { grade: '유니크', cat: '스킬 변이', name: '유도 탄두', desc: '투사체가 가까운 적을 쫓아간다.', max: 1, mods: { homing: 1 } },
-  u_clone: { grade: '유니크', cat: '기동', name: '분신 대시', desc: '대시한 길에 분신이 남아 지나간 적을 벤다.', max: 1, mods: { dashClone: 1 } },
+  u_clone: { grade: '유니크', cat: '대시 진화', name: '⚡ 대시 진화: 분신 베기', desc: '대시한 길에 분신이 남아 지나간 적을 벤다.', max: 1, mods: { dashClone: 1 } },
   u_berserk: { grade: '유니크', cat: '능력치', name: '역린의 비늘', desc: '체력 50% 이하일 때 공격력 +35%.', max: 1, mods: { berserk: .35 } },
   u_execute: { grade: '유니크', cat: '능력치', name: '마무리 일격', desc: '체력 25% 이하인 적에게 주는 피해 +50%.', max: 1, mods: { execute: .5 } },
   u_charge: { grade: '유니크', cat: '스킬 변이', name: '⚡ 초고압 차징 코어', desc: 'Z 홀드 차징이 3단까지 찬다 — 2단 중형 관통탄 · 3단 화면을 가르는 초대형 폭발 속성포 (피해 300%).', max: 1, mods: { chargeCore: true } },
   u_thorns: { grade: '유니크', cat: '유틸', name: '가시 갑옷', desc: '맞으면 주변 적에게 공격력 ×1.2 피해를 되돌려 준다.', max: 1, mods: { thorns: 1.2 } },
+
+  // ================= ⚡ 대시 진화 (예전 단순 돌진 기술들의 기믹 → Shift 대시 자체가 공격기로) =================
+  d_flame: { grade: '레어', cat: '대시 진화', name: '⚡ 대시 진화: 화염 대시', desc: '대시한 길에 2초간 불길 장판이 남는다 (화상).', max: 1, mods: { dashFlame: 1 } },
+  d_aqua: { grade: '레어', cat: '대시 진화', name: '⚡ 대시 진화: 아쿠아 제트', desc: '대시 중 부딪히는 적을 물살로 밀쳐 내며 여러 번 친다.', max: 1, mods: { dashAqua: 1 } },
+  d_frost: { grade: '레어', cat: '대시 진화', name: '⚡ 대시 진화: 서리 질주', desc: '대시로 스친 적을 얼려 둔화시키고, 지나간 길에 얼음 결정이 흩날린다.', max: 1, mods: { dashFrost: 1 } },
+  d_thunder: { grade: '유니크', cat: '대시 진화', name: '⚡ 대시 진화: 썬더 스텝', desc: '대시를 시작한 자리와 끝난 자리에 낙뢰가 떨어져 폭발한다 (마비).', max: 1, mods: { dashThunder: 1 } },
+  d_decoy: { grade: '유니크', cat: '대시 진화', name: '⚡ 대시 진화: 환영 분신', desc: '대시한 자리에 분신이 남아 1.2초 동안 주변 적을 끌어당긴 뒤 폭발한다.', max: 1, mods: { dashDecoy: 1 } },
+  d_shadow: { grade: '유니크', cat: '대시 진화', name: '⚡ 대시 진화: 그림자 질주', desc: '대시 무적 시간 +0.2초. 스쳐 지나간 적에게 저주(받는 피해 +30%)를 건다.', max: 1, mods: { dashShadow: 1, dashInvAdd: .2 } },
+  d_nova: { grade: '전설', cat: '대시 진화', name: '⚡ 대시 진화: 신속의 섬광', desc: '대시 쿨타임 -50%. 대시가 끝날 때마다 둘레에 빛의 충격파가 터진다.', max: 1, mods: { dashCdMul: .5, dashNova: 1 } },
 
   // ================= 🟡 전설 (태고의 유물) =================
   l_orb: { grade: '전설', cat: '유물', name: '태고의 유물: 생명의구슬', desc: '모든 최종 피해 +45%. 기술(X·C)을 쓸 때 체력 3% 소모, 적을 쓰러뜨리면 체력 3% 회복.', max: 1, mods: { allMul: 1.45, orbCost: true, killHeal: .03 } },
@@ -179,6 +188,58 @@ export function onHurt(p) {
   }
 }
 
+// ---------------- 대시 중 갈고리 (Player.update 대시 진행 중) ----------------
+//  아쿠아 제트: 0.06초마다 몸 앞 판정으로 밀쳐 내며 다단히트 · 서리 질주: 스친 적 빙결·둔화 · 그림자 질주: 스친 적 저주
+export function onDashTick(p, d, dt) {
+  const md = p.mods, sc = p.scene;
+  if (!md.dashAqua && !md.dashFrost && !md.dashShadow) return;
+  const box = { x: p.b.x - 8, y: p.b.y - 6, w: p.b.width + 16, h: p.b.height + 12 };
+  if (md.dashAqua) {
+    d.tick -= dt;
+    if (d.tick <= 0) { d.tick = .06; sc.combat.hitRect(box, .3, 'water', { proc: true, kbx: 260 * (d.dir || 1), kby: -60, hs: 0, fromX: p.x - d.dir * 30 }); }
+    sc.fx.burst(p.x - d.dir * 8, p.y + (Math.random() - .5) * 10, [0x5ac8ff, 0xffffff], 2, 60, { angle: d.dir > 0 ? Math.PI : 0, spread: .6, grav: 200, life: .3, glow: true });
+  }
+  if (md.dashFrost || md.dashShadow) {
+    for (const e of sc.combat.enemiesIn(box)) {
+      if (d.hitSet.has(e)) continue;
+      d.hitSet.add(e);
+      sc.combat.damageEnemy(e, p.atk * .4, md.dashFrost ? 'ice' : 'ghost', Object.assign({ proc: true, kb: 0, kby: 0, hs: 0 }, md.dashFrost ? { freeze: .6, slow: 2.5 } : {}, md.dashShadow ? { curse: 5 } : {}));
+    }
+    if (md.dashFrost && Math.random() < .7) sc.fx.burst(p.x, p.y + (Math.random() - .5) * 12, [0xbff0ff, 0xffffff], 1, 30, { grav: 0, bounce: false, glow: true, life: .5, size: 2 });
+    if (md.dashShadow && Math.random() < .7) sc.fx.burst(p.x, p.y, [0x6a2aff, 0x2a0a3a], 1, 20, { grav: -20, bounce: false, glow: true, life: .45 });
+  }
+}
+
+// 썬더 스텝 낙뢰 한 줄기
+function thunderAt(p, x) {
+  const sc = p.scene, gy = sc.groundBelow(x, p.y - 20), top = sc.cameras.main.worldView.y - 10;
+  sc.combat.hitRect({ x: x - 14, y: top, w: 28, h: gy - top }, .9, 'electric', { proc: true, paralyze: .6, kbx: 60, kby: -220, hs: 30, fromX: x });
+  bolt(sc, x + (Math.random() - .5) * 24, top, x, gy, 0xffe86a, 3, 260);
+  sc.fx.burst(x, gy - 2, [0xffe86a, 0xffffff], 14, 150, { up: 130, glow: true }); sc.fx.ring(x, gy - 4, 26, 0xffe86a, 260);
+  sc.fx.shake(.006, 90, 'hit'); Sfx.play('zap');
+}
+
+// 환영 분신: 대시한 자리에 반투명 분신 → 1.2초 동안 주변 적을 끌어당기고 폭발
+function decoyAt(p, x, y) {
+  const sc = p.scene, sp = p.sprite;
+  const img = sc.add.image(x, y + sp.displayHeight * (sp.originY - .5), sp.texture.key, sp.frame.name).setOrigin(sp.originX, sp.originY).setFlipX(sp.flipX).setScale(sp.scaleX, sp.scaleY)
+    .setTintFill(0xc8a0ff).setAlpha(.6).setDepth(21);
+  img.y = p.bottom;
+  sc.tweens.add({ targets: img, alpha: { from: .35, to: .7 }, duration: 200, yoyo: true, repeat: 2 });
+  let n = 0;
+  const ev = sc.time.addEvent({ delay: 100, repeat: 11, callback: () => {
+    n++;
+    for (const e of sc.enemies) { if (!e.alive || e.boss) continue; const dx = x - e.x, d = Math.abs(dx); if (d < 150 && d > 10 && Math.abs(e.y - y) < 80) e.b.setVelocityX(Math.sign(dx) * 140); }
+    if (n >= 12) {
+      ev.remove();
+      if (sc.combat) sc.combat.hitCircle(x, y, 54, 1.4, p.types[0], { proc: true, kbx: 260, kby: -220, hs: 50 });
+      sc.fx.ring(x, y, 54, 0xc8a0ff, 320); sc.fx.burst(x, y, [0xc8a0ff, 0xffffff], 26, 220, { glow: true, up: 80 });
+      sc.fx.shake(.01, 180, 'hit'); Sfx.play('boom');
+      img.destroy();
+    }
+  } });
+}
+
 // ---------------- 처치 갈고리 (GameScene.killEnemy) ----------------
 export function onKill(p) {
   const md = p.mods;
@@ -188,6 +249,16 @@ export function onKill(p) {
 // ---------------- 대시 갈고리 (Player.update 대시 시작) ----------------
 export function onDash(p, d) {
   const md = p.mods, sc = p.scene, x0 = p.x, y0 = p.y;
+  d.hitSet = new Set(); d.tick = 0;
+  if (md.dashThunder) { thunderAt(p, x0); sc.time.delayedCall(210, () => { if (p.scene) thunderAt(p, p.x); }); }
+  if (md.dashFlame || md.dashNova || md.dashDecoy) sc.time.delayedCall(200, () => {
+    if (!p.scene || !sc.combat) return;
+    const x1 = p.x, L = Math.min(x0, x1), W = Math.abs(x1 - x0) + 16, gy = sc.groundBelow((x0 + x1) / 2, y0);
+    if (md.dashFlame) sc.combat.spawnZone({ owner: 'player', x: L - 8, y: gy - 16, w: W, h: 16, life: 2, tick: .3, type: 'fire', color: 0xff7a2a, draw: 'fire',
+      onTick: z => sc.combat.hitRect({ x: z.x, y: z.y - 4, w: z.w, h: z.h + 4 }, .22, 'fire', { proc: true, burn: 3, kbx: 0, kby: 0, hs: 0 }) });
+    if (md.dashNova) { sc.combat.hitCircle(x1, p.y, 46, 1, p.types[0], { proc: true, kbx: 200, kby: -160, hs: 30 }); sc.fx.ring(x1, p.y, 46, 0xffffff, 300); sc.fx.ring(x1, p.y, 30, 0xffe08a, 260); Sfx.play('boom'); }
+    if (md.dashDecoy) decoyAt(p, x0, y0);
+  });
   if (md.dashBomb) {
     const bomb = sc.add.image(x0, y0 + 4, 'glow').setTint(0xff7a2a).setBlendMode(Phaser.BlendModes.ADD).setScale(.35).setDepth(30);
     sc.tweens.add({ targets: bomb, scale: .55, duration: 110, yoyo: true, repeat: 1 });

@@ -12,12 +12,13 @@ import { typeName, typeColor, hex, matchups } from '../data/types.js';
 import { GRADE_STYLE, UPGRADES, rollCards } from '../data/tm.js';
 
 // 특성 카드 분류 → 카드 가운데 아이콘 글자 (기술 아이콘이 없는 카드)
-const PERK_ICON = { 능력치: '⚔', 기동: '➶', 유틸: '✚', '속성 부여': '✺', '스킬 변이': '✷', 유물: '❂', 숙련: '✦' };
+const PERK_ICON = { 능력치: '⚔', 기동: '➶', 유틸: '✚', '속성 부여': '✺', '스킬 변이': '✷', 유물: '❂', 숙련: '✦', '대시 진화': '⚡' };
 import { HK, hkText, darkBand, hkMenu, hiImage, fadeLine, bar3d, glassPanel, glassButton, typePill } from '../systems/ui.js';
 import { MapView, VP } from '../systems/MapView.js';
 import { TouchControls } from '../systems/TouchControls.js';
 import { tagIcon, roundPortrait, itemArt, hiTex, dashIcon } from '../systems/Textures.js';
 import { CHG_SHOW, CHG_AT } from '../game/Player.js';
+import { megaUltOf, megaSymbol, MEGA_ULT_CD } from '../game/Spectacle.js';
 import { npcArt } from '../game/Npc.js';
 import { bossHome } from '../game/TestRoom.js';
 import { Save } from '../systems/Save.js';
@@ -30,7 +31,7 @@ const V = { x: 36, y: 36, r: 20 };                      // 메가 게이지 그�
 const MASK_X = 80, MASK_Y = 23, MASK_GAP = 19, MAX_MASKS = 9;
 const BALL = { top: .8, h: 16.4 };                      // 가면 텍스처 안에서 공이 차지하는 세로 범위 (논리 px)
 // PC 스킬 바 (오른쪽 아래 사각 카드 칸): 대시 · Z · X · C (+ Z크리스탈을 얻으면 Q Z기술). 터치패드를 쓰면 터치 버튼이 대신한다
-const SLOT_Y = 322, SLOT_S = 32, SLOT_X = { zmove: 464, dash: 502, z: 540, x: 578, c: 616 };
+const SLOT_Y = 322, SLOT_S = 32, SLOT_X = { ult: 426, zmove: 464, dash: 502, z: 540, x: 578, c: 616 };   // ult: 메가 필살기 칸 (메가진화 중에만)
 export const HUD_STYLES = [['A', '샘플 A · 택티컬'], ['B', '샘플 B · 본가'], ['C', '샘플 C · 픽셀']];
 const TOAST_Y = 288;
 const AREA_Y = 134;                               // 지역 타이틀 (왼쪽 위 HUD 아래 빈 띠)
@@ -151,7 +152,7 @@ export default class UIScene extends Phaser.Scene {
     this.gSlot = this.add.graphics().setDepth(1);        // 칸 틀 · 배경
     this.gSlotTop = this.add.graphics().setDepth(3);     // 쿨타임 덮개 · 테두리 빛 · 배지 · 키캡
     this.zGlow = this.add.image(SLOT_X.zmove, SLOT_Y, 'glow').setBlendMode(ADD).setTint(0xffe86a).setScale(.9).setAlpha(0);
-    this.slots = ['dash', 'z', 'x', 'c', 'zmove'].map(id => {
+    this.slots = ['dash', 'z', 'x', 'c', 'zmove', 'ult'].map(id => {
       const x = SLOT_X[id], s = {
         id, x, ready: true,
         icon: this.add.image(x, SLOT_Y, 'px').setDepth(2),
@@ -243,7 +244,8 @@ export default class UIScene extends Phaser.Scene {
       killcount: (k, n) => { this.recent[k] = this.time.now; this.toast(`${SPECIES[k].name} 정화 진행도: ${n} / ${UNLOCK_KILLS}`); },
       pause: on => this.showPause(on),
       saved: r => this.onSaved(r),
-      gameover: r => this.showResult(r)
+      gameover: r => this.showResult(r),
+      cutin: (title, col) => this.banner(title, title.includes(' · ') ? '✦ MEGA SKILL ✦' : '★ LEGENDARY MOVE ★')   // 전설 기술·메가 필살기 컷인 이름 띠
     };
     for (const [k, fn] of Object.entries(this.handlers)) ge.on(k, fn, this);
     this.events.once('shutdown', () => { for (const [k, fn] of Object.entries(this.handlers)) ge.off(k, fn, this); });
@@ -1438,18 +1440,20 @@ export default class UIScene extends Phaser.Scene {
       let on = true, tex, type, cd = 0, max = 1, name = null;
       if (s.id === 'dash') { type = p.types[0]; tex = dashIcon(this, type); cd = Math.max(0, p.dashCd); max = .55 * p.mods.dashCdMul; name = '대시 회피'; }
       else if (s.id === 'zmove') { on = p.z.has; type = 'normal'; tex = 'zcrystal-hi'; cd = p.z.cd; max = Z_CD; name = 'Z기술'; }
+      else if (s.id === 'ult') { on = p.mega.active; type = megaUltOf(p).type; tex = megaSymbol(this); cd = m.cd.r || 0; max = MEGA_ULT_CD; name = `메가 필살기 · ${megaUltOf(p).name}`; }
       else { const id = p.skillId(s.id), sk = SKILLS[id]; type = sk.type; tex = `sk:${id}`; cd = m.cd[s.id]; max = p.cdOf(id) || 1; name = sk.name; }
       for (const v of [s.icon, s.cd, s.key, s.badge]) v.setVisible(on);
       if (on) s.zone.setInteractive(); else s.zone.disableInteractive();
       s.tipType = on && s.id !== 'dash' && s.id !== 'zmove' ? type : null; s.tipName = name;
       if (!on) continue;
-      const tc = s.id === 'zmove' ? 0xffd860 : typeColor(type), k = cd > 0 ? Math.min(1, cd / max) : 0;
+      const tc = s.id === 'zmove' ? 0xffd860 : s.id === 'ult' ? Phaser.Display.Color.HSVToRGB((time / 2400) % 1, .5, 1).color : typeColor(type), k = cd > 0 ? Math.min(1, cd / max) : 0;   // 메가 필살기 칸은 무지갯빛
       if (s.ready === false && k <= 0) { s.flash = 1; }   // 쿨타임이 막 끝났다: 한 번 번쩍
       s.ready = k <= 0; s.flash = Math.max(0, (s.flash || 0) - .05);
       s.icon.setTexture(tex).setDisplaySize(st === 'C' ? 24 : 26, st === 'C' ? 24 : 26).setAlpha(k > 0 ? .45 : 1);
       s.cd.setText(cd > 0 ? (cd >= 1 ? cd.toFixed(0) : cd.toFixed(1)) : '');
-      s.badge.setText(st === 'B' ? (s.id === 'zmove' ? 'Z' : typeName(type).slice(0, 1)) : '');
-      this.drawSlot(g, gt, s.x, SLOT_Y, st, { tc, k, flash: s.flash, charge: s.id === 'z' ? chg : 0, lvl: s.id === 'z' && p.chg ? p.chg.lvl : 0, maxLvl: chgMax, key: s.key, badge: s.badge, gold: s.id === 'zmove' });
+      s.badge.setText(st === 'B' ? (s.id === 'zmove' ? 'Z' : s.id === 'ult' ? 'M' : typeName(type).slice(0, 1)) : '');
+      if (s.id === 'ult') s.icon.setTint(tc);
+      this.drawSlot(g, gt, s.x, SLOT_Y, st, { tc, k, flash: s.flash, charge: s.id === 'z' ? chg : 0, lvl: s.id === 'z' && p.chg ? p.chg.lvl : 0, maxLvl: chgMax, key: s.key, badge: s.badge, gold: s.id === 'zmove' || s.id === 'ult' });
     }
     this.zGlow.setAlpha(p.z.has && p.z.cd <= 0 ? .3 + Math.sin(time / 160) * .12 : 0);
   }
