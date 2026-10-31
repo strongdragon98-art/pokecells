@@ -2,9 +2,13 @@
 import { Settings } from './Settings.js';
 
 const BASE_GAIN = .28;
+// 보이스 리미터: 한꺼번에 울리는 효과음(Sfx.play 한 번 = 한 소리)은 최대 MAX_SOUNDS 개. 넘치면 가장 오래된 소리를 15ms 만에 줄여 끈다
+//  난타·다단히트·연쇄 폭발로 한 프레임에 수십 개의 오실레이터가 쌓여 오디오 스레드가 밀리고(지직거림·발열) 아이폰에서 튕기던 것을 막는다
+const MAX_SOUNDS = 10;
 class AudioSys {
   constructor() {
     this.ac = null; this.master = null; this.noise = null; this.last = {};
+    this.sounds = []; this.cur = null;   // 울리는 중인 소리 [{ voices:[{src, g}], end }] · 지금 만드는 소리의 보이스 묶음
     Settings.on(k => { if (k === 'volume' && this.master) this.master.gain.value = BASE_GAIN * Settings.get('volume'); });
   }
   get on() { return Settings.get('sound') && Settings.get('volume') > 0; }
@@ -21,6 +25,8 @@ class AudioSys {
       this.master.connect(lim); lim.connect(this.ac.destination);
       const n = this.ac.sampleRate; this.noise = this.ac.createBuffer(1, n, n);
       const d = this.noise.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+      // 화면을 끄거나 다른 앱으로 가면 오디오 스레드를 쉬게 한다 (배터리·발열)
+      document.addEventListener('visibilitychange', () => { if (!this.ac) return; if (document.hidden) this.ac.suspend(); else this.ac.resume(); });
     } catch (e) { this.ac = null; }
   }
 
@@ -32,6 +38,7 @@ class AudioSys {
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur);
     o.connect(g); g.connect(this.master); o.start(t); o.stop(t + dur + .03);
     o.onended = () => { o.disconnect(); g.disconnect(); };   // 다 울린 노드는 바로 떼어 낸다 (사파리에서 쌓이지 않게)
+    this.track(o, g, t + dur);
   }
 
   hiss(dur, vol = .18, freq = 1200, delay = 0, q = .8) {
@@ -41,6 +48,7 @@ class AudioSys {
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur);
     s.connect(f); f.connect(g); g.connect(this.master); s.start(t, Math.random() * .5); s.stop(t + dur + .03);
     s.onended = () => { s.disconnect(); f.disconnect(); g.disconnect(); };
+    this.track(s, g, t + dur);
   }
 
   // 피치 드롭: f0 → f1 로 뚝 떨어지는 몸통음 (타격의 '쿵' · 폭발의 '웅')
@@ -51,6 +59,7 @@ class AudioSys {
     g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .004); g.gain.exponentialRampToValueAtTime(.0008, t + dur);
     o.connect(g); g.connect(this.master); o.start(t); o.stop(t + dur + .03);
     o.onended = () => { o.disconnect(); g.disconnect(); };
+    this.track(o, g, t + dur);
   }
   // 노이즈 버퍼 + 필터 (lowpass 둔탁한 퍽 · highpass 날카로운 파열 · bandpass 중역 부서짐). sweep: 필터가 그 주파수까지 내려간다
   nz(dur, vol, type = 'lowpass', freq = 900, q = .7, delay = 0, sweep = 0) {
@@ -61,6 +70,25 @@ class AudioSys {
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur);
     s.connect(f); f.connect(g); g.connect(this.master); s.start(t, Math.random() * .5); s.stop(t + dur + .03);
     s.onended = () => { s.disconnect(); f.disconnect(); g.disconnect(); };
+    this.track(s, g, t + dur);
+  }
+
+  // 보이스를 지금 만드는 소리에 묶는다 (play 밖에서 부르면 혼자 한 소리)
+  track(src, g, end) {
+    if (this.cur) { this.cur.voices.push({ src, g }); this.cur.end = Math.max(this.cur.end, end); }
+    else this.admit({ voices: [{ src, g }], end });
+  }
+  // 새 소리를 받아들이고, 끝난 소리는 빼고, 넘치면 가장 오래된 소리부터 빠르게 줄여 끈다
+  admit(snd) {
+    const now = this.ac.currentTime;
+    this.sounds = this.sounds.filter(s => s.end > now);
+    this.sounds.push(snd);
+    while (this.sounds.length > MAX_SOUNDS) {
+      const old = this.sounds.shift();
+      for (const v of old.voices) {
+        try { v.g.gain.cancelScheduledValues(now); v.g.gain.setValueAtTime(Math.max(.0001, v.g.gain.value), now); v.g.gain.linearRampToValueAtTime(0, now + .015); v.src.stop(now + .02); } catch (e) { /* 이미 끝난 노드 */ }
+      }
+    }
   }
 
   arp(notes, step = .07, type = 'square', vol = .06) { notes.forEach((n, i) => this.tone(n, step * 1.7, type, vol, 0, i * step)); }
@@ -70,6 +98,11 @@ class AudioSys {
     const now = performance.now();
     if (now - (this.last[name] || 0) < 30) return;
     this.last[name] = now;
+    this.cur = { voices: [], end: 0 };
+    try { this.sound(name); } finally { const s = this.cur; this.cur = null; if (s.voices.length) this.admit(s); }
+  }
+
+  sound(name) {
     switch (name) {
       case 'jump': this.tone(380, .09, 'square', .04, 260); break;
       case 'djump': this.tone(560, .1, 'square', .04, 420); break;

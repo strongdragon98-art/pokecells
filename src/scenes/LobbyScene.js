@@ -10,12 +10,15 @@ import { Sfx } from '../systems/Audio.js';
 import { HK, hkText, hiImage, fadeLine, glassButton } from '../systems/ui.js';
 import { roundPortrait } from '../systems/Textures.js';
 import { RosterPanel } from '../systems/RosterPanel.js';
+import { Sprites } from '../systems/SpriteLoader.js';
 import { RES, uiCamera } from '../config.js';
 
 const ADD = Phaser.BlendModes.ADD;
 
 export default class LobbyScene extends Phaser.Scene {
   constructor() { super('Lobby'); }
+
+  preload() { Sprites.queue(this.load, ['eternatus']); }   // 배경 실루엣 시트만 (지연 로딩)
 
   create(data) {
     uiCamera(this);

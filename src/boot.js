@@ -10,6 +10,7 @@ import { setupMobile } from './systems/Mobile.js';
 import { installKeyFix } from './systems/KeyFix.js';
 import { installGuard } from './systems/Guard.js';
 import { ShockwaveFX } from './systems/PostFX.js';
+import { Perf } from './systems/Perf.js';
 
 // 개발 서버(main.js)와 단일 HTML 빌드(main-single.js)가 함께 쓰는 시작 함수
 export async function startGame() {
@@ -45,5 +46,7 @@ export async function startGame() {
   window.__game = game;   // 개발 중 콘솔 확인용
   installKeyFix(game);    // 한글 입력 모드에서도 키가 먹히게 (systems/KeyFix.js)
   setupMobile(game);
+  Perf.install(game);     // 안전 모드 · 성능 자동 전환 (systems/Perf.js)
+  Perf.arm(20000);        // 첫 화면까지 20초 안에 튕기면 다음 접속은 안전 모드
   document.getElementById('boot')?.remove();
 }

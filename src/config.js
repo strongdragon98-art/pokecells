@@ -12,11 +12,16 @@ export const LOW_FLOOR = 46;        // 지하 바닥 윗면 행
 
 // 렌더링 배율: 좌표는 640x360 그대로 두고 캔버스만 2~3배로 키워 글자·장식을 매끈하게 그린다.
 // (도트는 그대로 크게 보이고, 글자·선·광택만 고해상도로 그려진다) 휴대폰은 성능을 위해 2배.
+// 캔버스 크기는 devicePixelRatio 를 따라 커지지 않는다 (아이폰 DPR 3 이어도 휴대폰은 1280x720 고정 — VRAM 폭주 방지).
+// 안전 모드(지난 접속이 부팅 중 끊김 · WebGL 컨텍스트 손실 — systems/Perf.js)면 고해상도 PC 도 3배 대신 2배로
 export const RES = (() => {
   if (typeof window === 'undefined') return 2;
   const coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches;
   const px = Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1);
-  return coarse ? 2 : px >= 1800 ? 3 : 2;
+  let safe = false;
+  try { safe = localStorage.getItem('pokecells.safe') === '1'; } catch (e) { /* 저장소를 못 쓰면 평소대로 */ }
+  if (coarse) return 2;
+  return px >= 1800 && !safe ? 3 : 2;
 })();
 
 // UI 글꼴: 프리텐다드(한글 고딕) · 제목 로마자는 Cinzel — 둘 다 SIL OFL 1.1

@@ -27,6 +27,8 @@ const TRAINER_LINES = {
 };
 import { Combat, overlap } from '../game/Combat.js';
 import { Fx } from '../systems/Fx.js';
+import { Sprites } from '../systems/SpriteLoader.js';
+import { Perf } from '../systems/Perf.js';
 import { Sfx } from '../systems/Audio.js';
 import { Music } from '../systems/Music.js';
 import { Settings, keyLabel } from '../systems/Settings.js';
@@ -62,6 +64,12 @@ function daySkyTexture(scene) {
   c.fillStyle = g; c.fillRect(0, 0, 4, 128);
   t.refresh();
 }
+// 이 챕터에 나올 포켓몬: 야생 계열(pool) + 지역 구성에 적힌 보스·중간 보스·숨은 보스 이름 (계열 id 는 SpriteLoader 가 모든 모습으로 펼친다)
+function chapterSprites(ci) {
+  const st = STAGES[ci];
+  if (!st) return [];
+  return [...new Set([...(st.pool || []), ...(JSON.stringify(st).match(/[a-z][a-z0-9-]+/g) || [])])];
+}
 // 두 색을 k(0~1)만큼 섞는다
 const lerpColor = (a, b, k) => {
   const A = Phaser.Display.Color.IntegerToRGB(a), B = Phaser.Display.Color.IntegerToRGB(b);
@@ -75,6 +83,12 @@ export default class GameScene extends Phaser.Scene {
     this.test = !!(data && data.test);              // 테스트룸 (테스터 모드 · 로비의 「테스트룸」): game/TestRoom.js 의 빈 아레나 · 저장·도감에 남지 않는다
     this.resume = (data && data.resume) || null;   // 로비의 '이어하기': systems/RunSave.js 의 저장 내용
     this.partyKeys = this.resume ? this.resume.player.members.map(m => m.key) : data && data.party && data.party.length ? data.party : Save.data.party;
+  }
+
+  // 지연 로딩: 파티 계열 전체(진화·메가) + 이 챕터에 나올 포켓몬 시트를 다 받은 뒤 시작한다 (나머지는 Actor 가 필요할 때 받는다)
+  preload() {
+    const ci = this.resume ? this.resume.stageIdx : 0;
+    Sprites.queue(this.load, [...this.partyKeys, ...chapterSprites(ci), 'corviknight']);
   }
 
   create() {
@@ -109,7 +123,9 @@ export default class GameScene extends Phaser.Scene {
     cam.setZoom(ZOOM * RES).setBackgroundColor('#07060f').setRoundPixels(true);
     if (this.webgl) {
       this.lights.enable();
-      cam.postFX.addBloom(0xffffff, 1, 1, 1.1, .85, 2);
+      this.applyPerf();   // 블룸: 절전 모드면 끈다 (systems/Perf.js)
+      const offPerf = Perf.on(() => this.applyPerf());
+      this.events.once('shutdown', offPerf);
       this.vignetteFx = cam.postFX.addVignette(.5, .5, .92, .3);   // 보스방에 가까울수록 좁고 진해진다 (updateAtmosphere)
       this.gradeFx = cam.postFX.addColorMatrix();                   // 색 보정: 초입은 따뜻하고 선명하게 · 보스 앞은 채도가 빠지고 어둡게
     }
@@ -124,6 +140,15 @@ export default class GameScene extends Phaser.Scene {
     cam.fadeIn(350, 7, 6, 15);
     this.events.once('shutdown', () => this.cleanup());
     if (this.test) this.testBegin();
+    Perf.arm(15000);   // 게임 시작 직후 15초 안에 튕기면 다음 접속은 안전 모드
+  }
+
+  // 그래픽 최적화 반영: 블룸(전체 화면을 여러 번 흐리는 후처리)은 절전 모드에서 끈다 · 나머지 연출은 그대로
+  applyPerf() {
+    const cam = this.cameras.main;
+    if (!this.webgl || !cam.postFX) return;
+    if (Perf.bloom && !this.bloomFx) { this.bloomFx = cam.postFX.addBloom(0xffffff, 1, 1, 1.1, .85, 2); }
+    else if (!Perf.bloom && this.bloomFx) { cam.postFX.remove(this.bloomFx); this.bloomFx = null; }
   }
 
   // ---------------- 월드 구성 ----------------
@@ -157,6 +182,10 @@ export default class GameScene extends Phaser.Scene {
     level.purified = !!W.purified;
     if (W.reset) { W.reset = false; if (at) at = this.lastCenter && this.lastCenter.ci === si ? this.hubPos(this.lastCenter) : null; }   // 지형이 바뀐 챕터에서 이어하면 시내 · 입구에서
     this.stage = st; this.runStats.stage = si + 1;
+    // 다른 지방으로 건너가면: 지난 지방에서만 쓰던 시트는 내리고(파티 계열은 남긴다) 이 지방 포켓몬을 미리 받아 둔다
+    if (this.player && this.spriteChapter !== si) Sprites.trim([...this.player.members.map(m => m.key), ...chapterSprites(si), 'corviknight']);
+    this.spriteChapter = si;
+    Sprites.ensure(chapterSprites(si));
     this.level = level;
     this.explored = W.explored || (W.explored = new Uint8Array(level.cols * level.rows));   // 지도: 화면에 한 번이라도 들어온 칸
     this.exploredKey = '';
@@ -1007,7 +1036,7 @@ export default class GameScene extends Phaser.Scene {
     const s = (e.b.height / 18) * (1 + Math.sin(t * 7 + e.auraT) * .1);
     e.eliteGlow.setPosition(e.x, e.y).setScale(s * .9, s * 1.1).setAlpha(.55 + Math.sin(t * 11) * .12);
     e.eliteTag.setPosition(Math.round(e.x), Math.round(e.top - 6));
-    if (Math.random() < .5) this.fx.embers(e.x + (Math.random() - .5) * e.b.width, e.bottom - 2, [0xff3a2a, 0xffa040, 0xffe08a], 1, { speed: 45 });
+    if (!e.asleep && Math.random() < .5) this.fx.embers(e.x + (Math.random() - .5) * e.b.width, e.bottom - 2, [0xff3a2a, 0xffa040, 0xffe08a], 1, { speed: 45 });
   }
 
   drawCorruption() {

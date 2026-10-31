@@ -24,6 +24,8 @@ import { bossHome } from '../game/TestRoom.js';
 import { Save } from '../systems/Save.js';
 import { RosterPanel } from '../systems/RosterPanel.js';
 import { Sfx } from '../systems/Audio.js';
+import { Perf } from '../systems/Perf.js';
+import { Sprites } from '../systems/SpriteLoader.js';
 import { Settings, SETTING_DEFAULTS, DEFAULT_KEYS, KEY_ACTIONS, FIXED_KEYS, keyLabel, keyNameFromEvent } from '../systems/Settings.js';
 
 const ADD = Phaser.BlendModes.ADD;
@@ -360,7 +362,14 @@ export default class UIScene extends Phaser.Scene {
     const g = this.g, gm = this.gMid, gt = this.gTop;
     g.clear(); gm.clear(); gt.clear();
     this.fpsT -= delta;
-    if (this.fpsT <= 0) { this.fpsT = 500; this.fpsText.setText(`${Math.round(this.game.loop.actualFps)} FPS`); }
+    if (this.fpsT <= 0) {   // 성능 모니터 (왼쪽 아래): FPS · 그려지는 오브젝트 · 파티클 · 깨어 있는 적 · 받은 포켓몬 시트 · 절전 여부
+      this.fpsT = 500;
+      const fps = Math.round(this.game.loop.actualFps), list = gs.children ? gs.children.list : [];
+      let live = 0; for (const o of list) if (o.visible && o.active) live++;
+      const awake = gs.enemies ? gs.enemies.filter(e => e.alive && !e.asleep).length : 0, parts = gs.fx ? gs.fx.parts.length : 0;
+      this.fpsText.setText(`${fps} FPS · 오브젝트 ${live}/${list.length} · 파티클 ${parts} · 적 ${awake} · 도트 ${Sprites.loadedCount}종${Perf.saver ? ' · ⚡절전' : ''}`)
+        .setColor(fps < 45 ? '#ff9a8a' : HK.faint);
+    }
     if (!p) return;
     if (this.overlayMode === 'talk') this.talkTick(dt);
     const m = p.m, mg = p.mega;
@@ -1616,7 +1625,7 @@ export default class UIScene extends Phaser.Scene {
       glassButton(this, PX + 12 + i * 106, PY + 8, 100, 24, label, () => { if (page !== id) { this.setPage = id; this.keyWait = null; this.gs.keyCapture = false; Sfx.play('select'); this.showSettings(0); } }, { size: 10, bold: true, layer: L, primary: page === id });
     });
     const reset = () => {
-      if (keys) Settings.set('keys', { ...DEFAULT_KEYS }); else for (const k of ['volume', 'sound', 'shakeHit', 'shakeHurt', 'uiScale', 'padAlpha', 'hudStyle']) Settings.set(k, SETTING_DEFAULTS[k]);
+      if (keys) Settings.set('keys', { ...DEFAULT_KEYS }); else for (const k of ['volume', 'sound', 'shakeHit', 'shakeHurt', 'uiScale', 'padAlpha', 'hudStyle', 'perf']) Settings.set(k, SETTING_DEFAULTS[k]);
       Sfx.play('select'); this.settingsMsg(keys ? '조작키를 처음대로 되돌렸어요' : '설정을 기본값으로 되돌렸어요', focus);
     };
     glassButton(this, PX + PW - 112, PY + 8, 100, 24, keys ? '기본 키로' : '기본값으로', reset, { size: 10, bold: true, layer: L });
@@ -1691,7 +1700,7 @@ export default class UIScene extends Phaser.Scene {
       glassButton(this, TX - 34, y - 13, 96, 26, on ? '켬' : '끔', act, { size: 11, bold: true, layer: L, primary: on });
       rows.push({ adjust: act, toggle: act });
     };
-    const pct = v => `${Math.round(v * 100)}%`, Y0 = PY + 54, DY = 28;
+    const pct = v => `${Math.round(v * 100)}%`, Y0 = PY + 52, DY = 26;
     slider(Y0, 'volume', '볼륨', '효과음 · 컷신 영상', 0, 1, .1, v => v <= 0 ? '음소거' : pct(v));
     toggle(Y0 + DY, '소리', 'N 키로도 켜고 끈다', () => Settings.get('sound'), () => Settings.set('sound', !Settings.get('sound')));
     slider(Y0 + DY * 2, 'shakeHit', '타격 흔들림', '내 공격이 맞을 때 카메라 흔들림', 0, 1.5, .1, v => v <= 0 ? '끔' : pct(v));
@@ -1714,6 +1723,17 @@ export default class UIScene extends Phaser.Scene {
       pk.setText(keyLabel(Settings.key('x')));
       this.drawSlot(pg, pgt, px, y, cur, { tc: typeColor(pt), k: 0, flash: 0, charge: 0, lvl: 0, maxLvl: 1, key: pk, badge: pb });
       rows.push({ adjust: d => pick((HUD_STYLES.findIndex(h => h[0] === cur) + d + 3) % 3), toggle: () => pick((HUD_STYLES.findIndex(h => h[0] === cur) + 1) % 3) });
+    }
+    // ⚡ 그래픽 최적화: 자동 / 일반 / 절전 (systems/Perf.js) — 절전은 파티클 밀도 절반 · 블룸 끔. 일반을 고르면 안전 모드도 풀린다
+    {
+      const y = Y0 + DY * 8, row = rows.length, cur = Settings.get('perf') || 'auto';
+      if (row === focus) focusMark(y);
+      const why = cur === 'auto' ? (Perf.saver ? `지금 절전 (${Perf.reason})` : '지금 일반') : cur === 'saver' ? '파티클 절반 · 화면 번짐 끔' : '모든 연출 그대로';
+      label(y, '⚡ 그래픽 최적화', why);
+      const MODES = [['auto', '자동'], ['normal', '일반'], ['saver', '고성능 절전']];
+      const pick = i => { const m = MODES[i][0]; Settings.set('perf', m); if (m === 'normal') Perf.clearSafe(); Sfx.play('select'); this.showSettings(row); };
+      MODES.forEach(([id, name], i) => glassButton(this, TX - 34 + i * 70, y - 13, 66, 26, name, () => pick(i), { size: 9.5, bold: true, layer: L, primary: cur === id }));
+      rows.push({ adjust: d => pick((MODES.findIndex(m => m[0] === cur) + d + 3) % 3), toggle: () => pick((MODES.findIndex(m => m[0] === cur) + 1) % 3) });
     }
     // 끌기: 막대를 누른 채 움직이면 따라오고, 떼면 미리보기
     const move = p => { if (this.setDrag && p.isDown) this.setDrag.fromPointer(p); };

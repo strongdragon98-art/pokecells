@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { SpriteLoader } from '../systems/SpriteLoader.js';
+import { SpriteLoader, Sprites } from '../systems/SpriteLoader.js';
 import { generateBaseTextures, composeSkillIcons } from '../systems/Textures.js';
 import { txt, GAME_W, GAME_H, uiCamera } from '../config.js';
 
@@ -56,6 +56,7 @@ export default class BootScene extends Phaser.Scene {
     this.registry.set('manifest', this.loader.manifest);
     await composeSkillIcons(this, this.loader.skillSvgs(this.embed));   // 못 받은 스킬은 아래에서 도트 아이콘으로 채운다
     generateBaseTextures(this);
+    await Sprites.ensure(['charizard', 'pikachu']);   // 오프닝 화면 실루엣만 (나머지 시트는 필요할 때 — 아이폰 메모리)
     this.scene.start('Title');   // 오프닝 화면 (새 게임 · 불러오기 · 설정 · 종료)
   }
 }

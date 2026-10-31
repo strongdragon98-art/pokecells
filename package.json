@@ -10,7 +10,9 @@
     "fetch-skills": "node scripts/fetch-github-skills.js",
     "gen-skill": "node scripts/gen-skill.js",
     "dev": "vite --host 127.0.0.1 --port 5173",
+    "prebuild": "node scripts/make-sprite-meta.js",
     "build": "vite build",
+    "postbuild": "node scripts/crop-dist-sprites.js",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "build:single": "node scripts/build-single.js",
     "make-logo": "node scripts/make-logo.js",
@@ -20,7 +22,8 @@
     "deploy": "gh-pages -d dist --nojekyll --remove \"assets/index-*\" -u \"strongdragon98-art <strongdragon98-art@users.noreply.github.com>\"",
     "make-pwa-icons": "node scripts/make-pwa-icons.js",
     "make-videos": "node scripts/make-videos.js",
-    "make-fonts": "node scripts/make-fonts.js"
+    "make-fonts": "node scripts/make-fonts.js",
+    "sprite-meta": "node scripts/make-sprite-meta.js"
   },
   "dependencies": {
     "galmuri": "^2.40.3",

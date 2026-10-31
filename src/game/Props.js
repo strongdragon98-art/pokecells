@@ -961,7 +961,7 @@ export class Props {
       m.setAlpha(Math.sin(k * Math.PI) * (m.spore ? .8 : .55 + Math.sin(t * 6 + m.ph) * .35));
     }
     // 맥동 (나무 균열 · 결계 · 로어 표지)
-    for (const p of this.pulses) p.o.setAlpha(Math.max(0, p.base + Math.sin(t * p.sp) * p.amp));
+    for (const p of this.pulses) if (p.o.x > L - 200 && p.o.x < R + 200 && p.o.y > U - 200 && p.o.y < D + 200) p.o.setAlpha(Math.max(0, p.base + Math.sin(t * p.sp) * p.amp));
     for (const it of this.interacts) if (it.kind === 'tm' && !it.used) this.tmResonance(it, dt); else if (it.kind === 'terminal') this.terminalNear(it);
     // 지지직 깜빡임: 가끔 잠깐 꺼졌다 켜진다
     for (const f of this.flickers) {
@@ -1000,7 +1000,8 @@ export class Props {
       if (near) { Sfx.play('resonate'); s.fx.ring(it.x, it.y - 4, 40, 0x8ae8ff, 420); }
       if (it.lightObj) it.lightObj.setIntensity(near ? 3 : 2.1);
     }
-    if (Math.random() < (near ? .7 : .16)) s.fx.embers(it.x + (Math.random() - .5) * 30, it.y - 10 - Math.random() * (near ? 90 : 50), near ? [0xffd25a, 0xb08aff, 0xffffff] : [0x9ad8ff, 0xffffff], 1, { speed: near ? 40 : 12 });
+    const v = s.cameras.main.worldView, seen = it.x > v.x - 60 && it.x < v.right + 60 && it.y > v.y - 60 && it.y < v.bottom + 140;   // 화면 밖 기술머신은 불씨를 뿜지 않는다
+    if (seen && Math.random() < (near ? .7 : .16)) s.fx.embers(it.x + (Math.random() - .5) * 30, it.y - 10 - Math.random() * (near ? 90 : 50), near ? [0xffd25a, 0xb08aff, 0xffffff] : [0x9ad8ff, 0xffffff], 1, { speed: near ? 40 : 12 });
   }
 
   // 간이 회복기: 반경 안에 들어서면 연결(자동 저장 + 부활 자리) — 들어설 때마다 한 번

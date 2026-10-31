@@ -7,6 +7,7 @@
 import Phaser from 'phaser';
 import { GAME_W, GAME_H, uiCamera } from '../config.js';
 import { Fx } from '../systems/Fx.js';
+import { Sprites } from '../systems/SpriteLoader.js';
 import { Sfx } from '../systems/Audio.js';
 import { Settings } from '../systems/Settings.js';
 import { HK, hkText, darkBand, fadeLine, glassButton } from '../systems/ui.js';
@@ -29,6 +30,8 @@ export default class CutsceneScene extends Phaser.Scene {
     this.tendrils = []; this.miasmaOn = true; this.startedAt = 0;
     this.art = null; this.useArt = false;
   }
+
+  preload() { Sprites.queue(this.load, ['eternatus', ...this.party]); }   // 컷신에 나오는 시트만 (지연 로딩)
 
   create() {
     uiCamera(this);

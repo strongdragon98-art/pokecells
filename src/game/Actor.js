@@ -1,5 +1,6 @@
 // 물리 몸통(보이지 않는 Arcade 이미지)과 도트 스프라이트를 분리한 공통 캐릭터
 // 프레임 크기가 모션마다 달라도 몸통이 흔들리지 않고, 스프라이트만 발 위치에 맞춰 그린다.
+import { Sprites } from '../systems/SpriteLoader.js';
 export class Actor {
   constructor(scene, key, x, y, w = 14, h = 18) {
     this.scene = scene;
@@ -41,6 +42,12 @@ export class Actor {
     const dir = this.face > 0 ? 'right' : 'left';
     const k = `${this.key}:${name}:${dir}`;
     if (!force && this.animKey === k) return;
+    if (!Sprites.isReady(this.key)) {   // 시트를 아직 안 받은 포켓몬 (지연 로딩): 받는 대로 이 모션으로 다시 그린다
+      const key = this.key;
+      this.animName = name; this.sprite.setAlpha(0);
+      Sprites.ensure([key]).then(() => { if (this.key === key && this.sprite && this.sprite.active) { this.sprite.setAlpha(1); this.play(this.animName || 'Idle', true); } });
+      return;
+    }
     if (!this.scene.anims.exists(k)) {
       if (name === 'Shoot' || name === 'Strike') return this.play('Attack', force);   // 발사·강타 모션이 없는 도트(피츄 등)는 공격 모션으로
       if (name !== 'Idle') return this.play('Idle', force);

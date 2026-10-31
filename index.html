@@ -13,6 +13,24 @@
   <link rel="icon" type="image/png" href="./pwa/icon-192.png">
   <link rel="apple-touch-icon" href="./pwa/apple-touch-icon.png">
   <title>포켓 셀즈</title>
+  <script>
+    // 안전 장치 (모듈보다 먼저 실행): ① 지난 접속이 부팅·게임 시작 직후에 끊겼으면(아이폰 WebKit 메모리 크래시 → 자동 새로고침) 안전 모드로
+    //  ② 예전에 등록된 서비스 워커가 있으면 해제한다 (옛 파일과 섞여 무한 새로고침에 빠지지 않게 · 이 게임은 서비스 워커를 쓰지 않는다)
+    (function () {
+      try {
+        var now = Date.now(), at = +localStorage.getItem('pokecells.bootAt') || 0;
+        if (at && now - at < 180000) localStorage.setItem('pokecells.safe', '1');
+        localStorage.setItem('pokecells.bootAt', String(now));
+        // 직접 새로고침·창 닫기처럼 정상으로 떠날 때는 표시를 지운다 (튕긴 탭은 pagehide 가 오지 않는다)
+        window.addEventListener('pagehide', function () { try { localStorage.removeItem('pokecells.bootAt'); } catch (e) { /* 무시 */ } });
+      } catch (e) { /* 사생활 보호 모드 등 저장소를 못 쓰면 건너뜀 */ }
+      try {
+        // 같은 github.io 주소의 다른 프로젝트는 건드리지 않도록, 이 게임 경로에 걸린 것만
+        var here = location.pathname.replace(/[^/]*$/, '');
+        if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { if (new URL(r.scope).pathname.indexOf(here) === 0) r.unregister(); }); }).catch(function () {});
+      } catch (e) { /* 무시 */ }
+    })();
+  </script>
   <style>
     /* 아이폰: 끌려 내려가는 화면 · 두 번 탭 확대 · 텍스트 선택 돋보기를 원천 차단. 높이는 주소창을 뺀 실제 보이는 높이 (--app-h 는 systems/Mobile.js 가 갱신) */
     html, body { margin: 0; padding: 0; width: 100%; height: 100vh; height: 100dvh; height: var(--app-h, 100dvh); overflow: hidden; background-color: #000; touch-action: none; overscroll-behavior: none;

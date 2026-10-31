@@ -2,6 +2,7 @@
 import Phaser from 'phaser';
 import { Settings } from './Settings.js';
 import { ImagePool, TextPool } from './Pool.js';
+import { Perf } from './Perf.js';
 import { pxt as txt } from '../config.js';   // 월드 안 글자는 도트 글꼴
 
 const ADD = Phaser.BlendModes.ADD;
@@ -65,7 +66,7 @@ export class Fx {
     this.gs = scene.add.graphics().setDepth(47);                                         // 베기 검기 (3겹 도트 초승달)
     this.gsa = scene.add.graphics().setDepth(46.9).setBlendMode(Phaser.BlendModes.ADD);   // 검기 바깥 빛 (검기 밑에 깔린다)
     fxTextures(scene);
-    this.maxParts = 420;
+    this.wasArcs = true;   // 지난 프레임에 검기를 그렸나 (없으면 그래픽을 비우지 않고 건너뛴다)
   }
 
   // ---- 히트스톱: 물리·애니메이션을 잠깐 멈춘다 ----
@@ -98,9 +99,12 @@ export class Fx {
   }
 
   // ---- 픽셀 파티클 (바닥에 튕김) ----
+  //  절전 모드(systems/Perf.js)는 밀도 절반: 여러 알이면 수를 절반으로, 한 알짜리(환경 먼지·불씨)는 절반 확률로 거른다
   burst(x, y, color, n = 10, speed = 90, o = {}) {
+    const mul = Perf.particleMul, cap = Perf.maxParticles;
+    if (mul < 1) { if (n <= 1) { if (Math.random() > mul) return; } else n = Math.max(1, Math.round(n * mul)); }
     for (let i = 0; i < n; i++) {
-      if (this.parts.length >= this.maxParts) this.pool.release(this.parts.shift().img);
+      if (this.parts.length >= cap) this.pool.release(this.parts.shift().img);
       const a = o.angle !== undefined ? o.angle + (Math.random() - .5) * (o.spread ?? 1.2) : Math.random() * Math.PI * 2;
       const sp = speed * (.35 + Math.random() * .75);
       const p = {
@@ -297,6 +301,8 @@ export class Fx {
       if (p.white > 0 || step === 0 && Math.random() < .15) p.img.setTintFill(0xffffff); else p.img.clearTint();
     }
     // 베기 검기: 바깥 빛(ADD) → 가장자리 → 중간 → 순백 코어 (같은 띠를 점점 얇게 겹쳐 그린다)
+    if (!this.arcs.length && !this.wasArcs) return;   // 그릴 검기가 없으면 그래픽을 매 프레임 비우지 않는다
+    this.wasArcs = this.arcs.length > 0;
     this.gs.clear(); this.gsa.clear();
     for (let i = this.arcs.length - 1; i >= 0; i--) {
       const a = this.arcs[i];
