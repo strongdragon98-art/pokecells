@@ -8,6 +8,7 @@ import { SPECIES, SKILLS, TAGS, TIERS, EVO_EXP, ZMOVES, Z_CD } from '../data/pok
 import { FORM_ITEMS } from '../data/roster.js';
 import { computeMods, ITEMS, MAX_EQUIP } from '../data/items.js';
 import { START_MONEY, USES, VIT_MAX } from '../data/shop.js';
+const HP_SCALE = .85;
 import { onHurt, onDash } from './Perks.js';
 import { typeMultiplier, effectiveness, typeColor } from '../data/types.js';
 import * as base from './skills.js';
@@ -183,7 +184,8 @@ export class Player extends Actor {
     const meta = this.scene.registry.get('spriteMeta'), k = this.form(m).key;
     return meta[k] && meta[k].hasSprite ? k : m.key;
   }
-  maxHpOf(m) { return Math.round(m.sp.hp * this.stageBonus * TIERS[this.tierOf(m)].hp * this.statOf('hp', m) * ((m.mods && m.mods.hpMul) || 1)); }
+  // HP_SCALE: 상처약 퀵슬롯이 생겨 플레이어블 포켓몬 전체의 기본 최대 체력을 15% 낮췄다 (기존 × 0.85 · 반올림)
+  maxHpOf(m) { return Math.round(Math.round(m.sp.hp * HP_SCALE) * this.stageBonus * TIERS[this.tierOf(m)].hp * this.statOf('hp', m) * ((m.mods && m.mods.hpMul) || 1)); }
 
   visualKey() {
     const meta = this.scene.registry.get('spriteMeta');
@@ -432,6 +434,7 @@ export class Player extends Actor {
     Cores.tick(this, dt);
     const sc = this.scene, b = this.b, sp = this.sp;
     this.lastInput = inp;
+    this.potionCd = Math.max(0, (this.potionCd || 0) - dt);   // 상처약 퀵슬롯 재사용 (GameScene.quickPotion)
     this.inv -= dt; this.dashCd -= dt; this.swapCd -= dt; this.diveCd -= dt; this.comboT -= dt; this.zBuf -= dt; this.dropT -= dt; this.hurtT -= dt; this.speedBuff -= dt;
     this.z.cd = Math.max(0, this.z.cd - dt);
     for (const m of this.members) for (const k in m.cd) m.cd[k] = Math.max(0, m.cd[k] - dt);

@@ -9,6 +9,7 @@ import { SHOP_CATS, shopGoods, sellables, goodsInfo, nuggetTotal, won, NUGGETS, 
 import { ITEMS } from '../data/items.js';
 import { HK, hkText, glassPanel, glassButton, fadeLine } from '../systems/ui.js';
 import { Sfx } from '../systems/Audio.js';
+import { Settings, keyLabel } from '../systems/Settings.js';
 
 const ADD = Phaser.BlendModes.ADD;
 const GOLD = 0xffc84a, BLUE = 0x4a8aff;
@@ -115,7 +116,7 @@ export const ShopMenu = {
       const info = goodsInfo(e), lock = !!e.lock;
       const ic = this.shopIcon(rx + 22, y, e, 15); if (lock) ic.setAlpha(.4); L.add(ic);
       L.add(this.fit(hkText(this, rx + 34, y, info.name, 8.5, lock ? HK.faint : HK.ivory, { origin: [0, .5], bold: true }), 108));
-      const tag = lock ? (e.left === 0 ? '품절' : '🔒') : e.left === null ? '' : `남은 ${e.left}`;
+      const tag = e.tag || '';
       if (tag) L.add(hkText(this, rx + 150, y, tag, 7, lock ? HK.red : '#8ad8ff', { origin: [0, .5] }));
       L.add(hkText(this, rx + PW - 28, y, won(e.price), 8.5, lock ? HK.faint : p.money >= e.price ? '#ffd84a' : HK.red, { origin: [1, .5], bold: true }));
     });
@@ -159,7 +160,7 @@ export const ShopMenu = {
     let note = '';
     if (pane === 'buy' && e.kind === 'use' && USES[e.id].cat === 'vit') note = ' · 가방에서 먹일 포켓몬을 고른다';
     if (pane === 'buy' && e.kind === 'tool') note = ' · 가방으로 · 가방에서 장착';
-    if (pane === 'buy' && e.kind === 'use' && USES[e.id].cat !== 'vit') note = ' · 가방에서 쓴다 (던전 어디서나)';
+    if (pane === 'buy' && e.kind === 'use' && USES[e.id].cat !== 'vit') note = e.id === 'potion' ? ` · 퀵슬롯 ${keyLabel(Settings.key('potion'))} 키 / 모바일 🧪 버튼` : ' · 가방에서 쓴다 (던전 어디서나)';
     L.add(hkText(this, x + 48, DY + 19, e.lock ? e.lock : `${info.desc}${note}`, 7.5, e.lock ? HK.red : HK.dim, { style: { wordWrap: { width: PW - 60, useAdvancedWrap: true }, lineSpacing: 1, maxLines: 3 } }));
     const BY = PY + PH - 30;
     if (e.lock) return;
@@ -213,7 +214,7 @@ export const ShopMenu = {
     if (p.money < total) { Sfx.play('deny'); return; }
     let msg;
     if (e.kind === 'candy') { p.candy = (p.candy || 0) + q; msg = `이상한사탕 ×${q} — 가방에서 먹일 포켓몬을 고르자`; }
-    else if (e.kind === 'use') { p.uses[e.id] = (p.uses[e.id] || 0) + q; msg = `${info.name} ×${q} — 가방에 넣었다`; }
+    else if (e.kind === 'use') { p.uses[e.id] = (p.uses[e.id] || 0) + q; msg = e.id === 'potion' ? `${info.name} ×${q} — 퀵슬롯 ${p.uses[e.id]}/${e.carry}` : `${info.name} ×${q} — 가방에 넣었다`; }
     else if (e.kind === 'tool') { p.bag[e.id] = (p.bag[e.id] || 0) + q; msg = `${info.name} ×${q} — 가방에 넣었다 · 가방에서 장착`; }
     else if (e.kind === 'stone') {
       if (!p.gainStone(e.line)) { Sfx.play('deny'); return; }

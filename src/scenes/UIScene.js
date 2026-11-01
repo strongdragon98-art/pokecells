@@ -7,6 +7,7 @@ import Phaser from 'phaser';
 import { txt, GAME_W, GAME_H, RES, uiCamera } from '../config.js';
 import { SKILLS, SPECIES, UNLOCKABLE, UNLOCK_KILLS, TIERS, ZMOVES, Z_CD, TAGS, EVO_EXP, BOSSES } from '../data/pokemon.js';
 import { ITEMS, MAX_EQUIP } from '../data/items.js';
+import { POTION_MAX, POTION_CD } from '../data/shop.js';
 import { STAGES, areaLabel } from '../data/stages.js';
 import { typeName, typeColor, hex, matchups } from '../data/types.js';
 import { GRADE_STYLE, UPGRADES, BOOSTS, rollCards, heldLv, mergePreview, lvTag, CARD_MAX_LV, MAX_BONUS } from '../data/tm.js';
@@ -38,7 +39,7 @@ const V = { x: 36, y: 36, r: 20 };                      // 메가 게이지 그�
 const MASK_X = 80, MASK_Y = 23, MASK_GAP = 19, MAX_MASKS = 9;
 const BALL = { top: .8, h: 16.4 };                      // 가면 텍스처 안에서 공이 차지하는 세로 범위 (논리 px)
 // PC 스킬 바 (오른쪽 아래 사각 카드 칸): 대시 · Z · X · C (+ Z크리스탈을 얻으면 Q Z기술). 터치패드를 쓰면 터치 버튼이 대신한다
-const SLOT_Y = 322, SLOT_S = 32, SLOT_X = { ult: 426, zmove: 464, dash: 502, z: 540, x: 578, c: 616 };   // ult: 메가 필살기 칸 (메가진화 중에만)
+const SLOT_Y = 322, SLOT_S = 32, SLOT_X = { potion: 384, ult: 426, zmove: 464, dash: 502, z: 540, x: 578, c: 616 };   // ult: 메가 필살기 칸 (메가진화 중에만) · potion: 상처약 퀵슬롯 (늘 보인다)
 export const HUD_STYLES = [['A', '샘플 A · 택티컬'], ['B', '샘플 B · 본가'], ['C', '샘플 C · 픽셀']];
 const TOAST_Y = 288;
 const AREA_Y = 134;                               // 지역 타이틀 (왼쪽 위 HUD 아래 빈 띠)
@@ -80,6 +81,22 @@ function redVignette(scene) {
   const g = x.createRadialGradient(0, 0, 90, 0, 0, 200);
   g.addColorStop(0, 'rgba(140,0,0,0)'); g.addColorStop(.58, 'rgba(160,0,12,0.06)'); g.addColorStop(.84, 'rgba(205,12,24,0.46)'); g.addColorStop(1, 'rgba(235,24,34,0.88)');
   x.fillStyle = g; x.fillRect(-160, -160, 320, 320); x.restore();
+  c.refresh();
+  return key;
+}
+
+// 저체력 경고 테두리: 화면 맨 바깥 가장자리(가로·세로 약 10%)에만 붉은빛이 안쪽으로 사라지는 그라데이션 — 가운데는 완전히 투명
+function lowHpVignette(scene) {
+  const key = 'ui:lowvig';
+  if (scene.textures.exists(key)) return key;
+  const W = 320, H = 180, c = scene.textures.createCanvas(key, W, H), x = c.getContext(), bw = W * .1, bh = H * .1;
+  const band = (x0, y0, x1, y1, rx, ry, rw, rh) => {
+    const g = x.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, 'rgba(235,30,40,0.9)'); g.addColorStop(.45, 'rgba(210,20,30,0.35)'); g.addColorStop(1, 'rgba(180,0,20,0)');
+    x.fillStyle = g; x.fillRect(rx, ry, rw, rh);
+  };
+  band(0, 0, bw, 0, 0, 0, bw, H); band(W, 0, W - bw, 0, W - bw, 0, bw, H);
+  band(0, 0, 0, bh, 0, 0, W, bh); band(0, H, 0, H - bh, 0, H - bh, W, bh);
   c.refresh();
   return key;
 }
@@ -159,7 +176,7 @@ export default class UIScene extends Phaser.Scene {
     this.gSlot = this.add.graphics().setDepth(1);        // 칸 틀 · 배경
     this.gSlotTop = this.add.graphics().setDepth(3);     // 쿨타임 덮개 · 테두리 빛 · 배지 · 키캡
     this.zGlow = this.add.image(SLOT_X.zmove, SLOT_Y, 'glow').setBlendMode(ADD).setTint(0xffe86a).setScale(.9).setAlpha(0);
-    this.slots = ['dash', 'z', 'x', 'c', 'zmove', 'ult'].map(id => {
+    this.slots = ['dash', 'z', 'x', 'c', 'zmove', 'ult', 'potion'].map(id => {
       const x = SLOT_X[id], s = {
         id, x, ready: true,
         icon: this.add.image(x, SLOT_Y, 'px').setDepth(2),
@@ -170,8 +187,11 @@ export default class UIScene extends Phaser.Scene {
       };
       s.zone.on('pointerover', p => { const t = s.tipType; if (t) this.typeTip(x, SLOT_Y - 26, t, s.tipName, p.wasTouch); });
       s.zone.on('pointerout', p => { if (!p.wasTouch) this.hideTypeTip(); });
+      if (id === 'potion') s.zone.on('pointerdown', () => { if (this.gs.inp) this.gs.inp.potionP = true; });   // 칸을 눌러도 상처약
       return s;
     });
+    // 상처약 퀵슬롯 이름표: 🧪 상처약 2/3 (칸 아래)
+    this.tPotion = hkText(this, SLOT_X.potion, SLOT_Y + 23, '', 7, '#9affb8', { bold: true, origin: .5, ls: 0 }).setDepth(4);
     this.tSkillName = hkText(this, 559, 296, '', 10, HK.ivory, { ls: 1, origin: [.5, 1] });
 
     // ── 오른쪽 위: 스테이지·방 · 정화 진행도
@@ -229,6 +249,9 @@ export default class UIScene extends Phaser.Scene {
     // ── 피격 비네팅: 맞는 순간 화면 가장자리가 붉게 번쩍였다 빠진다 (피격음과 같은 순간 · 체력이 25% 아래면 은은하게 맥박)
     this.hurtVig = this.add.image(320, 180, redVignette(this)).setDisplaySize(GAME_W, GAME_H).setDepth(19).setAlpha(0);
     this.hurtK = 0;
+    // ── 저체력 경고: 출전 포켓몬 체력 20% 미만이면 가장자리만 은은하게 숨 쉬듯 (alpha 0.18 ~ 0.28) · 회복하면 부드럽게 사라진다
+    this.lowVig = this.add.image(320, 180, lowHpVignette(this)).setDisplaySize(GAME_W, GAME_H).setDepth(18.9).setAlpha(0);
+    this.lowK = 0;
 
     // ── 오버레이 (일시정지 / 결과)
     this.overlay = this.add.container(0, 0).setDepth(60).setVisible(false);
@@ -281,6 +304,7 @@ export default class UIScene extends Phaser.Scene {
     const on = this.touch.visible;
     this.touchLayout = on;
     for (const s of this.slots) for (const v of [s.icon, s.cd, s.key, s.badge]) v.setVisible(!on);
+    this.tPotion.setVisible(!on);   // 터치패드는 🧪 퀵버튼이 대신한다
     for (const s of this.slots) { if (on) s.zone.disableInteractive(); else s.zone.setInteractive(); }
     if (on) { this.gSlot.clear(); this.gSlotTop.clear(); this.zGlow.setAlpha(0); }
     this.tSkillName.setVisible(!on);
@@ -408,10 +432,13 @@ export default class UIScene extends Phaser.Scene {
     this.darkVig.setAlpha(deep * .32);   // 가장자리 어둠은 은은하게 (시야를 덮지 않게)
     this.fogA.setAlpha(deep * .14).tilePositionX = time * .012 + gs.cameras.main.scrollX * .3;
     this.fogB.setAlpha(deep * .1).tilePositionX = -time * .008 + gs.cameras.main.scrollX * .5;
-    // 피격 비네팅: 번쩍 → 0.4초 동안 빠진다. 체력이 낮으면 약하게 계속 맥박친다
+    // 피격 비네팅: 번쩍 → 0.4초 동안 빠진다
     this.hurtK = Math.max(0, this.hurtK - dt * 2.4);
-    const pulse = m.alive && m.hp < m.maxhp * .25 ? .16 + Math.sin(time / 180) * .08 : 0;
-    this.hurtVig.setAlpha(Math.min(1, Math.max(this.hurtK, pulse)));
+    this.hurtVig.setAlpha(Math.min(1, this.hurtK));
+    // 저체력 경고 (20% 미만): 켜질 땐 0.5초 · 꺼질 땐 0.35초에 걸쳐 부드럽게 · 심장 박동처럼 1.2초 주기 사인 맥동
+    const lowHp = m.alive && !gs.overlay && m.hp < m.maxhp * .2;
+    this.lowK = lowHp ? Math.min(1, this.lowK + dt * 2) : Math.max(0, this.lowK - dt * 2.8);
+    this.lowVig.setAlpha(this.lowK * (.23 + Math.sin(time / 1200 * Math.PI * 2) * .05));
 
     // ===== 그릇: 출전 포켓몬 + 진화 경험치 액체 (3단이면 가득, 메가면 분홍) =====
     const pk = p.portraitKey();
@@ -1101,7 +1128,7 @@ export default class UIScene extends Phaser.Scene {
     const kl = a => keyLabel(Settings.key(a));
     const lines = [
       [`${kl('left')} ${kl('right')}`, '이동'], [`${kl('jump')} / ${kl('up')}`, '점프 (공중 점프)'], [`${kl('down')} + ${kl('jump')}`, '발판 아래로'], [`${kl('z')} · ${kl('x')} · ${kl('c')}`, '스킬 (Z칸은 콤보)'],
-      [kl('dash'), '대시 회피 (무적)'], [`${kl('swap')}·${kl('swap2')}·1~3`, '교대 + 교체 스킬'], [kl('zmove'), 'Z기술 (Z크리스탈)'], [kl('mega'), '메가진화 (3단 + 메가스톤)'],
+      [kl('dash'), '대시 회피 (무적)'], [`${kl('swap')}·${kl('swap2')}·1~3`, '교대 + 교체 스킬'], [kl('zmove'), 'Z기술 (Z크리스탈)'], [kl('mega'), '메가진화 (3단 + 메가스톤)'], [kl('potion'), '상처약 퀵슬롯 (체력 40%)'],
       [`${kl('map')} · ${kl('bag')} · ${kl('settings')}`, '지도 · 가방 · 설정 (키 변경)'], [`${kl('interact')} / ${kl('up')}`, '센터 · 자판기 · 아머까오 · 기술머신'], ['N', '소리 켜기/끄기'], ['Esc · P', '일시정지']
     ];
     lines.forEach(([k, d], i) => {
@@ -1577,19 +1604,28 @@ export default class UIScene extends Phaser.Scene {
       if (s.id === 'dash') { type = p.types[0]; tex = dashIcon(this, type); cd = Math.max(0, p.dashCd); max = .55 * p.mods.dashCdMul; name = '대시 회피'; }
       else if (s.id === 'zmove') { on = p.z.has; type = 'normal'; tex = 'zcrystal-hi'; cd = p.z.cd; max = Z_CD; name = 'Z기술'; }
       else if (s.id === 'ult') { on = p.mega.active; type = megaUltOf(p).type; tex = megaSymbol(this); cd = m.cd.r || 0; max = MEGA_ULT_CD; name = `메가 필살기 · ${megaUltOf(p).name}`; }
+      else if (s.id === 'potion') {   // 상처약 퀵슬롯: 남은 개수 · 재사용 3초 (스킬 바 왼쪽 끝에 붙는다)
+        const n = (p.uses && p.uses.potion) || 0;
+        s.x = (p.mega.active ? SLOT_X.ult : p.z.has ? SLOT_X.zmove : SLOT_X.dash) - 38;   // 보이는 칸 가운데 맨 왼쪽 바로 옆
+        s.zone.setPosition(s.x, SLOT_Y); s.cd.setX(s.x); s.icon.setX(s.x);
+        type = 'grass'; tex = itemArt(this, 'potion', 26) || 'it:potion'; cd = p.potionCd || 0; max = POTION_CD; name = '상처약';
+        this.tPotion.setVisible(!this.touchLayout).setPosition(s.x, SLOT_Y + 23).setText(`🧪 ${n}/${POTION_MAX}`).setColor(n ? '#9affb8' : HK.red);
+        if (!n) cd = Math.max(cd, .001);   // 없으면 어둡게
+      }
       else { const id = p.skillId(s.id), sk = SKILLS[id]; type = sk.type; tex = skillIcon(this, id); cd = m.cd[s.id]; max = p.cdOf(id) || 1; name = sk.name; }
       for (const v of [s.icon, s.cd, s.key, s.badge]) v.setVisible(on);
       if (on) s.zone.setInteractive(); else s.zone.disableInteractive();
-      s.tipType = on && s.id !== 'dash' && s.id !== 'zmove' ? type : null; s.tipName = name;
+      s.tipType = on && s.id !== 'dash' && s.id !== 'zmove' && s.id !== 'potion' ? type : null; s.tipName = name;
       if (!on) continue;
       const tc = s.id === 'zmove' ? 0xffd860 : s.id === 'ult' ? Phaser.Display.Color.HSVToRGB((time / 2400) % 1, .5, 1).color : typeColor(type), k = cd > 0 ? Math.min(1, cd / max) : 0;   // 메가 필살기 칸은 무지갯빛
       if (s.ready === false && k <= 0) { s.flash = 1; }   // 쿨타임이 막 끝났다: 한 번 번쩍
       s.ready = k <= 0; s.flash = Math.max(0, (s.flash || 0) - .05);
       s.icon.setTexture(tex).setDisplaySize(st === 'C' ? 24 : 26, st === 'C' ? 24 : 26).setAlpha(k > 0 ? .45 : 1);
-      s.cd.setText(cd > 0 ? (cd >= 1 ? cd.toFixed(0) : cd.toFixed(1)) : '');
+      s.cd.setText(cd >= .05 ? (cd >= 1 ? cd.toFixed(0) : cd.toFixed(1)) : '');
       s.badge.setText(st === 'B' ? (s.id === 'zmove' ? 'Z' : s.id === 'ult' ? 'M' : typeName(type).slice(0, 1)) : '');
       if (s.id === 'ult') s.icon.setTint(tc);
-      this.drawSlot(g, gt, s.x, SLOT_Y, st, { tc, k, flash: s.flash, charge: s.id === 'z' ? chg : 0, lvl: s.id === 'z' && p.chg ? p.chg.lvl : 0, maxLvl: chgMax, key: s.key, badge: s.badge, gold: s.id === 'zmove' || s.id === 'ult' });
+      this.drawSlot(g, gt, s.x, SLOT_Y, st, { tc: s.id === 'potion' ? 0x5ad08a : tc, k, flash: s.flash, charge: s.id === 'z' ? chg : 0, lvl: s.id === 'z' && p.chg ? p.chg.lvl : 0, maxLvl: chgMax, key: s.key, badge: s.badge, gold: s.id === 'zmove' || s.id === 'ult' });
+      if (s.id === 'potion') s.badge.setText(st === 'B' ? '🧪' : '');
     }
     this.zGlow.setAlpha(p.z.has && p.z.cd <= 0 ? .3 + Math.sin(time / 160) * .12 : 0);
   }

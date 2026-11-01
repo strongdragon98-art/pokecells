@@ -7,7 +7,7 @@ import { WILD, DEX_ORDER, SPECIES, SKILLS, TIERS, wildForm, pickWildStage, EXP_P
 import { ITEMS, RANDOM_ITEM_KEYS, ITEM_DROP, CONSUMABLES, MAX_EQUIP } from '../data/items.js';
 import { stoneName, crystalName, zTypeOf, usesStone } from '../data/gear.js';
 import { coreOfBoss } from '../data/cores.js';
-import { NUGGETS, eliteNuggets, bossNuggets, martKey } from '../data/shop.js';
+import { NUGGETS, eliteNuggets, bossNuggets, martKey, POTION_MAX, POTION_HEAL, POTION_CD } from '../data/shop.js';
 import { typeColor } from '../data/types.js';
 import { PLAT_SET, groundYAt, T as TILE_ID } from '../game/Level.js';
 import { buildChapter, roomAt, CW, CH } from '../game/World.js';
@@ -641,6 +641,7 @@ export default class GameScene extends Phaser.Scene {
     if (JD(k.THREE)) i.s3 = true;
     if (JD(b.mega)) i.mega = true;
     if (JD(b.interact)) i.useP = true;
+    if (b.potion && JD(b.potion)) i.potionP = true;   // 상처약 퀵슬롯 (기본 A)
     const t = this.touchInput;   // 모바일 터치 조작 (UIScene 의 TouchControls)
     if (t) {
       i.left = i.left || t.left; i.right = i.right || t.right; i.up = i.up || t.up; i.down = i.down || t.down; i.jumpH = i.jumpH || t.jumpH; i.zH = i.zH || !!t.zH;
@@ -650,6 +651,7 @@ export default class GameScene extends Phaser.Scene {
     i.downAim = b.down.isDown || !!(t && t.on !== false && t.downAim);   // 하향 점프 판정용 '아래' (키보드 ↓ · 조이스틱 아래 ±45°)
     // 공중 내려찍기 방향: 키보드 ↓ (+ ← · → 를 같이 누르면 45° 대각선) · 조이스틱이 수평보다 아래를 가리키면 그 방향 (Player.startDive)
     i.diveAim = b.down.isDown ? { x: (b.right.isDown ? 1 : 0) - (b.left.isDown ? 1 : 0), y: 1 } : t && t.on !== false && t.diveAim ? t.diveAim : null;
+    if (i.potionP) { i.potionP = false; this.quickPotion(); }   // 키보드 · 모바일 🧪 퀵버튼 · HUD 퀵슬롯 클릭
     if (JD(k.ESC) || JD(k.P)) this.togglePause();
     if (JD(b.map) || i.mapP) this.toggleOverlay('map');
     if (JD(b.bag) || i.invP) this.toggleOverlay('inv');
@@ -844,7 +846,26 @@ export default class GameScene extends Phaser.Scene {
     const pos = c ? this.hubPos(c) : this.worldOf(this.stageIdx).level.start;
     this.moveTo(c ? c.ci : this.stageIdx, { x: pos.x, y: pos.y }, () => { this.player.inv = 2; });
   }
-  consumeInput() { for (const f of ['ultP', 'jumpP', 'dashP', 'zP', 'xP', 'cP', 'swapNext', 'swapPrev', 's1', 's2', 's3', 'mega', 'zmoveP', 'useP', 'upP']) this.inp[f] = false; }
+  consumeInput() { for (const f of ['ultP', 'jumpP', 'dashP', 'zP', 'xP', 'cP', 'swapNext', 'swapPrev', 's1', 's2', 's3', 'mega', 'zmoveP', 'useP', 'upP', 'potionP']) this.inp[f] = false; }
+
+  // ---------------- 상처약 퀵슬롯: 단축키(기본 A) · 모바일 🧪 버튼 · HUD 칸 클릭 ----------------
+  //  출전 중인 포켓몬 체력을 최대 체력의 40% 즉시 회복 · 재사용 3초 · 최대 3개 소지 (포켓샵에서 산다)
+  quickPotion() {
+    const p = this.player;
+    if (!p || this.paused || this.over || this.transitioning) return;
+    const m = p.m, n = p.uses.potion || 0;
+    if (!m.alive) return;
+    if (p.potionCd > 0) { Sfx.play('deny'); return; }
+    if (!n) { Sfx.play('deny'); this.events.emit('toast', `상처약이 없다 · 포켓샵에서 살 수 있다 (최대 ${POTION_MAX}개)`, 'potion'); return; }
+    if (m.hp >= m.maxhp) { Sfx.play('deny'); this.events.emit('toast', `${p.formName()}의 체력은 이미 가득하다`, 'potion'); return; }
+    if (n > 1) p.uses.potion = n - 1; else delete p.uses.potion;
+    p.heal(m.maxhp * POTION_HEAL);
+    p.potionCd = POTION_CD;
+    Sfx.play('heal');
+    this.fx.ring(p.x, p.y, 30, 0x5aff8a, 360); this.fx.glow(p.x, p.y, 34, 0x5aff8a, 420, .8);
+    this.fx.burst(p.x, p.y, [0x7dff9a, 0xd8ffe0, 0xffffff], 18, 90, { glow: true, grav: -80, bounce: false, up: 60 });
+    this.events.emit('toast', `🧪 상처약! ${p.formName()} 체력 ${Math.round(POTION_HEAL * 100)}% 회복 (남은 ${n - 1}/${POTION_MAX})`, 'potion');
+  }
 
   // ---------------- 마을: 포켓몬센터 · 자판기 ----------------
   updateInteract() {

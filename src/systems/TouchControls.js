@@ -37,6 +37,7 @@ export class TouchControls {
       { id: 'swap', x: 480, y: 272, r: 16, label: '교대', press: 'swapNext' },
       { id: 'use', x: 624, y: 176, r: 15, label: '조사', press: 'useP' },
       { id: 'zmove', x: 550, y: 194, r: 15, label: 'Z기술', press: 'zmoveP' },
+      { id: 'potion', x: 588, y: 188, r: 15, label: '🧪 3', press: 'potionP' },   // 상처약 퀵버튼 (남은 개수)
       { id: 'mega', x: 500, y: 222, r: 15, label: '메가', press: 'mega' },
       { id: 'ult', x: 500, y: 222, r: 18, label: 'MEGA\nSKILL', press: 'ultP', ult: true },   // 메가진화하면 메가 버튼 자리에 나타나는 전용 필살기
       { id: 'map', x: 228, y: 32, r: 18, label: '지도', press: 'mapP' },
@@ -224,6 +225,15 @@ export class TouchControls {
       }
       if (b.id === 'mega') { const ready = p.mega.stones && p.tier >= 2 && !p.mega.active; fillA = ready ? fillA : .1; ring = ready ? 0xff8ad0 : 0x5a5070; b.text.setAlpha(ready ? 1 : .35); }
       if (b.id === 'zmove') { const ready = p.z.has && p.z.cd <= 0; fillA = ready ? fillA : .1; ring = ready ? 0xffe86a : 0x5a5070; b.text.setAlpha(p.z.has ? 1 : .3); }
+      if (b.id === 'potion') {   // 🧪 회복 (남은 개수) — 없거나 재사용 대기면 흐리게 · 위급(체력 20% 미만)하면 초록빛으로 맥동
+        const n = (p.uses && p.uses.potion) || 0, ready = n > 0 && !(p.potionCd > 0), low = p.m.alive && p.m.hp < p.m.maxhp * .2;
+        b.text.setText(`🧪${n}`).setAlpha(ready ? 1 : .4);
+        ring = ready ? 0x5aff8a : 0x5a5070; fillA = ready ? fillA : .1;
+        if (ready && low) { ringA = .6 + pulse * .4; g.fillStyle(0x5aff8a, .14 * pulse); g.fillCircle(b.x, b.y, b.r + 6); }
+        this.orb(b.x, b.y, b.r, fillA, ring, ringA, b.down);
+        if (p.potionCd > 0) { g.fillStyle(0x000000, .5); g.slice(b.x, b.y, b.r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, p.potionCd / 3), false); g.fillPath(); }
+        continue;
+      }
       if (b.id === 'swap' && p.swapCd > 0) { fillA = .12; b.text.setAlpha(.45); }
       if (b.id === 'dash' && p.dashCd > 0) fillA = .12;
       if (b.id === 'use') { ring = canUse ? 0xffd27a : 0xefeae0; ringA = canUse ? .6 + pulse * .4 : .3; b.text.setAlpha(canUse ? 1 : .45); if (canUse) { g.fillStyle(0xffd27a, .12 * pulse); g.fillCircle(b.x, b.y, b.r + 6); } }   // 가까이 센터·표지판·기술머신이 있으면 금빛으로 맥동

@@ -13,7 +13,7 @@ import { UPGRADES, GRADE_STYLE, GRADES, PERK_TYPE, BOOSTS, BOOST_MAX, boostCard,
 import { PERKS } from '../game/Perks.js';
 import { MOVE_DB } from '../data/MoveDatabase.js';
 import { usesStone, stoneName, zTypeOf, crystalName } from '../data/gear.js';
-import { NUGGETS, NUGGET_KEYS, USES, VIT_MAX, won } from '../data/shop.js';
+import { NUGGETS, NUGGET_KEYS, USES, VIT_MAX, won, POTION_MAX } from '../data/shop.js';
 import { MEGA_ULT, MEGA_ULT_CD, megaSymbol } from '../game/Spectacle.js';
 import { HK, hkText, glassPanel, glassButton, typePill, hiImage, bar3d } from '../systems/ui.js';
 import { roundPortrait, skillIcon } from '../systems/Textures.js';
@@ -483,7 +483,7 @@ export const GameMenu = {
       glassButton(this, 22 + i * 63, CY + 8, 60, 20, `${label} ${n}`, () => { if (this.bagFilter !== id) { this.bagFilter = id; Sfx.play('select'); this.showInv(null); } }, { size: 7.5, bold: true, ls: 0, layer: C, primary: filter === id });
     });
     if (!list.length) C.add(hkText(this, 212, CY + 110, filter === 'gold' ? '금구슬이 없어요\n샛길의 엘리트 · 보스를 쓰러뜨리면 떨어뜨린다 · 포켓샵에서 고가에 판다' : '비어 있어요\n보스·엘리트·상자·포켓샵에서 얻고, 메가스톤·Z크리스탈은 이야기 속에서 받는다', 8.5, HK.faint, { origin: .5, style: { align: 'center', lineSpacing: 4 } }));
-    list.slice(0, 40).forEach((e, k) => {
+    list.slice(0, 36).forEach((e, k) => {
       const x = 44 + (k % 9) * 40, y = CY + 54 + Math.floor(k / 9) * 40, on = this.sameEntry(e, sel), col = e.kind === 'stone' ? PINK : e.kind === 'crystal' || e.kind === 'nugget' ? 0xffd84a : e.kind === 'candy' || e.kind === 'use' ? CYAN : HK.ivoryN;
       g.fillStyle(on ? 0x2c2650 : 0x12101e, on ? 1 : .92); g.fillRoundedRect(x - 17, y - 17, 34, 34, 6);
       g.lineStyle(on ? 1.8 : 1, on ? HK.goldN : col, on ? .95 : .35); g.strokeRoundedRect(x - 17, y - 17, 34, 34, 6);
@@ -500,6 +500,16 @@ export const GameMenu = {
     });
     // 중요한 물건 (파티 공용)
     const ky = CY + CH - 16;
+    // 🧪 상처약 전용 퀵슬롯: 남은 개수 칸 3개 + 단축키 키캡 (싸우는 중 바로 · 포켓샵에서 3개까지)
+    {
+      const qy = ky - 34, n = (p.uses || {}).potion || 0, kl = this.touch.visible ? '🧪 버튼' : keyLabel(Settings.key('potion'));
+      glassPanel(g, 24, qy - 13, 376, 26, { r: 8, fill: 0x0c1a12, border: 0x5ad08a, borderAlpha: .45, alpha: .9 });
+      C.add(this.itemImage(40, qy, 'potion', 18, 1));
+      C.add(hkText(this, 54, qy, '상처약 퀵슬롯', 8.5, '#9affb8', { bold: true, origin: [0, .5] }));
+      for (let k = 0; k < POTION_MAX; k++) { const on = k < n; g.fillStyle(on ? 0x5ad08a : 0x1a2a20, on ? .95 : .8); g.fillRoundedRect(130 + k * 16, qy - 5, 12, 10, 3); g.lineStyle(1, 0x9affb8, on ? .9 : .3); g.strokeRoundedRect(130 + k * 16, qy - 5, 12, 10, 3); }
+      C.add(hkText(this, 182, qy, `${n} / ${POTION_MAX}`, 8.5, n ? HK.ivory : HK.red, { bold: true, origin: [0, .5] }));
+      C.add(hkText(this, 392, qy, `단축키 [ ${kl} ] · 체력 40% 즉시 회복 · 재사용 3초`, 7.5, HK.dim, { origin: [1, .5], ls: 0 }));
+    }
     g.lineStyle(1, HK.ivoryN, .12); g.lineBetween(26, ky - 12, 398, ky - 12);
     C.add(hkText(this, 26, ky, '중요한 물건', 8, HK.dim, { bold: true, origin: [0, .5] }));
     C.add(this.add.image(108, ky, 'megastone').setScale(1.1).setAlpha(p.keyStone ? 1 : .25));
