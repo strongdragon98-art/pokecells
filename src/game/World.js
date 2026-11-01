@@ -552,22 +552,41 @@ export function buildChapter(ch, ci, retry = 0) {
         const gate = mainTrail[mainTrail.length - 1];
         if (gate) {
           gate.trailEnd = true;
-          gate.doorTx = gate.tx1 - 13;   // 거대한 정문 한가운데 칸 (Props.buildBellTower 외관도 여기에 맞춘다)
-          // 정문 앞 성역 마당: 외관 너비만큼 언덕 · 떠 있는 바위 · 천장 덩어리를 걷어 평평한 돌바닥으로 (철창 통로 칸은 그대로)
+          gate.doorTx = gate.tx1 - 21;   // 거대한 정문 한가운데 칸 (Props bellGateArt 외관 640px 이 오른쪽 벽 안에 들도록)
+          // 탑으로 들어가는 길은 정문 하나뿐: 정문 방 천장의 철창(위 방으로 오르는 샛길) · 탑 1층으로 바로 이어지는 다른 옆문은 벽으로 메운다
+          //  (메워도 모든 방에 여전히 갈 수 있을 때만 — 정문 포털은 통로로 친다)
+          {
+            const hall0 = rooms.filter(r => r.ai === ti && r.main).sort((a, b) => a.id - b.id)[0];
+            const isPortal = q => q.dir === 'h' && hall0 && ((q.a === gate && q.b === hall0) || (q.b === gate && q.a === hall0));
+            const sealed = new Set();
+            const linked = () => {
+              const seen = new Set([rooms[0]]), q = [rooms[0]];
+              while (q.length) { const r = q.shift(); for (const d of r.doors) { if (sealed.has(d)) continue; const o = d.a === r ? d.b : d.a; if (!seen.has(o)) { seen.add(o); q.push(o); } } }
+              return seen.size === rooms.length;
+            };
+            for (const d of doors) {
+              if (d.breakable || isPortal(d)) continue;
+              if (!((d.a.ai === ti) !== (d.b.ai === ti) || (d.dir === 'v' && (d.a === gate || d.b === gate)))) continue;
+              sealed.add(d);
+              if (!linked()) { sealed.delete(d); continue; }
+              for (const [x, y] of d.cells) grid[y][x] = 'S';
+              if (d.dir === 'v') for (let x = d.cap - 2; x < d.cap + 6; x++) for (let y = d.D.ty0; y < d.D.F; y++) if (grid[y][x] === 'P') grid[y][x] = '.';   // 아래 방 사다리 발판
+              d.sealed = true;
+            }
+          }
+          // 정문 앞 성역 마당: 외관 너비만큼 언덕 · 떠 있는 바위 · 천장 덩어리를 걷어 평평한 돌바닥으로
           //  그 위에 놓였던 소품은 바닥으로 내려놓는다 (개수는 그대로 — 저장 서명 유지)
-          const fx0 = Math.max(gate.tx0 + 1, gate.doorTx - 13), fx1 = gate.tx1 - 1, keep = new Set();
-          for (const d of gate.doors) if (d.dir === 'v') for (const [x] of d.cells) for (let k = -3; k <= 6; k++) keep.add(x + k);
+          const fx0 = Math.max(gate.tx0 + 1, gate.doorTx - 21), fx1 = gate.tx1 - 1;
           for (let x = fx0; x <= fx1; x++) {
-            if (keep.has(x)) continue;
             for (let y = gate.ty0; y < gate.F; y++) grid[y][x] = '.';
             grid[gate.F][x] = 'S'; grid[gate.F + 1][x] = 'S';
           }
           for (const pr of props) if (pr.x >= fx0 && pr.x <= fx1 && pr.g != null && pr.g >= gate.ty0 && pr.g <= gate.F) {
             pr.g = gate.F;
-            if (Math.abs(pr.x - gate.doorTx) <= 9 && ['statue', 'crate', 'lamp', 'tree', 'pillar', 'fence', 'tallgrass', 'signpost'].includes(pr.kind)) pr.hide = true;   // 정문 · 승려 자리는 비운다
+            if (Math.abs(pr.x - gate.doorTx) <= 20 && ['statue', 'crate', 'lamp', 'tree', 'pillar', 'fence', 'tallgrass', 'signpost'].includes(pr.kind)) pr.hide = true;   // 정문 · 승려 자리는 비운다
           }
-          // 수문장 승려 둘: 선임 노승려는 정문 왼쪽 기둥 앞, 수행 승려는 정문 오른쪽 기둥 앞
-          placeNpcs(gate, ['elder_monk', 'trainee_monk'], [gate.doorTx - 7, gate.doorTx + 7]);
+          // 수문장 승려 둘: 선임 노승려는 정문 왼쪽 벽 앞, 수행 승려는 정문 오른쪽 벽 앞
+          placeNpcs(gate, ['elder_monk', 'trainee_monk'], [gate.doorTx - 9, gate.doorTx + 9]);
           for (const n of npcs) if (n.room === gate) { n.face = n.id === 'elder_monk' ? -1 : 1; n.guide = true; }
           const hall = rooms.filter(r => r.ai === ti && r.main).sort((a, b) => a.id - b.id)[0];   // 탑 안 1층
           const d = hall && gate.doors.find(q => q.dir === 'h' && (q.a === hall || q.b === hall));
@@ -666,7 +685,7 @@ export function buildChapter(ch, ci, retry = 0) {
   const terminals = [], byId = new Map(rooms.map(r => [r.id, r]));
   const SKIP_ROOM = new Set(['boss', 'mini', 'sanctuary', 'tm', 'treasure', 'pocket']);
   const solid = (x, y) => grid[y] && (grid[y][x] === 'S' || grid[y][x] === 'B');
-  const spot = (r, xx) => xx > r.tx0 + 2 && xx < r.tx1 - 3 && [0, 1].every(o => solid(xx + o, r.F) && [1, 2, 3].every(h => grid[r.F - h][xx + o] === '.'));
+  const spot = (r, xx) => xx > r.tx0 + 2 && xx < r.tx1 - 3 && !(r.trailEnd && xx > r.doorTx - 25) && [0, 1].every(o => solid(xx + o, r.F) && [1, 2, 3].every(h => grid[r.F - h][xx + o] === '.'));
   const TOWN_NEAR = 3;
   for (const boss of rooms.filter(r => r.type === 'boss' || r.type === 'mini' || r.type === 'sanctuary')) {
     const dist = new Map([[boss.id, 0]]), q = [boss];
@@ -691,7 +710,7 @@ export function buildChapter(ch, ci, retry = 0) {
       break;
     }
     if (!placed && cand.length) {   // 바닥을 다진다: 방 가운데 2칸 바닥을 단단하게, 그 위 4칸을 비운다
-      const r = cand[0], x = Math.max(r.tx0 + 4, Math.min(r.tx1 - 6, (r.tx0 + r.tx1) >> 1));
+      const r = cand[0], x = r.trailEnd ? r.tx0 + 4 : Math.max(r.tx0 + 4, Math.min(r.tx1 - 6, (r.tx0 + r.tx1) >> 1));   // 방울탑 정문 앞은 비운다
       for (const o of [0, 1]) { grid[r.F][x + o] = 'S'; for (let h = 1; h <= 4; h++) if (r.F - h > r.ty0) grid[r.F - h][x + o] = '.'; }
       terminals.push({ x, g: r.F, room: r, boss, flattened: true });
       marks.push({ kind: 'terminal', x, y: r.F, room: r });
@@ -739,6 +758,15 @@ export function buildChapter(ch, ci, retry = 0) {
     if (c !== 'S' && c !== 'B') return -1;
     return T.SOLID + (!S(x, y - 1) ? 1 : 0) + (!S(x, y + 1) ? 2 : 0) + (!S(x - 1, y) ? 4 : 0) + (!S(x + 1, y) ? 8 : 0);
   };
+  // 탑 안 1층 출입문 바닥 줄: 지형을 다 깎은 뒤의 실제 바닥 (문 앞 계단 · 언덕이 나중에 솟을 수 있다 — 벽 속에 내려앉지 않게)
+  for (const d of doors) if (d.portalIn) {
+    const r = d.a.portalFrom ? d.a : d.b, x = d.portalIn.x;
+    const solidAt = yy => grid[yy][x] === 'S' || grid[yy][x] === 'P';
+    let y = Math.max(r.ty0 + 1, Math.floor(d.my - 2.5));
+    if (solidAt(y)) while (y > r.ty0 + 1 && solidAt(y - 1)) y--;   // 문 높이까지 땅이 솟았으면 그 위로
+    else while (y < r.F + 2 && !solidAt(y)) y++;
+    r.portalY = d.portalIn.y = y;
+  }
   const data = grid.map((row, y) => row.map((c, x) => tileOf(x, y)));
 
   const start = mainRooms[0];

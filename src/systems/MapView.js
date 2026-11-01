@@ -33,7 +33,7 @@ export function buildMapModel(level, explored) {
     return { r, xa: r.tx0, xb: r.tx1, ya: r.ty0, yb: r.F, seen, veiled };
   });
   const byRoom = new Map(blocks.map(b => [b.r, b]));
-  const corridors = level.doors.map(d => {
+  const corridors = level.doors.filter(d => !d.sealed).map(d => {   // sealed: 벽으로 메운 문 (방울탑 샛길)
     const w = wallOf.get(d), shut = !!(w && !w.broken);
     if (d.portal) { const out = d.a.portalTo ? d.a : d.b, inn = out === d.a ? d.b : d.a; return { A: byRoom.get(d.a), B: byRoom.get(d.b), portal: true, ends: [{ b: byRoom.get(out), p: d.portalOut }, { b: byRoom.get(inn), p: d.portalIn }] }; }
     if (d.dir === 'h') { const Fr = d.my + 2.5; return { A: byRoom.get(d.L), B: byRoom.get(d.R), x0: d.mx - 2, x1: d.mx + 2, y0: Fr - 5, y1: Fr, shut, secret: d.breakable || d.hidden }; }

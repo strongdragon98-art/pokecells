@@ -444,94 +444,87 @@ function leafArt(scene, k) {
   const cols = [[0xf0c830, 0xb08a10], [0xf05028, 0xa82010], [0xff9a3a, 0xb05a14]][k];
   return canvasTex(scene, `prop:leaf${k}`, 5, 4, F => { F(1, 0, 3, 1, cols[0]); F(0, 1, 5, 2, cols[0]); F(1, 3, 3, 1, cols[1]); F(2, 1, 1, 3, cols[1]); });
 }
-// 방울탑 정문 외관 (초대형): 화면엔 돌 기단 · 굵은 붉은 기둥 · 현판 · 활짝 열린 양개 정문 · 1층 처마까지만 꽉 차고,
-//  2층 · 3층은 화면 위로 까마득히 뻗어 잘려 나간다 (위로 갈수록 흐려지며 하늘에 잠긴다). 정문 안쪽은 깊숙이 금빛 등불이 비친다
-//  W 380 × H 440 · 정문 한가운데 = 가로 중앙 · 바닥 = 아래 끝
+// 방울탑 정문 외관 (초거대 1층 정면만): 탑 위층은 볼 일이 없다 — 정문 앞에선 카메라가 방 천장 위로 올라가지 않는다(GameScene.camBounds)
+//  화면 위쪽은 거대한 1층 처마 밑면(서까래 · 공포 · 단청 · 황금 풍경)이 가로로 꽉 막고, 아래는 굵은 붉은 기둥 · 격자 벽 · 청사초롱 ·
+//  사람 다섯 키만 한 활짝 열린 양개 정문 · 넓은 돌 기단과 계단. 정문 안쪽은 깊숙이 금빛 등불이 비친다
+//  W 640 × H 300 · 정문 한가운데 = 가로 중앙 · 바닥 = 아래 끝 (오른쪽 끝은 방 벽 속으로 들어간다)
 function bellGateArt(scene) {
-  const W = 380, H = 440, cx = W / 2;
+  const W = 640, H = 300, cx = W / 2;
   const stone = 0x8a8278, stoneD = 0x5a544c, stoneHi = 0xc8c0b0, red = 0xb83a24, redD = 0x7a2010, redHi = 0xe86a4a, wood = 0x5a3018, woodD = 0x3a1c0c;
-  const roof = 0x2a3a40, roofHi = 0x4a6070, gold = 0xffd060, teal = 0x2a8a7a, green = 0x3aa85a;
-  return canvasTex(scene, 'prop:bellgate', W, H, (F, c) => {
-    // ---- 3층 · 상층 (화면 밖 — 위로 갈수록 흐려진다) ----
-    const body = (x0, x1, y0, y1, posts) => {
-      F(x0, y0, x1 - x0, y1 - y0, wood);
-      for (let x = x0 + 4; x < x1 - 4; x += 4) F(x, y0, 1, y1 - y0, woodD);   // 살창 결
-      for (let y = y0 + 6; y < y1; y += 10) F(x0, y, x1 - x0, 1, woodD);
-      for (const x of posts) { F(x, y0, 12, y1 - y0, red); F(x, y0, 2, y1 - y0, redHi); F(x + 10, y0, 2, y1 - y0, redD); }
-    };
-    const eave = (x0, x1, yb, h, bells) => {   // 휘어 오르는 처마 지붕 (기와 줄 · 용마루 · 처마 끝 풍경)
-      c.fillStyle = css(roof); c.beginPath();
-      c.moveTo(x0, yb - 8); c.quadraticCurveTo(x0 + 26, yb + 4, x0 + 54, yb - 2); c.lineTo(x1 - 54, yb - 2); c.quadraticCurveTo(x1 - 26, yb + 4, x1, yb - 8);
-      c.lineTo(x1 - 46, yb - h); c.lineTo(x0 + 46, yb - h); c.closePath(); c.fill();
-      c.save(); c.clip();
-      c.strokeStyle = css(roofHi); c.lineWidth = 1;
-      for (let x = x0; x < x1; x += 5) { c.beginPath(); c.moveTo(cx + (x - cx) * .78, yb - h); c.lineTo(x, yb + 2); c.stroke(); }
-      c.restore();
-      F(x0 + 50, yb - h - 3, x1 - x0 - 100, 4, shade(roof, 1.5)); F(x0 + 50, yb - h - 3, x1 - x0 - 100, 1, 0x8aa0a8);   // 용마루
-      F(x0 + 54, yb - 3, x1 - x0 - 108, 2, 0x14202a);   // 처마 그늘
-      for (const bx of bells) { F(bx, yb - 1, 1, 6, gold); F(bx - 2, yb + 5, 5, 5, gold); F(bx - 1, yb + 6, 1, 2, 0xfff4b0); F(bx, yb + 10, 1, 2, shade(gold, .7)); }   // 황금 풍경
-      for (const d of [-1, 1]) { const ex = d < 0 ? x0 + 2 : x1 - 6; F(ex, yb - 14, 4, 6, gold); F(ex + (d < 0 ? -1 : 3), yb - 18, 2, 4, gold); }   // 처마 끝 장식
-    };
-    const dancheong = (x0, x1, y) => {   // 단청 띠 (청록 · 초록 · 주홍 · 금)
-      F(x0, y, x1 - x0, 8, redD);
-      for (let x = x0 + 2, k = 0; x < x1 - 6; x += 8, k++) { F(x, y + 1, 6, 6, [teal, green, red, teal][k % 4]); F(x + 2, y + 3, 2, 2, gold); }
-      F(x0, y, x1 - x0, 1, gold); F(x0, y + 7, x1 - x0, 1, 0x2a0a04);
-    };
-    const brackets = (x0, x1, y) => { for (let x = x0; x < x1 - 6; x += 11) { F(x, y, 8, 5, teal); F(x + 1, y + 5, 6, 3, green); F(x + 3, y + 1, 2, 2, gold); } };   // 공포
-    // 3층 (104 → 34) + 꼭대기 지붕
-    body(108, W - 108, 34, 104, [108, 160, W - 172, W - 120]);
-    eave(70, W - 70, 34, 30, [76, W - 77]);
-    // 2층 (234 → 144) · 난간 · 등불 창
-    eave(34, W - 34, 144, 38, [40, 92, W - 93, W - 41]);
-    body(70, W - 70, 152, 234, [70, 124, 178, W - 190, W - 136, W - 82]);
-    for (const wx of [96, 150, W - 162, W - 108]) { F(wx - 8, 168, 18, 40, 0x2a1408); for (let y = 170; y < 206; y += 4) F(wx - 7, y, 16, 1, 0xd8a050); F(wx - 8, 168, 18, 2, gold); }   // 격자창 (안에서 등불빛)
-    dancheong(70, W - 70, 152);
-    F(62, 222, W - 124, 4, redD); for (let x = 64; x < W - 64; x += 9) F(x, 214, 2, 10, red); F(62, 212, W - 124, 3, red); F(62, 212, W - 124, 1, redHi);   // 2층 난간
-    // ---- 1층 처마 (276 → 234): 화면 위쪽을 꽉 채우는 거대한 지붕 ----
-    eave(0, W, 276, 44, [8, 64, 120, W - 121, W - 65, W - 9]);
-    brackets(24, W - 24, 278);
-    dancheong(20, W - 20, 284);
-    // ---- 1층 몸체 (416 → 292) ----
-    const y1t = 292, y1b = 416;
-    F(30, y1t, W - 60, y1b - y1t, wood);
-    for (let x = 32; x < W - 32; x += 5) F(x, y1t, 1, y1b - y1t, woodD);   // 살창 결
-    for (let y = y1t + 12; y < y1b; y += 14) F(30, y, W - 60, 1, woodD);
-    for (const px of [48, 96, W - 108, W - 60]) {   // 옆칸 격자창
-      F(px - 10, y1t + 18, 32, 60, 0x2a1408); for (let y = y1t + 20; y < y1t + 76; y += 5) F(px - 9, y, 30, 1, 0xc89048); for (let x = px - 8; x < px + 20; x += 6) F(x, y1t + 18, 1, 60, 0x2a1408);
-      F(px - 12, y1t + 16, 36, 2, gold); F(px - 12, y1t + 78, 36, 3, redD);
+  const under = 0x1e2a30, underHi = 0x34464e, gold = 0xffd060, teal = 0x2a8a7a, tealD = 0x1a5a50, green = 0x3aa85a;
+  return canvasTex(scene, 'prop:bellgate2', W, H, (F, c) => {
+    // ---- 1층 처마 밑면 (0 → 58): 화면 위를 가로로 꽉 막는 거대한 지붕 ----
+    F(0, 0, W, 58, under);
+    for (let x = -40; x < W + 40; x += 9) { c.strokeStyle = css(underHi); c.lineWidth = 1; c.beginPath(); c.moveTo(cx + (x - cx) * .55, 0); c.lineTo(x, 40); c.stroke(); }   // 처마 밑 서까래 결 (안쪽으로 모인다)
+    F(0, 38, W, 6, 0x14202a);
+    for (let x = 3; x < W; x += 10) { F(x, 30, 7, 8, tealD); F(x + 1, 31, 5, 6, teal); F(x + 3, 33, 1, 2, gold); }   // 부연 끝 (네모)
+    for (let x = 6; x < W; x += 12) { c.fillStyle = css(teal); c.beginPath(); c.arc(x, 50, 5, 0, Math.PI * 2); c.fill(); c.fillStyle = css(gold); c.fillRect(x - 1, 49, 2, 2); }   // 서까래 끝 (둥근 · 단청)
+    // 황금 풍경 (처마 끝에 줄지어 매달려 바람에 운다)
+    for (let x = 22; x < W; x += 58) { F(x, 55, 1, 10, gold); F(x - 3, 65, 7, 8, gold); F(x - 2, 66, 2, 4, 0xfff4b0); F(x - 4, 72, 9, 2, shade(gold, .7)); F(x, 74, 1, 3, shade(gold, .7)); }
+    // ---- 공포 (58 → 88): 처마를 받치는 겹겹의 짜맞춤 ----
+    F(0, 58, W, 30, redD);
+    for (let x = 2; x < W - 10; x += 20) {
+      F(x, 60, 16, 6, teal); F(x + 2, 66, 12, 6, green); F(x + 4, 72, 8, 6, teal); F(x + 6, 78, 4, 8, red);
+      F(x + 7, 62, 2, 2, gold); F(x + 7, 74, 2, 2, gold);
     }
-    // 정문: 깊숙이 열린 양개 목조문 (안쪽 등불빛 · 안쪽 마루 · 저 멀리 안쪽 계단)
-    const dx0 = cx - 44, dx1 = cx + 44, dt = 316, db = y1b;
-    const g = c.createRadialGradient(cx, db - 36, 4, cx, db - 30, 70); g.addColorStop(0, '#ffe8a0'); g.addColorStop(.3, '#d88a3a'); g.addColorStop(.7, '#5a2410'); g.addColorStop(1, '#1a0804');
+    // ---- 단청 띠 (88 → 100) ----
+    F(0, 88, W, 12, redD);
+    for (let x = 2, k = 0; x < W - 8; x += 10, k++) { F(x, 90, 8, 8, [teal, green, red, teal, gold][k % 5]); F(x + 3, 93, 2, 2, k % 5 === 4 ? red : gold); }
+    F(0, 88, W, 1, gold); F(0, 99, W, 1, 0x2a0a04);
+    // ---- 1층 몸체 (100 → 270): 격자 벽 ----
+    const y1t = 100, y1b = 270;
+    F(0, y1t, W, y1b - y1t, wood);
+    for (let x = 1; x < W; x += 6) F(x, y1t, 1, y1b - y1t, woodD);
+    for (let y = y1t + 14; y < y1b; y += 16) F(0, y, W, 1, woodD);
+    // 옆칸 큰 격자창 (안에서 등불빛)
+    for (const px of [62, 160, W - 190, W - 92]) {
+      const wy = y1t + 34, ww = 60, wh = 80;
+      F(px - 4, wy - 4, ww + 8, wh + 8, redD); F(px - 4, wy - 4, ww + 8, 2, gold);
+      F(px, wy, ww, wh, 0x2a1408);
+      for (let y = wy + 3; y < wy + wh; y += 6) F(px + 1, y, ww - 2, 2, 0xd89850);
+      for (let x = px + 6; x < px + ww; x += 9) F(x, wy, 2, wh, 0x2a1408);
+      F(px - 6, wy + wh + 4, ww + 12, 4, redD); F(px - 6, wy + wh + 4, ww + 12, 1, redHi);
+    }
+    // ---- 정문 (156 → 270): 사람 다섯 키 · 깊숙이 열린 양개 목조문 ----
+    const dx0 = cx - 66, dx1 = cx + 66, dt = 156, db = y1b;
+    const g = c.createRadialGradient(cx, db - 40, 6, cx, db - 36, 110); g.addColorStop(0, '#ffe8a0'); g.addColorStop(.3, '#d88a3a'); g.addColorStop(.7, '#5a2410'); g.addColorStop(1, '#1a0804');
     c.fillStyle = g; c.fillRect(dx0, dt, dx1 - dx0, db - dt);
-    c.fillStyle = '#7a4a24'; c.beginPath(); c.moveTo(dx0, db); c.lineTo(cx - 20, db - 30); c.lineTo(cx + 20, db - 30); c.lineTo(dx1, db); c.closePath(); c.fill();   // 안쪽 마루 (원근)
-    for (let k = 1; k < 5; k++) { const y = db - k * 7, w = 44 - k * 6; F(cx - w, y, w * 2, 1, 0x4a2a14); }
-    F(cx - 20, db - 64, 40, 34, 0x2a1008); F(cx - 16, db - 60, 32, 30, 0xffd890);   // 저 안쪽 문 (등불)
-    for (let k = 0; k < 5; k++) F(cx - 14 + k, db - 34 - k * 5, 28 - k * 2, 3, shade(0xd8a060, 1 - k * .08));   // 안쪽 계단
-    F(cx - 2, db - 58, 4, 6, 0xffffff);
-    // 열린 문짝 (안쪽으로 젖혀진 원근) + 황금 문못
-    for (const d of [-1, 1]) {
-      const x0 = d < 0 ? dx0 : dx1, x1 = x0 - d * 16;
-      c.fillStyle = css(redD); c.beginPath(); c.moveTo(x0, dt); c.lineTo(x1, dt + 8); c.lineTo(x1, db - 6); c.lineTo(x0, db); c.closePath(); c.fill();
-      c.fillStyle = css(red); c.beginPath(); c.moveTo(x0, dt + 2); c.lineTo(x1 + d * 2, dt + 10); c.lineTo(x1 + d * 2, db - 8); c.lineTo(x0, db - 2); c.closePath(); c.fill();
-      for (let y = dt + 16; y < db - 10; y += 14) for (let k = 0; k < 2; k++) F(x0 - d * (4 + k * 6) - 1, y + k * 2, 2, 2, gold);
+    c.fillStyle = '#7a4a24'; c.beginPath(); c.moveTo(dx0, db); c.lineTo(cx - 30, db - 44); c.lineTo(cx + 30, db - 44); c.lineTo(dx1, db); c.closePath(); c.fill();   // 안쪽 마루 (원근)
+    for (let k = 1; k < 7; k++) { const y = db - k * 7, w = 66 - k * 6; F(cx - w, y, w * 2, 1, 0x4a2a14); }
+    F(cx - 28, db - 92, 56, 48, 0x2a1008); F(cx - 24, db - 88, 48, 44, 0xffd890);   // 저 안쪽 문 (등불)
+    for (let k = 0; k < 7; k++) F(cx - 22 + k * 2, db - 50 - k * 6, 44 - k * 4, 3, shade(0xd8a060, 1 - k * .07));   // 안쪽 계단 (위층으로)
+    F(cx - 3, db - 86, 6, 8, 0xffffff);
+    for (const d of [-1, 1]) {   // 열린 문짝 (안쪽으로 젖혀진 원근) + 황금 문못
+      const x0 = d < 0 ? dx0 : dx1, x1 = x0 - d * 24;
+      c.fillStyle = css(redD); c.beginPath(); c.moveTo(x0, dt); c.lineTo(x1, dt + 12); c.lineTo(x1, db - 8); c.lineTo(x0, db); c.closePath(); c.fill();
+      c.fillStyle = css(red); c.beginPath(); c.moveTo(x0, dt + 3); c.lineTo(x1 + d * 3, dt + 15); c.lineTo(x1 + d * 3, db - 11); c.lineTo(x0, db - 3); c.closePath(); c.fill();
+      for (let y = dt + 18; y < db - 12; y += 14) for (let k = 0; k < 3; k++) F(x0 - d * (4 + k * 7) - 1, y + k * 2, 2, 2, gold);
     }
-    // 정문 기둥 · 문틀 · 인방
-    for (const [x, w] of [[dx0 - 18, 16], [dx1 + 2, 16]]) { F(x, y1t, w, y1b - y1t, red); F(x, y1t, 3, y1b - y1t, redHi); F(x + w - 3, y1t, 3, y1b - y1t, redD); F(x - 2, y1b - 10, w + 4, 10, stone); F(x - 2, y1t, w + 4, 4, gold); }
-    for (const x of [30, 76, W - 88, W - 42]) { F(x, y1t, 12, y1b - y1t, red); F(x, y1t, 2, y1b - y1t, redHi); F(x + 10, y1t, 2, y1b - y1t, redD); F(x - 2, y1b - 8, 16, 8, stone); F(x - 1, y1t, 14, 3, gold); }   // 굵은 붉은 기둥
-    F(dx0 - 20, dt - 10, dx1 - dx0 + 40, 10, red); F(dx0 - 20, dt - 10, dx1 - dx0 + 40, 2, redHi); F(dx0 - 20, dt - 1, dx1 - dx0 + 40, 2, redD);   // 인방
-    // 현판 (정문 위 · 금테 · 글자는 Phaser 텍스트)
-    F(cx - 50, 296, 100, 20, 0x2a1408); F(cx - 48, 298, 96, 16, 0x5a2a12); F(cx - 50, 296, 100, 2, gold); F(cx - 50, 314, 100, 2, gold); F(cx - 50, 296, 2, 20, gold); F(cx + 48, 296, 2, 20, gold);
-    // ---- 돌 기단 (440 → 416) · 정문 앞 넓은 돌계단 ----
-    F(0, 426, W, 14, stoneD); F(0, 426, W, 2, stoneHi);
-    F(12, 416, W - 24, 10, stone); F(12, 416, W - 24, 1, stoneHi);
-    for (let x = 4; x < W; x += 22) { F(x, 428, 1, 12, 0x3a342c); F(x + 11, 418, 1, 8, stoneD); }   // 돌 이음매
-    for (let k = 0; k < 5; k++) { const w = 70 - k * 4, y = H - 5 - k * 5; F(cx - w, y, w * 2, 5, k % 2 ? stone : shade(stone, 1.1)); F(cx - w, y, w * 2, 1, stoneHi); }   // 계단 (앞으로 넓어진다)
-    for (const d of [-1, 1]) { const x = cx + d * 74 - (d < 0 ? 10 : 0); F(x, 404, 10, 36, stoneD); F(x, 404, 10, 2, stoneHi); F(x + 2, 398, 6, 6, stone); }   // 계단 옆 돌난간 기둥
-    // 위층이 하늘로 녹아들게: 위쪽 160px 을 점점 투명하게
-    c.save(); c.globalCompositeOperation = 'destination-out';
-    const fade = c.createLinearGradient(0, 0, 0, 170); fade.addColorStop(0, 'rgba(0,0,0,1)'); fade.addColorStop(.55, 'rgba(0,0,0,.55)'); fade.addColorStop(1, 'rgba(0,0,0,0)');
-    c.fillStyle = fade; c.fillRect(0, 0, W, 170); c.restore();
+    // 인방 · 현판 (금테 · 글자는 Phaser 텍스트)
+    F(dx0 - 30, dt - 14, dx1 - dx0 + 60, 14, red); F(dx0 - 30, dt - 14, dx1 - dx0 + 60, 2, redHi); F(dx0 - 30, dt - 2, dx1 - dx0 + 60, 2, redD);
+    F(cx - 64, 108, 128, 30, 0x2a1408); F(cx - 61, 111, 122, 24, 0x5a2a12);
+    F(cx - 64, 108, 128, 2, gold); F(cx - 64, 136, 128, 2, gold); F(cx - 64, 108, 2, 30, gold); F(cx + 62, 108, 2, 30, gold);
+    for (const d of [-1, 1]) F(cx + d * 70 - (d < 0 ? 4 : 0), 116, 4, 14, gold);
+    // ---- 굵은 붉은 기둥 (정문 양옆은 더 굵게) ----
+    const post = (x, w) => { F(x, y1t, w, y1b - y1t, red); F(x, y1t, 3, y1b - y1t, redHi); F(x + w - 4, y1t, 4, y1b - y1t, redD); F(x - 3, y1t, w + 6, 4, gold); F(x - 4, y1b - 12, w + 8, 12, stone); F(x - 4, y1b - 12, w + 8, 1, stoneHi); };
+    post(dx0 - 30, 26); post(dx1 + 4, 26);
+    for (const x of [0, 128, 228, W - 256, W - 154, W - 26]) post(x, 22);
+    // ---- 청사초롱 (처마 밑에 매달린 붉은 등) ----
+    for (const lx of [cx - 140, cx + 140, 40, W - 40]) {
+      F(lx, 100, 1, 18, 0x2a1408);
+      F(lx - 8, 118, 17, 3, gold); F(lx - 10, 121, 21, 22, 0xd83a24); F(lx - 8, 121, 17, 22, 0xf05a34); F(lx - 4, 124, 5, 16, 0xffb070);
+      for (let y = 126; y < 142; y += 5) F(lx - 10, y, 21, 1, 0xa82010);
+      F(lx - 8, 143, 17, 3, gold); F(lx - 1, 146, 3, 6, gold);
+    }
+    // ---- 돌 기단 (270 → 300) · 정문 앞 넓은 돌계단 ----
+    F(0, 280, W, 20, stoneD); F(0, 280, W, 2, stoneHi);
+    F(0, 270, W, 10, stone); F(0, 270, W, 1, stoneHi);
+    for (let x = 4; x < W; x += 26) { F(x, 282, 1, 18, 0x3a342c); F(x + 13, 272, 1, 8, stoneD); }   // 돌 이음매
+    for (let k = 0; k < 6; k++) { const w = 104 - k * 5, y = H - 5 - k * 5; F(cx - w, y, w * 2, 5, k % 2 ? stone : shade(stone, 1.1)); F(cx - w, y, w * 2, 1, stoneHi); }   // 계단 (앞으로 넓어진다)
+    // 왼쪽 끝: 처마가 하늘로 휘어 오르며 화면 밖으로 (오른쪽 끝은 방 벽 속)
+    c.save(); c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.moveTo(0, 0); c.lineTo(34, 0); c.quadraticCurveTo(8, 20, 0, 46); c.closePath(); c.fill(); c.restore();
+    F(2, 40, 6, 8, gold); F(0, 36, 3, 5, gold);
+    for (const d of [-1, 1]) { const x = cx + d * 110 - (d < 0 ? 14 : 0); F(x, 254, 14, 46, stoneD); F(x, 254, 14, 2, stoneHi); F(x + 3, 246, 8, 8, stone); F(x + 5, 242, 4, 4, gold); }   // 계단 옆 돌난간 기둥
   });
 }
 // 벽 횃불: 쇠 받침 + 타오르는 불꽃
@@ -1074,7 +1067,7 @@ export class Props {
       // 단풍 가로수: 길을 따라 촘촘히 (은행나무 · 홍단풍 번갈아)
       for (let x = r.left + 30, k = 0; x < r.right - 30; x += 64 + (k * 17) % 22, k++) {
         const tx = Math.floor(x / TILE);
-        if (!floorAt(tx, r.F) || (r.trailEnd && x > r.doorTx * TILE - 240)) continue;   // 방울탑 정문 외관 앞은 비워 둔다
+        if (!floorAt(tx, r.F) || (r.trailEnd && x > r.doorTx * TILE - 360)) continue;   // 방울탑 정문 외관 앞은 비워 둔다
         const a = autumnTree(s, k % 4);
         this.lit(s.add.image(x, Y + 2, a.key).setOrigin(a.baseX / a.W, 1).setDepth(3.6 + (k % 2) * .2).setScale(k % 2 ? .9 : 1));
       }
@@ -1088,21 +1081,21 @@ export class Props {
       for (let x = r.left + 60; x < r.right; x += 160) this.add(s.add.image(x, r.top + 10, 'glow').setOrigin(.5, 0).setBlendMode(ADD).setTint(0xffd8a0).setScale(1.2, 5).setAlpha(.12).setDepth(3.2).setAngle(-18));
       // 방울탑 입구 (방울로드 끝): 외관 + 금빛 풍경 반짝임 + 현판 빛
       if (r.trailEnd) {
-        // 화면을 압도하는 정문 외관 (2층부터는 화면 위로 잘려 나간다) — 정문 한가운데 = r.doorTx
-        const gx = r.doorTx * TILE + 8;
-        const art = bellGateArt(s), cutH = r.top - (Y + 2 - 440);
+        // 화면을 압도하는 거대한 1층 정면 (위층은 보이지 않는다 — 카메라가 방 천장 위 4칸까지만) — 정문 한가운데 = r.doorTx
+        const gx = r.doorTx * TILE + 8, AW = 640, AH = 300;
+        const art = bellGateArt(s), cutH = r.top - (Y + 2 - AH);
         this.lit(s.add.image(gx, Y + 2, art).setOrigin(.5, 1).setDepth(3.4));
-        // 방 천장 위로 솟은 부분(2층 · 3층)은 바위 · 천장 타일 앞에 그려 화면 위로 까마득히 뚫고 올라가게
-        if (cutH > 0) this.lit(s.add.image(gx, Y + 2, art).setOrigin(.5, 1).setCrop(0, 0, 380, cutH).setDepth(10.45));
-        this.add(s.add.image(gx, Y - 200, 'glow').setBlendMode(ADD).setTint(0xffc060).setScale(7, 9).setAlpha(.06).setDepth(3.3));   // 탑을 감싸는 금빛 햇무리
-        this.add(s.add.text(gx, Y - 135, '鈴 塔 · 방울탑', { fontFamily: 'Galmuri9', fontSize: '9px', color: '#ffe0a0', stroke: '#2a1408', strokeThickness: 3, resolution: 1 }).setOrigin(.5).setDepth(3.5));
+        // 방 천장 위로 솟은 처마는 천장 바위 타일 앞에 그려 화면 위로 끝없이 이어지게 (보이는 4칸 남짓만)
+        if (cutH > 0) { const c0 = Math.max(0, cutH - 88); this.lit(s.add.image(gx, Y + 2, art).setOrigin(.5, 1).setCrop(0, c0, AW, cutH - c0).setDepth(10.45)); }
+        this.add(s.add.image(gx, Y - 120, 'glow').setBlendMode(ADD).setTint(0xffc060).setScale(9, 6).setAlpha(.06).setDepth(3.3));   // 탑을 감싸는 금빛 햇무리
+        this.add(s.add.text(gx, Y - 175, '鈴 塔 · 방울탑', { fontFamily: 'Galmuri9', fontSize: '9px', color: '#ffe0a0', stroke: '#2a1408', strokeThickness: 3, resolution: 1 }).setOrigin(.5).setDepth(3.5));
         // 정문 안쪽 등불빛 (숨 쉬듯 일렁인다) · 정문 앞 빛
-        const inner = this.add(s.add.image(gx, Y - 40, 'glow').setBlendMode(ADD).setTint(0xffc070).setScale(2.2, 2.8).setAlpha(.4).setDepth(3.45));
+        const inner = this.add(s.add.image(gx, Y - 50, 'glow').setBlendMode(ADD).setTint(0xffc070).setScale(3.2, 3.6).setAlpha(.4).setDepth(3.45));
         this.pulses.push({ o: inner, base: .26, amp: .1, sp: 1.3 });
-        this.light(gx, Y - 50, 170, 0xffb060, 1.0);
-        this.light(gx, Y - 140, 240, 0xffd8a0, .45);
+        this.light(gx, Y - 60, 200, 0xffb060, 1.0);
+        this.light(gx, Y - 150, 300, 0xffd8a0, .45);
         // 정문 출입 (오박사 연구소처럼 ↑/F → 암전 → 탑 안 1층 출입문 앞)
-        if (r.portalTo) this.interacts.push({ kind: 'door', pair: 'belltower', side: 'out', face: -1, x: gx, y: Y, range: 34, used: false, repeat: true, prompt: '[F 또는 ↑ : 방울탑 안으로 들어가기]', promptY: Y - 108, door: null, glowAt: { x: gx, y: Y - 40 } });
+        if (r.portalTo) this.interacts.push({ kind: 'door', pair: 'belltower', side: 'out', face: -1, x: gx, y: Y, range: 60, used: false, repeat: true, prompt: '[F 또는 ↑ : 방울탑 안으로 들어가기]', promptY: Y - 128, door: null, glowAt: { x: gx, y: Y - 50 } });
       }
     }
     // 탑 안 1층 출입문 (방울로드 정문으로 나간다): 붉은 옻칠 양개문 + 문틀 + 깔개

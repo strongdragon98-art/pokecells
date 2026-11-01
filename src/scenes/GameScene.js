@@ -279,7 +279,7 @@ export default class GameScene extends Phaser.Scene {
       this.worldObjs.push(g);
     }
     // 위아래 철창 통로(방 바닥 밑 땅을 뚫은 갱도) 뒤엔 어두운 흙벽 — 먼 하늘이 비쳐 보이지 않게
-    for (const d of level.doors) if (d.dir === 'v') { const xs = d.cells.map(c => c[0]), ys = d.cells.map(c => c[1]); rock.fillStyle(shade(st.palette.wall2, .4), 1); rock.fillRect(Math.min(...xs) * TILE, Math.min(...ys) * TILE, (Math.max(...xs) - Math.min(...xs) + 1) * TILE, (Math.max(...ys) - Math.min(...ys) + 1) * TILE); }
+    for (const d of level.doors) if (d.dir === 'v' && !d.sealed) { const xs = d.cells.map(c => c[0]), ys = d.cells.map(c => c[1]); rock.fillStyle(shade(st.palette.wall2, .4), 1); rock.fillRect(Math.min(...xs) * TILE, Math.min(...ys) * TILE, (Math.max(...xs) - Math.min(...xs) + 1) * TILE, (Math.max(...ys) - Math.min(...ys) + 1) * TILE); }
     this.worldObjs.push(rock);
     for (const r of level.rooms) if (r.under) this.worldObjs.push(this.add.tileSprite(r.left - 32, r.top - 32, r.right - r.left + 64, r.bottom - r.top + 64, `bgcave:${si}`).setOrigin(0).setDepth(2));
     // 상처약·페이크 굴: 안쪽엔 어두운 흙벽을 깔고, 들어서기 전까지는 흙 타일로 덮어 둔다 (환영 벽 너머 숨은 굴)
@@ -1093,6 +1093,7 @@ export default class GameScene extends Phaser.Scene {
     this.fx.update(dt);
     const cam = this.cameras.main;
     cam.followOffset.x += (-this.player.face * 26 - cam.followOffset.x) * Math.min(1, dt * 3);
+    cam.followOffset.y += ((this.room && this.room.trailEnd ? 90 : 10) - cam.followOffset.y) * Math.min(1, dt * 3);   // 방울탑 정문 앞: 주인공을 화면 아래로 — 거대한 정면을 올려다보게
     const ry = this.room ? cam.scrollY - this.room.Y0 * TILE : 0;   // 세로 흐름은 방 안에서만 살짝 (텍스처 여유 16px 안 — 2D 월드에서 땅 띠가 하늘에 비치지 않게)
     this.bgFar.tilePositionX = cam.scrollX * .15 + time * .002; this.bgFar.tilePositionY = Phaser.Math.Clamp(ry * .03, 0, 8);   // 하늘이 천천히 흐른다
     for (const t of Object.values(this.bgMids)) { t.tilePositionX = cam.scrollX * .4; t.tilePositionY = Phaser.Math.Clamp(ry * .06, 0, 16); }
@@ -1683,9 +1684,9 @@ export default class GameScene extends Phaser.Scene {
   updateRooms(dt) {
     const p = this.player, room = roomAt(this.level, p.x, p.y - 4) || this.room;
     if (room !== this.room) {
-      const wasLab = this.room && this.room.lab;
+      const wasLab = this.room && (this.room.lab || this.room.trailEnd);
       this.room = room;
-      if ((wasLab || room.lab) && !this.arenaRoom) this.cameras.main.setBounds(...this.camBounds());   // 연구소 지하(튜토리얼 기술머신)로 내려가거나 올라올 때
+      if ((wasLab || room.lab || room.trailEnd) && !this.arenaRoom) this.cameras.main.setBounds(...this.camBounds());   // 연구소 지하(튜토리얼 기술머신)로 내려가거나 올라올 때
       this.updateLabCover();
       for (const m of p.members) m.sturdyUsed = false;   // 기합의띠(특성 카드)는 방마다 1번
       this.events.emit('room', room);
@@ -1889,6 +1890,7 @@ export default class GameScene extends Phaser.Scene {
   // 카메라가 다닐 범위: 월드 전체 (테스트룸은 방 안 — 둘레에 두른 바위가 비치지 않게 · 오박사 연구소 안에선 연구소 안만 — 벽 너머 마을이 비치지 않게)
   camBounds() {
     const lv = this.level, r = lv.test ? lv.rooms[0] : this.room && this.room.lab ? this.room : null;
+    if (!r && this.room && this.room.trailEnd) { const top = (this.room.ty0 - 4) * TILE; return [0, top, lv.width, lv.height - top]; }   // 방울탑 정문 앞: 천장 위(탑 위층)는 보이지 않게
     return r ? [r.X0 * TILE, r.Y0 * TILE, (r.X1 - r.X0) * TILE, (r.Y1 - r.Y0) * TILE] : [0, 0, lv.width, lv.height];
   }
   unlockArena() {
