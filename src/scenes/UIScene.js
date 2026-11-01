@@ -10,9 +10,10 @@ import { ITEMS, MAX_EQUIP } from '../data/items.js';
 import { POTION_MAX, POTION_CD } from '../data/shop.js';
 import { STAGES, areaLabel } from '../data/stages.js';
 import { typeName, typeColor, hex, matchups } from '../data/types.js';
-import { GRADE_STYLE, UPGRADES, BOOSTS, rollCards, heldLv, mergePreview, lvTag, CARD_MAX_LV, MAX_BONUS } from '../data/tm.js';
+import { GRADE_STYLE, UPGRADES, BOOSTS, TM_CARDS, rollCards, heldLv, mergePreview, lvTag, CARD_MAX_LV, MAX_BONUS } from '../data/tm.js';
 
 // 특성 카드 분류 → 카드 가운데 아이콘 글자 (기술 아이콘이 없는 카드)
+const TM_K = .88, TM_GAP = 150;   // 기술머신 카드 4장: 크기 배율 · 카드 사이 간격 (한 줄 590px 안)
 const PERK_ICON = { 차징: '⚡', 능력치: '⚔', 기동: '➶', 유틸: '✚', '속성 부여': '✺', '스킬 변이': '✷', 유물: '❂', 숙련: '✦', '대시 진화': '⚡' };
 // 한 줄 글자가 넘치면 가로로 줄인다
 const fitText = (t, w) => { if (t.width > w) t.setScale(w / t.width, 1); return t; };
@@ -624,19 +625,20 @@ export default class UIScene extends Phaser.Scene {
   //  카드·뒤집힌 상태·고른 카드는 제단(gs.tmActive)에 남아 닫았다 다시 열어도 그대로다. flip: 막 뒤집은 카드 (뒤집기 애니메이션)
   //  등급 4단계 (data/tm.js GRADE_STYLE): 커먼 은빛 · 레어 사파이어 · 유니크 아메시스트 · 전설 황금 프리즘
   //   전설 카드는 뒷면부터 황금 빛줄기·번개가 새어 나오고, 뒤집으면 화면이 흔들리며 황금 파편이 쏟아진다
-  //  입력: 카드 클릭/터치 · 1·2·3 · ← → 로 고르고 Enter·Space·Z (닫힌 카드면 뒤집기, 다 열렸으면 결정)
+  //  입력: 카드 클릭/터치 · 1~4 · ← → 로 고르고 Enter·Space·Z (닫힌 카드면 뒤집기, 다 열렸으면 결정)
+  //  카드 4장(TM_CARDS)은 원래 크기(150×200)의 TM_K 배로 줄여 한 줄에 놓는다 (바깥 틀 wrap 이 줄이고, 안쪽 c 는 뒤집기 트윈이 scaleX 를 쓴다)
   showTM(flip = -1) {
     const gs = this.gs, it = gs.tmActive;
     if (!it) return;
-    // 카드가 3장이 아니거나 빈 칸이 섞였으면(예전 저장·오류) 그 포켓몬 기준으로 다시 뽑는다 — 어떤 경우에도 3장
-    if (!Array.isArray(it.cards) || it.cards.length !== 3 || it.cards.some(c => !c || !c.name)) { it.cards = rollCards(this.gs.player); it.flipped = [false, false, false]; it.sel = -1; }
-    if (!Array.isArray(it.flipped) || it.flipped.length !== 3) it.flipped = [false, false, false];
+    // 카드가 4장이 아니거나 빈 칸이 섞였으면(예전 3장 저장·오류) 그 포켓몬 기준으로 다시 뽑는다 — 어떤 경우에도 4장
+    if (!Array.isArray(it.cards) || it.cards.length !== TM_CARDS || it.cards.some(c => !c || !c.name)) { it.cards = rollCards(this.gs.player, it.legend ? { floor: '유니크', legend: true } : {}); it.flipped = Array(TM_CARDS).fill(false); it.sel = -1; }
+    if (!Array.isArray(it.flipped) || it.flipped.length !== TM_CARDS) it.flipped = Array(TM_CARDS).fill(false);
     this.clearOverlay();
     this.toastT = 0; this.tmAnims = [];
     if (flip < 0) this.tmBusy = false;   // 뒤집기 도중 창을 닫았다 열어도 입력이 막히지 않게
     const g = this.gOver, L = this.overlay.setVisible(true), p = gs.player, m = it.member;
     const allOpen = it.flipped.every(Boolean), W = 150, H = 200, CY = 170;
-    if (it.sel < 0 || it.sel > 2) it.sel = Math.max(0, it.flipped.indexOf(false));
+    if (it.sel < 0 || it.sel >= TM_CARDS) it.sel = Math.max(0, it.flipped.indexOf(false));
     g.fillStyle(0x05040a, .9); g.fillRect(0, 0, GAME_W, GAME_H);
     L.add(this.add.image(320, CY, 'glow').setBlendMode(ADD).setTint(0x4a7aff).setScale(9, 5).setAlpha(.16));
     L.add(hkText(this, 320, 20, it.legend ? '전설의 기술 카드' : '기술머신', 18, it.legend ? HK.gold : HK.ivory, { bold: true, ls: it.legend ? 5 : 8, origin: .5, glow: true }));
@@ -644,12 +646,13 @@ export default class UIScene extends Phaser.Scene {
     L.add(hkText(this, 320, 50, `파티 전체(${p.members.map(q => p.formName(q)).join(' · ')})에게 맞춰진 고대 석판 · ${allOpen ? '마음에 드는 카드 1장을 고르세요' : `카드를 눌러 하나씩 뒤집으세요 (남은 ${it.flipped.filter(f => !f).length}장)`}`, 9.5, HK.dim, { origin: .5 }));
     this.tmTextures(W, H);
     it.cards.forEach((card, i) => {
-      const x = 320 + (i - 1) * 172, chosen = allOpen && it.sel === i, focus = !allOpen && it.sel === i && !it.flipped[i], open = it.flipped[i] && i !== flip;
+      const x = 320 + (i - (TM_CARDS - 1) / 2) * TM_GAP, chosen = allOpen && it.sel === i, focus = !allOpen && it.sel === i && !it.flipped[i], open = it.flipped[i] && i !== flip;
       const st = GRADE_STYLE[card.grade] || GRADE_STYLE.커먼, col = st.glow;
       // 등급 오라 (열린 카드) · 전설은 뒷면부터 빛줄기
-      if ((open && card.grade !== '커먼') || card.grade === '전설') this.tmAura(L, x, CY, W, H, card.grade, open);
-      if (chosen) L.add(this.add.image(x, CY - 6, 'glow').setBlendMode(ADD).setTint(0xffd27a).setScale(3.4, 4.2).setAlpha(.45));
-      const c = this.add.container(x, chosen ? CY - 6 : CY); L.add(c);
+      if ((open && card.grade !== '커먼') || card.grade === '전설') this.tmAura(L, x, CY, W * TM_K, H * TM_K, card.grade, open);
+      if (chosen) L.add(this.add.image(x, CY - 6, 'glow').setBlendMode(ADD).setTint(0xffd27a).setScale(3.4 * TM_K, 4.2 * TM_K).setAlpha(.45));
+      const wrap = this.add.container(x, chosen ? CY - 6 : CY).setScale(TM_K); L.add(wrap);
+      const c = this.add.container(0, 0); wrap.add(c);
       const back = hiImage(this, 0, 0, 'tm-back'); c.add(back);
       const face = this.add.container(0, 0); c.add(face);
       this.tmFace(face, card, m, W, H, chosen);
@@ -660,9 +663,9 @@ export default class UIScene extends Phaser.Scene {
       }
       if (i === flip) this.tmFlip(L, c, back, face, card, x, CY, W, H, it);
       // 누르기 영역 (뒤집기 / 고르기) — 마우스 클릭 · 모바일 터치 모두 pointerdown
-      const z = this.add.zone(x, CY, W, H).setInteractive({ useHandCursor: true }); L.add(z);
+      const z = this.add.zone(x, CY, W * TM_K, H * TM_K).setInteractive({ useHandCursor: true }); L.add(z);
       z.on('pointerdown', () => this.tmPress(i));
-      L.add(hkText(this, x, CY + H / 2 + 6, String(i + 1), 9, chosen || focus ? HK.gold : HK.faint, { origin: [.5, 0] }));
+      L.add(hkText(this, x, CY + H * TM_K / 2 + 6, String(i + 1), 9, chosen || focus ? HK.gold : HK.faint, { origin: [.5, 0] }));
     });
     // 아래: 단계별 안내 · 결정 · 슬롯 고르기
     const BY = 300;
@@ -670,7 +673,7 @@ export default class UIScene extends Phaser.Scene {
       const card = it.cards[it.sel];
       glassButton(this, 320 - 100, BY, 200, 28, card.kind === 'move' ? '이 기술 배우기  (Enter · Z)' : '이 카드로 결정  (Enter · Z)', () => this.tmConfirm(), { size: 10.5, layer: L, primary: true });
     } else {
-      L.add(hkText(this, 320, BY + 10, '카드를 누르거나 1 · 2 · 3  ·  ← → 고르고 Enter · Space · Z 로 뒤집기  ·  3장을 다 열어 본 뒤 1장을 고른다', 9, HK.dim, { origin: .5 }));
+      L.add(hkText(this, 320, BY + 10, `카드를 누르거나 1~${TM_CARDS}  ·  ← → 고르고 Enter · Space · Z 로 뒤집기  ·  ${TM_CARDS}장을 다 열어 본 뒤 1장을 고른다`, 9, HK.dim, { origin: .5 }));
     }
     L.add(hkText(this, 320, 348, 'Esc 닫기 (고른 내용은 제단에 남는다)', 8, HK.faint, { origin: .5 }));
     glassButton(this, 566, 8, 64, 20, '✕  닫기', () => gs.toggleOverlay('tm'), { size: 9, layer: L });
@@ -1059,10 +1062,10 @@ export default class UIScene extends Phaser.Scene {
     face.add(fitText(hkText(this, 0, H / 2 - 16, label, 7.5, HK.gold, { origin: [.5, 0], bold: true }), W - 14));
   }
 
-  // 카드 누르기: 뒷면이면 뒤집고, 3장을 다 열었으면 고른다 (이미 고른 카드를 한 번 더 누르면 결정)
+  // 카드 누르기: 뒷면이면 뒤집고, 4장을 다 열었으면 고른다 (이미 고른 카드를 한 번 더 누르면 결정)
   tmPress(i) {
     const it = this.gs.tmActive;
-    if (!it || this.tmBusy || this.tmModal || i < 0 || i > 2) return;
+    if (!it || this.tmBusy || this.tmModal || i < 0 || i >= TM_CARDS) return;
     if (!it.flipped[i]) { it.flipped[i] = true; it.sel = i; this.showTM(i); return; }
     if (!it.flipped.every(Boolean)) { it.sel = i; Sfx.play('deny'); return; }
     if (it.sel === i) { this.tmConfirm(); return; }
@@ -2181,16 +2184,16 @@ export default class UIScene extends Phaser.Scene {
     }
     if (this.overlayMode === 'inv') { this.menuKey(e); return; }   // 통합 메뉴 (scenes/GameMenu.js)
     if (this.overlayMode === 'tm') {
-      const it = this.gs.tmActive, n = /^(Digit|Numpad)[1-3]$/.test(e.code) ? +e.code.slice(-1) : 0;
+      const it = this.gs.tmActive, n = /^(Digit|Numpad)[1-4]$/.test(e.code) ? +e.code.slice(-1) : 0;
       if (!it) return;
       if (this.tmModal) {   // 포켓몬 지정 창: 1 · 2 · 3 포켓몬 → Z · X · C (또는 1 · 2 · 3) 기술 자리 · Backspace 뒤로
         if (e.code === 'Backspace') { this.tmModalBack(); return; }
-        if (this.tmModal.step === 'who') { const ms = this.tmModalMembers(it.cards[it.sel]); if (n && ms[n - 1]) this.tmPickMember(ms[n - 1].m.key); }
-        else { const sl = n ? ['z', 'x', 'c'][n - 1] : ['z', 'x', 'c'].find(s2 => keyNameFromEvent(e) === Settings.key(s2)) || null; if (sl) this.tmChooseSlot(sl); }
+        if (this.tmModal.step === 'who') { const ms = this.tmModalMembers(it.cards[it.sel]); if (n && n <= 3 && ms[n - 1]) this.tmPickMember(ms[n - 1].m.key); }
+        else { const sl = n && n <= 3 ? ['z', 'x', 'c'][n - 1] : ['z', 'x', 'c'].find(s2 => keyNameFromEvent(e) === Settings.key(s2)) || null; if (sl) this.tmChooseSlot(sl); }
         return;
       }
       if (n) this.tmPress(n - 1);
-      else if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && !this.tmBusy) { it.sel = ((it.sel < 0 ? 0 : it.sel + (e.code === 'ArrowRight' ? 1 : -1)) + 3) % 3; Sfx.play('select'); this.showTM(); }
+      else if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && !this.tmBusy) { it.sel = ((it.sel < 0 ? 0 : it.sel + (e.code === 'ArrowRight' ? 1 : -1)) + TM_CARDS) % TM_CARDS; Sfx.play('select'); this.showTM(); }
       else if (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyZ' || keyNameFromEvent(e) === Settings.key('z')) this.tmEnter();
       return;
     }

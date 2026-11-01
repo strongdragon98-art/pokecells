@@ -61,6 +61,8 @@ export const ARCH_NAME = { slash: '베기', strike: '펀치', fang: '물어뜯�
 const AIL_KO = { burn: '화상', paralysis: '마비', freeze: '빙결', poison: '독', sleep: '잠듦(기절)', confusion: '혼란', trap: '속박', 'leech-seed': '씨뿌리기(독)', yawn: '하품(기절)' };
 
 // ---------------- 표시 정보 ----------------
+// 설명 문구: 본가 최신작에서 빠진 기술은 도감 문구가 '사용할 수 없는 기술입니다…' 라서 이 게임에서 쓰는 모습으로 바꿔 쓴다
+const flavorOf = (m, arch) => (!m.desc || /사용할 수 없는/.test(m.desc) ? `${m.ko || m.en} — ${m.power ? '적을 공격하는' : '싸움을 돕는'} ${ARCH_NAME[arch]} 기술.` : m.desc);
 export function toSkillMeta(id) {
   const m = MOVE_DB[id], arch = archetypeOf(m, id);
   if (!arch) return null;
@@ -72,7 +74,7 @@ export function toSkillMeta(id) {
   if (m.hits) fx.push(`${m.hits[0]}~${m.hits[1]}연타`);
   return {
     name: m.ko || m.en, type: m.type, cd, icon: ARCH_ICON[arch] || ICON[m.type] || 'orb',
-    desc: `${m.desc || m.en} [${ARCH_NAME[arch]}${m.power ? ` · 위력 ${m.power}` : ''}${fx.length ? ' · ' + fx.join(' · ') : ''}]`,
+    desc: `${flavorOf(m, arch)} [${ARCH_NAME[arch]}${m.power ? ` · 위력 ${m.power}` : ''}${fx.length ? ' · ' + fx.join(' · ') : ''}]`,
     mega: '메가진화하면 한 갈래 더 · 범위와 효과 확률이 커진다', gen: true, arch, power: m.power, cls: m.cls, src: 'PokeAPI'
   };
 }

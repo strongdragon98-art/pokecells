@@ -38,7 +38,7 @@ import { Settings, keyLabel } from '../systems/Settings.js';
 import { Save } from '../systems/Save.js';
 import { RunSave, seeded, newSeed, snapshotWorld, applyWorld, snapshotPlayer, restorePlayer } from '../systems/RunSave.js';
 import { itemArt, shade, TILE_MARGIN, TILE_SPACING } from '../systems/Textures.js';
-import { rollCards, applyCard } from '../data/tm.js';
+import { rollCards, applyCard, TM_CARDS } from '../data/tm.js';
 import { onKill as perkKill } from '../game/Perks.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -1040,7 +1040,7 @@ export default class GameScene extends Phaser.Scene {
   //  처음 가동하면 캡슐이 증기와 빛을 뿜으며 열린 뒤(Props.openTM) 카드 화면으로
   openTM(it) {
     if (this.tmOpening) return;
-    if (!it.cards) { it.member = this.player.m; it.cards = rollCards(this.player); it.flipped = [false, false, false]; it.sel = -1; }   // 파티 전체에게 맞춘 카드 (data/tm.js)
+    if (!it.cards) { it.member = this.player.m; it.cards = rollCards(this.player); it.flipped = Array(TM_CARDS).fill(false); it.sel = -1; }   // 파티 전체에게 맞춘 카드 (data/tm.js)
     this.tmOpening = true;
     this.player.b.setVelocityX(0);
     this.props.openTM(it, () => {
@@ -2176,7 +2176,7 @@ export default class GameScene extends Phaser.Scene {
   openLegendCards() {
     if (this.over || this.transitioning || this.overlay) { this.time.delayedCall(800, () => this.openLegendCards()); return; }
     const m = this.player.m;   // 히든 전설 보상: 유니크 이상 · 한 장은 반드시 전설
-    const it = { kind: 'tm', legend: true, used: false, member: m, cards: rollCards(this.player, { floor: '유니크', legend: true }), flipped: [false, false, false], sel: -1 };
+    const it = { kind: 'tm', legend: true, used: false, member: m, cards: rollCards(this.player, { floor: '유니크', legend: true }), flipped: Array(TM_CARDS).fill(false), sel: -1 };
     this.tmActive = it;
     this.toggleOverlay('tm');
     Sfx.play('mega');

@@ -1,9 +1,9 @@
-// 기술머신(TM): 맵 샛길 끝 제단에서 카드 3장을 뒤집어 보고 1장을 고른다 (UI 는 scenes/UIScene.showTM)
+// 기술머신(TM): 맵 샛길 끝 제단에서 카드 4장(TM_CARDS)을 뒤집어 보고 1장을 고른다 (UI 는 scenes/UIScene.showTM)
 //  카드 종류 — move: 새 액티브 기술 습득(X·C 자리에 장착/교체 · 연타 기술이 아니면 Z 도) · up: 원작 개조(불꽃세례 → 푸른 연옥 …)
 //   · boost: 지금 Z·X·C 에 단 기술을 직접 키우는 스킬 강화(위력 · 가속 · 광역 · 분열탄 — 모든 기술 공용) · perk: 특성 카드(game/Perks.js) · mastery: 숙련
 //  카드는 '파티 전체' 기준으로 뽑는다: 출전 여부와 상관없이 파티의 누구든 쓸 수 있는 카드만 나오고(아무도 못 쓰는 카드는 풀에서 빠진다),
 //   카드마다 쓸 수 있는 포켓몬(who: 계열 키 목록)을 달아 둔다 → 고를 때 둘 이상이면 누구에게 적용할지 고른다 (UIScene.showTM)
-//  3장 중 2장(30% 확률로 3장 전부)은 [지금 가진 기술 강화] 카드 (boost · up) — 평균 75% 이상. 나머지 칸은 새 기술(60%) 또는 특성 카드
+//  4장 = 지금 가진 기술 강화 2장 (boost · up) + 새 기술 1장 확정 (파티에 없는 다른 속성 우선) + 자유 1장 (새 기술 60% 또는 특성 카드)
 //  기술은 그 포켓몬이 원작·타입상 배울 수 있는 것만 (TM_LEARN)
 //  등급 4단계: 커먼 · 레어 · 유니크 · 전설 (특성 카드 55 · 28 · 13 · 4% / 스킬 강화 카드는 레어 62 · 유니크 29 · 전설 9%)
 import { SKILLS } from './pokemon.js';
@@ -184,7 +184,8 @@ export function moveGrade(id) {
   return pw >= 130 ? '전설' : pw >= 100 ? '유니크' : pw >= 70 ? '레어' : '커먼';
 }
 
-// 카드가 모자랄 때 채우는 숙련 카드 (몇 번이고 겹친다 — 어떤 경우에도 카드 3장을 채운다)
+export const TM_CARDS = 4;   // 한 번에 뒤집는 카드 수
+// 카드가 모자랄 때 채우는 숙련 카드 (몇 번이고 겹친다 — 어떤 경우에도 카드 4장을 채운다)
 export const MASTERY = {
   power_memory: { name: '숙련의 기억: 힘', grade: '커먼', desc: '이 포켓몬의 공격력 +8%.', apply: m => { m.atkBonus *= 1.08; } },
   quick_memory: { name: '숙련의 기억: 집중', grade: '커먼', desc: '이 포켓몬의 모든 기술 쿨타임 -8%.', apply: m => { m.cdBonus *= .92; } },
@@ -260,14 +261,15 @@ function partyCandidates(p) {
   return { moves: [...moveMap.values()], ups: [...upMap.values()], boosts, perks };
 }
 
-// 차징 카드 (game/Perks.js · 모든 포켓몬 공용): 3장 중 하나도 없으면 이 확률로 한 장을 끼워 넣는다 (자연 등장과 합쳐 30% 이상)
+// 차징 카드 (game/Perks.js · 모든 포켓몬 공용): 4장 중 하나도 없으면 이 확률로 자유 칸을 차징 카드로 바꾼다 (자연 등장과 합쳐 30% 이상)
 export const CHARGE_PERKS = ['u_charge', 'u_rapid', 'u_shock'];
 const CHARGE_CARD_P = .3;
 
-// 파티 p 에게 맞는 서로 다른 카드 '반드시 3장'
-//  ① 지금 가진 기술 강화 카드 2장(30% 확률로 3장) — 원작 개조(up)가 남아 있으면 30%로 그쪽, 아니면 스킬 강화(boost) · 출전 중인 포켓몬의 기술이 두 배로 잘 나온다
-//  ② 남은 칸: 60% 새 기술 카드(대기술일수록 드물게 — 전설 1 : 유니크 3 : 레어 6) · 40% 특성 카드(등급을 굴려 가까운 등급부터)
-//  ③ 그래도 모자라면 남은 아무 카드 → 숙련 카드
+// 파티 p 에게 맞는 서로 다른 카드 '반드시 4장'
+//  ① 지금 가진 기술 강화 카드 2장 — 원작 개조(up)가 남아 있으면 30%로 그쪽, 아니면 스킬 강화(boost) · 출전 중인 포켓몬의 기술이 두 배로 잘 나온다
+//  ② 새 기술 카드 1장 확정 — 파티 누구의 속성도 아닌 '다른 속성' 기술을 3배 자주 (속성 조합 짜기)
+//  ③ 자유 칸: 60% 새 기술 카드(대기술일수록 드물게 — 전설 1 : 유니크 3 : 레어 6) · 40% 특성 카드(등급을 굴려 가까운 등급부터)
+//  ④ 그래도 모자라면 남은 아무 카드 → 숙련 카드
 //  o.floor: 이 등급보다 낮게 나오면 끌어올린다 · o.legend: 한 장은 반드시 전설 (히든 전설 정화 보상)
 export function rollCards(p, o = {}) {
   const { moves, ups, boosts, perks } = partyCandidates(p), out = [], used = new Set(), floor = GRADES.indexOf(o.floor || '커먼');
@@ -307,9 +309,20 @@ export function rollCards(p, o = {}) {
     const legendOthers = moves.concat(ups, perks).filter(c => c.grade === '전설');
     if (!(Math.random() < .5 && takeBoost('전설'))) take(legendOthers) || takeBoost('전설');
   }
-  const wantEnhance = Math.random() < .3 ? 3 : 2;
-  while (out.filter(c => c.kind === 'boost' || c.kind === 'up').length < wantEnhance && out.length < 3 && takeEnhance());
-  while (out.length < 3) {
+  while (out.filter(c => c.kind === 'boost' || c.kind === 'up').length < 2 && out.length < TM_CARDS - 1 && takeEnhance());
+  // 새 기술 확정 칸: 아직 배우지 않은 기술 · 파티에 없는 속성이면 3배 (카드에 '다른 속성' 표시)
+  {
+    const own = new Set(p.members.flatMap(m => p.typesOf(m))), open = moves.filter(c => !c.dup && !used.has(key(c)));
+    const high = open.filter(c => GRADES.indexOf(c.grade) >= floor), fresh = high.length ? high : open;   // 전설 제단: 최소 등급부터
+    const w = c => (own.has(c.type) ? 1 : 3) * MOVE_W[c.grade];
+    if (fresh.length) {
+      let r = Math.random() * fresh.reduce((s, c) => s + w(c), 0), pick = fresh[0];
+      for (const c of fresh) if ((r -= w(c)) < 0) { pick = c; break; }
+      if (!own.has(pick.type)) pick.cat = '새 기술 · 다른 속성';
+      used.add(key(pick)); out.push(pick);
+    }
+  }
+  while (out.length < TM_CARDS) {
     if (Math.random() < .6 && takeMove()) continue;
     const gi = Math.max(floor, GRADES.indexOf(rollGrade())), g = GRADES[gi];
     const order = [g, ...GRADES.slice(0, gi).reverse(), ...GRADES.slice(gi + 1)];   // 같은 등급 → 낮은 등급 → 높은 등급
@@ -317,18 +330,18 @@ export function rollCards(p, o = {}) {
     for (const gg of order) if ((got = take(perks.filter(c => c.grade === gg)))) break;
     if (!got && !takeMove() && !takeEnhance()) break;
   }
-  // 차징 카드 등장 보장: 3장 중 차징 카드가 없으면 CHARGE_CARD_P 확률로 한 장을 차징 카드로 바꾼다 (전설 연출 카드는 그대로)
+  // 차징 카드 등장 보장: 4장 중 차징 카드가 없으면 CHARGE_CARD_P 확률로 맨 뒤(자유 칸) 한 장을 차징 카드로 바꾼다 (전설 연출 카드는 그대로)
   //  초고압 차징 코어(단계 해금)를 가장 자주 · 다 익힌 카드는 partyCandidates 가 이미 뺐다
   const isChg = c => c.kind === 'perk' && CHARGE_PERKS.includes(c.id), chg = perks.filter(c => isChg(c) && !used.has(key(c)));
   if (chg.length && !out.some(isChg) && Math.random() < CHARGE_CARD_P) {
     let r = Math.random() * chg.reduce((s, c) => s + (c.id === 'u_charge' ? 3 : 1), 0), pick = chg[0];
     for (const c of chg) if ((r -= c.id === 'u_charge' ? 3 : 1) < 0) { pick = c; break; }
     used.add(key(pick));
-    const i = out.length < 3 ? out.length : out.map((c, k) => (o.legend && c.grade === '전설' ? -1 : k)).filter(k => k >= 0).pop();
+    const i = out.length < TM_CARDS ? out.length : out.map((c, k) => (o.legend && c.grade === '전설' ? -1 : k)).filter(k => k >= 0).pop();
     out[i ?? out.length] = pick;
   }
-  for (const [id, c] of Object.entries(MASTERY)) if (out.length < 3) out.push({ kind: 'mastery', id, name: c.name, type: 'normal', grade: c.grade, desc: c.desc, cat: '숙련', who: all });
-  return shuffle(out).slice(0, 3).map(c => dressCard(p, c));
+  for (const [id, c] of Object.entries(MASTERY)) if (out.length < TM_CARDS) out.push({ kind: 'mastery', id, name: c.name, type: 'normal', grade: c.grade, desc: c.desc, cat: '숙련', who: all });
+  return shuffle(out).slice(0, TM_CARDS).map(c => dressCard(p, c));
 }
 
 // 고른 카드 적용. move 는 바꿀 슬롯(z·x·c)이 필요하다. 바뀐 내용을 글로 돌려준다
