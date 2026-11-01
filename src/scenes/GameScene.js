@@ -270,6 +270,14 @@ export default class GameScene extends Phaser.Scene {
       this.labCover = { g, rooms: indoor };
       this.worldObjs.push(g);
     }
+    // 건물 출입문(포털)로 이어진 두 방 (방울탑 정문 마당 ↔ 탑 안 1층): 한쪽에 있을 땐 다른 쪽을 암반으로 덮는다 — 벽 너머로 비치지 않는 독립된 던전
+    this.portalCovers = [];
+    for (const r of level.rooms) if (r.portalTo) for (const [show, hide] of [[r, r.portalTo], [r.portalTo, r]]) {
+      const g = this.add.graphics().setDepth(15).setVisible(false);
+      for (let cy = hide.gy; cy < hide.gy + hide.gh; cy++) for (let cx = hide.gx; cx < hide.gx + hide.gw; cx++) rockCell(g, cx, cy);
+      this.portalCovers.push({ g, when: show });
+      this.worldObjs.push(g);
+    }
     // 위아래 철창 통로(방 바닥 밑 땅을 뚫은 갱도) 뒤엔 어두운 흙벽 — 먼 하늘이 비쳐 보이지 않게
     for (const d of level.doors) if (d.dir === 'v') { const xs = d.cells.map(c => c[0]), ys = d.cells.map(c => c[1]); rock.fillStyle(shade(st.palette.wall2, .4), 1); rock.fillRect(Math.min(...xs) * TILE, Math.min(...ys) * TILE, (Math.max(...xs) - Math.min(...xs) + 1) * TILE, (Math.max(...ys) - Math.min(...ys) + 1) * TILE); }
     this.worldObjs.push(rock);
@@ -876,16 +884,18 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  // ---------------- 오박사 연구소 문: 안 ↔ 밖 ----------------
+  // ---------------- 건물 출입문: 안 ↔ 밖 (오박사 연구소 · 방울탑 정문) ----------------
   //  문짝이 열리고 빛이 새어 나온다 → 어두워졌다가 → 반대편 문 앞에 서서 등 뒤로 문이 닫힌다 (적·보스전은 그대로)
+  //  pair 로 짝을 찾는다 (없으면 연구소). 방울탑 정문은 늘 열려 있어 문짝 대신 안쪽 등불빛이 번쩍인다
   useDoor(it) {
     if (this.transitioning || this.time.now - (this.doorAt || 0) < 800) return;
-    const dst = this.props.interacts.find(q => q.kind === 'door' && q.side !== it.side);
+    const dst = this.props.interacts.find(q => q.kind === 'door' && q.side !== it.side && (q.pair || 'lab') === (it.pair || 'lab'));
     if (!dst) return;
     this.doorAt = this.time.now; this.transitioning = true;
     const p = this.player, cam = this.cameras.main, props = this.props;
     p.b.setVelocity(0, 0);
     props.openDoor(it); Sfx.play('door');
+    if (it.glowAt) { this.fx.glow(it.glowAt.x, it.glowAt.y, 70, 0xffd890, 420, .8); Sfx.play('resonate'); }
     this.time.delayedCall(230, () => {
       cam.fadeOut(240, 7, 6, 15);
       cam.once('camerafadeoutcomplete', () => {
@@ -893,7 +903,7 @@ export default class GameScene extends Phaser.Scene {
         props.shutDoor(it, true);
         props.openDoor(dst, true);
         this.teleport({ x: dst.x, y: dst.y - 14 });
-        p.face = dst.side === 'out' ? 1 : -1; p.refacing();   // 마을로 나오면 오른쪽(마을 쪽), 연구소에 들어가면 왼쪽(박사님 쪽)을 본다
+        p.face = dst.face || (dst.side === 'out' ? 1 : -1); p.refacing();   // 마을로 나오면 오른쪽(마을 쪽), 연구소에 들어가면 왼쪽(박사님 쪽)을 본다
         cam.fadeIn(300, 7, 6, 15);
         this.transitioning = false;
         this.doorAt = this.time.now;
@@ -1603,7 +1613,7 @@ export default class GameScene extends Phaser.Scene {
   safeZones() {
     if (this.safeZoneOf === this.level) return this.safeZoneList;
     this.safeZoneOf = this.level;
-    const list = this.level.rooms.filter(r => r.type === 'village' || r.lab).map(r => ({ x0: r.left, x1: r.right, y0: r.top, y1: r.bottom, town: true }));
+    const list = this.level.rooms.filter(r => r.type === 'village' || r.lab || r.peaceful).map(r => ({ x0: r.left, x1: r.right, y0: r.top, y1: r.bottom, town: true }));
     for (const t of this.level.terminals || []) { const x = t.x * TILE + 16, y = t.g * TILE; list.push({ x0: x - 76, x1: x + 76, y0: y - 80, y1: y + 6 }); }
     return (this.safeZoneList = list);
   }
@@ -1710,7 +1720,7 @@ export default class GameScene extends Phaser.Scene {
     for (const s of this.level.spawns) {
       if (s.spawned || Math.abs(s.x - p.x) > reach || Math.abs(s.y - p.y) > reachY) continue;
       s.spawned = true;
-      if (s.room && (s.room.type === 'village' || s.room.lab)) continue;   // 마을 안엔 침식된 포켓몬이 나오지 않는다
+      if (s.room && (s.room.type === 'village' || s.room.lab || s.room.peaceful)) continue;   // 마을 · 방울로드 성역엔 침식된 포켓몬이 하나도 나오지 않는다
       if (this.level.purified) { if (!s.elite && Math.random() < .5) this.spawnWanderer(s); continue; }   // 정화한 지방: 세뇌된 적 대신 평화로운 야생 포켓몬
       if (s.elite && s.room && s.room.hidden && !(this.level.sides || []).some(sd => sd.room === s.room && sd.revealed)) { s.spawned = false; continue; }   // 숨은 굴의 수문장은 흙이 걷힌 뒤에
       if (!s.elite && (this.level.terminals || []).some(t => Math.abs(t.x * TILE - s.x) < 150 && Math.abs(t.g * TILE - s.y) < 90)) continue;   // 간이 회복기 둘레는 안전 구역
@@ -1874,6 +1884,7 @@ export default class GameScene extends Phaser.Scene {
   updateLabCover() {
     const c = this.labCover;
     if (c) c.g.setVisible(!c.rooms.includes(this.room));
+    for (const pc of this.portalCovers || []) pc.g.setVisible(this.room === pc.when);
   }
   // 카메라가 다닐 범위: 월드 전체 (테스트룸은 방 안 — 둘레에 두른 바위가 비치지 않게 · 오박사 연구소 안에선 연구소 안만 — 벽 너머 마을이 비치지 않게)
   camBounds() {

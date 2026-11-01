@@ -92,6 +92,7 @@ const LOOKS = {
   granny: t => ({ body: 'old', hair: 0xd0ccc8, hairStyle: 'bun', old: true, shawl: t || 0x7a5a8a, shirt: 0x6a5a4a, skirt: 0x4a3a3a, shoes: 0x3a2a2a, cane: true }),
   man: t => ({ hair: 0x3a2a1a, hairStyle: 'short', shirt: t || 0x4a5a3a, pants: 0x3a3a48, shoes: 0x2a2020 }),
   monk: t => ({ body: 'old', hair: 0xd0ccc8, hairStyle: 'bun', old: true, beard: 0xd8d4cc, shirt: 0xc8862a, sleeve: 0xb8761a, shawl: 0x8a2a1a, skirt: 0xc8862a, shoes: 0x3a2a1a, cane: true }),   // 방울탑 노승려: 주황 가사 · 붉은 띠
+  monkYoung: t => ({ hair: 0x3a3430, hairStyle: 'short', shirt: 0x8a8278, sleeve: 0x7a7268, shawl: 0xc8862a, skirt: 0x8a8278, shoes: 0x3a2a1a }),   // 방울탑 수행 승려: 회색 승복 · 주황 가사 · 짧게 깎은 머리
   elder: t => ({ body: 'old', hair: 0xe8e4dc, hairStyle: 'swept', old: true, beard: 0xe8e4dc, shirt: 0x2a6a6a, sleeve: 0x2a5a5a, shawl: 0x1a4a4a, skirt: 0x2a5a5a, shoes: 0x3a2a1a, cane: true }),   // 유성의 폭포 장로: 청록 도포 · 흰 수염
   captain: t => ({ hair: 0x2a5a3a, hairStyle: 'messy', shirt: 0xf0d050, sleeve: 0x2aa8a0, pants: 0x2a6a8a, shorts: true, shoes: 0x8a5a2a, pack: 0x8a6a3a }),   // 알로라 시련 캡틴: 노란 셔츠 · 반바지
   collector: t => ({ hair: 0x5a4a3a, hairStyle: 'short', beanie: 0x5a3a7a, shirt: 0x6a5a8a, coat: 0x4a3a2a, coatD: 0x3a2a1a, pants: 0x3a3a48, shoes: 0x2a2020, pack: 0x7a5a3a, glasses: 0x6a6a7a }),   // 고대석 수집가: 배낭 · 돋보기 안경

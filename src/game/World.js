@@ -538,20 +538,46 @@ export function buildChapter(ch, ci, retry = 0) {
       else if (r.type === 'village' && TOWNS[r.city]) { const b = r.tx0 + 1; placeNpcs(r, TOWNS[r.city], [b + 13, b + 52, b + 18, b + 33]); }
     }
     // 성도 방울탑 (bg 'belltower' 지역): 바로 앞 지역(인주시티)의 지상 전투 구역 = 방울로드(단풍 가로수길 · 밝은 가을 햇살)
-    //  그 끝 방 = 방울탑 입구 (외관 · 수문장 노승려) · 탑 안 = 횃불이 일렁이는 목조 탑 · 칠색조 아레나 = 노을 지는 옥상 (game/Props.buildBellTower · GameScene)
+    //  그 끝 방 = 방울탑 정문 앞 막다른 성역 (초대형 1층 기단 · 정문 외관 · 수문장 승려 둘) · 탑 안 = 횃불이 일렁이는 목조 탑 · 칠색조 아레나 = 노을 지는 옥상
+    //  방울로드 전체는 평화 구역(peaceful: 침식된 포켓몬이 하나도 나오지 않는다 — GameScene.updateSpawns · safeZones)
+    //  정문 ↔ 탑 안 1층은 옆방 통로가 아니라 건물 출입문(포털): 두 방 사이 벽을 다시 메우고, 정문 앞에서 ↑/F → 암전 → 탑 안 출입문 앞 (GameScene.useDoor)
+    //  (월드 생성 · 난수는 그대로 — 문 칸만 벽으로 되돌리므로 저장과 무관)
     {
       const ti = ch.areas.findIndex(a => a.bg === 'belltower');
       if (ti > 0) {
         const trail = rooms.filter(r => r.ai === ti - 1 && !r.under && (r.type === 'combat' || r.type === 'plaza')).sort((a, b) => a.id - b.id);
-        for (const r of trail) r.trail = true;
+        for (const r of trail) { r.trail = true; r.peaceful = true; }
         const mainTrail = trail.filter(r => r.main);   // 탑 입구는 본 경로의 마지막 방 (곁가지 방이 아니라)
         for (const r of rooms) if (r.ai === ti) { r.tower = true; if (r.type === 'boss') r.rooftop = true; }
         const gate = mainTrail[mainTrail.length - 1];
         if (gate) {
           gate.trailEnd = true;
-          placeNpcs(gate, ['elder_monk'], [gate.tx1 - 12]);
-          const n = npcs[npcs.length - 1];
-          if (n && n.id === 'elder_monk') { n.face = -1; n.guide = true; }
+          gate.doorTx = gate.tx1 - 13;   // 거대한 정문 한가운데 칸 (Props.buildBellTower 외관도 여기에 맞춘다)
+          // 정문 앞 성역 마당: 외관 너비만큼 언덕 · 떠 있는 바위 · 천장 덩어리를 걷어 평평한 돌바닥으로 (철창 통로 칸은 그대로)
+          //  그 위에 놓였던 소품은 바닥으로 내려놓는다 (개수는 그대로 — 저장 서명 유지)
+          const fx0 = Math.max(gate.tx0 + 1, gate.doorTx - 13), fx1 = gate.tx1 - 1, keep = new Set();
+          for (const d of gate.doors) if (d.dir === 'v') for (const [x] of d.cells) for (let k = -3; k <= 6; k++) keep.add(x + k);
+          for (let x = fx0; x <= fx1; x++) {
+            if (keep.has(x)) continue;
+            for (let y = gate.ty0; y < gate.F; y++) grid[y][x] = '.';
+            grid[gate.F][x] = 'S'; grid[gate.F + 1][x] = 'S';
+          }
+          for (const pr of props) if (pr.x >= fx0 && pr.x <= fx1 && pr.g != null && pr.g >= gate.ty0 && pr.g <= gate.F) {
+            pr.g = gate.F;
+            if (Math.abs(pr.x - gate.doorTx) <= 9 && ['statue', 'crate', 'lamp', 'tree', 'pillar', 'fence', 'tallgrass', 'signpost'].includes(pr.kind)) pr.hide = true;   // 정문 · 승려 자리는 비운다
+          }
+          // 수문장 승려 둘: 선임 노승려는 정문 왼쪽 기둥 앞, 수행 승려는 정문 오른쪽 기둥 앞
+          placeNpcs(gate, ['elder_monk', 'trainee_monk'], [gate.doorTx - 7, gate.doorTx + 7]);
+          for (const n of npcs) if (n.room === gate) { n.face = n.id === 'elder_monk' ? -1 : 1; n.guide = true; }
+          const hall = rooms.filter(r => r.ai === ti && r.main).sort((a, b) => a.id - b.id)[0];   // 탑 안 1층
+          const d = hall && gate.doors.find(q => q.dir === 'h' && (q.a === hall || q.b === hall));
+          if (d) {
+            for (const [x, y] of d.cells) grid[y][x] = 'S';   // 옆방 통로를 벽으로
+            d.portal = true;
+            gate.portalTo = hall; hall.portalFrom = gate;
+            hall.portalY = d.my + 2.5;   // 탑 안 출입문 자리 바닥 줄 (문 앞 4칸은 방 바닥보다 높을 수 있다)
+            d.portalOut = { x: gate.doorTx, y: gate.F }; d.portalIn = { x: hall.tx0 + 2, y: hall.portalY };
+          }
         }
       }
     }
