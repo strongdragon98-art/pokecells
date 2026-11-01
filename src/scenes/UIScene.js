@@ -676,7 +676,7 @@ export default class UIScene extends Phaser.Scene {
     const tgt = slotStep && p.members.find(q => q.key === md.target);
     const title = slotStep ? `${p.formName(tgt)}의 어느 기술을 「${card.baseName || card.name}」(으)로 바꿀까요?` : `「${card.name}」 ${isNew ? '누구에게 가르칠까요?' : '누구에게 적용할까요?'}`;
     L.add(fitText(hkText(this, 320, PY + 16, title, 12, HK.gold, { origin: .5, bold: true, glow: true }), PW - 40));
-    L.add(hkText(this, 320, PY + 32, slotStep ? '기술 자리에 마우스를 올리면(모바일: 한 번 탭) 비교 · 누르면(다시 탭) 교체' : isNew ? '배울 수 있는 포켓몬을 고르면 바꿀 기술 자리가 펼쳐진다' : '포켓몬을 누르면 바로 영구 적용된다', 8.5, HK.dim, { origin: .5 }));
+    if (slotStep || isNew) L.add(hkText(this, 320, PY + 32, slotStep ? '기술 자리에 마우스를 올리면(모바일: 한 번 탭) 비교 · 누르면(다시 탭) 교체' : '배울 수 있는 포켓몬을 고르면 바꿀 기술 자리가 펼쳐진다', 8.5, HK.dim, { origin: .5 }));
     // ① 파티 포켓몬
     const ms = this.tmModalMembers(card), CYm = slotStep ? 140 : 152;
     ms.forEach((e, j) => {
@@ -685,7 +685,7 @@ export default class UIScene extends Phaser.Scene {
       this.tmTile3D(tile, e, picked);
       if (faded) tile.setAlpha(.35);
       // 이름 · 합성/습득 안내
-      L.add(fitText(hkText(this, x, CYm + 64, `${slotStep ? '' : (j + 1) + '  '}${p.formName(e.m)}${e.m === p.m ? ' (출전)' : ''}`, 9.5, e.ok ? (picked ? HK.gold : HK.ivory) : HK.faint, { origin: [.5, 0], bold: true }), gap - 8));
+      L.add(fitText(hkText(this, x, CYm + 64, `${slotStep ? '' : (j + 1) + '  '}${p.formName(e.m)}`, 9.5, e.ok ? (picked ? HK.gold : HK.ivory) : HK.faint, { origin: [.5, 0], bold: true }), gap - 8));
       if (slotStep) return;
       const note = !e.ok ? '타입 · 종족이 맞지 않는다' : e.pv ? `🔨 강화 합성! ${lvTag(e.pv.from)} ➔ ${lvTag(e.pv.to)}${e.pv.to === 2 ? ' · 승급' : ''}` : isNew ? '✨ 새 기술 습득' : '✨ 새 카드';
       L.add(fitText(hkText(this, x, CYm + 78, note, 7.5, !e.ok ? HK.faint : e.pv ? '#ffd27a' : '#8affb0', { origin: [.5, 0], bold: !!e.pv }), gap - 6));
