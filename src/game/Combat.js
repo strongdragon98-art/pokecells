@@ -1,5 +1,6 @@
 // 전투 공통: 상성 데미지 계산, 범위 판정, 상태이상, 투사체, 장판
 import Phaser from 'phaser';
+import { Cores } from './Cores.js';
 import { typeMultiplier, effectiveness, typeColor } from '../data/types.js';
 import { Sfx } from '../systems/Audio.js';
 import { ProjectileRenderer } from '../systems/ProjectileRenderer.js';
@@ -36,6 +37,7 @@ export class Combat {
     const eff = effectiveness(m);
     let d = base * m * mods.all * (1 + (mods.typeBoost[type] || 0));
     if (e.status.curse > 0) d *= 1.3;
+    d *= Cores.amp(this, e, d);   // 다크라이의 나이트메어 코어: 상태이상 걸린 적 +45% · 흡혈
     if (mods.execute && e.hp <= e.maxhp * .25) d *= 1 + mods.execute;   // 특성 카드: 마무리 일격
     if (e.groggyT > 0) d *= GROGGY_MUL;   // 보스 그로기(약점 누적으로 자세 무너짐): 받는 피해 ×1.35
     if (e.guardMul) d *= e.guardMul;
@@ -60,6 +62,7 @@ export class Combat {
       if (crit) Sfx.play('crit');
       if (!e.boss && (o.kb || o.kby)) e.knock(o.kb || 0, o.kby || 0);
       if (mods.psyCore && type === 'psychic' && !o.proc) this.psyField(e);   // 뮤츠의 코어: 사이코 중력장
+      Cores.hit(this, e, d, type, o);   // 보스의 코어 (game/Cores.js)
       const steal = (mods.lifesteal || 0) + (o.lifesteal || 0);
       if (steal > 0) p.heal(d * steal, true);
     }
@@ -199,6 +202,7 @@ export class Combat {
     }
     const q = Object.assign({ owner: 'player', vx: 0, vy: 0, r: 4, life: 1, pierce: 1, grav: 0, t: 0, hit: new Set(), status: {} }, c);
     q.color = color;
+    Cores.projectile(this, q);   // 보스의 코어: 무지갯빛 불꽃 · 백옥 사거리 · 델타스트림 (game/Cores.js)
     if (q.owner === 'player') {
       if (this.chargeSpawn) q.charge = true;   // Player.fireCharge 가 쏜 차징 탄 (계열 고유 차징 포함)
       q.dmg = this.p.atk * (q.mul ?? 1);

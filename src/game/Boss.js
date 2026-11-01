@@ -32,6 +32,16 @@ export class Boss extends Enemy {
     this.glowImg = scene.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setDepth(18).setAlpha(.35);
   }
 
+  // 등장 연출 이동 (GameScene.bossIntro): (x0, y0) → (x1, y1) 을 ms 동안 · 끝나면 onLand() 를 부르고 원래 중력으로
+  introPath(x0, y0, x1, y1, ms, ease = 'Cubic.easeOut', onLand = null) {
+    this.ip = { x0, y0, x1, y1, t: 0, d: ms / 1000, ease: Phaser.Math.Easing.Linear, onLand };
+    if (ease === 'Quad.easeIn') this.ip.ease = Phaser.Math.Easing.Quadratic.In;
+    else if (ease === 'Sine.easeInOut') this.ip.ease = Phaser.Math.Easing.Sine.InOut;
+    else this.ip.ease = Phaser.Math.Easing.Cubic.Out;
+    this.b.setAllowGravity(false); this.b.reset(x0, y0); this.b.setVelocity(0, 0);
+    this.timer = Math.max(this.timer, ms / 1000 + .6);
+  }
+
   get striking() { return STRIKE.has(this.state) || (this.state === 'leap' && this.diving); }   // 몸으로 부딪혀도 피해를 주는 상태
 
   zone(c) { return this.scene.combat.spawnZone(Object.assign({ owner: 'enemy', dmg: this.dmg, type: this.types[0] }, c)); }
@@ -51,6 +61,13 @@ export class Boss extends Enemy {
       if (!this.alive) return;
     }
     if (this.state === 'intro') {
+      const ip = this.ip;
+      if (ip) {
+        ip.t += dt;
+        const k = ip.ease(Math.min(1, ip.t / ip.d));
+        this.b.reset(ip.x0 + (ip.x1 - ip.x0) * k, ip.y0 + (ip.y1 - ip.y0) * k); this.b.setVelocity(0, 0);
+        if (ip.t >= ip.d) { this.ip = null; this.b.setAllowGravity(!this.flying); if (ip.onLand) ip.onLand(); }
+      }
       this.timer -= dt;
       if (this.timer <= 0) { this.state = 'idle'; this.intangible = false; }
     } else if (this.groggyT > 0) {

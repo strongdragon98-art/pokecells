@@ -537,6 +537,24 @@ export function buildChapter(ch, ci, retry = 0) {
       if (r.lab) placeNpcs(r, LAB, [r.tx0 + 12, r.tx0 + 26, r.tx0 + 40]);
       else if (r.type === 'village' && TOWNS[r.city]) { const b = r.tx0 + 1; placeNpcs(r, TOWNS[r.city], [b + 13, b + 52, b + 18, b + 33]); }
     }
+    // 성도 방울탑 (bg 'belltower' 지역): 바로 앞 지역(인주시티)의 지상 전투 구역 = 방울로드(단풍 가로수길 · 밝은 가을 햇살)
+    //  그 끝 방 = 방울탑 입구 (외관 · 수문장 노승려) · 탑 안 = 횃불이 일렁이는 목조 탑 · 칠색조 아레나 = 노을 지는 옥상 (game/Props.buildBellTower · GameScene)
+    {
+      const ti = ch.areas.findIndex(a => a.bg === 'belltower');
+      if (ti > 0) {
+        const trail = rooms.filter(r => r.ai === ti - 1 && !r.under && (r.type === 'combat' || r.type === 'plaza')).sort((a, b) => a.id - b.id);
+        for (const r of trail) r.trail = true;
+        const mainTrail = trail.filter(r => r.main);   // 탑 입구는 본 경로의 마지막 방 (곁가지 방이 아니라)
+        for (const r of rooms) if (r.ai === ti) { r.tower = true; if (r.type === 'boss') r.rooftop = true; }
+        const gate = mainTrail[mainTrail.length - 1];
+        if (gate) {
+          gate.trailEnd = true;
+          placeNpcs(gate, ['elder_monk'], [gate.tx1 - 12]);
+          const n = npcs[npcs.length - 1];
+          if (n && n.id === 'elder_monk') { n.face = -1; n.guide = true; }
+        }
+      }
+    }
     // 조작 힌트 (관동 초입): 태초마을을 나서 처음 만나는 전투 구역 입구엔 부상당한 베테랑(차징 샷),
     //  통과 발판이 처음 나오는 구역 앞엔 실프 연구원(공중 내려찍기). 난수를 쓰지 않으므로 같은 시드의 지형·저장 서명은 그대로다
     if (ci === 0) {

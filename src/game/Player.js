@@ -26,7 +26,9 @@ import { archetypeOf } from '../data/moveRules.js';
 import { MOVE_DB } from '../data/MoveDatabase.js';
 import { onDashTick } from './Perks.js';
 import { chargeSigOf } from './Signature.js';
+import { Cores } from './Cores.js';
 import { usesStone, stoneName, zTypeOf, crystalName } from '../data/gear.js';
+import { RES } from '../config.js';
 
 const SWAP_CD = 3;
 // 진화 단계별 보이는 크기 (1단 모습 기준): 2단 ×1.32 · 3단 ×1.72 · 메가는 3단의 ×1.1 (거다이맥스처럼 부풀지 않게)
@@ -142,7 +144,7 @@ export class Player extends Actor {
   skillId(slot, m = this.m) { return m.skills[slot]; }
   hasUp(id, m = this.m) { return m.ups.has(id); }
   // 기술 쿨타임(초): 아이템 · 숙련 카드 · 메가진화 반영
-  cdOf(id, m = this.m) { return SKILLS[id].cd * m.mods.cdMul * (m.cdBonus || 1) * (m.mega ? .8 : 1); }
+  cdOf(id, m = this.m) { return SKILLS[id].cd * m.mods.cdMul * (m.cdBonus || 1) * (m.mega ? .8 : 1) * (m === this.m ? Cores.cdMul(this) : 1); }
   // 쿨타임 0 인 기본 공격만 3단 콤보 (Z 자리에 기술머신 기술을 달면 쿨타임 기술로 쓴다)
   isCombo(slot, m = this.m) { return slot === 'z' && !SKILLS[m.skills[slot]].cd; }
   // 배운 기술 id 를 slot(z·x·c)에 넣는다. 이미 다른 자리에 있으면 두 자리를 맞바꾼다.
@@ -392,6 +394,7 @@ export class Player extends Actor {
 
   // ---------------- 입력 처리 & 이동 ----------------
   update(dt, inp) {
+    Cores.tick(this, dt);
     const sc = this.scene, b = this.b, sp = this.sp;
     this.lastInput = inp;
     this.inv -= dt; this.dashCd -= dt; this.swapCd -= dt; this.diveCd -= dt; this.comboT -= dt; this.zBuf -= dt; this.dropT -= dt; this.hurtT -= dt; this.speedBuff -= dt;
@@ -427,6 +430,7 @@ export class Player extends Actor {
       this.face = this.dash.dir; this.refacing();
       this.dashCd = .55 * this.mods.dashCdMul; this.inv = Math.max(this.inv, .26 + this.mods.dashInvAdd);
       onDash(this, this.dash);   // 특성 카드: 대시 폭탄 · 분신 대시
+      Cores.dash(this);         // 보스의 코어: 분화 용암 · 깨어진 세계로 잠복
       if (this.pas.teleport) this.teleport(this.dash);
       else { Sfx.play('dash'); this.squash(1.3, .75); }
     }
@@ -453,7 +457,7 @@ export class Player extends Actor {
     this.slowT = (this.slowT || 0) - dt;
     this.windT = (this.windT || 0) - dt;
     if (this.flipT > 0 && (this.flipT -= dt) <= 0) { this.b.setGravityY(0); this.sprite.setFlipY(false); }
-    const speed = sp.speed * this.mods.speedMul * (this.speedBuff > 0 ? 1.25 : 1) * slow * (this.mega.active ? 1.1 : 1) * this.statOf('speed') * this.buffMul('speed');
+    const speed = sp.speed * this.mods.speedMul * (this.speedBuff > 0 ? 1.25 : 1) * slow * (this.mega.active ? 1.1 : 1) * this.statOf('speed') * this.buffMul('speed') * Cores.speedMul(this);
     if (this.dash && this.dash.tele) {   // 순간이동: 이미 옮겨졌다. 잠깐 멈춰 잔상만 남긴다
       this.dash.t += dt;
       b.setAllowGravity(false); b.setVelocity(0, 0);
@@ -645,6 +649,7 @@ export class Player extends Actor {
       sc.fx.embers(this.x, this.bottom - 4, [col, 0xffffff], 6, { speed: 50 });
       if (this.mods.orbCost && slot !== 'z') this.selfDamage(m.maxhp * .03);
       this.gradeCast(action, id, (m.cardGrade || {})[id]);
+      Cores.cast(this, id);   // 보스의 코어: 분화 용암 · 델타스트림 · 모래폭풍 검기
     }
     this.startAction(action, slot);
   }
@@ -762,6 +767,7 @@ export class Player extends Actor {
   diveSlam(a, type, col, fall) {
     const sc = this.scene, s = this.mods.sizeMul * this.fxMul, R = (50 + Math.min(40, fall * .12)) * s, x = this.x, by = this.bottom;
     a.landed = true; a.dur = a.t + .26;
+    Cores.dive(this);
     this.b.setVelocity(0, 0); this.squash(1.55, .58); this.inv = Math.max(this.inv, .3);
     const mul = 2.2 + Math.min(1.4, fall / 220);   // 높이 떨어질수록 세다
     sc.combat.hitCircle(x, by - 8, R, mul, type, { heavy: true, stun: .7, kbx: 240, kby: -280, hs: 90 });
@@ -845,7 +851,7 @@ export class Player extends Actor {
             },
             onExpire: q => { if (evo >= 2) { sc.fx.ring(q.x, q.y, 30 * s, col, 300); sc.combat.hitCircle(q.x, q.y, 26 * s, .6 + lvl * .3, type, { kbx: 160, kby: -160, hs: 30, proc: true }); } if (q.beam) { const bm = q.beam; q.beam = null; sc.tweens.add({ targets: bm, alpha: 0, duration: 420, onComplete: () => bm.destroy() }); } }
           });
-          if (this.mods.psyCore && type === 'psychic') sc.combat.spawnProjectile({ owner: 'player', x, y: y - 8, vx: f * spec.speed * .92, vy: -spec.speed * .08, r: spec.r * s * .7, mul: spec.mul * .6, type, kind: CHARGE_KIND[type] || 'wave', color: col, life: spec.life, pierce: spec.pierce, light: true, tier: Math.max(this.tierIdx, lvl), pow: s, kb: 160, stream: false, status: { heavy: true } });   // 뮤츠의 코어: 에스퍼 차징 탄 +1
+          if ((this.mods.coreProj || {})[type]) sc.combat.spawnProjectile({ owner: 'player', x, y: y - 8, vx: f * spec.speed * .92, vy: -spec.speed * .08, r: spec.r * s * .7, mul: spec.mul * .6, type, kind: CHARGE_KIND[type] || 'wave', color: col, life: spec.life, pierce: spec.pierce, light: true, tier: Math.max(this.tierIdx, lvl), pow: s, kb: 160, stream: false, status: { heavy: true } });   // 보스의 코어: 그 속성 차징 탄 +1
           if (lvl >= 3) { q.x0 = x; q.beam = sc.add.graphics().setDepth(28).setBlendMode(Phaser.BlendModes.ADD); sc.cameras.main.flash(180, 255, 255, 255, true); sc.fx.hitStop(60); }
         }
         sc.combat.chargeSpawn = false;
@@ -901,8 +907,49 @@ export class Player extends Actor {
     if (this.z.cd > 0) { sc.events.emit('toast', `Z기술 재사용까지 ${Math.ceil(this.z.cd)}초`); Sfx.play('deny'); return; }
     if (this.dash) return;
     this.z.cd = Z_CD;
-    shockwave(sc, this.x, this.y, .045, 750);   // 화면이 물결치며 Z기술 시작
-    this.startAction(ZMOVE_IMPL[this.sp.zmove](this, ZMOVES[this.sp.zmove]), 'zmove');
+    this.zCinematic(() => {
+      shockwave(sc, this.x, this.y, .045, 750);   // 화면이 물결치며 Z기술 시작
+      this.zCine = true;
+      this.startAction(ZMOVE_IMPL[this.sp.zmove](this, ZMOVES[this.sp.zmove]), 'zmove');
+      this.zCine = false;
+    });
+  }
+
+  // Z파워 공명 (약 0.6초): 적 · 투사체 · 물리가 멈춘 사이 Z크리스탈의 거대한 속성 문양과 무지갯빛 Z파워 기둥이 솟고,
+  //  포켓몬이 기를 모아 솟구쳤다 내려앉는 포즈 · UI 가 화면을 가로지르는 컷인 띠(초상 · 속성 문양 · 『기술 이름!!』)를 띄운다 → done() 에서 본 기술
+  zCinematic(done) {
+    const sc = this.scene, zm = ZMOVES[this.sp.zmove], type = zTypeOf(this.m.key), col = typeColor(type), x = this.x, y = this.y;
+    if (this.action) this.endAction(true);
+    this.inv = Math.max(this.inv, 2);
+    sc.zFreeze(.62);
+    const objs = [];
+    // 속성 문양: 크게 돌며 나타나는 Z크리스탈 + 이중 고리
+    const emb = sc.add.image(x, y - 6, 'zcrystal-hi').setDepth(19.5).setBlendMode(Phaser.BlendModes.ADD).setTint(col).setScale(0).setAlpha(.9);
+    const ringA = sc.add.image(x, y - 6, 'ring').setDepth(19.4).setBlendMode(Phaser.BlendModes.ADD).setTint(col).setScale(.2);
+    const ringB = sc.add.image(x, y - 6, 'ring').setDepth(19.4).setBlendMode(Phaser.BlendModes.ADD).setTint(0xfff6a0).setScale(.2);
+    objs.push(emb, ringA, ringB);
+    sc.tweens.add({ targets: emb, scale: 4.2 / RES, angle: 360, duration: 520, ease: 'Back.easeOut' });
+    sc.tweens.add({ targets: ringA, scale: 2.6, alpha: { from: 1, to: .3 }, duration: 560, ease: 'Cubic.easeOut' });
+    sc.tweens.add({ targets: ringB, scale: 1.8, angle: -180, duration: 560, ease: 'Cubic.easeOut' });
+    // 무지갯빛 Z파워 기둥 (빛줄기 여러 겹이 색을 바꾸며 솟는다)
+    const RB = [0xff5a5a, 0xffb040, 0xfff06a, 0x6aff8a, 0x5ac8ff, 0xb06aff];
+    RB.forEach((c, k) => {
+      const pillar = sc.add.image(x + (k - 2.5) * 3, y + 10, 'glow').setOrigin(.5, 1).setDepth(19.3).setBlendMode(Phaser.BlendModes.ADD).setTint(c).setScale(.25, 0).setAlpha(.6);
+      objs.push(pillar);
+      sc.tweens.add({ targets: pillar, scaleY: 5.5, duration: 260 + k * 30, ease: 'Cubic.easeOut' });
+    });
+    for (let k = 0; k < 18; k++) sc.time.delayedCall(k * 30, () => sc.fx.burst(x + (Math.random() - .5) * 26, y + 8, [RB[k % 6], 0xffffff], 2, 160, { angle: -Math.PI / 2, spread: .3, up: 120, grav: -60, bounce: false, glow: true, life: .7 }));
+    // 포즈: 기를 모아 살짝 솟았다가 내려앉는다
+    const sp = this.sprite, y0 = sp.y;
+    this.squash(.7, 1.4); this.flash(200);
+    sc.tweens.add({ targets: sp, y: y0 - 12, duration: 240, yoyo: true, hold: 80, ease: 'Quad.easeOut' });
+    sc.cameras.main.flash(160, 255, 250, 220, true);
+    sc.events.emit('zcutin', { name: zm.name, type, portrait: this.portraitKey() });
+    Sfx.play('zmove');
+    sc.time.delayedCall(640, () => {
+      for (const o of objs) sc.tweens.add({ targets: o, alpha: 0, duration: 260, onComplete: () => o.destroy() });
+      if (sc.player === this && this.m.alive) done();
+    });
   }
 
   // ---------------- 메가진화 (3단 + 메가스톤, 영구) ----------------
@@ -963,7 +1010,7 @@ export class Player extends Actor {
     }
     const m = type === 'none' ? 1 : typeMultiplier(type, this.types);
     const eff = effectiveness(m);
-    const d = Math.max(1, Math.round(dmg * m * (this.mega.active ? .8 : 1) * (this.pas.guard || 1) * this.buffMul('guard') * this.mods.guard));
+    const d = Math.max(1, Math.round(dmg * m * (this.mega.active ? .8 : 1) * (this.pas.guard || 1) * this.buffMul('guard') * this.mods.guard * Cores.hurtMul(this)));
     // 기합의띠(특성 카드): 쓰러질 피해를 체력 1로 버티고 3초 무적 — 방마다 1번 (GameScene.updateRooms 가 되돌린다)
     const sash = this.mods.sturdy && !this.m.sturdyUsed && this.m.hp > 1 && d >= this.m.hp;
     this.m.hp = sash ? 1 : this.m.hp - d;
@@ -992,6 +1039,7 @@ export class Player extends Actor {
   }
 
   faint() {
+    if (Cores.revive(this)) return;   // 칠색조의 무지개 코어: 불사조 부활
     const sc = this.scene, m = this.m;
     m.hp = 0; m.alive = false;
     sc.fx.burst(this.x, this.y, [typeColor(this.typesOf(m)[0]), 0xffffff], 30, 160, { glow: true });

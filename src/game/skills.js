@@ -41,7 +41,7 @@ function strikeHit(p, o) {
 //  stream: 연속 투사체 — 불꽃세례·거품광선·전기쇼크 연사, 그리고 여러 갈래로 나가는 탄. 나머지(물대포·섀도볼 단발 등)는 단발
 //  크기·판정은 진화 단계의 proj 배율(1 · 1.45 · 1.9 · 메가 2.3)을 따로 따른다. tier 는 연출 단계용
 function shoot(p, o) {
-  const count = (o.count ?? 1) + p.mods.extraProj + (p.mods.psyCore && o.type === 'psychic' ? 1 : 0), spread = o.spread ?? .12, s = p.mods.sizeMul * p.T.proj;   // 뮤츠의 코어: 에스퍼 투사체 +1
+  const count = (o.count ?? 1) + p.mods.extraProj + ((p.mods.coreProj || {})[o.type] || 0), spread = o.spread ?? .12, s = p.mods.sizeMul * p.T.proj;   // 보스의 코어: 그 속성 투사체 +1 (data/cores.js)
   const boom = o.boom && Object.assign({}, o.boom, { r: o.boom.r * (1 + (s - 1) * .6) });   // 폭발 반경은 조금 덜 (메가 ≈ 1.8배)
   const base = o.angle ?? 0;
   for (let i = 0; i < count; i++) {
@@ -861,12 +861,20 @@ export const TAG_IMPL = {
 // 공통 흐름: ① 기 모으기(0~0.55초) 시간 정지 · 크리스탈 빛 · 기술명 배너 → ② 기술별 연출 → ③ 일격: 화면 안 모든 적에게 공격력 × mul
 // 시전 내내 무적. 연출 크기는 진화 단계(sizeMul)를 따른다.
 const Z_COLORS = [0xffffff, 0xfff6a0, 0xffb0ff, 0x9ad8ff];
+// Z기술 타격 순간: 화면이 크게 흔들리고 카메라가 확 당겼다가(줌 인) 천천히 물러난다
+function zImpact(sc) {
+  const cam = sc.cameras.main, z0 = cam.zoom;
+  sc.fx.shake(.03, 700, 'world');
+  cam.zoomTo(z0 * 1.18, 120, 'Quad.easeOut', true);
+  sc.time.delayedCall(200, () => cam.zoomTo(z0 * .94, 260, 'Sine.easeInOut', true));
+  sc.time.delayedCall(480, () => cam.zoomTo(z0, 420, 'Sine.easeInOut', true));
+}
 
 function zCharge(p, def) {
   const sc = p.scene, col = typeColor(def.type);
   sc.fx.hitStop(420);
   sc.cameras.main.flash(220, 255, 250, 220, true);
-  sc.events.emit('banner', `Z기술!  ${def.name}`, `${p.name}의 전력`);
+  if (!p.zCine) sc.events.emit('banner', `Z기술!  ${def.name}`, `${p.name}의 전력`);   // 시네마틱 컷인(Player.zCinematic)을 봤으면 이름 띠는 생략
   for (let k = 0; k < 4; k++) sc.time.delayedCall(k * 90, () => sc.fx.ring(p.x, p.y, 70 - k * 14, Z_COLORS[k], 380));
   sc.fx.burst(p.x, p.y, [col, ...Z_COLORS], 30, 160, { glow: true, grav: -40, bounce: false, life: .9 });
   sc.fx.glow(p.x, p.y, 70, col, 600, 1);
@@ -877,6 +885,7 @@ function zCharge(p, def) {
 // 화면(카메라 시야) 안의 살아 있는 적 전원에게 일격
 function zStrike(p, def, status = {}, o = {}) {
   const sc = p.scene, view = sc.cameras.main.worldView, col = typeColor(def.type);
+  zImpact(sc);
   for (const e of sc.enemies) {
     if (!e.alive || e.x < view.x - 10 || e.x > view.right + 10 || e.y < view.y - 20 || e.y > view.bottom + 20) continue;
     sc.combat.damageEnemy(e, p.atk * def.mul, def.type, Object.assign({ kb: Math.sign(e.x - p.x || 1) * (o.kbx ?? 260), kby: o.kby ?? -260, hx: e.x, hy: e.y, hs: 30 }, status));

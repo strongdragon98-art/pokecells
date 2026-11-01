@@ -249,6 +249,7 @@ export default class UIScene extends Phaser.Scene {
       pause: on => this.showPause(on),
       saved: r => this.onSaved(r),
       gameover: r => this.showResult(r),
+      zcutin: o => this.zCutin(o),
       cutin: (title, col) => this.banner(title, title.includes(' · ') ? '✦ MEGA SKILL ✦' : '★ LEGENDARY MOVE ★')   // 전설 기술·메가 필살기 컷인 이름 띠
     };
     for (const [k, fn] of Object.entries(this.handlers)) ge.on(k, fn, this);
@@ -350,6 +351,29 @@ export default class UIScene extends Phaser.Scene {
     this.recent[k] = this.time.now;
   }
 
+  // Z기술 컷인: 비스듬한 속성색 띠가 오른쪽에서 번개처럼 들어와 멈췄다가 왼쪽으로 빠진다 (초상 · Z 문양 · 『기술 이름!!』)
+  zCutin({ name, type, portrait }) {
+    const col = typeColor(type), C = this.add.container(0, 0).setDepth(70), g = this.add.graphics();
+    const Y = 150, H = 64;
+    g.fillStyle(0x000000, .55); g.fillRect(-40, Y - H / 2 - 6, GAME_W + 80, H + 12);
+    g.fillStyle(col, .95); g.fillPoints([{ x: -40, y: Y - H / 2 + 6 }, { x: GAME_W + 40, y: Y - H / 2 - 6 }, { x: GAME_W + 40, y: Y + H / 2 - 6 }, { x: -40, y: Y + H / 2 + 6 }], true);
+    g.fillGradientStyle(0xffffff, 0xffffff, col, col, .55, .55, 0, 0); g.fillRect(-40, Y - H / 2 - 4, GAME_W + 80, H * .45);
+    g.fillStyle(0xfff6a0, 1); g.fillRect(-40, Y - H / 2 - 7, GAME_W + 80, 2); g.fillRect(-40, Y + H / 2 + 5, GAME_W + 80, 2);
+    for (let k = 0; k < 14; k++) { g.fillStyle(0xffffff, .25); g.fillRect(-40 + k * 52, Y - H / 2, 18, H); }   // 속도선
+    const por = this.add.image(96, Y, roundPortrait(this, portrait)).setScale(1.5);
+    const emb = this.add.image(170, Y, 'zcrystal-hi').setScale(2.2 / RES).setTint(0xffffff).setBlendMode(ADD);
+    const title = this.add.text(380, Y - 2, `『${name}!!』`, txt(25, '#fff6c8', { fontStyle: 'bold italic', stroke: '#2a0a00', strokeThickness: 7 })).setOrigin(.5);
+    title.setShadow(0, 0, 'rgba(255,230,120,0.95)', 12 * RES, true, true);
+    if (title.width > 400) title.setScale(400 / title.width);
+    const sub = hkText(this, 380, Y + 24, `Z POWER · ${typeName(type)}`, 8.5, '#2a0a00', { bold: true, ls: 4, origin: .5, flat: true });
+    C.add([g, por, hiImage(this, 96, Y, 'gloss').setScale(1.5 / RES), hiImage(this, 96, Y, 'slot3d-gold').setScale(1.5 / RES), emb, title, sub]);
+    C.x = GAME_W + 60;
+    this.tweens.add({ targets: C, x: 0, duration: 140, ease: 'Cubic.easeOut' });
+    this.tweens.add({ targets: emb, angle: 360, duration: 900 });
+    this.tweens.add({ targets: title, scale: { from: title.scale * 1.25, to: title.scale }, duration: 220, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: C, x: -GAME_W - 60, delay: 760, duration: 200, ease: 'Cubic.easeIn', onComplete: () => C.destroy() });
+  }
+
   // 가면이 깨질 때 붉은·흰 조각이 튄다
   breakMask(x, y) {
     for (let i = 0; i < 7; i++) {
@@ -377,9 +401,9 @@ export default class UIScene extends Phaser.Scene {
     const m = p.m, mg = p.mega;
     // 심연 분위기 (진행도 · 보스방 거리)
     const deep = gs.overlay ? 0 : Math.max(0, (gs.atmo || 0) - .25) / .75;
-    this.darkVig.setAlpha(deep * .75);
-    this.fogA.setAlpha(deep * .3).tilePositionX = time * .012 + gs.cameras.main.scrollX * .3;
-    this.fogB.setAlpha(deep * .22).tilePositionX = -time * .008 + gs.cameras.main.scrollX * .5;
+    this.darkVig.setAlpha(deep * .32);   // 가장자리 어둠은 은은하게 (시야를 덮지 않게)
+    this.fogA.setAlpha(deep * .14).tilePositionX = time * .012 + gs.cameras.main.scrollX * .3;
+    this.fogB.setAlpha(deep * .1).tilePositionX = -time * .008 + gs.cameras.main.scrollX * .5;
     // 피격 비네팅: 번쩍 → 0.4초 동안 빠진다. 체력이 낮으면 약하게 계속 맥박친다
     this.hurtK = Math.max(0, this.hurtK - dt * 2.4);
     const pulse = m.alive && m.hp < m.maxhp * .25 ? .16 + Math.sin(time / 180) * .08 : 0;

@@ -1,4 +1,5 @@
 import { perkMods } from '../game/Perks.js';
+import { BOSS_CORES } from './cores.js';
 
 // 런(한 판) 동안 유지되는 강화 아이템. 같은 아이템은 중첩된다.
 // icon: 그림을 못 받았을 때 쓰는 도트 아이콘(Textures.js) · art: 가방·HUD·땅에 떨어진 아이템에 보이는 본가(소드실드·스칼렛바이올렛) 가방 아이콘 이름
@@ -21,10 +22,10 @@ export const ITEMS = {
   shell_bell: { name: '조개껍질방울', desc: '준 피해의 6%만큼 회복', icon: 'bell', art: 'shellbell' },
   razor_claw: { name: '예리한손톱', desc: '급소율 +15%', icon: 'claw', art: 'razorclaw' },
   scope_lens: { name: '피트렌즈', desc: '급소율 +12% · 급소 피해 +20%', icon: 'claw', art: 'scopelens' },   // 그림은 systems/Textures.js 의 도트 (엘리트 드랍)
-  quick_claw: { name: '선제공격손톱', desc: '교대 쿨타임 -40%', icon: 'claw2', art: 'quickclaw' },
-  // 전설 유물 (relic: 무작위로 나오지 않는다 · 정해진 보스가 떨어뜨린다)
-  mewtwo_core: { name: '뮤츠의 코어', relic: true, desc: '🔮 전설 유물 · 뮤츠의 사이코 에너지가 응축된 핵. 에스퍼 기술·평타·차징의 투사체 +1 · 에스퍼 기술이 맞으면 사이코 중력장(주변 폭발 + 끌어당김·경직) · 차징 샷 크기 +30%', icon: 'orb', art: null }
+  quick_claw: { name: '선제공격손톱', desc: '교대 쿨타임 -40%', icon: 'claw2', art: 'quickclaw' }
 };
+// 전설 유물 · 보스의 코어 (relic: 무작위로 나오지 않는다 · 그 보스가 정화될 때 떨어뜨린다 — data/cores.js)
+for (const c of Object.values(BOSS_CORES)) ITEMS[c.id] = { name: c.name, relic: true, core: c, desc: `전설 유물 · ${c.desc}`, icon: 'orb', art: null };
 
 export const ITEM_KEYS = Object.keys(ITEMS);
 export const RANDOM_ITEM_KEYS = ITEM_KEYS.filter(k => !ITEMS[k].relic);   // 자판기 · 상자 · 보스 무작위 드랍
@@ -41,6 +42,17 @@ export const ITEM_DROP = { boss: 1, vending: .4, treasure: .2, chest: .08, wild:
 
 // 보유 아이템 + 기술머신 특성 카드(game/Perks.js) → 계산된 보정치
 //  특성 카드의 다른 값(pBurn·chain·dashBomb·sturdy …)은 그대로 실려 간다
+// 장착한 코어: core.flag 고유 효과 · coreProj[속성] 투사체 +n · 부스트 속성은 typeBoost 에 더한다
+function coreMods(items) {
+  const core = {}, coreProj = {};
+  for (const [k, n] of Object.entries(items)) {
+    const c = n > 0 && ITEMS[k] && ITEMS[k].core;
+    if (!c) continue;
+    if (c.flag) core[c.flag] = true;
+    for (const t of c.proj || []) coreProj[t] = (coreProj[t] || 0) + 1;
+  }
+  return { core, coreProj, psyCore: !!core.psy };
+}
 export function computeMods(items, perks) {
   const n = k => items[k] || 0, pm = perkMods(perks);
   const typeBoost = {};
@@ -48,18 +60,19 @@ export function computeMods(items, perks) {
     const it = ITEMS[k];
     if (it.boostType) typeBoost[it.boostType] = (typeBoost[it.boostType] || 0) + .3 * n(k);
     if (it.boostType2) typeBoost[it.boostType2] = (typeBoost[it.boostType2] || 0) + .3 * n(k);
+    if (it.core && n(k)) for (const t of it.core.boost || []) typeBoost[t] = (typeBoost[t] || 0) + .2;
   }
   return Object.assign({ atkMul: 1, hpMul: 1, speedMul: 1, dashCdMul: 1, dashInvAdd: 0, extraJumps: 0, guard: 1, bandMul: 1, specsMul: 1, expMul: 1 }, pm, {
     typeBoost,
     all: (1 + .3 * n('life_orb')) * (pm.allMul || 1),
     orbCost: n('life_orb') > 0 || !!pm.orbCost,
     extraProj: n('core_multi') + (pm.extraProj || 0),
-    cdMul: Math.pow(.8, n('core_haste')) * (pm.cdMul || 1),
+    cdMul: Math.pow(.8, n('core_haste')) * (pm.cdMul || 1) * (n('core_suicune') ? .85 : 1),   // 스이쿤의 북풍 코어: 재사용 -15%
     sizeMul: (1 + .3 * n('core_giant') + (pm.sizeAdd || 0)) * (pm.sizeMul || 1),
     regen: .006 * n('leftovers') + (pm.regen || 0),
     lifesteal: .06 * n('shell_bell') + (pm.lifesteal || 0),
     crit: .15 * n('razor_claw') + .12 * n('scope_lens') + (pm.crit || 0), critMul: 1 + .2 * n('scope_lens'),
     swapCdMul: Math.pow(.6, n('quick_claw')) * (pm.swapCdMul || 1),
-    psyCore: n('mewtwo_core') > 0   // 뮤츠의 코어 (Combat · skills.shoot · Player.fireCharge)
+    ...coreMods(items)   // 보스의 코어 (game/Cores.js)
   });
 }

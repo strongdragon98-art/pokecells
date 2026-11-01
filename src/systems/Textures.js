@@ -228,6 +228,20 @@ export function tagIcon(scene, type) { return pixelTexture(scene, `tag:${type}`,
 //  반씩 여러 번 줄여서 가장자리가 깨지지 않게 한다. 그림을 못 받았으면 null (도트 아이콘 it:<id> 로 대신)
 // 본가 가방 그림을 받지 않은 도구는 직접 그린다 (64×64 → itemArt 가 원하는 크기로 줄인다)
 //  이상한사탕: 양끝이 꼬인 파란 포장 + 하늘색 사탕 몸통에 흰 사선 줄무늬 · 피트렌즈: 은테 외알 안경 + 청록 렌즈 + 금 사슬
+// 보스의 코어: 그 보스 빛깔의 결정 핵 + 감싸는 고리 두 개 (뮤츠의 코어는 PROC_ITEM 의 전용 그림)
+function coreArt(c, color) {
+  const r = (color >> 16) & 255, g = (color >> 8) & 255, b = color & 255, rgba = (k, a) => `rgba(${Math.min(255, Math.round(r * k))},${Math.min(255, Math.round(g * k))},${Math.min(255, Math.round(b * k))},${a})`;
+  const halo = c.createRadialGradient(32, 32, 4, 32, 32, 31);
+  halo.addColorStop(0, rgba(1.5, .9)); halo.addColorStop(.45, rgba(1, .45)); halo.addColorStop(1, rgba(.4, 0));
+  c.fillStyle = halo; c.fillRect(0, 0, 64, 64);
+  c.save(); c.translate(32, 32);
+  for (const rot of [-.5, .55]) { c.save(); c.rotate(rot); c.lineWidth = 2.5; c.strokeStyle = rot < 0 ? rgba(1.6, .9) : 'rgba(255,255,255,.75)'; c.beginPath(); c.ellipse(0, 0, 27, 9, 0, 0, Math.PI * 2); c.stroke(); c.restore(); }
+  c.beginPath(); c.moveTo(0, -17); c.lineTo(12, -4); c.lineTo(8, 14); c.lineTo(-8, 14); c.lineTo(-12, -4); c.closePath();
+  const gr = c.createLinearGradient(-12, -17, 12, 14); gr.addColorStop(0, '#ffffff'); gr.addColorStop(.4, rgba(1.2, 1)); gr.addColorStop(1, rgba(.35, 1));
+  c.fillStyle = gr; c.fill(); c.lineWidth = 2; c.strokeStyle = rgba(.18, 1); c.stroke();
+  c.fillStyle = 'rgba(255,255,255,.9)'; c.beginPath(); c.moveTo(-3, -12); c.lineTo(3, -8); c.lineTo(-5, -4); c.closePath(); c.fill();
+  c.restore();
+}
 const PROC_ITEM = {
   // 뮤츠의 코어: 보랏빛 사이코 에너지가 소용돌이치는 결정 핵 + 감싸는 고리 두 개
   mewtwo_core(c) {
@@ -270,7 +284,7 @@ const PROC_ITEM = {
 };
 export function itemArt(scene, id, size) {
   const src = `itm:${id}`;
-  if (!scene.textures.exists(src) && PROC_ITEM[id]) { const t = scene.textures.createCanvas(src, 64, 64); PROC_ITEM[id](t.getContext()); t.refresh(); }
+  if (!scene.textures.exists(src) && (PROC_ITEM[id] || (ITEMS[id] && ITEMS[id].core))) { const t = scene.textures.createCanvas(src, 64, 64); (PROC_ITEM[id] || (c => coreArt(c, ITEMS[id].core.color)))(t.getContext()); t.refresh(); }
   if (!scene.textures.exists(src)) return null;
   const px = Math.round(size * RES), key = `${src}@${px}`;
   if (scene.textures.exists(key)) return key;

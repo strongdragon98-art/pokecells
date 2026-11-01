@@ -425,6 +425,65 @@ function terminalArt(scene) {
   });
 }
 // 간이 회복기 표지판: 쇠기둥 + 청록 판(테두리 금색) + 하얀 회복 십자 + 아래 화살표
+// ---------------- 성도 방울탑 · 방울로드 ----------------
+// 단풍 가로수: 은행나무(노랑) · 홍단풍(빨강) — 침식 없는 맑은 가을 나무
+const GINKGO_PAL = { base: 0x5a3a24, hi: 0x8a6040, shadow: 0x2a180e, rim: 0xfff0b0, leaf: [0x6a4a08, 0xb08a10, 0xf0c830, 0xfff4a0], leafAlt: 0xfff8d0 };
+const MAPLE_PAL = { base: 0x4a2a1c, hi: 0x7a4a30, shadow: 0x22100a, rim: 0xffd0a0, leaf: [0x5a0a08, 0xa82010, 0xf05028, 0xffb070], leafAlt: 0xffd8a0 };
+function autumnTree(scene, v) {
+  const key = `tree:autumn:${v}`;
+  if (treeCache.has(key) && scene.textures.exists(key)) return treeCache.get(key);
+  const big = v % 2 === 0, t = drawDetailedPixelTree({ seed: 707 + v * 13, pal: v < 2 ? GINKGO_PAL : MAPLE_PAL, gw: big ? 92 : 80, gh: big ? 120 : 104, trunk: big ? 7 : 6, corrupt: false, leafMul: 1.15 });
+  if (scene.textures.exists(key)) scene.textures.remove(key);
+  scene.textures.addCanvas(key, t.canvas);
+  t.key = key; t.vineKeys = [];
+  treeCache.set(key, t);
+  return t;
+}
+// 낙엽 한 장 (노랑 은행잎 · 붉은 단풍잎 · 주황 잎)
+function leafArt(scene, k) {
+  const cols = [[0xf0c830, 0xb08a10], [0xf05028, 0xa82010], [0xff9a3a, 0xb05a14]][k];
+  return canvasTex(scene, `prop:leaf${k}`, 5, 4, F => { F(1, 0, 3, 1, cols[0]); F(0, 1, 5, 2, cols[0]); F(1, 3, 3, 1, cols[1]); F(2, 1, 1, 3, cols[1]); });
+}
+// 방울탑 외관: 붉은 기둥 · 짙은 기와지붕 4층(처마가 휘어 오른다) · 처마 끝 황금 풍경 · 꼭대기 상륜 · 돌 기단 · 현판
+function bellTowerArt(scene) {
+  const W = 150, H = 214, roof = 0x2a3a40, roofHi = 0x4a6070, red = 0xb83a24, redD = 0x7a2010, wood = 0x6a3a1e, gold = 0xffd060, stone = 0x6a6258;
+  return canvasTex(scene, 'prop:belltower', W, H, (F, c) => {
+    const cx = W / 2;
+    // 기단 (돌계단)
+    F(cx - 66, H - 10, 132, 10, shade(stone, .7)); F(cx - 60, H - 16, 120, 6, stone); F(cx - 60, H - 16, 120, 1, shade(stone, 1.4));
+    F(cx - 18, H - 22, 36, 6, shade(stone, .85));
+    const tiers = [{ y: H - 16, w: 96, h: 40 }, { y: H - 70, w: 80, h: 34 }, { y: H - 118, w: 64, h: 30 }, { y: H - 160, w: 48, h: 26 }];
+    tiers.forEach((tr, i) => {
+      const top = tr.y - tr.h;
+      // 벽 · 붉은 기둥 · 격자창
+      F(cx - tr.w / 2, top, tr.w, tr.h, wood);
+      for (let x = cx - tr.w / 2; x <= cx + tr.w / 2 - 4; x += Math.max(10, tr.w / 6)) { F(x, top, 4, tr.h, red); F(x + 3, top, 1, tr.h, redD); }
+      for (let x = cx - tr.w / 2 + 8; x < cx + tr.w / 2 - 10; x += 14) { F(x, top + 6, 6, tr.h - 14, 0x2a1408); for (let yy = top + 8; yy < top + tr.h - 9; yy += 3) F(x, yy, 6, 1, 0xd8a050); }
+      if (i === 0) { F(cx - 10, tr.y - 24, 20, 24, 0x140804); F(cx - 10, tr.y - 24, 20, 2, gold); }   // 입구
+      // 기와지붕: 아래로 처지다 끝이 휘어 오르는 처마 (곡선) · 기와 줄
+      const ry = top - 2, rw = tr.w / 2 + 16 - i * 1;
+      c.fillStyle = css(roof); c.beginPath(); c.moveTo(cx - rw, ry - 4); c.quadraticCurveTo(cx - rw * .6, ry + 6, cx - rw * .3, ry - 10); c.lineTo(cx - tr.w / 2 + 6, ry - 18); c.lineTo(cx + tr.w / 2 - 6, ry - 18); c.lineTo(cx + rw * .3, ry - 10); c.quadraticCurveTo(cx + rw * .6, ry + 6, cx + rw, ry - 4); c.closePath(); c.fill();
+      c.strokeStyle = css(roofHi); c.lineWidth = 1; for (let x = cx - rw * .7; x < cx + rw * .7; x += 4) { c.beginPath(); c.moveTo(x, ry - 16); c.lineTo(x * .9 + cx * .1, ry - 2); c.stroke(); }
+      F(cx - rw * .4, ry - 19, rw * .8, 2, shade(roof, 1.6));
+      // 처마 끝 황금 풍경
+      for (const d of [-1, 1]) { const bx = cx + d * (rw - 2); F(bx - 1, ry - 3, 1, 5, gold); F(bx - 2, ry + 2, 3, 3, gold); F(bx - 1, ry + 5, 1, 1, 0xfff4b0); }
+    });
+    // 상륜 (꼭대기 황금 장식)
+    const ty = H - 186 - 18;
+    F(cx - 1, ty - 14, 3, 30, gold); for (let k = 0; k < 4; k++) F(cx - 4 + k * .5, ty - 8 + k * 5, 9 - k, 2, shade(gold, 1 - k * .1));
+    c.fillStyle = css(gold); c.beginPath(); c.arc(cx + .5, ty - 16, 3, 0, Math.PI * 2); c.fill();
+    // 현판
+    F(cx - 14, H - 60, 28, 10, 0x2a1408); F(cx - 13, H - 59, 26, 8, 0x5a2a12); F(cx - 10, H - 56, 20, 2, gold);
+  });
+}
+// 벽 횃불: 쇠 받침 + 타오르는 불꽃
+function wallTorchArt(scene) {
+  return canvasTex(scene, 'prop:walltorch', 10, 18, F => {
+    F(3, 10, 4, 3, 0x3a2a1e); F(4, 13, 2, 5, 0x2a1e14); F(2, 9, 6, 2, 0x5a4a3a);
+    F(3, 4, 4, 6, 0xff8a2a); F(4, 2, 2, 4, 0xffc040); F(4, 5, 2, 3, 0xfff0a0); F(2, 6, 1, 3, 0xff5a1a); F(7, 6, 1, 2, 0xff5a1a);
+  });
+}
+
 // 간이 회복기 쉼터 (할로우 나이트의 벤치 방처럼): 등 뒤를 감싸는 아치형 돌벽 · 나무 벤치 · 따뜻한 가로등
 function shelterArchArt(scene) {
   const st = 0x2a2634;
@@ -640,7 +699,7 @@ export class Props {
     this.build();
   }
   areaOf(room) { return room ? this.stage.areas[room.ai] : null; }
-  depthOf(room) { return !room ? null : this.level.purified ? 0 : room.depth; }   // 정화한 지방은 어디든 맑다
+  depthOf(room) { return !room ? null : this.level.purified || room.trail ? 0 : room.tower ? Math.min(.45, room.depth || 0) : room.depth; }   // 정화한 지방 · 방울로드는 맑다 · 방울탑 안은 은은하게
 
   lit(o) { if (this.webgl) o.setPipeline('Light2D'); this.objs.push(o); return o; }
   add(o) { this.objs.push(o); return o; }
@@ -869,7 +928,64 @@ export class Props {
     this.buildRails();
     this.buildFireflies();
     this.buildAtmosphere();
+    this.buildBellTower();
     this.groupByRoom();
+  }
+
+  // 성도 방울탑: 방울로드(단풍 가로수 · 낙엽 깔개 · 흩날리는 낙엽 · 밝은 가을 햇살) · 탑 입구 외관 · 탑 안 벽 횃불 (방 표시는 game/World.js)
+  buildBellTower() {
+    const s = this.s, rooms = this.level.rooms, G = this.level.grid;
+    const floorAt = (tx, ty) => G[ty] && (G[ty][tx] === 'S' || G[ty][tx] === 'P') && G[ty - 1] && G[ty - 1][tx] === '.';
+    this.leafRooms = rooms.filter(r => r.trail);
+    for (const r of this.leafRooms) {
+      const Y = r.F * TILE;
+      // 단풍 가로수: 길을 따라 촘촘히 (은행나무 · 홍단풍 번갈아)
+      for (let x = r.left + 30, k = 0; x < r.right - 30; x += 64 + (k * 17) % 22, k++) {
+        const tx = Math.floor(x / TILE);
+        if (!floorAt(tx, r.F) || (r.trailEnd && x > r.right - 170)) continue;   // 방울탑 외관 앞은 비워 둔다
+        const a = autumnTree(s, k % 4);
+        this.lit(s.add.image(x, Y + 2, a.key).setOrigin(a.baseX / a.W, 1).setDepth(3.6 + (k % 2) * .2).setScale(k % 2 ? .9 : 1));
+      }
+      // 바닥에 수북한 낙엽
+      for (let x = r.left + 4; x < r.right - 4; x += 3 + ((x * 7) % 4)) {
+        const tx = Math.floor(x / TILE);
+        if (!floorAt(tx, r.F)) continue;
+        this.add(s.add.image(x, Y - 1 + ((x * 13) % 3) * .5, leafArt(s, (x * 5) % 3)).setOrigin(.5, 1).setDepth(10.3).setRotation(((x * 31) % 7) * .2).setAlpha(.95));
+      }
+      // 따스한 가을 햇살 줄기
+      for (let x = r.left + 60; x < r.right; x += 160) this.add(s.add.image(x, r.top + 10, 'glow').setOrigin(.5, 0).setBlendMode(ADD).setTint(0xffd8a0).setScale(1.2, 5).setAlpha(.12).setDepth(3.2).setAngle(-18));
+      // 방울탑 입구 (방울로드 끝): 외관 + 금빛 풍경 반짝임 + 현판 빛
+      if (r.trailEnd) {
+        const gx = r.right - 70;
+        this.lit(s.add.image(gx, Y + 2, bellTowerArt(s)).setOrigin(.5, 1).setDepth(3.4));
+        this.add(s.add.image(gx, Y - 100, 'glow').setBlendMode(ADD).setTint(0xffc060).setScale(3.5, 4.5).setAlpha(.16).setDepth(3.3));
+        this.add(s.add.text(gx, Y - 218, '방울탑', { fontFamily: 'Galmuri9', fontSize: '9px', color: '#ffe0a0', stroke: '#2a1408', strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(3.5));
+        this.light(gx, Y - 80, 220, 0xffb060, 1.4);
+      }
+    }
+    // 탑 안: 벽 횃불 · 등불이 일정 간격으로 (일렁이는 주황빛 + 불티) — 칠색조 옥상은 노을 하늘(GameScene.rooftopSky)
+    this.wallTorches = [];
+    for (const r of rooms.filter(q => q.tower && !q.rooftop)) {
+      const Y = r.F * TILE;
+      for (let x = r.left + 40; x < r.right - 30; x += 96) {
+        const ty = Y - 46;
+        if (s.isSolidAt(x, ty)) continue;
+        this.lit(s.add.image(x, ty, wallTorchArt(s)).setOrigin(.5, 1).setDepth(6.2));
+        const halo = this.add(s.add.image(x, ty - 12, 'glow').setBlendMode(ADD).setTint(0xffa040).setScale(1.1).setAlpha(.5).setDepth(6.3));
+        const L = this.light(x, ty - 12, 150, 0xffa040, 1.7);
+        this.flickers.push({ objs: [halo], base: [.5], rate: .35, light: L, lightK: 1.7, off: 0 });
+        this.wallTorches.push({ x, y: ty - 12 });
+      }
+    }
+  }
+  // 방울로드 낙엽 · 탑 횃불 불티 (화면 안에서만)
+  updateBellTower(view) {
+    const fx = this.s.fx, p = this.s.player;
+    if (this.leafRooms && this.leafRooms.length && p && this.leafRooms.includes(this.s.room) && Math.random() < .6) {
+      const x = view.x + Math.random() * view.width;
+      fx.burst(x, view.y - 4, [0xf0c830, 0xf05028, 0xff9a3a, 0xffe080], 1, 30, { angle: Math.PI * .6, spread: .8, up: -10, grav: 30, bounce: false, life: 4, size: 2, drag: .995 });
+    }
+    for (const t of this.wallTorches || []) if (t.x > view.x - 20 && t.x < view.right + 20 && t.y > view.y - 20 && t.y < view.bottom + 20 && Math.random() < .12) fx.embers(t.x + (Math.random() - .5) * 4, t.y - 4, [0xffa040, 0xffe080], 1, { speed: 26 });
   }
 
   // 소품을 들어 있는 방별로 묶는다 (방 밖 = 레일 그래픽 등은 늘 그린다)
@@ -1030,6 +1146,7 @@ export class Props {
     }
     for (const f of this.fogs) f.tilePositionX += dt * f.sp;
     this.updateAsh(dt, view);
+    this.updateBellTower(view);
     for (const m of this.mush) if (m.x > L && m.x < R && m.y > U && m.y < D) m.setAlpha(.35 + Math.sin(t * 2 + m.ph) * .2);
     for (const f of this.flies) {
       if (f.home.x < L - 60 || f.home.x > R + 60 || f.home.y < U - 40 || f.home.y > D + 40) continue;

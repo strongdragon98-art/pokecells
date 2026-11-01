@@ -6,6 +6,7 @@ import { FORM_ITEMS } from '../data/roster.js';
 import { WILD, DEX_ORDER, SPECIES, SKILLS, TIERS, wildForm, pickWildStage, EXP_PURIFY, EXP_BOSS, DROPS, EVO_EXP, ZMOVES, BOSSES } from '../data/pokemon.js';
 import { ITEMS, RANDOM_ITEM_KEYS, ITEM_DROP, CONSUMABLES, MAX_EQUIP } from '../data/items.js';
 import { stoneName, crystalName, zTypeOf, usesStone } from '../data/gear.js';
+import { coreOfBoss } from '../data/cores.js';
 import { typeColor } from '../data/types.js';
 import { PLAT_SET, groundYAt, T as TILE_ID } from '../game/Level.js';
 import { buildChapter, roomAt, CW, CH } from '../game/World.js';
@@ -71,6 +72,49 @@ function chapterSprites(ci) {
   if (!st) return [];
   return [...new Set([...(st.pool || []), ...(JSON.stringify(st).match(/[a-z][a-z0-9-]+/g) || [])])];
 }
+// 밝기(0~255) · 그 아래면 같은 색감으로 밝혀 하한을 맞춘다
+const lumOf = c => .299 * ((c >> 16) & 255) + .587 * ((c >> 8) & 255) + .114 * (c & 255);
+function lumFloor(c, min) {
+  const l = lumOf(c);
+  if (l >= min || l <= 0) return l <= 0 ? Phaser.Display.Color.GetColor(min, min, min) : c;
+  const k = min / l, ch = v => Math.min(255, Math.round(v * k));
+  return Phaser.Display.Color.GetColor(ch((c >> 16) & 255), ch((c >> 8) & 255), ch(c & 255));
+}
+// 뮤츠 배양 인큐베이터: 쇠 받침 · 유리관(검붉은 배양액 · 기포 · 안의 실루엣) · 위 뚜껑과 관 (broken: 깨진 뒤 받침과 유리 조각만)
+function capsuleArt(scene, broken = false) {
+  const key = broken ? 'prop:capsule:b' : 'prop:capsule';
+  if (scene.textures.exists(key)) return key;
+  const W = 40, H = 78, t = scene.textures.createCanvas(key, W, H), c = t.getContext();
+  const F = (x, y, w, h, col, a = 1) => { c.globalAlpha = a; c.fillStyle = '#' + col.toString(16).padStart(6, '0'); c.fillRect(x, y, w, h); c.globalAlpha = 1; };
+  F(2, H - 10, 36, 10, 0x3a3a46); F(4, H - 12, 32, 3, 0x5a5a6a); F(2, H - 10, 36, 1, 0x8a8a9a);   // 받침
+  for (let x = 6; x < 34; x += 6) F(x, H - 6, 3, 2, 0xff2a4a, .8);   // 받침 경고등
+  if (broken) {
+    for (const [x, h] of [[6, 10], [10, 6], [27, 12], [32, 7]]) F(x, H - 12 - h, 3, h, 0xa8d0e0, .55);   // 남은 유리 조각
+    F(5, H - 14, 30, 2, 0x5a0a1a, .8);   // 쏟아진 배양액
+  } else {
+    const g = c.createLinearGradient(0, 8, 0, H - 12); g.addColorStop(0, 'rgba(120,10,30,.55)'); g.addColorStop(1, 'rgba(40,2,10,.9)');
+    c.fillStyle = g; c.fillRect(6, 10, 28, H - 22);
+    F(13, 24, 14, 30, 0x14040a, .85); F(16, 18, 8, 8, 0x14040a, .85); F(10, 30, 4, 12, 0x14040a, .7); F(26, 30, 4, 12, 0x14040a, .7);   // 안의 실루엣
+    for (const [x, y] of [[9, 50], [29, 40], [12, 30], [24, 58], [20, 14]]) F(x, y, 2, 2, 0xffb0c0, .7);   // 기포
+    F(6, 10, 2, H - 22, 0xd8f0ff, .55); F(31, 10, 1, H - 22, 0xd8f0ff, .3);   // 유리 반사
+    c.strokeStyle = 'rgba(180,220,240,.7)'; c.lineWidth = 1; c.strokeRect(5.5, 9.5, 29, H - 21);
+  }
+  F(3, 2, 34, 8, 0x3a3a46); F(5, 0, 30, 3, 0x5a5a6a); F(3, 2, 34, 1, 0x8a8a9a); F(18, 0, 4, 2, 0xff2a4a);   // 뚜껑 · 관
+  t.refresh();
+  return key;
+}
+// 기와 한 칸 (16×8): 둥근 기와 줄 + 황금 막새
+function kawaraArt(scene) {
+  const key = 'prop:kawara';
+  if (scene.textures.exists(key)) return key;
+  const t = scene.textures.createCanvas(key, 16, 8), c = t.getContext();
+  const F = (x, y, w, h, col) => { c.fillStyle = '#' + col.toString(16).padStart(6, '0'); c.fillRect(x, y, w, h); };
+  F(0, 0, 16, 8, 0x2a3a40); F(0, 0, 16, 1, 0x5a7080);
+  for (const x of [0, 8]) { F(x + 1, 1, 6, 5, 0x3a4c56); F(x + 2, 1, 4, 1, 0x7a92a0); F(x + 3, 5, 2, 2, 0xd8a840); }
+  F(0, 7, 16, 1, 0x141c20);
+  t.refresh();
+  return key;
+}
 // 두 색을 k(0~1)만큼 섞는다
 const lerpColor = (a, b, k) => {
   const A = Phaser.Display.Color.IntegerToRGB(a), B = Phaser.Display.Color.IntegerToRGB(b);
@@ -127,7 +171,7 @@ export default class GameScene extends Phaser.Scene {
       this.applyPerf();   // 블룸: 절전 모드면 끈다 (systems/Perf.js)
       const offPerf = Perf.on(() => this.applyPerf());
       this.events.once('shutdown', offPerf);
-      this.vignetteFx = cam.postFX.addVignette(.5, .5, .92, .3);   // 보스방에 가까울수록 좁고 진해진다 (updateAtmosphere)
+      this.vignetteFx = cam.postFX.addVignette(.5, .5, .98, .18);   // 화면 가장자리에만 은은하게 · 보스방에 가까울수록 조금 진해진다 (updateAtmosphere)
       this.gradeFx = cam.postFX.addColorMatrix();                   // 색 보정: 초입은 따뜻하고 선명하게 · 보스 앞은 채도가 빠지고 어둡게
     }
     this.fx = new Fx(this);
@@ -186,6 +230,7 @@ export default class GameScene extends Phaser.Scene {
     // 다른 지방으로 건너가면: 지난 지방에서만 쓰던 시트는 내리고(파티 계열은 남긴다) 이 지방 포켓몬을 미리 받아 둔다
     if (this.player && this.spriteChapter !== si) Sprites.trim([...this.player.members.map(m => m.key), ...chapterSprites(si), 'corviknight']);
     this.spriteChapter = si;
+    if (this.player) this.player.rebornUsed = false;   // 지방마다 부활 1번
     Sprites.ensure(chapterSprites(si));
     this.level = level;
     this.explored = W.explored || (W.explored = new Uint8Array(level.cols * level.rows));   // 지도: 화면에 한 번이라도 들어온 칸
@@ -325,12 +370,13 @@ export default class GameScene extends Phaser.Scene {
     this.boss = null; this.bosses = []; this.portal = null; this.lowSeen = false;
     this.events.emit('stage', si, st);
     Music.play(st.bgm);
+    this.buildBossProps();
     this.time.delayedCall(450, () => { if (this.level === level) { this.enterArea(this.room, true); if (this.room.type === 'village') this.visitHub(this.room); } });
   }
 
   // ---------------- 침식 (Room.depth 0 입구 ~ 1 보스방 앞) · 지방 정화 ----------------
   // 방의 침식 깊이 (정화한 지방은 어디든 0)
-  depthOf(room) { return !room || (this.level && this.level.purified) ? 0 : room.depth || 0; }
+  depthOf(room) { return !room || (this.level && this.level.purified) || room.trail ? 0 : room.tower ? Math.min(.45, room.depth || 0) : room.depth || 0; }   // 방울로드: 가을 햇살 · 방울탑 안: 횃불로 은은하게 밝다
   // 몹의 침식 단계 Ⅰ~Ⅳ: 보스방에 가까울수록 높다
   corruptLevel(room) { const d = this.depthOf(room); return d < .25 ? 1 : d < .5 ? 2 : d < .75 ? 3 : 4; }
   // 타일 색: 초입은 햇살처럼 따뜻하게 → 중간은 본래 색 → 보스방 앞은 보랏빛 잿빛으로 가라앉는다 (정화한 지방은 맑게)
@@ -1000,6 +1046,12 @@ export default class GameScene extends Phaser.Scene {
     this.readInput();
     if (this.paused || this.over) return;
     if (this.fx.updateHitStop()) return;
+    if (this.zFreezeT > 0) {   // Z파워 공명: 적 · 투사체 · 물리가 멈춘다 (연출 트윈 · 파티클은 그대로)
+      this.zFreezeT -= dt;
+      if (this.zFreezeT <= 0) this.physics.world.resume();
+      this.fx.update(dt);
+      return;
+    }
     if (this.transitioning) { this.fx.update(dt); return; }
 
     this.updateInteract();
@@ -1012,6 +1064,7 @@ export default class GameScene extends Phaser.Scene {
     for (const e of this.enemies) if (e.alive && !e.asleep) e.update(dt, this.player);
     for (const w of this.wanderers) w.update(dt, this.player);
     this.guardSafeZones();
+    this.updateResting();
     this.drawCorruption();
     this.combat.updateProjectiles(dt);
     this.combat.updateZones(dt);
@@ -1041,7 +1094,8 @@ export default class GameScene extends Phaser.Scene {
     this.atmo = (this.atmo ?? want) + (want - (this.atmo ?? want)) * Math.min(1, dt * .6);
     const c = this.atmo, cam = this.cameras.main, v = cam.worldView, t = this.time.now / 1000;
     if (this.gradeFx) { const fx = this.gradeFx; fx.reset(); fx.saturate(.18 - c * .62, true); fx.brightness(1.06 - c * .2, true); }
-    if (this.vignetteFx) { this.vignetteFx.radius = .92 - c * .26; this.vignetteFx.strength = .3 + c * .45; }
+    // 비네트: 가운데 맑은 시야를 넓게 (예전보다 2.5배 이상) · 가장자리 15~20% 에만 검붉은 긴장감
+    if (this.vignetteFx) { this.vignetteFx.radius = .98 - c * .06; this.vignetteFx.strength = .18 + c * .17; }
     // 햇빛 줄기: 화면 위에서 비스듬히 (깊어질수록 옅어지다 사라진다)
     const sun = Phaser.Math.Clamp(1 - c / .45, 0, 1) * (this.room && this.room.under ? .25 : 1);
     if (!this.sunbeams) {
@@ -1074,7 +1128,11 @@ export default class GameScene extends Phaser.Scene {
       // 침식 깊이: 초입은 햇살처럼 밝고 따뜻하게(×1.45 + 금빛) → 보스방 앞은 검붉고 어둡게(×0.62 + 핏빛)
       const deep = c < .5 ? lerpColor(lerpColor(amb, 0xffe2b0, .35), amb, c / .5) : lerpColor(amb, 0x5a1a24, (c - .5) / .5 * .55);
       const lit = c < .5 ? shade(deep, 1.45 - c * .9) : shade(deep, 1 - (c - .5) * .76);
-      const base = this.room && this.room.type === 'village' ? 0x8a7258 : this.room && this.room.under ? shade(lit, .72) : lit;   // 시내는 따뜻하게 · 지하는 어둡게
+      let base = this.room && this.room.type === 'village' ? 0x8a7258 : this.room && this.room.under ? shade(lit, .72) : lit;   // 시내는 따뜻하게 · 지하는 어둡게
+      // 최소 밝기 보장: 보스방 바로 앞 · 가장 깊은 동굴이라도 초입 밝기의 60% 아래로는 떨어지지 않는다 (방울탑 안은 72%) — 지형·함정이 늘 보이게
+      const lit0 = shade(lerpColor(amb, 0xffe2b0, .35), 1.45), floorK = this.room && this.room.tower ? .72 : .6;
+      base = lumFloor(base, lumOf(lit0) * floorK);
+      if (this.room && this.room.trail) base = lerpColor(lit0, 0xffd8a0, .25);   // 방울로드: 가을 햇살처럼 환하고 따뜻하게
       const tgt = Phaser.Display.Color.IntegerToRGB(base), a = this.ambient, k = Math.min(1, dt * 1.5);
       a.setTo(Math.round(a.red + (tgt.r - a.red) * k), Math.round(a.green + (tgt.g - a.green) * k), Math.round(a.blue + (tgt.b - a.blue) * k));
       this.lights.setAmbientColor(a.color);
@@ -1180,6 +1238,158 @@ export default class GameScene extends Phaser.Scene {
     const t = this.ellipseTex(rx, ry);
     if (im.texture.key !== t.key) im.setTexture(t.key);
     im.setPosition(Math.round(cx) - t.cx0, Math.round(cy) - t.R).setTint(color).setAlpha(alpha).setVisible(true);
+  }
+
+  // Z기술 시네마틱용 시간 정지 (Player.zCinematic)
+  zFreeze(sec) { this.zFreezeT = sec; this.physics.world.pause(); }
+
+  // ---------------- 보스 무대 소품 ----------------
+  //  뮤츠 아레나: 검붉은 침식 배양액이 찬 거대한 유리 인큐베이터 (가까이 오면 깨지며 뮤츠가 떠오른다 — bossIntro)
+  //  칠색조 아레나(방울탑 옥상): 황금빛 노을 하늘 · 구름 · 해 · 바닥을 따라 기와지붕
+  buildBossProps() {
+    this.capsule = null;
+    for (const r of this.level.rooms) {
+      if (r.boss === 'mewtwo' && !r.cleared) {
+        const x = r.cx, gy = this.groundBelow(x, r.bottom - 24);
+        const img = this.add.image(x, gy + 1, capsuleArt(this)).setOrigin(.5, 1).setDepth(8);
+        const glow = this.add.image(x, gy - 40, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(0xff2a4a).setScale(1.4, 2.2).setAlpha(.35).setDepth(7.9);
+        this.tweens.add({ targets: glow, alpha: .18, duration: 1300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+        this.worldObjs.push(img, glow);
+        this.capsule = { img, glow, x, gy, room: r };
+      }
+      if (r.rooftop) this.rooftopSky(r);
+    }
+  }
+  rooftopSky(r) {
+    const W = r.right - r.left, H = r.bottom - r.top, ADD = Phaser.BlendModes.ADD;
+    if (!this.textures.exists('fx:sunset')) {
+      const t = this.textures.createCanvas('fx:sunset', 4, 128), c = t.getContext(), g = c.createLinearGradient(0, 0, 0, 128);
+      g.addColorStop(0, '#3a2a6a'); g.addColorStop(.35, '#d8605a'); g.addColorStop(.65, '#ffb060'); g.addColorStop(1, '#ffe0a0');
+      c.fillStyle = g; c.fillRect(0, 0, 4, 128); t.refresh();
+    }
+    const sky = this.add.image(r.left, r.top, 'fx:sunset').setOrigin(0).setDisplaySize(W, H).setDepth(1.65);
+    const sun = this.add.image(r.cx + W * .22, r.top + H * .42, 'glow').setBlendMode(ADD).setTint(0xfff0b0).setScale(3.2).setAlpha(.85).setDepth(1.7);
+    const sunCore = this.add.image(sun.x, sun.y, 'glow').setBlendMode(ADD).setTint(0xffffff).setScale(1.2).setAlpha(.9).setDepth(1.71);
+    const clouds = [];
+    for (let k = 0; k < 6; k++) {
+      const cl = this.add.image(r.left + (k + .5) * W / 6, r.top + H * (.25 + (k % 3) * .14), 'glow').setTint(k % 2 ? 0xffd0b0 : 0xffe8d0).setScale(2.6 + (k % 3), .5).setAlpha(.5).setDepth(1.72);
+      this.tweens.add({ targets: cl, x: cl.x + 30, duration: 9000 + k * 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      clouds.push(cl);
+    }
+    // 기와지붕: 바닥선을 따라 짙은 기와 줄과 처마 끝 황금 장식
+    const gy = this.groundBelow(r.cx, r.bottom - 24);
+    const roofs = this.add.tileSprite(r.left, gy - 3, W, 8, kawaraArt(this)).setOrigin(0, 0).setDepth(10.45);
+    this.worldObjs.push(sky, sun, sunCore, ...clouds, roofs);
+  }
+
+  // 보스 고유 등장 연출: 처리했으면 true (그동안 아레나는 잠겨 있고, 끝나면 beginBoss)
+  bossIntro(key, room) {
+    const cx = room.cx, gy = this.groundBelow(cx, room.bottom - 24), ADD = Phaser.BlendModes.ADD, cam = this.cameras.main;
+    const later = (ms, f) => this.time.delayedCall(ms, () => { if (this.arenaRoom === room && !this.over) f(); });
+    const spawn = (x, f) => later(0, () => { this.beginBoss(key, room, x); const b = this.boss; if (b && b.bossKey === key) f(b); });
+    if (key === 'mewtwo') {   // 배양 캡슐 속 붉은 안광 → 사이코 파동 → 유리관이 산산조각 → 공중으로 떠오른다
+      const cap = this.capsule && this.capsule.room === room ? this.capsule : null, x = cap ? cap.x : cx;
+      const eyes = [-4, 4].map(d => this.add.image(x + d, gy - 44, 'glow').setBlendMode(ADD).setTint(0xff2a2a).setScale(.12).setAlpha(0).setDepth(8.2));
+      Sfx.play('boss'); this.fx.shake(.006, 600);
+      this.tweens.add({ targets: eyes, alpha: 1, scale: .2, duration: 160, yoyo: true, repeat: 2, hold: 90 });
+      later(650, () => { for (let k = 0; k < 3; k++) this.time.delayedCall(k * 120, () => this.fx.ring(x, gy - 40, 30 + k * 26, 0xff6ad8, 420)); this.fx.glow(x, gy - 40, 60, 0xb05aff, 500, .9); Sfx.play('wave'); });
+      later(1150, () => {
+        eyes.forEach(o => o.destroy());
+        if (cap) { cap.img.setTexture(capsuleArt(this, true)); cap.glow.destroy(); }
+        this.fx.shatter(x, gy - 36, 34, 66, { n: 46, speed: 260, up: 140, scale: 1.6, depth: 46 });
+        this.fx.burst(x, gy - 30, [0x8a0a1e, 0xff2a4a, 0x3a0612], 40, 220, { up: 120, life: .9 });
+        cam.flash(260, 255, 200, 230, true); this.fx.shake(.02, 500); Sfx.play('shatter'); Sfx.play('boom');
+      });
+      later(1200, () => spawn(x, b => b.introPath(x, gy - 34, x, gy - 96, 1100, 'Cubic.easeOut')));
+      return true;
+    }
+    if (key === 'ho-oh') {   // 황금빛 · 무지갯빛 깃털이 흩날리다가, 태양을 등지고 수직 강하해 옥상 한가운데 착지
+      const v = cam.worldView;
+      for (let k = 0; k < 36; k++) this.time.delayedCall(k * 30, () => this.fx.burst(v.x + Math.random() * v.width, v.y - 4, [0xffd040, 0xff6a3a, 0x8aff8a, 0x6ac8ff, 0xffffff], 1, 30, { angle: Math.PI / 2, spread: .6, up: -20, grav: 40, bounce: false, glow: true, life: 2.4, size: 2, drag: .99 }));
+      cam.flash(400, 255, 230, 160, true); Sfx.play('boss');
+      later(900, () => spawn(cx, b => {
+        b.introPath(cx, room.top - 40, cx, gy - 74, 1000, 'Cubic.easeOut', () => {
+          this.fx.ring(cx, gy - 8, 120, 0xffb040, 600); this.fx.ring(cx, gy - 8, 70, 0xffffff, 420);
+          this.fx.burst(cx, gy - 6, [0xffd040, 0xff6a3a, 0xffffff], 40, 260, { up: 120, glow: true });
+          this.fx.shake(.024, 500); Sfx.play('boom');
+        });
+        for (let k = 0; k < 16; k++) this.time.delayedCall(k * 60, () => { if (b.alive) this.fx.burst(b.x + (Math.random() - .5) * 60, b.y, [0xff6a2a, 0xffd040, 0xff3a5a], 3, 90, { angle: -Math.PI / 2, spread: 1.4, up: 40, glow: true, life: .5 }); });
+      }));
+      return true;
+    }
+    if (key === 'giratina') {   // 공간이 검붉게 찢어진 차원 포털에서 기어 나온다
+      const y = gy - 80, g = this.add.graphics().setDepth(8).setBlendMode(ADD);
+      const tear = s => { g.clear(); g.fillStyle(0x2a0612, .9); g.fillEllipse(cx, y, 30 * s, 70 * s); g.lineStyle(3, 0xff3a5a, .9); g.strokeEllipse(cx, y, 30 * s, 70 * s); g.lineStyle(1, 0xffffff, .8); g.strokeEllipse(cx, y, 22 * s, 60 * s); };
+      const o = { s: .05 };
+      this.tweens.add({ targets: o, s: 1.6, duration: 900, ease: 'Back.easeOut', onUpdate: () => tear(o.s) });
+      this.fx.shake(.016, 900); Sfx.play('boss'); Sfx.play('shatter'); cam.flash(300, 120, 0, 30, true);
+      later(900, () => spawn(cx, b => { b.sprite.setAlpha(0); this.tweens.add({ targets: b.sprite, alpha: 1, duration: 700 }); b.introPath(cx, y, cx + 20, y - 10, 900, 'Sine.easeInOut'); }));
+      later(2000, () => this.tweens.add({ targets: o, s: 0, duration: 400, onUpdate: () => tear(o.s), onComplete: () => g.destroy() }));
+      return true;
+    }
+    if (key === 'darkrai') {   // 바닥의 검은 그림자 늪에서 솟아오른다
+      const pool = this.add.image(cx, gy - 1, 'glow').setTint(0x000000).setScale(0, .2).setAlpha(.9).setDepth(9.5);
+      const rim = this.add.image(cx, gy - 1, 'glow').setBlendMode(ADD).setTint(0x8a4ac0).setScale(0, .15).setAlpha(.7).setDepth(9.6);
+      this.tweens.add({ targets: [pool, rim], scaleX: 3.2, duration: 700, ease: 'Cubic.easeOut' });
+      this.fx.shake(.01, 900); Sfx.play('ghost'); Sfx.play('boss');
+      later(800, () => spawn(cx, b => { b.sprite.setAlpha(0); this.tweens.add({ targets: b.sprite, alpha: 1, duration: 800 }); b.introPath(cx, gy + 10, cx, gy - 64, 1100, 'Cubic.easeOut'); }));
+      later(2200, () => this.tweens.add({ targets: [pool, rim], scaleX: 0, alpha: 0, duration: 600, onComplete: () => { pool.destroy(); rim.destroy(); } }));
+      return true;
+    }
+    const BEAST = { raikou: [0xffe040, 'zap'], entei: [0xff6a2a, 'fire'], suicune: [0x8ad8ff, 'water'] }[key];
+    if (BEAST) {   // 하늘에서 번개 · 불기둥 · 물기둥과 함께 내리꽂힌다
+      const [col, sfx] = BEAST, v = cam.worldView;
+      const pillar = this.add.image(cx, gy + 4, 'glow').setOrigin(.5, 1).setBlendMode(ADD).setTint(col).setScale(.6, 0).setAlpha(.9).setDepth(45);
+      this.tweens.add({ targets: pillar, scaleY: (gy - v.y + 20) / 32, duration: 260, ease: 'Cubic.easeOut' });
+      Sfx.play(sfx); Sfx.play('boss');
+      later(350, () => spawn(cx, b => b.introPath(cx, v.y - 40, cx, gy - b.b.height / 2 - 2, 420, 'Quad.easeIn', () => {
+        this.fx.ring(cx, gy - 6, 90, col, 500); this.fx.ring(cx, gy - 6, 50, 0xffffff, 360);
+        this.fx.burst(cx, gy - 4, [col, 0xffffff], 36, 240, { up: 160, glow: true });
+        this.fx.shake(.022, 420); cam.flash(160, 255, 255, 255, true); Sfx.play('boom');
+        this.tweens.add({ targets: pillar, alpha: 0, scaleX: 1.6, duration: 380, onComplete: () => pillar.destroy() });
+      })));
+      return true;
+    }
+    return false;
+  }
+
+  // ---------------- 정화된 보스: 그 자리에 머문다 ----------------
+  //  침식 껍질이 깨진 뒤 금빛 · 청록빛 입자가 몸에서 천천히 씻겨 올라가고, 본래의 맑은 모습으로 숨 쉬며 머문다
+  //  다가가면 고마워한다 · 그 방을 나가면 자연으로 돌아간다 (방은 cleared 라 다시 와도 없다)
+  restBoss(e) {
+    const s = e.sprite;
+    if (!s || !s.scene) return;
+    e.resting = true; e.restRoom = e.room;
+    s.clearTint(); s.setAlpha(1);
+    e.play('Idle', true);
+    this.time.addEvent({ delay: 60, repeat: 26, callback: () => {
+      if (!s.scene) return;
+      this.fx.burst(e.x + (Math.random() - .5) * e.b.width, e.y + (Math.random() - .5) * e.b.height, [0xffe08a, 0x6af0d8, 0xffffff], 2, 40, { angle: -Math.PI / 2, spread: .9, up: 50, grav: -40, bounce: false, glow: true, life: .9 });
+    } });
+    this.fx.glow(e.x, e.y, 70, 0xfff2b0, 1600, .6);
+    e.breathTw = this.tweens.add({ targets: s, scaleY: s.scaleY * 1.035, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });   // 평화롭게 숨 쉰다
+    (this.restingBosses = this.restingBosses || []).push(e);
+  }
+  updateResting() {
+    const list = this.restingBosses;
+    if (!list || !list.length) return;
+    const p = this.player, now = this.time.now;
+    for (const e of list) {
+      const s = e.sprite;
+      if (!s || !s.scene || e.leaving) continue;
+      if (this.room !== e.restRoom) {   // 방을 나가면 자연으로 돌아간다
+        e.leaving = true;
+        this.tweens.add({ targets: s, alpha: 0, duration: 500, onComplete: () => { e.destroy(); this.enemies = this.enemies.filter(x => x !== e); } });
+        continue;
+      }
+      if (Math.abs(p.x - e.x) < 70 && Math.abs(p.y - e.y) < 70 && now - (e.thankAt || -9999) > 4000) {
+        e.thankAt = now;
+        this.fx.floatText(e.x, e.top - 10, `${e.name}: (고마워… 이제 괜찮아)`, '#ffe8b0', 9);
+        this.heartPop(e.x, e.top - 4, false);
+        Sfx.play('purify');
+      }
+    }
+    this.restingBosses = list.filter(e => e.sprite && e.sprite.scene && !e.leaving);
   }
 
   // ---------------- 안전 구역 결계 ----------------
@@ -1359,6 +1569,7 @@ export default class GameScene extends Phaser.Scene {
   // 아레나 보스: 방의 보스 키 (중간 보스 · 지방 최종 보스 · 히든 전설). 날아다니는 보스는 공중에서
   // 아레나 보스전 시작. 이어 싸우는 순서(chain): prelude(레드의 포켓몬들) → 방 보스 → then(디아루가 → 펄기아)
   startBoss(room) {
+    if (this.player) this.player.rebornUsed = false;   // 칠색조의 무지개 코어: 보스전마다 부활 1번
     const key = room.boss && BOSSES[room.boss] ? room.boss : 'mewtwo', def = BOSSES[key];
     const solo = this.test && !this.testChain;   // 테스트룸: 고른 보스 하나만 (이어 싸우기를 켜면 본편처럼 앞뒤 보스까지)
     const list = solo ? [key] : [...(def.prelude || []), key];
@@ -1378,6 +1589,7 @@ export default class GameScene extends Phaser.Scene {
     const ent = solo && first.entrance;   // 테스트룸에서 바로 고른 펄기아 · 무한다이노: 등장 연출부터
     if (ent === 'shatter') { this.spaceShatter(room); this.time.delayedCall(1200, () => this.beginBoss(list[0], room, room.cx + 80)); return; }
     if (ent === 'abyss') { this.abyssRise(room); this.time.delayedCall(1700, () => this.beginBoss(list[0], room, room.cx)); return; }
+    if (!tk && this.bossIntro(list[0], room)) return;   // 보스 고유 등장 연출 (뮤츠 배양 캡슐 · 칠색조 강하 · 차원 균열 · 그림자 늪 · 3성수 낙하)
     this.beginBoss(list[0], room, room.right - 70);
   }
   beginBoss(key, room, x) {
@@ -1488,6 +1700,7 @@ export default class GameScene extends Phaser.Scene {
     const joinedBy = e.boss && Save.unlockByBoss(e.bossKey);   // 전설 보스 정화 → 그 전설이 플레이어블로 합류 (한카리아스 → 딥상어동 계열)
     if (joinedBy) this.time.delayedCall(2800, () => this.announceJoin([joinedBy]));
     if (e.boss) this.dropFormItem(e);
+    if (e.boss && coreOfBoss(e.bossKey)) this.time.delayedCall(1300, () => { if (this.level) this.spawnPickup('item', e.x, e.y - 14, coreOfBoss(e.bossKey)); });   // 보스의 코어 100% (짝 보스 · 이어 싸우기도 한 마리마다)
     if (e.boss) { this.bossDefeated(e); return; }
     if (e.elite && this.stageIdx === 2 && this.player.quests && this.player.quests.zTrial === 1) {   // 호연의 시련: 엘리트 수호자를 넘었다 → 루네시티 시련 캡틴에게
       this.player.quests.zTrial = 2;
@@ -1558,7 +1771,7 @@ export default class GameScene extends Phaser.Scene {
       Sfx.play(big ? 'unlock' : 'purify');
     });
     // ④ 몬스터볼 빛줄기로 귀환
-    this.time.delayedCall(T.beam, () => this.recallBeam(e, T.end - T.beam));
+    this.time.delayedCall(T.beam, () => (big && !this.test ? this.restBoss(e) : this.recallBeam(e, T.end - T.beam)));   // 보스: 정화된 모습으로 그 자리에 머문다
   }
 
   // 안도의 하트가 톡 튀어나와 떠오르고, 양옆에서 반짝임이 터진다
@@ -1612,8 +1825,8 @@ export default class GameScene extends Phaser.Scene {
       else if (L.end) this.time.delayedCall(1400, () => tr.say(L.end));
     }
     this.events.emit('boss', null);
-    const drop = final ? (this.stageIdx === DROPS.core ? 'core' : this.stageIdx === DROPS.megastone ? 'megastone' : null) : null;
-    const sub = drop === 'core' ? '정신을 되찾았다 · 사이코 에너지가 응축된 「뮤츠의 코어」를 남겼다' : drop === 'megastone' ? '정신을 되찾았다 · 메가스톤이 빛난다' : hidden ? '전설이 깨어났다 · 전설의 기술 카드와 메가스톤을 남겼다' : '정신을 되찾았다';
+    const drop = final ? (this.stageIdx === DROPS.megastone ? 'megastone' : null) : null;
+    const sub = drop === 'megastone' ? '정신을 되찾았다 · 메가스톤이 빛난다' : hidden ? '전설이 깨어났다 · 전설의 기술 카드와 메가스톤을 남겼다' : '정신을 되찾았다';
     this.events.emit('banner', `${boss.name} 정화!`, sub);
     this.fx.hitStop(220);
     for (let k = 0; k < 3; k++) this.time.delayedCall(k * 160, () => { this.fx.ring(boss.x + rand(-20, 20), boss.y + rand(-20, 20), 40 + k * 10, 0xe0b0ff, 300); Sfx.play('boom'); });   // 껍질에 금이 가는 박자
@@ -1621,8 +1834,7 @@ export default class GameScene extends Phaser.Scene {
     this.time.delayedCall(700, () => {
       this.setGates(room, true);
       this.unlockArena();
-      if (drop === 'core') this.spawnPickup('item', boss.x, boss.y - 10, 'mewtwo_core');   // 뮤츠: 전설 유물 100%
-      else if (drop) this.spawnPickup(drop, boss.x, boss.y - 10);
+      if (drop) this.spawnPickup(drop, boss.x, boss.y - 10);
       if (hidden) this.spawnPickup('megastone', boss.x, boss.y - 24);   // 숨겨진 심연의 균열: 다른 포켓몬용 메가스톤
       if (Math.random() < ITEM_DROP.boss) this.spawnPickup('item', boss.x + 14, boss.y - 10, pick(RANDOM_ITEM_KEYS));   // 보스는 강화 아이템 확정
       if (hidden) { this.spawnPickup('item', boss.x - 14, boss.y - 10, pick(RANDOM_ITEM_KEYS)); this.time.delayedCall(1500, () => this.openLegendCards()); }
