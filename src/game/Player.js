@@ -184,8 +184,9 @@ export class Player extends Actor {
     const meta = this.scene.registry.get('spriteMeta'), k = this.form(m).key;
     return meta[k] && meta[k].hasSprite ? k : m.key;
   }
-  // HP_SCALE: 상처약 퀵슬롯이 생겨 플레이어블 포켓몬 전체의 기본 최대 체력을 15% 낮췄다 (기존 × 0.85 · 반올림)
-  maxHpOf(m) { return Math.round(Math.round(m.sp.hp * HP_SCALE) * this.stageBonus * TIERS[this.tierOf(m)].hp * this.statOf('hp', m) * ((m.mods && m.mods.hpMul) || 1)); }
+  // HP_SCALE: 상처약 퀵슬롯이 생겨 플레이어블 포켓몬 전체의 기본 최대 체력을 15% 낮췄다 (기존 × 0.85)
+  //  최대 체력은 늘 5 단위로 맞춘다 (가장 가까운 5의 배수 · 최소 5)
+  maxHpOf(m) { return Math.max(5, Math.round(m.sp.hp * HP_SCALE * this.stageBonus * TIERS[this.tierOf(m)].hp * this.statOf('hp', m) * ((m.mods && m.mods.hpMul) || 1) / 5) * 5); }
 
   visualKey() {
     const meta = this.scene.registry.get('spriteMeta');

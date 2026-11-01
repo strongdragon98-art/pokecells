@@ -249,7 +249,7 @@ export default class UIScene extends Phaser.Scene {
     // ── 피격 비네팅: 맞는 순간 화면 가장자리가 붉게 번쩍였다 빠진다 (피격음과 같은 순간 · 체력이 25% 아래면 은은하게 맥박)
     this.hurtVig = this.add.image(320, 180, redVignette(this)).setDisplaySize(GAME_W, GAME_H).setDepth(19).setAlpha(0);
     this.hurtK = 0;
-    // ── 저체력 경고: 출전 포켓몬 체력 20% 미만이면 가장자리만 은은하게 숨 쉬듯 (alpha 0.18 ~ 0.28) · 회복하면 부드럽게 사라진다
+    // ── 저체력 경고: 출전 포켓몬 체력 20% 미만이면 가장자리만 은은하게 숨 쉬듯 (alpha 0.25 ~ 0.37) · 회복하면 부드럽게 사라진다
     this.lowVig = this.add.image(320, 180, lowHpVignette(this)).setDisplaySize(GAME_W, GAME_H).setDepth(18.9).setAlpha(0);
     this.lowK = 0;
 
@@ -435,10 +435,10 @@ export default class UIScene extends Phaser.Scene {
     // 피격 비네팅: 번쩍 → 0.4초 동안 빠진다
     this.hurtK = Math.max(0, this.hurtK - dt * 2.4);
     this.hurtVig.setAlpha(Math.min(1, this.hurtK));
-    // 저체력 경고 (20% 미만): 켜질 땐 0.5초 · 꺼질 땐 0.35초에 걸쳐 부드럽게 · 심장 박동처럼 1.2초 주기 사인 맥동
+    // 저체력 경고 (20% 미만): 켜질 땐 0.5초 · 꺼질 땐 0.35초에 걸쳐 부드럽게 · 심장 박동처럼 1.2초 주기 사인 맥동 (alpha 0.25 ~ 0.37)
     const lowHp = m.alive && !gs.overlay && m.hp < m.maxhp * .2;
     this.lowK = lowHp ? Math.min(1, this.lowK + dt * 2) : Math.max(0, this.lowK - dt * 2.8);
-    this.lowVig.setAlpha(this.lowK * (.23 + Math.sin(time / 1200 * Math.PI * 2) * .05));
+    this.lowVig.setAlpha(this.lowK * (.31 + Math.sin(time / 1200 * Math.PI * 2) * .06));
 
     // ===== 그릇: 출전 포켓몬 + 진화 경험치 액체 (3단이면 가득, 메가면 분홍) =====
     const pk = p.portraitKey();
