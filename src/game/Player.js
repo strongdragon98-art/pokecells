@@ -59,10 +59,10 @@ const CHARGE_SHOT = [null,
   { r: 12.6, mul: 4, speed: 460, life: 1, hits: 4, boom: { r: 58, mul: 2.5 }, sfx: 'cshot2', shake: .013 },
   { r: 21, mul: 6.5, speed: 560, life: 1.25, hits: 5, ghost: true, boom: { r: 104, mul: 4.5 }, sfx: 'cshot3', shake: .024 }];
 const CHG_FAST = [1, .65, .52, .4];   // 고속 축전 코일 장 수 → 차징 시간 배율 (-35% · -48% · -60%)
-// 평타(Z 연타) 3타 콤보 리듬: 템포를 늦추고(동작 시간 ×COMBO_TEMPO · 공격 속도 약 -26%) 한 방을 키운다 (기본 ×1.35 · 1타 1 → 2타 1.2 → 3타 1.6)
+// 평타(Z 연타) 3타 콤보 리듬: 템포를 늦추고(동작 시간 ×COMBO_TEMPO · 공격 속도 약 -33%) 한 방을 키운다 (기본 ×1.35 · 1타 1 → 2타 1.2 → 3타 1.6)
 //  3타 피니시 뒤 COMBO_RECOVER 초 숨 고르기 (대시 · 점프 · X · C · 메가 · Z기술 입력으로 즉시 캔슬)
-const COMBO_TEMPO = 1.35, COMBO_DMG = 1.35, COMBO_STEP = [1, 1.2, 1.6], COMBO_RECOVER = .42;
-// 평타 맞받아치기 패링: 근접형은 휘두르기 시작 PARRY_WIN 초 동안 앞쪽 타격 범위 · 원거리형은 탄을 쏘는 순간부터 PARRY_WIN 초 동안 몸 둘레 PULSE_R px 충격파
+const COMBO_TEMPO = 1.5, COMBO_DMG = 1.35, COMBO_STEP = [1, 1.2, 1.6], COMBO_RECOVER = .42;
+// 평타 맞받아치기 패링 (3타 피니시에만): 근접형은 휘두르기 시작 PARRY_WIN 초 동안 앞쪽 타격 범위 · 원거리형은 탄을 쏘는 순간부터 PARRY_WIN 초 동안 몸 둘레 PULSE_R px 충격파
 //  성공하면 피해 무효 + 0.3초 무적 · 투사체는 반사(2배 속도 · 200%) · 근접 공격은 상대 경직(보스 그로기 +25) + X·C·필살기 쿨타임 -1.5초 · 후딜레이 초기화
 //  같은 패링은 PARRY_CD 초에 한 번 (Z 연타로 연속 패링 방지)
 export const PARRY_WIN = .15, PULSE_R = 75, PARRY_CD = .6;
@@ -822,7 +822,7 @@ export class Player extends Actor {
   //  원거리형인지는 그 평타가 탄을 쐈는지로 안다 (Combat.spawnProjectile 이 a.pulseAt 을 적는다 — 한 기술 안에서 근접 2타 + 원거리 3타도 따로 판정)
   parryZone() {
     const a = this.action;
-    if (!a || !a.comboStep || this.parryCd > 0) return null;
+    if (!a || !a.comboStep || !a.finisher || this.parryCd > 0) return null;   // 1 · 2타는 패링하지 않는다
     if (a.pulseAt != null) return a.t - a.pulseAt <= PARRY_WIN ? { ranged: true, x: this.x, y: this.y, r: PULSE_R } : null;
     if (a.t > PARRY_WIN) return null;
     const f = this.face, reach = 38 * this.mods.sizeMul * (this.T.size || 1);
@@ -838,6 +838,7 @@ export class Player extends Actor {
     const a = this.action, sc = this.scene;
     if (!a || !a.comboStep || a.pulseAt != null) return;
     a.pulseAt = a.t;
+    if (!a.finisher) return;   // 충격파 고리(패링 판정)는 3타에만
     const col = typeColor(SKILLS[this.skillId('z')].type), g = sc.add.graphics().setDepth(23).setBlendMode(Phaser.BlendModes.ADD);
     const ring = { r: 34 };
     sc.tweens.add({ targets: ring, r: PULSE_R, duration: PARRY_WIN * 1000, ease: 'Quad.easeOut', onUpdate: () => { if (!g.scene) return; const k = (ring.r - 34) / (PULSE_R - 34); g.clear().lineStyle(2, col, .4 * (1 - k)).strokeCircle(this.x, this.y, ring.r).lineStyle(1, 0xffffff, .3 * (1 - k)).strokeCircle(this.x, this.y, ring.r - 3); }, onComplete: () => g.destroy() });

@@ -297,7 +297,7 @@ export class Combat {
         this.killProj(q, i);
       }
     }
-    this.clashProjectiles();
+    // 투사체끼리 부딪혀 사라지던 규칙(clashProjectiles)은 껐다 — 적 탄은 평타 3타 패링으로 쳐낸다 (Player.parryZone)
   }
 
   // ---------------- 투사체끼리 부딪힘 (플레이어 쪽 ↔ 적 쪽) ----------------
