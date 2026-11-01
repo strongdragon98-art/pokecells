@@ -9,7 +9,7 @@ import { SKILLS, SPECIES, TIERS, EVO_EXP, TAGS, DEX_ORDER, UNLOCKABLE, UNLOCK_KI
 import { ITEMS, MAX_EQUIP } from '../data/items.js';
 import { STAGES } from '../data/stages.js';
 import { TYPES, typeName, typeColor, typeMultiplier, matchups } from '../data/types.js';
-import { UPGRADES, GRADE_STYLE, GRADES, PERK_TYPE, BOOSTS, BOOST_MAX, boostCard } from '../data/tm.js';
+import { UPGRADES, GRADE_STYLE, GRADES, PERK_TYPE, BOOSTS, BOOST_MAX, boostCard, lvMul, promoteGrade, CARD_MAX_LV } from '../data/tm.js';
 import { PERKS } from '../game/Perks.js';
 import { MOVE_DB } from '../data/MoveDatabase.js';
 import { usesStone, stoneName, zTypeOf, crystalName } from '../data/gear.js';
@@ -360,14 +360,15 @@ export const GameMenu = {
   ownedCards(p) {
     const out = [], rank = g => GRADES.indexOf(g);
     p.members.forEach((m, mi) => {
-      for (const [k, n] of Object.entries(m.perks || {})) if (PERKS[k] && n > 0) { const pk = PERKS[k]; out.push({ mi, m, n, card: { kind: 'perk', id: k, name: pk.name, grade: pk.grade, desc: pk.desc, cat: pk.cat, type: PERK_TYPE[k] || 'normal' } }); }
+      for (const [k, n] of Object.entries(m.perks || {})) if (PERKS[k] && n > 0) { const pk = PERKS[k]; out.push({ mi, m, n, card: { kind: 'perk', id: k, name: (n - 1 >= CARD_MAX_LV ? '[★초월] ' : '') + pk.name, grade: promoteGrade(pk.grade, n - 1), desc: pk.desc, cat: pk.cat, type: PERK_TYPE[k] || 'normal' } }); }
       for (const u of m.ups || []) if (UPGRADES[u] && SKILLS[UPGRADES[u].skill]) { const U = UPGRADES[u]; out.push({ mi, m, n: 1, card: { kind: 'up', id: u, name: U.name, grade: U.grade || '레어', desc: U.desc, skill: U.skill, type: SKILLS[U.skill].type, cat: '기술 강화' } }); }
-      for (const [id, gr] of Object.entries(m.cardGrade || {})) if (SKILLS[id]) out.push({ mi, m, n: 1, card: { kind: 'move', id, name: SKILLS[id].name, grade: gr, desc: SKILLS[id].desc, type: SKILLS[id].type, cd: SKILLS[id].cd, cat: '기술 카드' } });
+      for (const [id, gr] of Object.entries(m.cardGrade || {})) if (SKILLS[id]) out.push({ mi, m, n: 1 + ((m.cardLv || {})['move:' + id] || 0), card: { kind: 'move', id, name: (((m.cardLv || {})['move:' + id] || 0) >= CARD_MAX_LV ? '[★초월] ' : '') + SKILLS[id].name, grade: gr, desc: SKILLS[id].desc, type: SKILLS[id].type, cd: SKILLS[id].cd, cat: '기술 카드' } });
       const groups = new Map();   // 스킬 강화 카드: 같은 기술 · 같은 갈래는 한 장으로 겹쳐 (등급은 가장 높은 것)
       for (const e of m.boostCards || []) {
         if (!BOOSTS[e.bk] || !SKILLS[e.skill]) continue;
         const k = e.skill + ':' + e.bk, q = groups.get(k) || { skill: e.skill, bk: e.bk, grade: e.grade, amt: 0, n: 0 };
-        q.amt += e.amt; q.n++; if (rank(e.grade) > rank(q.grade)) q.grade = e.grade;
+        const lv = e.lv || 0, eg = promoteGrade(e.grade, lv);   // 합성한 카드: 강화 단계만큼 수치 · 승급한 등급
+        q.amt += e.amt * lvMul(lv); q.n += 1 + lv; if (rank(eg) > rank(q.grade)) q.grade = eg;
         groups.set(k, q);
       }
       for (const q of groups.values()) {
@@ -384,7 +385,7 @@ export const GameMenu = {
     this.tmFace(face, c.card, c.m, CARD_W, CARD_H, false, { foot: `적용 중: ${p.formName(c.m)}` });
     if (c.n > 1) {
       ct.add(this.add.circle(CARD_W / 2 - 16, -CARD_H / 2 + 26, 13, 0x1a1008, .95).setStrokeStyle(1.6, HK.goldN, 1));
-      ct.add(hkText(this, CARD_W / 2 - 16, -CARD_H / 2 + 26, `×${c.n}`, 11, HK.gold, { bold: true, origin: .5 }));
+      ct.add(hkText(this, CARD_W / 2 - 16, -CARD_H / 2 + 26, c.n - 1 >= CARD_MAX_LV ? '★' : `+${c.n - 1}`, 11, HK.gold, { bold: true, origin: .5 }));   // 합성 강화 단계 (+1 · +2 · ★초월)
     }
     ct.add(this.add.image(-CARD_W / 2 + 18, -CARD_H / 2 + 48, roundPortrait(this, p.portraitKey(c.m))).setScale(.5));
     C.add(ct);
@@ -395,8 +396,8 @@ export const GameMenu = {
     const p = this.gs.player, card = c.card, lines = [];
     if (card.kind === 'boost') {
       const B = BOOSTS[card.bk], q = c.boost, tot = q.bk === 'power' || q.bk === 'wide' ? `+${Math.round(q.amt * 100)}%` : q.bk === 'haste' ? `-${Math.round(Math.min(.6, q.amt) * 100)}%` : `${Math.round(q.amt)}갈래`;
-      lines.push(`${B.icon} ${B.name}  ${c.n} / ${BOOST_MAX}장`, `누적 효과: ${SKILLS[card.skill].name} ${tot}`, card.slot ? `지금 ${card.slot.toUpperCase()} 자리에 장착 중` : '지금은 Z·X·C 에 없다 (다시 달면 효과가 살아난다)');
-    } else if (card.kind === 'perk') lines.push(`특성 카드 · ${card.cat}`, `중첩 ${c.n} / 최대 ${PERKS[card.id].max}`);
+      lines.push(`${B.icon} ${B.name}  강화 ${c.n - 1 >= CARD_MAX_LV ? '★MAX 초월' : `+${c.n - 1} / +${CARD_MAX_LV}`}`, `누적 효과: ${SKILLS[card.skill].name} ${tot}`, card.slot ? `지금 ${card.slot.toUpperCase()} 자리에 장착 중` : '지금은 Z·X·C 에 없다 (다시 달면 효과가 살아난다)');
+    } else if (card.kind === 'perk') lines.push(`특성 카드 · ${card.cat}`, `강화 ${c.n - 1 >= CARD_MAX_LV ? '★MAX 초월' : `+${c.n - 1}`} / 최대 +${Math.min(PERKS[card.id].max, CARD_MAX_LV + 1) - 1}`);
     else if (card.kind === 'up') lines.push('원작 개조 · 기술 강화', `대상 기술: ${SKILLS[card.skill].name}`);
     else {
       const power = MOVE_DB[card.id] && MOVE_DB[card.id].power, slot = ['z', 'x', 'c'].find(s => c.m.skills[s] === card.id);

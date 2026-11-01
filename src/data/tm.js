@@ -50,13 +50,77 @@ export const BOOSTS = {
   split: { name: '분열탄', icon: '✺', amt: { 레어: 2, 유니크: 3, 전설: 4 }, desc: (sk, a, ty) => `${sk}를 쓸 때마다 ${typeName(ty)} 유도탄 ${a}갈래가 함께 뻗어 나간다 (피해 45%)` }
 };
 const BOOST_W = { 레어: 62, 유니크: 29, 전설: 9 };
+// ---- 중복 카드 합성: 같은 카드를 또 뽑으면 장수를 늘리지 않고 한 장의 강화 단계(+1 · +2 · +3)를 올린다 ----
+//  강화 1단계마다 핵심 수치가 기본값의 60%씩 더 오른다 (lvMul) · +2 에 등급 한 단계 승급 · +3 = ★초월(MAX): 이름 앞 [★초월] · 홀로그램 · 특수 보너스 · 더는 기술머신에 나오지 않는다
+//  합성되는 카드: 기술 카드(기술머신으로 배운 기술) · 스킬 강화 카드(같은 기술 · 같은 갈래) · 특성 카드 (원작 개조 카드는 한 번뿐 · 숙련 카드는 몇 번이고)
+export const CARD_MAX_LV = 3, LV_GAIN = .6;
+export const lvMul = lv => 1 + LV_GAIN * Math.max(0, lv);
+export const lvTag = lv => lv >= CARD_MAX_LV ? '★MAX' : `+${lv}`;
+export const promoteGrade = (grade, lv) => lv >= 2 ? GRADES[Math.min(GRADES.length - 1, GRADES.indexOf(grade) + 1)] : grade;
+// ★초월 특수 보너스 (카드 앞면 · 합성 안내에 쓴다)
+export const MAX_BONUS = { move: '★초월: 유도탄 2갈래 추가 · 쿨타임 -15%', boost: '★초월: 유도탄 2갈래 추가 · 쿨타임 -10%', perk: '★초월: 이 포켓몬의 공격력 +10%' };
+// 포켓몬 m 이 이 카드를 이미 몇 강으로 가지고 있는가 (-1: 처음 · 0: 기본 · 1~3: 강화 단계)
+export function heldLv(m, card) {
+  if (!m || !card) return -1;
+  if (card.kind === 'boost') {
+    const es = (m.boostCards || []).filter(e => e.skill === card.skill && e.bk === card.bk);   // 예전 저장: 같은 카드가 여러 장으로 남아 있으면 장수만큼 단계로 친다
+    return es.length ? es.reduce((s, e) => s + (e.lv || 0) + 1, 0) - 1 : -1;
+  }
+  if (card.kind === 'move') return m.cardGrade && m.cardGrade[card.id] ? ((m.cardLv || {})['move:' + card.id] || 0) : -1;
+  if (card.kind === 'perk') { const n = (m.perks || {})[card.id] || 0; return n ? n - 1 : -1; }
+  return -1;
+}
+// 카드를 m 에게 줬을 때의 합성 미리보기 { from, to, grade, cmp } — 합성이 아니면 null
+//  cmp: 핵심 수치 비교 (기존 +25% ▶ 강화 후 +45% 🔺)
+export function mergePreview(m, card) {
+  const from = heldLv(m, card);
+  if (from < 0 || card.kind === 'up' || card.kind === 'mastery') return null;
+  const to = Math.min(CARD_MAX_LV, from + 1), pct = v => `${Math.round(v * 100)}%`;
+  let cmp = '', base = card.grade;
+  if (card.kind === 'boost') {
+    const e = (m.boostCards || []).find(q => q.skill === card.skill && q.bk === card.bk), a = e ? e.amt : card.amt;
+    base = e ? e.grade : card.grade;
+    cmp = card.bk === 'split' ? `(기존 ${Math.round(a * lvMul(from))}갈래 ▶ 강화 후 ${Math.round(a * lvMul(to))}갈래 🔺)`
+      : card.bk === 'haste' ? `(기존 -${pct(Math.min(.6, a * lvMul(from)))} ▶ 강화 후 -${pct(Math.min(.6, a * lvMul(to)))} 🔺)`
+      : `(기존 +${pct(a * lvMul(from))} ▶ 강화 후 +${pct(a * lvMul(to))} 🔺)`;
+  } else if (card.kind === 'move') {
+    base = moveGrade(card.id);
+    cmp = `(위력 기존 +${pct(LV_GAIN * from)} ▶ 강화 후 +${pct(LV_GAIN * to)} 🔺)`;
+  } else if (card.kind === 'perk') {
+    base = PERKS[card.id].grade;
+    cmp = `(효과 기존 ×${lvMul(from).toFixed(1)} ▶ 강화 후 ×${lvMul(to).toFixed(1)} 🔺)`;
+  }
+  return { from, to, grade: promoteGrade(base, to), cmp, max: to >= CARD_MAX_LV };
+}
+// 카드에 합성 미리보기를 입힌다: 등급(승급) · 이름([★초월]) · merge — 쓸 수 있는 포켓몬이 여럿이면 가장 낮은 단계 기준 (고를 때 포켓몬마다 따로 보여 준다)
+export function dressCard(p, card) {
+  const ms = (card.who || []).map(k => p.members.find(q => q.key === k)).filter(Boolean);
+  const pvs = ms.map(m => mergePreview(m, card)), pv = pvs.filter(Boolean).sort((a, b) => a.from - b.from)[0] || null;
+  if (!pv) return card;
+  card.merge = pv; card.baseName = card.baseName || card.name;
+  if (pvs.every(Boolean)) {   // 쓸 수 있는 모두에게 합성이면 승급 등급 · [★초월] 이름까지 카드에 (누구에겐 새 카드면 배지만)
+    card.grade = pv.grade;
+    if (pv.max && !card.name.startsWith('[★초월]')) card.name = '[★초월] ' + card.name;
+    if (card.kind === 'move') { card.dup = true; card.cat = '기술 카드 · 강화 합성'; }
+  } else card.mixed = true;
+  return card;
+}
+
 // 받은 스킬 강화 카드 목록 → 기술마다 누적 효과 { power, haste, wide, split, n: { 갈래: 장수 } }
-export function boostTotals(list) {
-  const out = {};
+//  cardLv: 기술 카드 강화 단계 { 'move:기술': 단계 } — 단계마다 위력 +60% · 범위 +25% · 쿨타임 -6% (★초월: 유도탄 2갈래 · 쿨타임 -15%)
+export function boostTotals(list, cardLv) {
+  const out = {}, at = id => out[id] || (out[id] = { power: 0, haste: 0, wide: 0, split: 0, n: {} });
   for (const e of list || []) {
     if (!BOOSTS[e.bk]) continue;
-    const b = out[e.skill] || (out[e.skill] = { power: 0, haste: 0, wide: 0, split: 0, n: {} });
-    b[e.bk] += e.amt; b.n[e.bk] = (b.n[e.bk] || 0) + 1;
+    const b = at(e.skill), lv = e.lv || 0;
+    b[e.bk] += e.amt * lvMul(lv); b.n[e.bk] = (b.n[e.bk] || 0) + 1 + lv;
+    if (lv >= CARD_MAX_LV) { b.split += 2; b.haste += .1; }
+  }
+  for (const [k, lv] of Object.entries(cardLv || {})) {
+    if (!k.startsWith('move:') || !lv) continue;
+    const b = at(k.slice(5));
+    b.power += LV_GAIN * lv; b.wide += .25 * lv; b.haste += .06 * lv;
+    if (lv >= CARD_MAX_LV) { b.split += 2; b.haste += .15; }
   }
   return out;
 }
@@ -157,9 +221,16 @@ function rollGrade() {
 
 // 파티 전체(p.members)가 지금 받을 수 있는 모든 카드 — 카드마다 쓸 수 있는 포켓몬 계열 키(who)를 단다
 function partyCandidates(p) {
-  const moveMap = new Map(), upMap = new Map(), boosts = [], perkWho = new Map();
+  const moveMap = new Map(), dupMap = new Map(), upMap = new Map(), boosts = [], perkWho = new Map();
   for (const m of p.members) {
     const types = p.typesOf(m), own = new Set(types), known = new Set([...Object.values(m.skills), ...(m.learned || [])]);   // 배웠다가 빼 둔 기술도 다시 나오지 않게
+    // 기술머신으로 배운 기술 카드를 또 뽑으면 합성 (+1 ~ +3 · ★초월이면 더는 안 나온다)
+    for (const id of Object.keys(m.cardGrade || {})) {
+      if (!SKILLS[id] || DASH_ONLY.has(id) || heldLv(m, { kind: 'move', id }) >= CARD_MAX_LV) continue;
+      let c = dupMap.get(id);
+      if (!c) dupMap.set(id, c = { kind: 'move', id, name: SKILLS[id].name, type: SKILLS[id].type, grade: moveGrade(id), desc: SKILLS[id].desc, cd: SKILLS[id].cd, cat: '기술 카드 · 강화 합성', dup: true, who: [] });
+      c.who.push(m.key);
+    }
     for (const id of learnableMoves([...own, ...(m.sp.types || [])], m.key)) {
       if (known.has(id)) continue;
       let c = moveMap.get(id);
@@ -173,19 +244,19 @@ function partyCandidates(p) {
       if (!c) upMap.set(id, c = { kind: 'up', id, name: u.name, type: SKILLS[u.skill].type, grade: u.grade, desc: u.desc, skill: u.skill, cat: '기술 강화', who: [] });
       c.who.push(m.key);
     }
-    const have = boostTotals(m.boostCards);
     for (const slot of ['z', 'x', 'c']) {
       const sid = m.skills[slot], sk = SKILLS[sid];
       if (!sk) continue;
       for (const bk of Object.keys(BOOSTS)) {
         if (BOOSTS[bk].cdOnly && !sk.cd) continue;   // 연타 기본기는 쿨타임이 없다
-        if (((have[sid] && have[sid].n[bk]) || 0) >= BOOST_MAX) continue;
+        if (heldLv(m, { kind: 'boost', skill: sid, bk }) >= CARD_MAX_LV) continue;   // ★초월 카드는 더 나오지 않는다
         boosts.push({ bk, skill: sid, slot, owner: m.key, who: [m.key], active: m === p.m });
       }
     }
-    for (const [id, pk] of Object.entries(PERKS)) if (((m.perks || {})[id] || 0) < pk.max) { if (!perkWho.has(id)) perkWho.set(id, []); perkWho.get(id).push(m.key); }
+    for (const [id, pk] of Object.entries(PERKS)) if (((m.perks || {})[id] || 0) < Math.min(pk.max, CARD_MAX_LV + 1)) { if (!perkWho.has(id)) perkWho.set(id, []); perkWho.get(id).push(m.key); }
   }
   const perks = [...perkWho].map(([id, who]) => { const pk = PERKS[id]; return { kind: 'perk', id, name: pk.name, type: PERK_TYPE[id] || 'normal', grade: pk.grade, desc: pk.desc, cat: pk.cat, who }; });
+  for (const [id, c] of dupMap) if (moveMap.has(id)) moveMap.get(id).who.push(...c.who); else moveMap.set(id, c);   // 누구에겐 새 기술 · 누구에겐 합성인 카드는 한 장으로 (고를 때 포켓몬마다 갈린다)
   return { moves: [...moveMap.values()], ups: [...upMap.values()], boosts, perks };
 }
 
@@ -218,7 +289,8 @@ export function rollCards(p, o = {}) {
     if (!list.length) return null;
     let r = Math.random() * list.reduce((s, b) => s + (b.active ? 2 : 1), 0), pick = list[0];
     for (const b of list) { if ((r -= b.active ? 2 : 1) < 0) { pick = b; break; } }
-    const g = grade || boostGrade(), c = Object.assign(boostCard({ owner: pick.owner, skill: pick.skill, bk: pick.bk, grade: g, amt: BOOSTS[pick.bk].amt[g] }, pick.slot), { who: pick.who });
+    const om = p.members.find(q => q.key === pick.owner), held = om && (om.boostCards || []).find(e => e.skill === pick.skill && e.bk === pick.bk);   // 이미 가진 카드면 그 카드의 등급 · 수치로 (합성)
+    const g = held ? held.grade : grade || boostGrade(), c = Object.assign(boostCard({ owner: pick.owner, skill: pick.skill, bk: pick.bk, grade: g, amt: held ? held.amt : BOOSTS[pick.bk].amt[g] }, pick.slot), { who: pick.who });
     used.add(key(c)); out.push(c);
     return c;
   };
@@ -242,11 +314,26 @@ export function rollCards(p, o = {}) {
     if (!got && !takeMove() && !takeEnhance()) break;
   }
   for (const [id, c] of Object.entries(MASTERY)) if (out.length < 3) out.push({ kind: 'mastery', id, name: c.name, type: 'normal', grade: c.grade, desc: c.desc, cat: '숙련', who: all });
-  return shuffle(out).slice(0, 3);
+  return shuffle(out).slice(0, 3).map(c => dressCard(p, c));
 }
 
 // 고른 카드 적용. move 는 바꿀 슬롯(z·x·c)이 필요하다. 바뀐 내용을 글로 돌려준다
 export function applyCard(player, m, card, slot) {
+  const from = heldLv(m, card);
+  if (from >= 0 && (card.kind === 'move' || card.kind === 'boost')) {   // 중복 카드 합성: 한 장으로 합치고 강화 단계 +1 (+2 에 등급 승급 · +3 ★초월)
+    const to = Math.min(CARD_MAX_LV, from + 1);
+    if (card.kind === 'move') {
+      (m.cardLv = m.cardLv || {})['move:' + card.id] = to;
+      m.cardGrade[card.id] = promoteGrade(moveGrade(card.id), to);   // 승급한 등급으로 시전 연출도 바뀐다 (Player.gradeCast)
+    } else {
+      const es = m.boostCards.filter(e => e.skill === card.skill && e.bk === card.bk), keep = es[0];
+      m.boostCards = m.boostCards.filter(e => !es.includes(e) || e === keep);   // 예전 저장의 여러 장도 한 장으로
+      keep.lv = to; keep.promoted = promoteGrade(keep.grade, to);
+    }
+    m.boost = boostTotals(m.boostCards, m.cardLv);
+    const nm = card.baseName || card.name;
+    return `${nm} 강화 합성 ${lvTag(from)} → ${lvTag(to)}${to === 2 ? ' · 등급 승급!' : ''}${to >= CARD_MAX_LV ? ' · ' + MAX_BONUS[card.kind] : ''}`;
+  }
   if (card.kind === 'move') {
     const old = SKILLS[m.skills[slot]].name;
     m.skills[slot] = card.id; m.cd[slot] = 0;
@@ -256,18 +343,19 @@ export function applyCard(player, m, card, slot) {
   }
   if (card.kind === 'up') { m.ups.add(card.id); return card.name; }
   if (card.kind === 'boost') {
-    (m.boostCards = m.boostCards || []).push({ skill: card.skill, bk: card.bk, grade: card.grade, amt: card.amt });
-    m.boost = boostTotals(m.boostCards);
+    (m.boostCards = m.boostCards || []).push({ skill: card.skill, bk: card.bk, grade: card.grade, amt: card.amt, lv: 0 });
+    m.boost = boostTotals(m.boostCards, m.cardLv);
     return card.desc;
   }
   if (card.kind === 'perk') {
     const pk = PERKS[card.id];
     m.perks = m.perks || {};
     m.perks[card.id] = (m.perks[card.id] || 0) + 1;
+    const n = m.perks[card.id], lv = n - 1;
+    if (lv >= CARD_MAX_LV) m.atkBonus = (m.atkBonus || 1) * 1.1;   // ★초월 보너스
     player.refreshMods(m);
     if (pk.onGet) pk.onGet(player, m);
-    const n = m.perks[card.id];
-    return n > 1 ? `${pk.desc} (×${n})` : pk.desc;
+    return n > 1 ? `${pk.name} 강화 합성 ${lvTag(lv - 1)} → ${lvTag(lv)}${lv === 2 ? ' · 등급 승급!' : ''}${lv >= CARD_MAX_LV ? ' · ' + MAX_BONUS.perk : ''} · ${pk.desc} (효과 ×${lvMul(lv).toFixed(1)})` : pk.desc;
   }
   MASTERY[card.id].apply(m, player);
   return card.name;

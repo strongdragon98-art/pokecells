@@ -1019,7 +1019,8 @@ export default class GameScene extends Phaser.Scene {
     this.tmActive = null;
     this.toggleOverlay('tm');
     const who = p.formName(m);
-    this.events.emit('banner', card.kind === 'move' ? `${card.name} 습득!` : card.name, `${who} · ${msg}`);
+    const merged = msg.includes('강화 합성');   // 중복 카드 합성 (data/tm.js applyCard)
+    this.events.emit('banner', merged ? `🔨 ${card.baseName || card.name} 강화 합성!` : card.kind === 'move' ? `${card.name} 습득!` : card.name, `${who} · ${msg}`);
     this.fx.ring(p.x, p.y, 40, 0x9ad8ff, 420); this.fx.glow(p.x, p.y, 40, 0x9ad8ff, 500, 1);
     this.fx.burst(p.x, p.y, [0x9ad8ff, 0xffffff, 0xc8e4ff], 24, 140, { glow: true, up: 80 });
     Sfx.play('unlock');

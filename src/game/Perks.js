@@ -79,8 +79,8 @@ export function perkMods(perks = {}) {
     for (const [k, v] of Object.entries(pk.mods)) {
       if (typeof v === 'boolean') out[k] = out[k] || v;
       else if (MAXED.has(k)) out[k] = Math.max(out[k] || 0, v);
-      else if (MUL.has(k)) out[k] = (out[k] ?? 1) * Math.pow(v, n);
-      else out[k] = (out[k] || 0) + v * n;
+      else if (MUL.has(k)) out[k] = (out[k] ?? 1) * (1 + (v - 1) * (1 + .6 * (n - 1)));   // 중복 카드 합성: 강화 1단계마다 기본 효과의 60% 씩 더 (data/tm.js lvMul)
+      else out[k] = (out[k] || 0) + v * (1 + .6 * (n - 1));
     }
   }
   return out;

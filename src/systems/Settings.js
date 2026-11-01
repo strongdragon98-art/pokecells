@@ -20,7 +20,7 @@ export const DEFAULT_KEYS = {
 };
 // 고정 키 (바꿀 수 없다): 1~3 포켓몬 · Esc/P 일시정지(창 닫기) · N 소리 · F1~F12 디버그·브라우저
 export const FIXED_KEYS = new Set(['ESC', 'P', 'N', 'ONE', 'TWO', 'THREE', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12']);
-export const SETTING_DEFAULTS = { volume: .8, sound: true, shakeHit: 1, shakeHurt: 1, uiScale: 1, padAlpha: 1, hudStyle: 'A', perf: 'auto', keys: DEFAULT_KEYS };   // perf: 그래픽 최적화 auto/normal/saver (systems/Perf.js)
+export const SETTING_DEFAULTS = { volume: .8, sound: true, shakeHit: 1, shakeHurt: 1, uiScale: 1, padAlpha: 1, hudStyle: 'A', perf: 'auto', tmView: '2d', keys: DEFAULT_KEYS };   // tmView: 기술머신 포켓몬 고르기 창의 모습 '2d' 일러스트 초상화 · '3d' 입체 홀로그램 턴테이블   // perf: 그래픽 최적화 auto/normal/saver (systems/Perf.js)
 
 function load() {
   try {
