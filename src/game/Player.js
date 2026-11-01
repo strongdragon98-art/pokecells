@@ -868,7 +868,7 @@ export class Player extends Actor {
     const sc = this.scene;
     this.parryCd = PARRY_CD;
     sc.fx.burst(this.x + this.face * 20, this.y - 2, [0x8a9ab0, 0xbfe6ff], 12, 110, { glow: true, life: .35 });
-    sc.fx.floatText(this.x, this.b.y - 18, '헛방!', '#9aa6b8', 9);
+    sc.fx.floatText(this.x, this.b.y - 18, 'MISS', '#9aa6b8', 10);
     Sfx.play('crack');
     this.startAction({ dur: WHIFF_T, mm: 0, noDash: true, lockFace: 'hard', anim: 'Idle', whiff: true }, 'whiff');
     this.squash(.85, 1.1);
