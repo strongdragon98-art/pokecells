@@ -18,7 +18,8 @@ import { MapView, VP } from '../systems/MapView.js';
 import { TouchControls } from '../systems/TouchControls.js';
 import { tagIcon, roundPortrait, itemArt, hiTex, dashIcon } from '../systems/Textures.js';
 import { CHG_SHOW, CHG_AT } from '../game/Player.js';
-import { megaUltOf, megaSymbol, MEGA_ULT_CD } from '../game/Spectacle.js';
+import { megaUltOf, megaSymbol, MEGA_ULT_CD, MEGA_ULT } from '../game/Spectacle.js';
+import { CHARGE_SIG } from '../game/Signature.js';
 import { npcArt } from '../game/Npc.js';
 import { bossHome } from '../game/TestRoom.js';
 import { Save } from '../systems/Save.js';
@@ -236,7 +237,7 @@ export default class UIScene extends Phaser.Scene {
       area: a => this.areaTitle(a),
       overlay: kind => kind === 'map' ? this.showMap() : kind === 'inv' ? (this.invMember = null, this.showInv()) :   // 가방은 열 때마다 출전 중인 포켓몬부터
          kind === 'tm' ? (this.tmSlot = false, this.showTM())
-        : kind === 'taxi' ? this.showTaxi() : kind === 'talk' ? this.showTalk() : kind === 'debug' ? this.showDebug() : kind === 'test' ? this.showTest() : kind === 'settings' ? this.showSettings(0) : kind === 'box' ? this.showBox() : this.clearOverlay(),
+        : kind === 'taxi' ? this.showTaxi() : kind === 'talk' ? this.showTalk() : kind === 'debug' ? this.showDebug() : kind === 'test' ? this.showTest() : kind === 'settings' ? this.showSettings(0) : kind === 'box' ? this.showBox() : kind === 'join' ? this.showJoin() : this.clearOverlay(),
       lore: s => this.showLore(s),
       hurt: k => { this.hurtK = Math.max(this.hurtK, k); },
       say: (who, s) => this.showLore(s, who),   // 트레이너 대사 (난천 · 레드)
@@ -552,7 +553,7 @@ export default class UIScene extends Phaser.Scene {
     if (this.offSettings) { this.offSettings(); this.offSettings = null; }
     if (this.keyWait) { this.keyWait = null; if (this.gs) this.gs.keyCapture = false; }
     this.hideTypeTip();
-    this.tweens.killTweensOf(this.overlay.list);
+    this.tweens.killTweensOf(this.overlay.list); this.tweens.killTweensOf(this.overlay); this.overlay.setAlpha(1);   // 쇼케이스 창의 등장 트윈이 남지 않게
     this.overlay.removeAll(true); this.gOver.clear(); this.overlay.setVisible(false); this.menu = null;
     this.overlayMode = null; this.tmBusy = false; this.boxPanel = null; this.testPanel = null;
     if (this.talkMask) { this.talkMask.destroy(); this.talkMask = null; }
@@ -1830,8 +1831,8 @@ export default class UIScene extends Phaser.Scene {
     const gs = this.gs, p = gs.player, g = this.gOver, L = this.overlay.setVisible(true);
     g.fillStyle(0x05040a, .95); g.fillRect(0, 0, GAME_W, GAME_H);
     L.add(hkText(this, 320, 12, '포켓몬 보관함', 14, HK.ivory, { ls: 4, bold: true, origin: [.5, 0], glow: true }));
-    L.add(hkText(this, 320, 32, '새로 데려온 포켓몬은 1단부터 · 떠나는 포켓몬의 장착 아이템은 가방으로 · 메가스톤·Z크리스탈은 파티 공용', 8.5, HK.dim, { origin: [.5, 0] }));
-    if (this.boxSlot === undefined || this.boxSlot > p.members.length) this.boxSlot = p.idx;
+    L.add(hkText(this, 320, 32, '떠나는 포켓몬은 보관함에서 쉰다 — 진화 · 아이템 · 기술 그대로, 다시 데려오면 이어서  ·  처음 데려오는 포켓몬만 1단부터', 8.5, HK.dim, { origin: [.5, 0] }));
+    if (this.boxSlot === undefined || this.boxSlot > p.members.length) this.boxSlot = p.members.length < 3 ? p.members.length : p.idx;   // 빈 자리가 있으면 거기부터
     const bar = this.add.container(0, 0); L.add(bar);
     const drawBar = () => {
       bar.removeAll(true);
@@ -1857,8 +1858,10 @@ export default class UIScene extends Phaser.Scene {
       onToggle: k => {
         if (!Save.isUnlocked(k)) { Sfx.play('deny'); this.toast('아직 합류하지 않은 포켓몬이다'); return; }
         if (p.members.some(m => m.key === k)) { Sfx.play('deny'); this.toast('이미 파티에 있다'); return; }
+        const old = p.members[this.boxSlot], back = !!p.stored[k];
         p.replaceMember(this.boxSlot, k); Save.setParty(p.members.map(m => m.key));
-        Sfx.play('swap'); this.toast(`${SPECIES[k].name}이(가) ${this.boxSlot + 1}번 자리에 들어왔다!`);
+        const nm = p.formName(p.members[this.boxSlot]);
+        Sfx.play('swap'); this.toast(`${nm}이(가) ${back ? '보관함에서 돌아와 ' : ''}${this.boxSlot + 1}번 자리에 들어왔다!${old ? `  ·  ${p.formName(old)}은(는) 보관함에서 쉰다 (진화·아이템 그대로)` : ''}`);
         this.boxPanel.build(); drawBar();
       }
     });
@@ -1868,7 +1871,128 @@ export default class UIScene extends Phaser.Scene {
     this.overlayMode = 'box';
   }
 
+  // ================= ✨ 정화 완료 쇼케이스: 새로 합류한 동료 (GameScene.queueJoin) =================
+  //  게임은 멈춘 채(물리 · AI · 타이머) 흐려진 화면 위에 금빛·청록빛 정화 입자가 흩날리는 창을 띄운다
+  //  왼쪽: 움직이는 큼직한 도트 · 이름 · 속성 · 전투 스타일 · 진화 흐름(1단 ➔ 2단 ➔ 3단 ➔ 메가)
+  //  오른쪽: 고유 기술 카드 (Z 연타·차징 · X · C · V 메가진화 · R 메가 필살기)
+  //  확인 버튼(Enter · Space · Z · 터치 · Esc)을 눌러야 닫히고 게임이 그 자리에서 이어진다
+  showJoin() {
+    this.clearOverlay();
+    const gs = this.gs, cur = gs.joinCur;
+    if (!cur) { gs.closeJoin(); return; }
+    const k = cur.k, sp = SPECIES[k], g = this.gOver, L = this.overlay.setVisible(true);
+    const PX = 34, PY = 12, PW = 572, PH = 336, gold = 0xffd27a, teal = 0x6af0d8;
+    g.fillStyle(0x05040a, .72); g.fillRect(0, 0, GAME_W, GAME_H);
+    glassPanel(g, PX, PY, PW, PH, { alpha: .95, border: gold, borderAlpha: .55, r: 10 });
+    g.lineStyle(1, teal, .22); g.strokeRoundedRect(PX + 4, PY + 4, PW - 8, PH - 8, 8);
+
+    // 정화 입자: 금빛·청록빛 알갱이가 천천히 피어올라 반짝인다
+    for (let i = 0; i < 26; i++) {
+      const s = this.add.image(PX + 12 + Math.random() * (PW - 24), PY + PH - 10, 'sparkle').setBlendMode(ADD).setTint(i % 2 ? gold : teal).setScale(.3 + Math.random() * .5).setAlpha(0);
+      L.add(s);
+      this.tweens.add({ targets: s, y: PY + 20 + Math.random() * 80, alpha: { from: .9, to: 0 }, angle: 180, duration: 2600 + Math.random() * 2200, delay: Math.random() * 2400, repeat: -1 });
+    }
+
+    // 제목
+    L.add(hkText(this, 320, PY + 18, '✨ PURIFICATION COMPLETE — 정화 성공! 새로운 동료 합류', 13, '#ffe6a8', { bold: true, origin: .5, glow: true, glowColor: 'rgba(255,210,122,0.75)' }));
+    L.add(hkText(this, 320, PY + 34, cur.kind === 'dex' ? `세뇌가 완전히 풀린 ${sp.name} 계열이 도감에 등록되고 동료가 되었다` : `${sp.name}의 영혼이 정화되어 동료로 합류했다`, 9, HK.dim, { origin: .5 }));
+    L.add(fadeLine(this, 320, PY + 44, 520, .45));
+
+    // ── 왼쪽: 쇼케이스 도트
+    const CX = 150, FOOT = 142, metas = this.registry.get('spriteMeta') || {}, key = sp.evo[0].key, meta = metas[key];
+    const halo = this.add.image(CX, FOOT - 40, 'glow').setBlendMode(ADD).setTint(gold).setScale(2.4).setAlpha(.5);
+    const halo2 = this.add.image(CX, FOOT - 40, 'glow').setBlendMode(ADD).setTint(teal).setScale(1.6).setAlpha(.35);
+    L.add([halo, halo2]);
+    this.tweens.add({ targets: halo, scale: 2.8, alpha: .3, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.tweens.add({ targets: halo2, angle: 360, duration: 9000, repeat: -1 });
+    const plate = this.add.image(CX, FOOT + 2, 'glow').setTint(0x000000).setScale(1.6, .25).setAlpha(.6); L.add(plate);
+    const portrait = this.add.image(CX, FOOT - 36, roundPortrait(this, key)).setScale(1.6); L.add(portrait);   // 도트를 받는 동안 초상화로
+    const showSprite = () => {
+      if (!this.overlay.visible || this.overlayMode !== 'join' || gs.joinCur !== cur || !meta || !meta.anims.Idle) return;
+      const a = meta.anims.Idle, tex = `sheet:${key}:${a.src}`;
+      if (!this.textures.exists(tex)) return;
+      const sc = Phaser.Math.Clamp(80 / Math.max(10, meta.height || 30), 1.5, 4.5);
+      const spr = this.add.sprite(CX, FOOT, tex).setOrigin(.5, a.oy).setScale(sc);
+      if (this.anims.exists(`${key}:Idle:right`)) spr.play(`${key}:Idle:right`);
+      L.addAt(spr, L.getIndex(portrait));
+      portrait.destroy();
+      spr.setAlpha(0); this.tweens.add({ targets: spr, alpha: 1, duration: 300 });
+    };
+    if (meta && meta.hasSprite) Sprites.ensure([key]).then(showSprite);
+    L.add(hkText(this, CX, FOOT + 22, sp.name, 16, '#fff2c8', { bold: true, origin: .5, glow: true, glowColor: 'rgba(255,216,144,0.6)' }));
+    // 속성 배지 (가운데 맞춤)
+    {
+      const pw = ty => { const t = hkText(this, 0, 0, typeName(ty), 8.5, '#ffffff', { bold: true }); const w = Math.round(t.width) + 14; t.destroy(); return w; };   // typePill 과 같은 폭
+      const ws = sp.types.map(pw);
+      let x = CX - (ws.reduce((a, b) => a + b, 0) + (ws.length - 1) * 4) / 2;
+      sp.types.forEach((ty, i) => { typePill(this, L, x, FOOT + 33, ty, 8.5); x += ws[i] + 4; });
+    }
+    L.add(hkText(this, CX, FOOT + 52, sp.desc || '', 8.5, HK.ivory, { origin: [.5, 0], style: { align: 'center', wordWrap: { width: 196, useAdvancedWrap: true }, lineSpacing: 2 } }));
+    // 진화 흐름: 1단 ➔ 2단 ➔ 3단 ➔ 메가 (있는 것만)
+    {
+      const seen = new Set(), steps = [];
+      sp.evo.forEach((f, i) => { if (!seen.has(f.key)) { seen.add(f.key); steps.push({ key: f.key, label: `${i + 1}단` }); } });
+      for (const mg of sp.megas.slice(0, 2)) steps.push({ key: mg.portrait || mg.key, label: mg.bond ? '유대변화' : mg.item ? '폼체인지' : '메가진화', mega: true });
+      if (!sp.megas.length) steps.push({ key: null, label: '각성', mega: true });
+      const Y = 286, gap = Math.min(46, 196 / Math.max(1, steps.length - 1)), x0 = CX - gap * (steps.length - 1) / 2;
+      L.add(hkText(this, CX, Y - 26, '진화 · 메가진화', 8.5, HK.gold, { bold: true, ls: 2, origin: .5 }));
+      steps.forEach((s, i) => {
+        const x = x0 + i * gap;
+        if (i) L.add(hkText(this, x - gap / 2, Y, '➔', 9, s.mega ? '#ff9ad8' : HK.dim, { origin: .5 }));
+        if (s.mega) L.add(this.add.image(x, Y, 'glow').setBlendMode(ADD).setTint(0xff6ac0).setScale(.55).setAlpha(.55));
+        if (s.key && this.textures.exists(`portrait:${s.key}`)) L.add(this.add.image(x, Y, roundPortrait(this, s.key)).setScale(.62));
+        else L.add(this.add.image(x, Y, s.mega ? 'megastone' : 'px').setScale(s.mega ? 1.6 : 1));
+        L.add(hkText(this, x, Y + 15, s.label, 7, s.mega ? '#ff9ad8' : HK.dim, { bold: true, origin: .5 }));
+      });
+    }
+
+    // ── 오른쪽: 고유 기술 카드
+    const sk = sp.evo[0].skills || sp.skills, ult = MEGA_ULT[sp.id], sig = CHARGE_SIG[sk.z];
+    const megaName = sp.megas.length ? sp.megas.map(m => m.name).join(' · ') : sp.mega.name;
+    const megaKind = sp.megas.some(m => m.bond) ? '유대변화' : sp.megas.some(m => m.item) ? '폼체인지' : sp.megas.length ? '메가진화' : '각성';
+    const ultName = ult ? ult.name : `${sp.megas.length ? sp.megas[0].name : sp.mega.name} 각성 필살기`;   // 표에 없으면 게임(megaUltOf)과 같은 이름
+    const cards = [
+      { key: 'Z', icon: `sk:${sk.z}`, name: SKILLS[sk.z].name, type: SKILLS[sk.z].type, desc: SKILLS[sk.z].desc + (sig ? '' : ' 꾹 눌렀다 떼면 속성 차징 샷.') },
+      { key: 'X', icon: `sk:${sk.x}`, name: SKILLS[sk.x].name, type: SKILLS[sk.x].type, desc: SKILLS[sk.x].desc },
+      { key: 'C', icon: `sk:${sk.c}`, name: SKILLS[sk.c].name, type: SKILLS[sk.c].type, desc: SKILLS[sk.c].desc },
+      { key: 'V', icon: 'megastone', name: megaName, type: (sp.megas[0] || sp.mega).types[0], desc: `${sp.legend ? '' : '3단 진화 뒤 '}${sp.megas.some(m => m.item) ? '폼체인지 아이템' : '메가스톤'}으로 ${megaKind} — 더 강한 모습으로 그 판 끝까지 싸운다.` },
+      { key: 'R', icon: megaSymbol(this), name: ultName, type: ult ? ult.type : sp.types[0], desc: '메가진화 중에만 쓰는 전용 필살기. 컷인과 함께 화면을 뒤덮는 대연출이 이어서 터진다.' }
+    ];
+    const RX = 266, RW = 328, CY0 = PY + 52, CH = 46;
+    cards.forEach((c, i) => {
+      const y = CY0 + i * (CH + 3), col = typeColor(c.type);
+      g.fillStyle(0x000000, .38); g.fillRoundedRect(RX, y, RW, CH, 6);
+      g.fillStyle(col, .12); g.fillRoundedRect(RX, y, 5, CH, { tl: 6, bl: 6, tr: 0, br: 0 });
+      g.lineStyle(1, col, .35); g.strokeRoundedRect(RX + .5, y + .5, RW - 1, CH - 1, 6);
+      // 키 배지
+      g.fillStyle(c.key === 'V' || c.key === 'R' ? 0xff6ac0 : gold, .9); g.fillRoundedRect(RX + 9, y + 7, 15, 15, 3);
+      L.add(hkText(this, RX + 16.5, y + 14.5, c.key, 9, '#1a1020', { bold: true, origin: .5, flat: true }));
+      const ic = this.add.image(RX + 16.5, y + 33, c.icon); ic.setDisplaySize(18, 18); if (c.key === 'R') ic.setTint(0xffb0e8);
+      L.add(ic);
+      const nm = hkText(this, RX + 32, y + 6, c.name, 10, HK.ivory, { bold: true }); L.add(nm);
+      typePill(this, L, Math.min(RX + RW - 50, RX + 38 + nm.width), y + 6, c.type, 7.5);
+      const d = hkText(this, RX + 32, y + 21, c.desc, 7.5, HK.dim, { style: { wordWrap: { width: RW - 40, useAdvancedWrap: true }, lineSpacing: 1, maxLines: 2 } });
+      L.add(d);
+      if (c.key === 'Z' && sig) L.add(hkText(this, RX + RW - 8, y + 6, `차징: ${sig.name[sig.name.length - 1]}`, 7, HK.gold, { bold: true, origin: [1, 0] }));
+    });
+
+    // ── 확인 — 모험 계속하기
+    const close = () => { if (this.time.now - this.joinOpenedAt < 600) return; Sfx.play('select'); gs.closeJoin(); };   // 뜨자마자 누르던 공격 키로 바로 닫히지 않게 0.6초 뒤부터
+    glassButton(this, 180, PY + PH - 36, 280, 28, this.touch.visible ? '확인 — 모험 계속하기 (터치)' : '확인 — 모험 계속하기 (Enter / Space / Z)', close, { size: 10.5, ls: 0, bold: true, primary: true, layer: L });
+
+    // 등장: 살짝 커지며 나타난다
+    this.overlay.setAlpha(0);
+    this.tweens.add({ targets: this.overlay, alpha: 1, duration: 260, ease: 'Cubic.easeOut' });
+    this.joinOpenedAt = this.time.now;
+    this.input.keyboard.on('keydown', this.onOverlayKey, this);
+    this.overlayMode = 'join';
+  }
+
   onOverlayKey(e) {
+    if (this.overlayMode === 'join') {   // 정화 완료 쇼케이스: Enter · Space · Z 로 닫기 (Esc 는 GameScene 이 닫는다)
+      if (['Enter', 'NumpadEnter', 'Space', 'KeyZ'].includes(e.code) && this.time.now - this.joinOpenedAt >= 600) { Sfx.play('select'); this.gs.closeJoin(); }
+      return;
+    }
     if (this.overlayMode === 'box' && this.boxPanel) { this.boxPanel.key(e); return; }
     if (this.overlayMode === 'test') {   // 테스트룸 패널 (닫기 T · F3 · Esc 는 GameScene 이 받는다)
       if (e.code === 'Tab') { this.testSetTab(this.testTab === 'mon' ? 'boss' : 'mon'); return; }

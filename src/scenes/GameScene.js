@@ -454,7 +454,8 @@ export default class GameScene extends Phaser.Scene {
     this.clearWorld();
     if (this.player) { this.player.destroy(); this.player = null; }
     if (this.fx) { this.fx.pool.destroy(); this.fx.tpool.destroy(); }
-    if (this.time) this.time.removeAllEvents();
+    if (this.time) { this.time.removeAllEvents(); this.time.paused = false; }   // 쇼케이스 창이 열린 채 끝나도 다음 판 타이머가 멈춰 있지 않게
+    this.joinQueue = []; this.joinCur = null; this.joinBlur = null;
     if (this.webgl && this.lights && this.lights.lights) this.lights.lights.slice().forEach(l => this.lights.removeLight(l));
     this.dynLights = 0;
     if (this.physics && this.physics.world) this.physics.world.resume();
@@ -610,7 +611,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.over || this.transitioning) return;
     if ((this.overlay === 'tm' || this.overlay === 'taxi' || this.overlay === 'debug' || this.overlay === 'test') && kind !== this.overlay) return;   // 카드·공중날기·디버그·테스트 창이 열려 있으면 다른 창으로 넘어가지 않는다
     if (this.overlay === kind && kind === 'talk') this.talkClosedAt = this.time.now;
-    if (this.overlay === kind) { this.overlay = null; this.setFrozen(false); this.consumeInput(); this.player.zBuf = 0; this.events.emit('overlay', null); return; }   // 지도에서 누른 Z(확대)가 공격으로 새지 않게
+    if (this.overlay === kind) { this.overlay = null; this.setFrozen(false); this.consumeInput(); this.player.zBuf = 0; this.events.emit('overlay', null); if (kind === 'join') this.afterJoin(); return; }   // 지도에서 누른 Z(확대)가 공격으로 새지 않게
     if (this.overlay) { this.overlay = kind; this.events.emit('overlay', kind); return; }   // 지도 ↔ 가방 바로 전환
     if (this.paused) return;
     this.overlay = kind; this.setFrozen(true); this.events.emit('overlay', kind);
@@ -1386,7 +1387,7 @@ export default class GameScene extends Phaser.Scene {
     else if (Math.random() < .16) this.spawnPickup('oran', e.x, e.y);
     const r = Save.addKill(e.line || e.key);   // 정화 진행도는 진화 계열로 센다 (피카츄를 정화해도 피츄 계열 +1)
     if (r) {
-      if (r.unlockedNow) { this.runStats.unlocked.push(e.line); this.events.emit('unlock', e.line); Sfx.play('unlock'); }
+      if (r.unlockedNow) { this.runStats.unlocked.push(e.line); this.queueJoin(e.line, 'dex'); }   // 10번 정화: 정화 완료 쇼케이스
       else this.events.emit('killcount', e.line, r.count);
     }
   }
@@ -1526,14 +1527,39 @@ export default class GameScene extends Phaser.Scene {
     if (id && !this.player.formItems.has(id)) this.time.delayedCall(900, () => { if (this.level) this.spawnPickup('formitem', boss.x, boss.y - 12, id); });
   }
 
-  // 「🎉 [이름]의 영혼이 동료로 합류했습니다!」 알림을 하나씩
+  // 보스를 정화해 새로 합류한 동료들: 정화 완료 쇼케이스 창을 하나씩
   announceJoin(keys) {
-    keys.forEach((k, i) => this.time.delayedCall(i * 4200, () => {
-      if (this.over) return;
-      this.runStats.unlocked.push(k);
-      this.events.emit('unlock', k, 'join');
-      Sfx.play('unlock');
-    }));
+    for (const k of keys) { if (this.over) return; this.runStats.unlocked.push(k); this.queueJoin(k, 'join'); }
+  }
+
+  // ---------------- 정화 완료 쇼케이스 (UIScene.showJoin) ----------------
+  //  창이 떠 있는 동안 게임은 완전히 멈춘다: 물리 · 적 AI · 애니메이션 · 트윈(setFrozen) + 게임 타이머(time.paused) · 배경은 흐리게
+  //  확인(Enter · Space · Z · 터치 · Esc)을 눌러야 닫히고 그 자리에서 이어진다. 여러 마리면 차례로
+  queueJoin(k, kind = 'join') {
+    if (this.test || !SPECIES[k]) return;
+    (this.joinQueue = this.joinQueue || []).push({ k, kind });
+    this.nextJoin();
+  }
+  nextJoin() {
+    if (!this.joinQueue || !this.joinQueue.length || this.overlay === 'join') return;
+    if (this.overlay || this.over || this.transitioning || this.paused) {   // 다른 창(기술머신 카드 등)이 닫히길 기다린다
+      if (!this.joinWait) { this.joinWait = true; this.time.delayedCall(600, () => { this.joinWait = false; this.nextJoin(); }); }
+      return;
+    }
+    this.joinCur = this.joinQueue.shift();
+    this.toggleOverlay('join');
+    if (this.overlay !== 'join') { this.joinQueue.unshift(this.joinCur); this.joinCur = null; return; }
+    this.time.paused = true;
+    const cam = this.cameras.main;
+    if (this.webgl && cam.postFX && !this.joinBlur) this.joinBlur = cam.postFX.addBlur(1, 1.5, 1.5, 1.2);
+    Sfx.play('unlock');
+  }
+  closeJoin() { if (this.overlay === 'join') this.toggleOverlay('join'); }
+  afterJoin() {
+    this.time.paused = false;
+    this.joinCur = null;
+    if (this.joinBlur) { this.cameras.main.postFX.remove(this.joinBlur); this.joinBlur = null; }
+    if (this.joinQueue && this.joinQueue.length) this.time.delayedCall(350, () => this.nextJoin());
   }
   // 히든 전설 보상: 출전 중인 포켓몬에게 맞춘 '전설' 등급 기술 카드 3장
   openLegendCards() {

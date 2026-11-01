@@ -57,6 +57,7 @@ export class Player extends Actor {
   constructor(scene, partyKeys, x, y) {
     super(scene, null, x, y, 14, 18);
     this.members = partyKeys.map(k => this.makeMember(k));
+    this.stored = {};   // 포켓몬센터 보관함에 맡긴 포켓몬 key → 그대로의 상태 (진화 · 경험치 · 장착 아이템 · 기술 · 기술머신 카드). 다시 데려오면 이어서
     this.idx = 0;
     this.buffs = [];                                   // 일시 강화 { atk, speed, guard, t } (출전 포켓몬)
     this.formItems = new Set();                        // 폼체인지 아이템 (큰금강옥·큰백옥·큰백금옥 — data/roster.js 의 FORM_ITEMS, 그 판 동안 파티 공용)
@@ -174,7 +175,20 @@ export class Player extends Actor {
 
   // 진화할수록 몸집이 조금씩 커진다 (진화형 도트 자체도 크다) + 메가 모습이 없으면 오라와 함께 더 크게
   //  거대 몸집(롱스톤 계열)은 판정도 크게, 전설은 도트 크기와 상관없이 히트박스를 고정한다 (좁은 길·발판을 지나가도록)
+  // 퇴화 방지 (안전장치): 포켓몬마다 올라간 최고 진화 단계를 기억해 두고, 어떤 경로로든 그보다 낮아지면 되돌린다
+  //  테스트룸의 단계 고르기(setForm)만 일부러 낮출 수 있다
+  guardForms() {
+    for (const m of [...this.members, ...Object.values(this.stored)]) {
+      m.peakTier = Math.max(m.peakTier || 0, m.tier);
+      if (m.tier < m.peakTier) {
+        console.warn('[보호] 퇴화 시도를 막았다', m.key, m.tier, '→', m.peakTier);
+        m.tier = m.peakTier; m.exp = Math.max(m.exp, EVO_EXP[m.tier - 1] || 0); m.maxhp = this.maxHpOf(m); m.hp = Math.min(m.hp, m.maxhp);
+      }
+    }
+  }
+
   applyVisual() {
+    this.guardForms();
     const key = this.visualKey(), mg = this.megaOf(), big = this.pas.big || 1;
     const metas = this.scene.registry.get('spriteMeta'), meta0 = metas[key];
     let scale;
@@ -226,7 +240,9 @@ export class Player extends Actor {
     if (m.tier >= EVO_EXP.length) return;
     const sc = this.scene, before = this.form(m).name, prev = this.form(m), atk0 = this.statOf('atk', m);
     m.tier++;
+    m.peakTier = Math.max(m.peakTier || 0, m.tier);
     m.exp = Math.max(m.exp, EVO_EXP[m.tier - 1]);
+    if (sc.saveRun) sc.time.delayedCall(1600, () => { if (sc.player === this) sc.saveRun(true, 'evolve'); });   // 진화는 바로 저장 (새로고침·튕김에도 1단으로 돌아가지 않게 · 보스전 중이면 끝난 뒤 정화 저장에 담긴다)
     // 모습마다 기술이 다른 라인(잉어킹 → 갸라도스): 옛 기본 기술 자리를 새 기본 기술로 바꾸고 배운 기술에 더한다 (기술머신으로 바꿔 단 자리는 그대로)
     const oldSet = prev.skills || m.sp.skills, newSet = this.form(m).skills || m.sp.skills;
     if (oldSet !== newSet) for (const sl of ['z', 'x', 'c']) {
@@ -475,13 +491,19 @@ export class Player extends Actor {
     }
   }
 
-  // 포켓몬센터 보관함: i번째 자리를 다른 포켓몬으로 (새로 온 포켓몬은 1단부터 · 메가스톤·Z크리스탈·가방은 파티 공용이라 그대로)
+  // 포켓몬센터 보관함: i번째 자리를 다른 포켓몬으로 (메가스톤·Z크리스탈·가방은 파티 공용이라 그대로)
+  //  떠나는 포켓몬은 보관함에 맡긴다 — 진화 단계 · 경험치 · 장착 아이템 · 기술 · 기술머신 카드를 그대로 기억하고, 다시 데려오면 그 상태로 돌아온다
+  //  (예전엔 떠나는 포켓몬을 버리고 다시 데려오면 1단부터 새로 만들어, 라우드본이 뜨아거로 돌아가고 아이템이 풀렸다)
+  //  처음 데려오는 포켓몬만 1단부터
   replaceMember(i, key) {
     if (!SPECIES[key] || this.members.some(m => m.key === key)) return false;
-    const m = this.makeMember(key), old = this.members[i];
-    if (old) for (const [id, n] of Object.entries(old.items)) this.bag[id] = (this.bag[id] || 0) + n;   // 떠나는 포켓몬의 장착 아이템은 가방으로
+    const kept = this.stored[key], old = this.members[i];
+    const m = kept || this.makeMember(key);
+    delete this.stored[key];
+    if (old) { if (this.mega.active && i === this.idx) old.mega = false; old.cd = { z: 0, x: 0, c: 0, r: 0 }; this.stored[old.key] = old; }
     if (i >= this.members.length) { i = this.members.length; this.members.push(m); } else this.members[i] = m;
-    m.maxhp = m.hp = this.maxHpOf(m);
+    m.maxhp = this.maxHpOf(m);
+    m.hp = kept ? Math.max(1, Math.min(m.maxhp, m.hp || m.maxhp)) : m.maxhp; m.alive = true;
     if (i === this.idx) { if (this.action) this.endAction(true); this.combo = 0; this.buffs = []; this.applyVisual(); }
     this.scene.events.emit('swap', this);
     return true;
@@ -509,7 +531,8 @@ export class Player extends Actor {
       }
     }
     if (mega >= 0) { m.megaPick = m.sp.megas[mega] ? mega : 0; m.mega = true; }
-    m.cd = { z: 0, x: 0, c: 0 };
+    m.peakTier = m.tier;   // 테스트룸은 일부러 낮출 수 있다
+    m.cd = { z: 0, x: 0, c: 0, r: 0 };
     m.maxhp = m.hp = this.maxHpOf(m); m.alive = true;
     if (m === this.m) { if (this.action) this.endAction(true); this.combo = 0; this.buffs = []; this.applyVisual(); }
     this.scene.events.emit('swap', this);

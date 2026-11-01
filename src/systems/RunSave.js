@@ -87,11 +87,25 @@ export function applyWorld(W, s) {
 export function snapshotPlayer(p) {
   return {
     idx: p.idx, stageBonus: p.stageBonus, bag: { ...p.bag }, stones: p.mega.stones, z: p.z.has, formItems: [...p.formItems], candy: p.candy || 0,
-    members: p.members.map(m => ({
-      key: m.key, hp: Math.round(m.hp), alive: m.alive, tier: m.tier, exp: m.exp, mega: m.mega, megaPick: m.megaPick || 0,
-      items: { ...m.items }, perks: { ...(m.perks || {}) }, skills: { ...m.skills }, ups: [...m.ups], atkBonus: m.atkBonus, cdBonus: m.cdBonus, learned: [...m.learned], chargeType: m.chargeType || null, cardGrade: { ...(m.cardGrade || {}) }
-    }))
+    members: p.members.map(memberSnap),
+    stored: Object.values(p.stored || {}).map(memberSnap)   // 포켓몬센터 보관함에 맡긴 포켓몬 (진화 · 아이템 · 기술 그대로)
   };
+}
+// 포켓몬 한 마리의 진행 (진화 단계 · 최고 단계 · 경험치 · 장착 아이템 · 기술머신 특성 · 기술 · 카드 등급)
+function memberSnap(m) {
+  return {
+    key: m.key, hp: Math.round(m.hp), alive: m.alive, tier: m.tier, peakTier: Math.max(m.peakTier || 0, m.tier), exp: m.exp, mega: m.mega, megaPick: m.megaPick || 0,
+    items: { ...m.items }, perks: { ...(m.perks || {}) }, skills: { ...m.skills }, ups: [...m.ups], atkBonus: m.atkBonus, cdBonus: m.cdBonus, learned: [...m.learned], chargeType: m.chargeType || null, cardGrade: { ...(m.cardGrade || {}) }
+  };
+}
+// 저장해 둔 진행을 포켓몬 m 에 덮어쓴다
+function applyMember(m, d) {
+  const tier = Math.max(0, Math.min(2, Math.max(d.tier || 0, d.peakTier || 0)));   // 저장된 최고 단계보다 낮게 복원하지 않는다
+  Object.assign(m, {
+    tier, peakTier: tier, exp: d.exp, mega: !!d.mega, megaPick: d.megaPick || 0, alive: d.alive !== false,
+    items: { ...d.items }, perks: { ...(d.perks || {}) }, mods: computeMods(d.items || {}, d.perks || {}), skills: { ...m.skills, ...d.skills }, ups: new Set(d.ups || []), cardGrade: { ...(d.cardGrade || {}) },
+    atkBonus: d.atkBonus || 1, cdBonus: d.cdBonus || 1, learned: d.learned && d.learned.length ? [...d.learned] : m.learned, chargeType: d.chargeType || null
+  });
 }
 
 // 새로 만든 Player(저장된 파티 키로 만든 것)에 저장해 둔 진행을 덮어쓴다
@@ -99,12 +113,16 @@ export function restorePlayer(p, s) {
   s.members.forEach((d, i) => {
     const m = p.members[i];
     if (!m || m.key !== d.key) return;
-    Object.assign(m, {
-      tier: d.tier, exp: d.exp, mega: !!d.mega, megaPick: d.megaPick || 0, alive: d.alive !== false,
-      items: { ...d.items }, perks: { ...(d.perks || {}) }, mods: computeMods(d.items || {}, d.perks || {}), skills: { ...m.skills, ...d.skills }, ups: new Set(d.ups || []), cardGrade: { ...(d.cardGrade || {}) },
-      atkBonus: d.atkBonus || 1, cdBonus: d.cdBonus || 1, learned: d.learned && d.learned.length ? [...d.learned] : m.learned, chargeType: d.chargeType || null
-    });
+    applyMember(m, d);
   });
+  p.stored = {};
+  for (const d of s.stored || []) {
+    if (p.members.some(m => m.key === d.key)) continue;
+    const m = p.makeMember(d.key);
+    applyMember(m, d);
+    m.maxhp = p.maxHpOf(m); m.hp = Math.max(1, Math.min(m.maxhp, d.hp || m.maxhp)); m.alive = true;
+    p.stored[d.key] = m;
+  }
   p.stageBonus = s.stageBonus || 1;
   p.bag = { ...(s.bag || {}) };
   p.candy = s.candy || 0;
