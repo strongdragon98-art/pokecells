@@ -654,7 +654,7 @@ export default class UIScene extends Phaser.Scene {
   // ================= 카드 선택 후 중앙 모달: ① 파티 포켓몬 고르기 (못 배우는 포켓몬은 흑백 · 자물쇠 · 누를 수 없다) =================
   //  🅰 새 액티브 기술 카드: 포켓몬 → ② 그 포켓몬의 Z · X · C 기술 자리 (올리거나 한 번 탭하면 지금 기술 ↔ 새 기술 비교) → 고른 자리를 교체
   //  🅱 그 밖의 카드(스킬 강화 · 특성 · 원작 개조 · 숙련 · 합성): 포켓몬을 누르면 바로 영구 적용
-  //  위쪽 [🎨 뷰 스타일 비교] 스위치: 🖼 2D 일러스트 초상화 ↔ 🧊 3D 입체 홀로그램 턴테이블 — 누를 때마다 설정에 저장된다 (Settings.tmView)
+  //  포켓몬은 🧊 3D 입체 홀로그램 받침대 위에 띄워 보여 준다 (tmTile3D)
   //  this.tmModal = { step: 'who' | 'slot', target: 계열 키, tip: 비교 중인 자리, touchTip: 모바일 첫 탭 자리 }
   tmModalMembers(card) {
     const p = this.gs.player, who = new Set(this.tmWho(card));
@@ -663,7 +663,7 @@ export default class UIScene extends Phaser.Scene {
   tmNeedsSlot(card, m) { return card.kind === 'move' && heldLv(m, card) < 0; }   // 새로 배우는 기술만 자리를 고른다 (이미 배운 기술 카드는 합성)
   tmTileX(n, j) { const gap = Math.min(150, 488 / Math.max(1, n)); return { x: 320 + (j - (n - 1) / 2) * gap, gap }; }
   tmDrawModal(L, card) {
-    const p = this.gs.player, md = this.tmModal, view = Settings.get('tmView') === '3d' ? '3d' : '2d';
+    const p = this.gs.player, md = this.tmModal;
     const PX = 46, PY = 26, PW = 548, PH = 308, st = GRADE_STYLE[card.grade] || GRADE_STYLE.커먼;
     const block = this.add.zone(0, 0, GAME_W, GAME_H).setOrigin(0).setInteractive(); L.add(block);   // 뒤 카드가 눌리지 않게
     block.on('pointerdown', () => { if (md.tip) { md.tip = null; md.touchTip = null; this.tmTipShow(null); } });
@@ -677,19 +677,12 @@ export default class UIScene extends Phaser.Scene {
     const title = slotStep ? `${p.formName(tgt)}의 어느 기술을 「${card.baseName || card.name}」(으)로 바꿀까요?` : `「${card.name}」 ${isNew ? '누구에게 가르칠까요?' : '누구에게 적용할까요?'}`;
     L.add(fitText(hkText(this, 320, PY + 16, title, 12, HK.gold, { origin: .5, bold: true, glow: true }), PW - 40));
     L.add(hkText(this, 320, PY + 32, slotStep ? '기술 자리에 마우스를 올리면(모바일: 한 번 탭) 비교 · 누르면(다시 탭) 교체' : isNew ? '배울 수 있는 포켓몬을 고르면 바꿀 기술 자리가 펼쳐진다' : '포켓몬을 누르면 바로 영구 적용된다', 8.5, HK.dim, { origin: .5 }));
-    // 🎨 뷰 스타일 비교 스위치
-    const TY0 = PY + 44;
-    L.add(hkText(this, 186, TY0 + 9, '🎨 뷰 스타일 비교:', 8.5, HK.ivory, { origin: [1, .5], bold: true }));
-    [['2d', '🖼  2D 일러스트 초상화', 190, 132], ['3d', '🧊  3D 입체 모델링', 326, 118]].forEach(([v, label, x, w]) => {
-      glassButton(this, x, TY0, w, 18, label, () => { if (Settings.get('tmView') === v) return; Settings.set('tmView', v); Sfx.play('select'); this.showTM(); }, { size: 8, ls: 0, layer: L, primary: view === v });   // ls 0: 자간을 벌리면 그림 글자(🖼·🧊)가 쪼개진다
-    });
-    L.add(hkText(this, 450, TY0 + 9, '📌 고른 모습으로 저장', 7.5, HK.faint, { origin: [0, .5] }));
     // ① 파티 포켓몬
-    const ms = this.tmModalMembers(card), CYm = slotStep ? 150 : 162;
+    const ms = this.tmModalMembers(card), CYm = slotStep ? 140 : 152;
     ms.forEach((e, j) => {
       const { x, gap } = this.tmTileX(ms.length, j), picked = slotStep && md.target === e.m.key, faded = slotStep && !picked;
       const tile = this.add.container(x, CYm); L.add(tile);
-      if (view === '3d') this.tmTile3D(tile, e, picked); else this.tmTile2D(tile, e, picked);
+      this.tmTile3D(tile, e, picked);
       if (faded) tile.setAlpha(.35);
       // 이름 · 합성/습득 안내
       L.add(fitText(hkText(this, x, CYm + 64, `${slotStep ? '' : (j + 1) + '  '}${p.formName(e.m)}${e.m === p.m ? ' (출전)' : ''}`, 9.5, e.ok ? (picked ? HK.gold : HK.ivory) : HK.faint, { origin: [.5, 0], bold: true }), gap - 8));
@@ -719,27 +712,8 @@ export default class UIScene extends Phaser.Scene {
     tile.add(hkText(this, 0, -7, '🔒', 13, '#ffffff', { origin: .5 }));
     tile.add(hkText(this, 0, 16, '습득 불가', 9, '#ff8a8a', { origin: .5, bold: true }));
   }
-  // 🖼 2D 고화질 일러스트 초상화: 육각 네온 프레임(속성 색) 안에 둥근 초상화 · 아래 타입 알약
-  tmTile2D(tile, e, picked) {
-    const p = this.gs.player, types = p.typesOf(e.m), col = typeColor(types[0]), col2 = typeColor(types[1] || types[0]);
-    const bg = this.add.graphics(); tile.add(bg);
-    glassPanel(bg, -56, -62, 112, 124, { r: 10, fill: 0x100e1a, border: picked ? HK.goldN : col, borderAlpha: e.ok ? .8 : .25, alpha: .95 });
-    const aura = this.add.image(0, -8, 'glow').setBlendMode(ADD).setTint(col).setScale(1.7).setAlpha(e.ok ? .45 : 0); tile.add(aura);
-    const hex = (g, R, w, c, a) => { g.lineStyle(w, c, a); g.beginPath(); for (let k = 0; k <= 6; k++) { const an = Math.PI / 6 + k * Math.PI / 3; if (k) g.lineTo(Math.cos(an) * R, -8 + Math.sin(an) * R); else g.moveTo(Math.cos(an) * R, -8 + Math.sin(an) * R); } g.strokePath(); };
-    const fr = this.add.graphics(); tile.add(fr);
-    fr.fillStyle(0x05040a, .9); fr.fillCircle(0, -8, 36);
-    hex(fr, 44, 4, col, e.ok ? .35 : .15); hex(fr, 42, 1.6, col2, e.ok ? 1 : .4); hex(fr, 38, .8, 0xffffff, e.ok ? .5 : .2);
-    const face = this.add.image(0, -8, roundPortrait(this, p.portraitKey(e.m))).setScale(1.75); tile.add(face);
-    const ring = this.add.circle(0, -8, 35).setStrokeStyle(1.4, col, e.ok ? .9 : .3); tile.add(ring);
-    let px = 0; const pills = this.add.container(0, 0); tile.add(pills);
-    types.forEach(t => { px += typePill(this, pills, px, 40, t, 7) + 4; });
-    pills.x = -(px - 4) / 2;
-    if (!e.ok) { this.tmGray(face); fr.setAlpha(.5); pills.setAlpha(.4); this.tmLock(tile); return; }
-    if (picked) bg.lineStyle(2, HK.goldN, 1).strokeRoundedRect(-56, -62, 112, 124, 10);
-    this.tmAnims.push(t => { if (!aura.scene) return; aura.setAlpha((tile.hover ? .7 : .38) + Math.sin(t * 3 + e.i) * .1); ring.setStrokeStyle(1.4, col, .7 + Math.sin(t * 4 + e.i) * .3); });
-  }
-  // 🧊 3D 입체 모델링: 원근 홀로그램 받침대 위에서 떠오르며 Y축으로 도는 턴테이블 (마우스를 올리면 카메라가 살짝 기운다)
-  //  전신 도트(PokeAPI 아이콘)를 가로 배율로 돌리고, 뒷면은 어둡게 · 앞면은 속성 색 테두리광 · 발밑 그림자는 떠오르는 높이만큼 줄어든다
+  // 🧊 3D 입체 모델링: 원근 홀로그램 받침대 위에 전신 도트가 떠서 숨 쉬듯 오르내린다 (도트는 돌리지 않는다 · 마우스를 올리면 카메라가 살짝 기운다)
+  //  속성 색 테두리광이 은은하게 일렁이고, 발밑 그림자는 떠오르는 높이만큼 줄어든다
   tmTile3D(tile, e, picked) {
     const p = this.gs.player, types = p.typesOf(e.m), col = typeColor(types[0]), key = p.formKey(e.m), tx = this.textures;
     const src = tx.exists(`icon:${key}`) ? `icon:${key}` : tx.exists(`portrait:${key}`) ? `portrait:${key}` : roundPortrait(this, p.portraitKey(e.m));
@@ -764,15 +738,14 @@ export default class UIScene extends Phaser.Scene {
       this.tmLock(tile); return;
     }
     if (picked) bg.lineStyle(2, HK.goldN, 1).strokeRoundedRect(-56, -62, 112, 124, 10);
-    let tilt = 0, ph = e.i * 1.3;
+    let tilt = 0;
     this.tmAnims.push(t => {
       if (!model.scene) return;
-      ph += .022;
-      const c = Math.cos(ph), fl = Math.sin(t * 2.2 + e.i) * 4, back = c < 0;
+      const fl = Math.sin(t * 2.2 + e.i) * 4;
       tilt += ((tile.hover ? 1 : 0) - tilt) * .15;
-      const sx = base * Math.max(.18, Math.abs(c)) * (back ? -1 : 1), sy = base * (1 + tilt * .06);
-      model.setScale(sx, sy).setY(34 - Math.abs(fl) - tilt * 4).setRotation(-tilt * .09).setTint(back ? 0x7a88b0 : 0xffffff);
-      rim.setScale(sx * 1.04, sy * 1.04).setY(model.y + 1).setRotation(model.rotation).setAlpha(back ? .05 : .12 + Math.abs(Math.sin(ph)) * .14);
+      const sy = base * (1 + tilt * .06);
+      model.setScale(base, sy).setY(34 - Math.abs(fl) - tilt * 4).setRotation(-tilt * .09);
+      rim.setScale(base * 1.04, sy * 1.04).setY(model.y + 1).setRotation(model.rotation).setAlpha(.12 + Math.abs(Math.sin(t * 1.4 + e.i)) * .14);
       shadow.setScale(1 - Math.abs(fl) * .04 - tilt * .1, 1).setAlpha(.5 - Math.abs(fl) * .03);
       rings.clear();
       for (let k = 0; k < 3; k++) { const r = (t * .6 + k / 3) % 1; rings.lineStyle(1, 0x48e5ff, (1 - r) * .7); rings.strokeEllipse(0, 40 - tilt * 2, 40 + r * 52, 8 + r * 11); }
@@ -863,7 +836,7 @@ export default class UIScene extends Phaser.Scene {
     if (!e || !e.ok) { Sfx.play('deny'); return; }
     if (this.tmNeedsSlot(card, e.m)) { md.step = 'slot'; md.target = key; md.tip = null; Sfx.play('select'); this.showTM(); return; }
     this.tmBusy = true; Sfx.play('card_rare');
-    this.tmBurst(this.tmTileX(ms.length, ms.indexOf(e)).x, 162, (GRADE_STYLE[card.grade] || GRADE_STYLE.커먼).glow);
+    this.tmBurst(this.tmTileX(ms.length, ms.indexOf(e)).x, 152, (GRADE_STYLE[card.grade] || GRADE_STYLE.커먼).glow);
     this.time.delayedCall(420, () => { this.tmBusy = false; this.tmModal = null; this.gs.finishTM(it.sel, null, key); });
   }
   // 교체 이펙트: 새 기술 그림이 자리로 날아가 빛이 터지고 → 적용
@@ -909,6 +882,7 @@ export default class UIScene extends Phaser.Scene {
       // 황금 번개: 가끔 카드 가장자리에서 튄다
       const ev = this.time.addEvent({ delay: 380, loop: true, callback: () => {
         if (!core.scene) { ev.remove(); return; }
+        if (this.tmModal) return;   // 포켓몬 지정 창이 열려 있으면 번개가 창 위로 튀지 않게
         const gl = this.add.graphics().setBlendMode(ADD); L.add(gl);
         const side = Math.random() < .5 ? -1 : 1, x0 = x + side * (W / 2 - 4), y0 = y + (Math.random() - .5) * H * .8;
         let px = x0, py = y0; gl.lineStyle(1.5, 0xffe08a, 1); gl.beginPath(); gl.moveTo(px, py);
