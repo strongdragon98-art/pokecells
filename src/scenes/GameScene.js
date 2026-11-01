@@ -1723,7 +1723,9 @@ export default class GameScene extends Phaser.Scene {
       if (room.type === 'sanctuary' && !room.entered && !room.cleared) this.events.emit('toast', '공기가 무겁다… 전설의 기척');
     }
     // 아레나: 안쪽으로 조금 들어서면 문이 닫히고 보스전
-    if (!room.cleared && !room.entered && (room.type === 'mini' || room.type === 'boss' || room.type === 'sanctuary') && p.x > room.left + 20 && p.x < room.right - 20 && p.y > room.top) {
+    //  아래 방에서 사다리로 올라오는 통로(철창 아래 줄)도 이 방 칸에 걸쳐 있다 — 아레나 바닥 위로 올라선 뒤에만 시작한다
+    //  (예전엔 통로 안에서 시작돼 철창 관문이 머리 위에서 닫혀 못 올라갔다 — 방울탑 옥상 칠색조 등)
+    if (!room.cleared && !room.entered && (room.type === 'mini' || room.type === 'boss' || room.type === 'sanctuary') && p.x > room.left + 20 && p.x < room.right - 20 && p.y > room.top && p.y <= room.F * TILE) {
       room.entered = true;
       this.setGates(room, false);
       this.startBoss(room);

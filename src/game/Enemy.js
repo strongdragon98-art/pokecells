@@ -78,17 +78,21 @@ export class Enemy extends Actor {
   }
 
   knock(vx, vy) {
-    if (this.boss) return;
+    if (this.boss || this.state === 'guard') return;   // 막는 중엔 밀리지 않는다 (알통몬 계열)
     const r = 1 - (this.def.kbRes || 0);
     this.b.setVelocityX(vx * r);
     this.b.setVelocityY(this.flying ? vy * r * .5 : Math.min(this.b.velocity.y, vy * r));
     this.stagger = .25;
-    if (['dash', 'dive', 'wind', 'punch'].includes(this.state)) { this.state = 'recover'; this.timer = .35; }
+    if (['dash', 'dive', 'wind', 'punch', 'lunge', 'leap', 'climb'].includes(this.state)) { this.state = 'recover'; this.timer = .35; this.mode = null; this.combo = false; this.mark = null; }
   }
 
   facePlayer(p) { const f = Math.sign(p.x - this.x) || this.face; if (f !== this.face) { this.face = f; this.refacing(); } }
   ledgeAhead() {
     const ax = this.face > 0 ? this.b.right + 3 : this.b.x - 3;
+    return !this.scene.isGroundAt(ax, this.bottom + 4) || this.scene.isSolidAt(ax, this.bottom - 6);
+  }
+  ledgeBehind() {
+    const ax = this.face > 0 ? this.b.x - 3 : this.b.right + 3;
     return !this.scene.isGroundAt(ax, this.bottom + 4) || this.scene.isSolidAt(ax, this.bottom - 6);
   }
   telegraph(on) { this.alert.setVisible(on); }
@@ -193,7 +197,7 @@ export class Enemy extends Actor {
     this.eyeTrail = [];
   }
 
-  get striking() { return this.state === 'dash' || this.state === 'dive'; }
+  get striking() { return this.state === 'dash' || this.state === 'dive' || this.state === 'lunge' || this.state === 'leap'; }   // 몸통 접촉 피해가 나는 동작
   get spd() { return this.speed * (this.status.slow > 0 ? .5 : 1); }
 
   ai(dt, p) { (AI[this.def.ai] || AI.charger)(this, dt, p); }
@@ -215,120 +219,270 @@ function wander(e, p, speedK) {
   b.setVelocityX(e.face * e.spd * speedK);
 }
 
+// ---------------- 공격 패턴 도우미 ----------------
+//  숙련도 lvl = 진화 단계(0~2) + 엘리트 1 — 높을수록 패턴이 늘고 이어진다 (1단 야생은 기본기 위주 · 진화형·엘리트는 연계기)
+const lvlOf = e => (e.stage || 0) + (e.elite ? 1 : 0);
+const chance = (k, dt) => Math.random() < k * dt;   // 초당 k 번꼴
+// 계열 투사체 한 발 (각도 a · 덮어쓸 값 o)
+function shootAt(e, a, o = {}) {
+  const s = e.def.shot;
+  if (!s || !e.alive) return;
+  const sp = o.speed ?? s.speed;
+  e.scene.combat.spawnProjectile(Object.assign({}, s, { owner: 'enemy', x: e.x + e.face * 6, y: e.y - 2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: e.dmg * (o.mul ?? 1), tier: e.stage || 0 }, o.extra || {}));
+}
+// 플레이어가 움직이는 쪽을 조금 앞질러 겨눈 각도 (k: 몇 초 뒤를 내다보나)
+function leadAngle(e, p, k) {
+  const v = (p.b && p.b.velocity) || { x: 0, y: 0 };
+  return Math.atan2(p.y + v.y * k * .4 - e.y, p.x + v.x * k - e.x);
+}
+// 범위 판정 한 번 (맞으면 true)
+function zoneHit(e, p, box, mul = 1, type = e.def.atkType) {
+  return overlap(box, p.bounds()) && p.takeHit(e.dmg * mul, type, e.x, {});
+}
+// 예고 표식: 바닥에 붉은 고리가 맥동한다 (ms 뒤 사라짐)
+function warnMark(e, x, y, r, ms, color = 0xff3a3a) {
+  const fx = e.scene.fx;
+  fx.ring(x, y, r, color, ms); fx.glow(x, y, r * .8, color, ms, .35);
+}
+// 착지 충격파: 양옆으로 퍼지는 고리 + 범위 판정 (2단부터는 땅을 기는 충격파 두 줄기도)
+function slamWave(e, p, w, mul) {
+  const fx = e.scene.fx, col = typeColor(e.def.atkType);
+  fx.ring(e.x, e.bottom - 2, w * .6, col, 320); fx.ring(e.x, e.bottom - 2, w * .9, 0xffffff, 420);
+  fx.burst(e.x, e.bottom - 2, [col, 0xffffff, 0x6a5a4a], 14, 160, { up: 120, size: 2, life: .5 });
+  fx.shake(.006, 140, 'hit'); Sfx.play('slam');
+  zoneHit(e, p, { x: e.x - w / 2, y: e.bottom - 26, w, h: 28 }, mul);
+  if (e.canShoot) for (const d of [-1, 1]) shootAt(e, d > 0 ? 0 : Math.PI, { speed: 150, mul: .7, extra: { y: e.bottom - 6, life: .6 } });
+}
+// 번개 · 그림자 기둥: 표식 자리에 위에서 내리꽂는다
+function pillar(e, p, x, groundY, mul) {
+  const sc = e.scene, fx = sc.fx, col = e.def.shot && e.def.shot.color || typeColor(e.def.atkType);
+  const g = sc.add.graphics().setDepth(30).setBlendMode(Phaser.BlendModes.ADD);
+  g.lineStyle(3, col, 1); g.beginPath();
+  let px = x, py = groundY - 120; g.moveTo(px, py);
+  while (py < groundY) { py += 14; px = x + (Math.random() - .5) * 12; g.lineTo(px, py); }
+  g.strokePath(); g.lineStyle(1, 0xffffff, 1); g.strokePath();
+  sc.tweens.add({ targets: g, alpha: 0, duration: 220, onComplete: () => g.destroy() });
+  fx.glow(x, groundY - 10, 30, col, 260, 1); fx.burst(x, groundY - 4, [col, 0xffffff], 12, 140, { up: 90 });
+  Sfx.play(e.def.atkType === 'electric' ? 'zap' : 'eshot');
+  zoneHit(e, p, { x: x - 12, y: groundY - 90, w: 24, h: 90 }, mul);
+}
+// 플레이어가 공격 동작 중인가 (회피 · 막기 판단)
+const attacking = p => !!(p.action && p.action.slot);
+
 const AI = {
+  // ---- 꼬렛 계열: 돌진 · (진화) 되돌아 2연 돌진 · 도약 내려찍기 · 공격을 보고 뒤로 물러서기 ----
   charger(e, dt, p) {
-    const b = e.b, dx = p.x - e.x, dy = p.y - e.y;
+    const b = e.b, dx = p.x - e.x, dy = p.y - e.y, adx = Math.abs(dx), lv = lvlOf(e);
     e.cd -= dt;
     switch (e.state) {
       case 'wind': e.timer -= dt; b.setVelocityX(0); e.telegraph(true);
-        if (e.timer <= 0) { e.telegraph(false); if (e.mode === 'shot') { e.fireShot(p); e.state = 'recover'; e.timer = .45; } else { e.state = 'dash'; e.timer = .42; Sfx.play('swing'); } }
+        if (e.timer <= 0) {
+          e.telegraph(false);
+          if (e.mode === 'shot') { e.fireShot(p); e.state = 'recover'; e.timer = .45; }
+          else if (e.mode === 'leap') { e.facePlayer(p); b.setVelocity(Phaser.Math.Clamp(dx * 1.7, -230, 230), -340); e.state = 'leap'; e.timer = .18; Sfx.play('jump'); }
+          else { e.state = 'dash'; e.timer = .42; Sfx.play('swing'); }
+        }
         return;
-      case 'dash': e.timer -= dt; b.setVelocityX(e.face * 250); if (e.timer % .06 < dt) e.scene.fx.ghost(e.sprite, 0xffffff, .35, 160); if (e.timer <= 0 || (b.onFloor() && e.ledgeAhead())) { e.state = 'recover'; e.timer = .5; } return;
-      case 'recover': e.timer -= dt; b.setVelocityX(b.velocity.x * .85); if (e.timer <= 0) { e.state = 'idle'; e.cd = .8 + Math.random() * .8; } return;
+      case 'dash': e.timer -= dt; b.setVelocityX(e.face * (e.combo ? 290 : 250)); if (e.timer % .06 < dt) e.scene.fx.ghost(e.sprite, 0xffffff, .35, 160);
+        if (e.timer <= 0 || (b.onFloor() && e.ledgeAhead())) {
+          // 진화형: 지나쳐 버렸으면 곧장 돌아서 한 번 더 (짧은 예고)
+          if (lv >= 1 && !e.combo && Math.sign(p.x - e.x) !== e.face && Math.random() < .55) { e.combo = true; e.facePlayer(p); e.mode = 'dash'; e.state = 'wind'; e.timer = .2; return; }
+          e.combo = false; e.state = 'recover'; e.timer = .5;
+        }
+        return;
+      case 'leap': e.timer -= dt; if (e.timer <= 0 && b.onFloor()) { slamWave(e, p, 64, 1.1); e.state = 'recover'; e.timer = .55; } return;
+      case 'hop': e.timer -= dt; if (e.timer <= 0 && b.onFloor()) { e.state = 'idle'; e.cd = Math.min(e.cd, .25); } return;   // 뒤로 물러선 뒤 곧바로 반격
+      case 'recover': e.timer -= dt; b.setVelocityX(b.velocity.x * .85); if (e.timer <= 0) { e.state = 'idle'; e.cd = .7 + Math.random() * .7; } return;
     }
-    if (Math.abs(dx) < (e.canShoot ? 220 : 150) && Math.abs(dy) < 40) {
+    // 코앞에서 공격이 들어오면 뒤로 깡충 (진화형)
+    if (lv >= 1 && adx < 46 && Math.abs(dy) < 30 && attacking(p) && b.onFloor() && chance(3, dt)) { e.facePlayer(p); b.setVelocity(-e.face * 190, -200); e.state = 'hop'; e.timer = .2; return; }
+    if (adx < (e.canShoot ? 230 : 170) && Math.abs(dy) < 90) {
       e.facePlayer(p);
-      if (e.cd <= 0) {   // 멀면 충격파, 가까우면 반반 (2단부터)
-        e.mode = e.canShoot && (Math.abs(dx) >= 150 || Math.random() < .4) ? 'shot' : 'dash';
-        e.state = 'wind'; e.timer = .45; return;
+      if (e.cd <= 0) {
+        if (lv >= 1 && b.onFloor() && (dy < -24 || (adx > 70 && Math.random() < .35))) { e.mode = 'leap'; e.state = 'wind'; e.timer = .4; warnMark(e, p.x, p.bottom, 26, 400); return; }
+        if (Math.abs(dy) < 40) { e.mode = e.canShoot && (adx >= 150 || Math.random() < .35) ? 'shot' : 'dash'; e.state = 'wind'; e.timer = .45; return; }
       }
-      b.setVelocityX(Math.abs(dx) > 24 && !e.ledgeAhead() ? e.face * e.spd : 0);
+      b.setVelocityX(adx > 24 && !e.ledgeAhead() ? e.face * e.spd : 0);
     } else wander(e, p, .6);
   },
 
+  // ---- 피츄 계열: 앞질러 쏘기 · (진화) 부채꼴 연사 · 발밑 표식 낙뢰 · 다가오면 뒤로 뛰며 거리 벌리기 ----
   shooter(e, dt, p) {
-    const b = e.b, dx = p.x - e.x, adx = Math.abs(dx);
+    const b = e.b, dx = p.x - e.x, adx = Math.abs(dx), lv = lvlOf(e);
     e.cd -= dt;
     if (e.state === 'wind') {
       e.timer -= dt; b.setVelocityX(0); e.telegraph(true);
+      if (e.mode === 'pillar' && e.mark) e.mark.x += Phaser.Math.Clamp(p.x - e.mark.x, -60 * dt, 60 * dt);   // 표식이 천천히 따라온다 (피할 틈)
       if (e.timer <= 0) {
         e.telegraph(false);
         if (e.mode === 'dash') { e.state = 'dash'; e.timer = .3; }
-        else {
-          e.state = 'shoot'; e.timer = .3;
-          e.fireShot(p);
-        }
+        else if (e.mode === 'fan') { const a0 = leadAngle(e, p, .3), n = lv >= 2 ? 5 : 3; for (let k = 0; k < n; k++) shootAt(e, a0 + (k - (n - 1) / 2) * .2); Sfx.play('eshot'); e.state = 'shoot'; e.timer = .4; }
+        else if (e.mode === 'pillar') { const m = e.mark; e.mark = null; pillar(e, p, m.x, m.y, 1.3); e.state = 'shoot'; e.timer = .5; }
+        else { e.state = 'shoot'; e.timer = .3; e.fireShot({ x: p.x + ((p.b && p.b.velocity.x) || 0) * .3, y: p.y }); }   // 움직이는 쪽을 앞질러 겨눈다
       }
+      if (e.mode === 'pillar' && e.mark && e.timer > 0 && Math.random() < dt * 12) warnMark(e, e.mark.x, e.mark.y, 14, 160, typeColor(e.def.atkType));
       return;
     }
     if (e.state === 'dash') { e.timer -= dt; b.setVelocityX(e.face * 300); if (e.timer <= 0) { e.state = 'recover'; e.timer = .4; } return; }
-    if (e.state === 'shoot' || e.state === 'recover') { e.timer -= dt; b.setVelocityX(b.velocity.x * .8); if (e.timer <= 0) { e.state = 'idle'; e.cd = 1.3 + Math.random() * .8; } return; }
-    if (adx < 220 && Math.abs(p.y - e.y) < 90) {
+    if (e.state === 'hop') { e.timer -= dt; if (e.timer <= 0 && b.onFloor()) { e.state = 'idle'; e.cd = Math.min(e.cd, .2); } return; }
+    if (e.state === 'shoot' || e.state === 'recover') { e.timer -= dt; b.setVelocityX(b.velocity.x * .8); if (e.timer <= 0) { e.state = 'idle'; e.cd = 1.1 + Math.random() * .7; } return; }
+    if (adx < 240 && Math.abs(p.y - e.y) < 100) {
       e.facePlayer(p);
-      if (e.cd <= 0) { e.mode = adx < 70 && Math.random() < .5 ? 'dash' : 'shot'; e.state = 'wind'; e.timer = .4; return; }
-      const want = adx < 90 ? -e.face : adx > 140 ? e.face : 0;   // 거리 유지
-      const blocked = want && b.onFloor() && (want === e.face ? e.ledgeAhead() : false);
+      // 너무 가까우면 뒤로 뛰어 거리를 벌리고 바로 쏜다 (진화형)
+      if (lv >= 1 && adx < 50 && b.onFloor() && chance(2.5, dt) && !e.ledgeBehind()) { b.setVelocity(-e.face * 170, -260); e.state = 'hop'; e.timer = .2; return; }
+      if (e.cd <= 0) {
+        const r = Math.random();
+        e.mode = adx < 70 && r < .4 ? 'dash' : lv >= 2 && r < .35 ? 'pillar' : lv >= 1 && r < .6 ? 'fan' : 'shot';
+        e.state = 'wind'; e.timer = e.mode === 'pillar' ? .8 : .4;
+        if (e.mode === 'pillar') e.mark = { x: p.x, y: p.bottom };
+        return;
+      }
+      const want = adx < 90 ? -e.face : adx > 150 ? e.face : 0;   // 거리 유지
+      const blocked = want && b.onFloor() && (want === e.face ? e.ledgeAhead() : e.ledgeBehind());
       b.setVelocityX(blocked ? 0 : want * e.spd);
     } else wander(e, p, .5);
   },
 
+  // ---- 주뱃 계열: 급강하 · (진화) 되솟아 2연 급강하 · 머리 위로 올라가 수직 강하 · 사방 초음파 고리 ----
   flyer(e, dt, p) {
-    const b = e.b, dx = p.x - e.x, dy = p.y - e.y;
+    const b = e.b, dx = p.x - e.x, dy = p.y - e.y, lv = lvlOf(e);
     e.cd -= dt;
     switch (e.state) {
-      case 'wind': e.timer -= dt; b.setVelocity(b.velocity.x * .9, -20); e.telegraph(true);
-        if (e.timer <= 0 && e.mode === 'shot') { e.telegraph(false); e.fireShot(p); e.state = 'recover'; e.timer = .5; return; }
-        if (e.timer <= 0) { e.telegraph(false); const a = Math.atan2(dy, dx); b.setVelocity(Math.cos(a) * 210, Math.sin(a) * 210); e.state = 'dive'; e.timer = .65; } return;
-      case 'dive': e.timer -= dt; if (e.timer <= 0 || b.blocked.down || b.blocked.left || b.blocked.right) { e.state = 'recover'; e.timer = .7; } return;
-      case 'recover': e.timer -= dt; b.setVelocity(b.velocity.x * .92, -60); if (e.timer <= 0) { e.state = 'idle'; e.cd = 1 + Math.random(); } return;
+      case 'wind': e.timer -= dt; b.setVelocity(b.velocity.x * .9, e.mode === 'stoop' ? b.velocity.y * .9 : -20); e.telegraph(true);
+        if (e.timer > 0) return;
+        e.telegraph(false);
+        if (e.mode === 'shot') { e.fireShot(p); e.state = 'recover'; e.timer = .5; return; }
+        if (e.mode === 'sonic') {   // 사방으로 퍼지는 음파 고리
+          const n = lv >= 3 ? 10 : 8;
+          for (let k = 0; k < n; k++) shootAt(e, k / n * Math.PI * 2, { speed: 130, mul: .7 });
+          e.scene.fx.ring(e.x, e.y, 30, 0xc8e0ff, 300); Sfx.play('eshot'); e.state = 'recover'; e.timer = .6; return;
+        }
+        if (e.mode === 'stoop') { b.setVelocity(Phaser.Math.Clamp(dx * 1.2, -80, 80), 300); e.state = 'dive'; e.timer = .6; Sfx.play('swing'); return; }
+        { const a = Math.atan2(dy, dx), sp = e.combo ? 250 : 210; b.setVelocity(Math.cos(a) * sp, Math.sin(a) * sp); e.state = 'dive'; e.timer = .65; Sfx.play('swing'); }
+        return;
+      case 'dive': e.timer -= dt; if (e.timer % .07 < dt) e.scene.fx.ghost(e.sprite, 0xc8e0ff, .3, 140);
+        if (e.timer <= 0 || b.blocked.down || b.blocked.left || b.blocked.right) {
+          if (lv >= 1 && !e.combo && e.mode !== 'stoop' && Math.random() < .5) { e.combo = true; e.mode = 'dive'; e.state = 'wind'; e.timer = .25; b.setVelocity(-b.velocity.x * .4, -160); return; }   // 지나쳐 솟구쳤다가 한 번 더
+          e.combo = false; e.state = 'recover'; e.timer = .7;
+        }
+        return;
+      case 'climb':   // 플레이어 머리 위로 올라간다 → 수직 강하
+        e.timer -= dt;
+        b.setVelocity(Phaser.Math.Clamp((p.x - e.x) * 3, -e.spd * 1.5, e.spd * 1.5), Phaser.Math.Clamp((p.y - 90 - e.y) * 3, -e.spd * 1.5, e.spd * 1.5));
+        if (e.timer <= 0 || (Math.abs(p.x - e.x) < 12 && Math.abs(p.y - 90 - e.y) < 14)) { e.mode = 'stoop'; e.state = 'wind'; e.timer = .3; warnMark(e, p.x, p.bottom, 22, 300, 0xc8e0ff); }
+        return;
+      case 'recover': e.timer -= dt; b.setVelocity(b.velocity.x * .92, -60); if (e.timer <= 0) { e.state = 'idle'; e.cd = .9 + Math.random() * .9; } return;
     }
-    const near = Math.abs(dx) < 220 && Math.abs(dy) < 160;
+    const near = Math.abs(dx) < 230 && Math.abs(dy) < 170;
     e.facePlayer(p);
-    const tx = near ? p.x - Math.sign(dx || 1) * 60 : e.home.x + Math.sin(e.t) * 40;
-    const ty = near ? p.y - 30 + Math.sin(e.t * 4) * 8 : e.home.y + Math.sin(e.t * 1.7) * 10;   // 공격이 닿는 낮은 높이에서 맴돈다
+    // 좌우로 흔들리며 맴돈다 (가만히 떠 있지 않게)
+    const tx = near ? p.x - Math.sign(dx || 1) * (60 + Math.sin(e.t * 1.3) * 20) : e.home.x + Math.sin(e.t) * 40;
+    const ty = near ? p.y - 30 + Math.sin(e.t * 4) * 10 : e.home.y + Math.sin(e.t * 1.7) * 10;   // 공격이 닿는 낮은 높이에서 맴돈다
     b.setVelocity(Phaser.Math.Clamp((tx - e.x) * 2, -e.spd, e.spd), Phaser.Math.Clamp((ty - e.y) * 2, -e.spd, e.spd));
-    if (near && e.cd <= 0) { e.mode = e.canShoot && Math.random() < .5 ? 'shot' : 'dive'; e.state = 'wind'; e.timer = .35; }
+    if (near && e.cd <= 0) {
+      const r = Math.random();
+      if (lv >= 2 && r < .25) { e.mode = 'sonic'; e.state = 'wind'; e.timer = .5; return; }
+      if (lv >= 1 && r < .5) { e.state = 'climb'; e.timer = 1.1; return; }
+      e.mode = e.canShoot && r < .75 ? 'shot' : 'dive'; e.state = 'wind'; e.timer = .35;
+    }
   },
 
+  // ---- 알통몬 계열: 연타(진화할수록 길게) · 거리 좁히며 돌진 펀치 · 막고 받아치기 · 뛰어올라 내려찍기 ----
   brawler(e, dt, p) {
-    const b = e.b, dx = p.x - e.x, adx = Math.abs(dx), dy = p.y - e.y;
+    const b = e.b, dx = p.x - e.x, adx = Math.abs(dx), dy = p.y - e.y, lv = lvlOf(e), maxHits = lv >= 2 ? 3 : 2;
     e.cd -= dt;
-    if (e.state === 'wind') {
-      e.timer -= dt; b.setVelocityX(0); e.telegraph(true);
-      if (e.timer <= 0 && e.mode === 'shot') { e.telegraph(false); e.mode = null; e.fireShot(p); Sfx.play('punch'); e.state = 'recover'; e.timer = .6; return; }
-      if (e.timer <= 0) {
-        e.telegraph(false); e.state = 'punch'; e.timer = .18; e.hits = (e.hits || 0) + 1;
-        const box = { x: e.face > 0 ? e.b.right - 4 : e.b.x - 22, y: e.b.y, w: 26, h: e.b.height };
-        e.scene.fx.slash(e.x + e.face * 12, e.y, 11, e.face, 0xff8a6a, { flipV: e.hits % 2 === 0 });
-        if (overlap(box, p.bounds())) p.takeHit(e.dmg, 'fighting', e.x, {});
-        Sfx.play('punch'); b.setVelocityX(e.face * 80);
-      }
+    const punch = (mul = 1, reach = 26) => {
+      e.hits = (e.hits || 0) + 1;
+      const box = { x: e.face > 0 ? e.b.right - 4 : e.b.x - reach + 4, y: e.b.y, w: reach, h: e.b.height };
+      e.scene.fx.slash(e.x + e.face * 12, e.y, 11 + (mul > 1 ? 4 : 0), e.face, 0xff8a6a, { flipV: e.hits % 2 === 0 });
+      zoneHit(e, p, box, mul, 'fighting');
+      Sfx.play('punch'); b.setVelocityX(e.face * 80);
+    };
+    if (e.state === 'guard') {   // 막기: 받는 피해 ×0.3 · 끝나면 곧장 받아치기
+      e.timer -= dt; b.setVelocityX(0);
+      if (e.timer <= 0) { e.guardMul = null; e.facePlayer(p); e.mode = null; e.hits = maxHits - 1; e.state = 'wind'; e.timer = .12; }
       return;
     }
-    if (e.state === 'punch') { e.timer -= dt; if (e.timer <= 0) { if (e.hits < 2) { e.state = 'wind'; e.timer = .22; } else { e.hits = 0; e.state = 'recover'; e.timer = .6; } } return; }
-    if (e.state === 'recover') { e.timer -= dt; b.setVelocityX(b.velocity.x * .85); if (e.timer <= 0) { e.state = 'idle'; e.cd = .7 + Math.random() * .6; } return; }
-    if (adx < 200 && Math.abs(dy) < 70) {
+    if (e.state === 'wind') {
+      e.timer -= dt; b.setVelocityX(0); e.telegraph(true);
+      if (e.timer > 0) return;
+      e.telegraph(false);
+      if (e.mode === 'shot') { e.mode = null; e.fireShot(p); Sfx.play('punch'); e.state = 'recover'; e.timer = .6; return; }
+      if (e.mode === 'lunge') { e.mode = null; e.state = 'lunge'; e.timer = .26; Sfx.play('dash'); return; }
+      if (e.mode === 'slam') { e.mode = null; b.setVelocity(Phaser.Math.Clamp(dx * 1.6, -200, 200), -360); e.state = 'leap'; e.timer = .2; Sfx.play('jump'); return; }
+      e.state = 'punch'; e.timer = .18; punch(e.hits + 1 >= maxHits && maxHits > 2 ? 1.4 : 1);   // 3연타 마지막은 묵직하게
+      return;
+    }
+    if (e.state === 'lunge') {   // 바닥을 미끄러지듯 파고들어 한 방
+      e.timer -= dt; b.setVelocityX(e.face * 260); if (e.timer % .05 < dt) e.scene.fx.ghost(e.sprite, 0xff8a6a, .3, 150);
+      if (e.timer <= 0 || adx < 20 || e.ledgeAhead()) { e.hits = maxHits - 1; punch(1.3, 30); e.state = 'recover'; e.timer = .55; }
+      return;
+    }
+    if (e.state === 'leap') { e.timer -= dt; if (e.timer <= 0 && b.onFloor()) { slamWave(e, p, 80, 1.3); e.state = 'recover'; e.timer = .7; } return; }
+    if (e.state === 'punch') { e.timer -= dt; if (e.timer <= 0) { if (e.hits < maxHits) { e.state = 'wind'; e.timer = .2; } else { e.hits = 0; e.state = 'recover'; e.timer = .6; } } return; }
+    if (e.state === 'recover') { e.timer -= dt; b.setVelocityX(b.velocity.x * .85); if (e.timer <= 0) { e.state = 'idle'; e.cd = .6 + Math.random() * .6; } return; }
+    if (adx < 210 && Math.abs(dy) < 80) {
       e.facePlayer(p);
-      if (adx < 28 && Math.abs(dy) < 24 && e.cd <= 0) { e.state = 'wind'; e.timer = .4; return; }
-      if (adx > 56 && e.cd <= 0 && e.canShoot) {   // 2단부터: 거리가 있으면 반쯤은 충격파를 날린다
-        if (Math.random() < .5) { e.mode = 'shot'; e.state = 'wind'; e.timer = .45; return; }
-        e.cd = .6;
+      // 앞에서 공격이 들어오면 막는다 (진화형)
+      if (lv >= 1 && adx < 60 && Math.abs(dy) < 30 && attacking(p) && chance(4, dt)) {
+        e.state = 'guard'; e.timer = .5; e.guardMul = .3;
+        e.scene.fx.floatText(e.x, e.top - 6, '막기!', '#ffd27a', 9); e.scene.fx.ring(e.x + e.face * 8, e.y, 14, 0xffd27a, 220);
+        return;
       }
-      if (dy < -30 && b.onFloor() && e.cd <= 0 && Math.random() < .02) { b.setVelocityY(-280); }
+      if (e.cd <= 0) {
+        if (adx < 28 && Math.abs(dy) < 24) { e.hits = 0; e.state = 'wind'; e.timer = .35; return; }
+        if (lv >= 1 && b.onFloor() && (dy < -30 || (adx > 60 && adx < 150 && Math.random() < .3))) { e.mode = 'slam'; e.state = 'wind'; e.timer = .45; warnMark(e, p.x, p.bottom, 30, 450); return; }
+        if (adx > 40 && adx < 130 && Math.abs(dy) < 24 && Math.random() < .45) { e.hits = 0; e.mode = 'lunge'; e.state = 'wind'; e.timer = .35; return; }
+        if (adx > 56 && e.canShoot && Math.random() < .5) { e.mode = 'shot'; e.state = 'wind'; e.timer = .45; return; }
+        e.cd = .4;
+      }
       b.setVelocityX(adx > 20 && !e.ledgeAhead() ? e.face * e.spd : 0);
     } else wander(e, p, .5);
   },
 
+  // ---- 고오스 계열: 유도 섀도볼 · (진화) 등 뒤로 순간이동해 핥기 · 섀도볼 부채 연사 · 발밑 그림자 기둥 ----
   ghost(e, dt, p) {
-    const b = e.b, dx = p.x - e.x, dy = p.y - e.y;
+    const b = e.b, dx = p.x - e.x, dy = p.y - e.y, lv = lvlOf(e);
     e.cd -= dt;
     e.fadeT = (e.fadeT ?? 2 + Math.random() * 2) - dt;
-    if (e.fade) { if (e.fadeT <= 0) { e.fade = false; e.intangible = false; e.fadeT = 3 + Math.random() * 2; e.sprite.setAlpha(1); } }
-    else if (e.fadeT <= 0 && e.state !== 'wind') { e.fade = true; e.intangible = true; e.fadeT = 1.1; e.sprite.setAlpha(.3); }
+    if (e.state !== 'blink') {
+      if (e.fade) { if (e.fadeT <= 0) { e.fade = false; e.intangible = false; e.fadeT = 3 + Math.random() * 2; e.sprite.setAlpha(1); } }
+      else if (e.fadeT <= 0 && e.state !== 'wind') { e.fade = true; e.intangible = true; e.fadeT = 1.1; e.sprite.setAlpha(.3); }
+    }
     e.facePlayer(p);
+    if (e.state === 'blink') {   // 사라졌다가 등 뒤에 나타난다
+      e.timer -= dt; b.setVelocity(0, 0);
+      if (e.timer <= 0) {
+        const side = -(Math.sign(p.b && p.b.velocity.x) || p.face || 1);
+        e.b.reset(p.x + side * 34, p.y - 6); e.fade = false; e.intangible = false; e.sprite.setAlpha(1); e.fadeT = 3;
+        e.scene.fx.burst(e.x, e.y, [0x9a5aff, 0x2a0a3a], 12, 90, { glow: true }); Sfx.play('ghost');
+        e.facePlayer(p); e.mode = 'lick'; e.state = 'wind'; e.timer = .32;
+      }
+      return;
+    }
     if (e.state === 'wind') {
       e.timer -= dt; b.setVelocity(b.velocity.x * .9, b.velocity.y * .9); e.telegraph(true);
-      if (e.timer <= 0) {
-        e.telegraph(false); e.state = 'idle'; e.cd = 2.4 + Math.random();
-        e.fireShot(p, .3);
-      }
+      if (e.mode === 'pillar' && e.mark && Math.random() < dt * 12) warnMark(e, e.mark.x, e.mark.y, 14, 160, 0x9a5aff);
+      if (e.timer > 0) return;
+      e.telegraph(false); e.state = 'idle'; e.cd = 2 + Math.random();
+      if (e.mode === 'lick') { e.scene.fx.slash(e.x + e.face * 12, e.y, 13, e.face, 0x9a5aff); zoneHit(e, p, { x: e.face > 0 ? e.x : e.x - 30, y: e.y - 16, w: 30, h: 30 }, 1.2, 'ghost'); Sfx.play('swing'); e.cd = 1.4; }
+      else if (e.mode === 'barrage') { const a0 = Math.atan2(dy, dx); for (let k = 0; k < 5; k++) e.scene.time.delayedCall(k * 110, () => shootAt(e, a0 + (k - 2) * .28, { mul: .8 })); Sfx.play('ghost'); }
+      else if (e.mode === 'pillar') { const m = e.mark; e.mark = null; if (m) pillar(e, p, m.x, m.y, 1.2); }
+      else e.fireShot(p, .3);
+      e.mode = null;
       return;
     }
     const near = Math.abs(dx) < 260 && Math.abs(dy) < 200;
     if (near) {
       const tx = p.x - Math.sign(dx || 1) * 80, ty = p.y - 24 + Math.sin(e.t * 2) * 10;
       b.setVelocity(Phaser.Math.Clamp((tx - e.x) * 1.4, -e.spd, e.spd), Phaser.Math.Clamp((ty - e.y) * 1.4, -e.spd, e.spd));
-      if (e.cd <= 0 && !e.fade) { e.state = 'wind'; e.timer = .5; }
+      if (e.cd <= 0 && !e.fade) {
+        const r = Math.random();
+        if (lv >= 1 && r < .3) { e.state = 'blink'; e.timer = .45; e.fade = true; e.intangible = true; e.sprite.setAlpha(.12); e.scene.fx.burst(e.x, e.y, [0x9a5aff, 0x2a0a3a], 10, 70, { glow: true }); return; }
+        if (lv >= 2 && r < .55) { e.mode = 'barrage'; e.state = 'wind'; e.timer = .55; return; }
+        if (lv >= 1 && r < .75) { e.mode = 'pillar'; e.mark = { x: p.x, y: p.bottom }; e.state = 'wind'; e.timer = .75; return; }
+        e.mode = null; e.state = 'wind'; e.timer = .5;
+      }
     } else b.setVelocity(b.velocity.x * .95, Math.sin(e.t) * 12);
     keepOutOfWalls(e, p);
   }

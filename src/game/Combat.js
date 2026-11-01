@@ -66,7 +66,7 @@ export class Combat {
       const steal = (mods.lifesteal || 0) + (o.lifesteal || 0);
       if (steal > 0) p.heal(d * steal, true);
     }
-    if (e.boss && e.addStagger && !o.dot) e.addStagger(m === 0 ? 'immune' : eff);   // 보스 그로기 게이지 (약점 속성 공격만 찬다 — Boss.STAGGER_GAIN)
+    if (e.boss && e.addStagger && !o.dot) e.addStagger(m === 0 ? 'immune' : eff, d);   // 보스 그로기 게이지 (약점 속성 공격만 · 준 피해에 비례 — Boss.addStagger)
     if (e.hp > 0) perkHit(this, e, d, type, o);
     if (p.castGrade && !o.proc && !o.dot && e.alive) this.gradeBurst(e, type, p.castGrade === '전설');   // 유니크·전설 기술 카드: 맞힌 자리마다 연쇄 폭발   // 특성 카드: 화상·빙결·마비·독·저주 부여 · 연쇄 번개 · 장판 · 블랙홀
     if (e.hp <= 0 && !(e.cheatDeath && e.cheatDeath())) this.s.killEnemy(e);   // 칠색조 부활처럼 한 번 버티는 보스

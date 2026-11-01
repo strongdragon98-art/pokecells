@@ -16,7 +16,11 @@ const HOVER_STATES = new Set(['idle', 'wind', 'fire', 'recover', 'barrage', 'bli
 const HOVER_GAP = 30;                                      // 보스 발끝 ~ 아래 땅 (px)
 const FREE_FLYERS = new Set(['eternatus']);                // 아레나 한가운데 고정된 거대 보스는 제외
 // 약점 그로기: '효과가 굉장했다'(상성 우위) 공격만 게이지가 찬다 (등배·반감·무효는 0) · 그로기는 2.25초만 짧고 굵게 · 그로기 중 받는 피해 배율
-const STAGGER_GAIN = { super: 10, normal: 0, weak: 0, immune: 0 };
+//  한 번에 차는 양은 준 피해에 비례한다 (보스 최대 체력의 2.5% 를 한 방에 주면 STAGGER_GAIN.super) — 약한 다단히트 · 연타로 순식간에 차지 않게
+//  가장 작게 · 크게: STAGGER_MIN ~ STAGGER_MAX · 2초 동안 약점을 못 맞히면 초당 STAGGER_DECAY 씩 빠진다
+//  그로기를 한 번 겪을 때마다 다음 게이지는 STAGGER_TOUGH 배 더 단단해진다 (같은 보스에게 그로기를 줄줄이 걸지 못하게)
+const STAGGER_GAIN = { super: 6, normal: 0, weak: 0, immune: 0 };
+const STAGGER_REF = .025, STAGGER_MIN = .8, STAGGER_MAX = 7, STAGGER_DECAY = 6, STAGGER_TOUGH = .6;
 export const GROGGY_T = 2.25, GROGGY_MUL = 1.35;
 
 export class Boss extends Enemy {
@@ -60,6 +64,7 @@ export class Boss extends Enemy {
       if (this.alive && st.poison > 0) sc.combat.damageEnemy(this, this.poisonDps * .5, 'none', { dot: 'poison' });
       if (!this.alive) return;
     }
+    if (!(this.groggyT > 0) && this.stagger > 0 && sc.time.now - (this.staggerAt || 0) > 2000) this.stagger = Math.max(0, this.stagger - STAGGER_DECAY * dt);   // 약점을 한동안 못 맞히면 그로기 게이지가 천천히 빠진다
     if (this.state === 'intro') {
       const ip = this.ip;
       if (ip) {
@@ -162,11 +167,14 @@ export class Boss extends Enemy {
 
   // ---------------- 약점 그로기 ----------------
   //  맞을 때마다 상성에 따라 게이지가 찬다 (약점은 등배의 3.5배 + "WEAKNESS!") → 100% 면 즉시 추락 · 4.5초 무방비 · 받는 피해 ×1.35
-  addStagger(eff) {
+  addStagger(eff, d = 0) {
     if (this.groggyT > 0 || this.state === 'intro' || !this.alive || this.gone) return;
-    const sc = this.scene, gain = STAGGER_GAIN[eff] ?? STAGGER_GAIN.normal;
-    if (!gain) return;
+    const sc = this.scene, base = STAGGER_GAIN[eff] ?? STAGGER_GAIN.normal;
+    if (!base) return;
+    const k = Math.min(STAGGER_MAX, Math.max(STAGGER_MIN, base * (d / (this.maxhp * STAGGER_REF))));
+    const gain = k / (1 + STAGGER_TOUGH * (this.groggyN || 0));
     this.stagger = Math.min(100, (this.stagger || 0) + gain);
+    this.staggerAt = sc.time.now;
     if (eff === 'super') {
       this.staggerFlash = .35;
       if (sc.time.now - (this.weakAt || -9999) > 380) { this.weakAt = sc.time.now; sc.fx.floatText(this.x, this.top - 16, 'WEAKNESS!', '#ffb040', 12); }
@@ -175,7 +183,7 @@ export class Boss extends Enemy {
   }
   startGroggy() {
     const sc = this.scene;
-    this.groggyT = GROGGY_T; this.stagger = 100;
+    this.groggyT = GROGGY_T; this.stagger = 100; this.groggyN = (this.groggyN || 0) + 1;
     this.state = 'groggy'; this.telegraph(false); this.intangible = false; this.sprite.setAlpha(1);
     if (this.puddle) this.puddle.clear();
     this.b.setAllowGravity(true); this.b.setVelocity(0, 300);   // 공중에 있어도 그대로 추락
