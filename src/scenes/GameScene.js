@@ -1110,7 +1110,7 @@ export default class GameScene extends Phaser.Scene {
     // 비네트: 가운데 맑은 시야를 넓게 (예전보다 2.5배 이상) · 가장자리 15~20% 에만 검붉은 긴장감
     if (this.vignetteFx) { this.vignetteFx.radius = .98 - c * .06; this.vignetteFx.strength = .18 + c * .17; }
     // 햇빛 줄기: 화면 위에서 비스듬히 (깊어질수록 옅어지다 사라진다)
-    const R0 = this.room, sun = Phaser.Math.Clamp(1 - c / .45, 0, 1) * (R0 && R0.under ? .25 : 1) * (R0 && (R0.seaBridge || R0.rain || R0.drought || R0.stratosphere) ? 0 : 1);
+    const R0 = this.room, sun = Phaser.Math.Clamp(1 - c / .45, 0, 1) * (R0 && (R0.under || R0.trailEnd) ? .25 : 1) * (R0 && (R0.seaBridge || R0.rain || R0.drought || R0.stratosphere) ? 0 : 1);
     if (!this.sunbeams) {
       sunbeamTexture(this);
       this.sunbeams = [0, 1, 2, 3, 4].map(i => this.add.image(0, 0, 'fx:sunbeam').setOrigin(.5, 0).setBlendMode(Phaser.BlendModes.ADD).setTint(0xfff0c0).setDepth(23.5).setAngle(-22).setAlpha(0));
@@ -1125,9 +1125,13 @@ export default class GameScene extends Phaser.Scene {
       this.fx.burst(v.x + Math.random() * v.width, v.y + Math.random() * v.height * .8, [0xfff0c0, 0xffe08a], 1, 8, { grav: -6, bounce: false, glow: true, life: 1.6, size: 1, drag: .99 });
     }
     // 하늘: 침식이 옅으면 맑은 낮 하늘이 먼 배경을 덮고, 깊어질수록 먼·중간 배경이 검붉게 가라앉는다
-    if (this.daySky) this.daySky.setAlpha(Phaser.Math.Clamp(1 - c / .42, 0, 1) * .9 * (R0 && (R0.seaBridge || R0.rain || R0.drought || R0.stratosphere) ? 0 : 1));
-    const bgT = c < .45 ? 0xffffff : lerpColor(0xffffff, 0x6a3a4a, (c - .45) / .55);
-    this.bgFar.setTint(bgT); for (const t of Object.values(this.bgMids)) t.setTint(c < .45 ? lerpColor(0xd8e4f0, 0xffffff, c / .45) : bgT);
+    if (this.daySky) this.daySky.setAlpha(Phaser.Math.Clamp(1 - c / .42, 0, 1) * .9 * (R0 && (R0.seaBridge || R0.rain || R0.drought || R0.stratosphere) ? 0 : R0 && R0.trailEnd ? .35 : 1));
+    const bgT = R0 && R0.trailEnd ? 0x9a80a8 : c < .45 ? 0xffffff : lerpColor(0xffffff, 0x6a3a4a, (c - .45) / .55);   // 방울탑 정문 앞: 잿빛 보라 하늘
+    this.bgFar.setTint(bgT); for (const t of Object.values(this.bgMids)) t.setTint(R0 && R0.trailEnd ? bgT : c < .45 ? lerpColor(0xd8e4f0, 0xffffff, c / .45) : bgT);
+    if (R0 && R0.trailEnd && Math.random() < .45) {   // 방울탑 정문 틈 · 균열에서 보랏빛 침식 홀씨가 새어 나온다
+      const gx = R0.doorTx * TILE + 8, gy = R0.F * TILE;
+      this.fx.burst(gx + (Math.random() - .5) * 360, gy - Math.random() * 90, [0x9a3aff, 0x6a1a8a, 0xd080ff], 1, 10, { angle: -Math.PI / 2, spread: .9, up: 10, grav: -10, bounce: false, glow: true, life: 2.4, size: Math.random() < .3 ? 2 : 1, drag: .99 });
+    }
     if (c > .45 && Math.random() < (c - .45) * .9) {   // 보스방에 가까울수록: 독기 어린 보라 · 핏빛 홀씨가 바닥에서 피어오른다
       this.fx.burst(v.x + Math.random() * v.width, v.y + v.height * (.55 + Math.random() * .45), [0x9a3aff, 0xff3a6a, 0x6a1a4a], 1, 10, { angle: -Math.PI / 2, spread: .8, up: 12, grav: -12, bounce: false, glow: true, life: 2.2, size: Math.random() < .3 ? 2 : 1, drag: .99 });
     }
@@ -1150,6 +1154,7 @@ export default class GameScene extends Phaser.Scene {
       if (R && R.drought) base = lumFloor(lerpColor(base, 0xff6a3a, .38), lumOf(lit0) * .62);
       if (R && R.rain) base = lumFloor(lerpColor(base, 0x3a5aa0, .32), lumOf(lit0) * .6);
       if (R && R.seaBridge) base = shade(lerpColor(lit0, 0xa0ffe0, .22), .85);
+      if (R && R.trailEnd) base = shade(lerpColor(lit0, 0x6a4a8a, .45), .56);   // 방울탑 정문 앞: 탑 안의 침식이 스며 나와 햇살이 잦아든다
       if (R && R.stratosphere) base = lumFloor(lerpColor(base, 0xa8d8ff, .25), lumOf(lit0) * .8);
       const tgt = Phaser.Display.Color.IntegerToRGB(base), a = this.ambient, k = Math.min(1, dt * 1.5);
       a.setTo(Math.round(a.red + (tgt.r - a.red) * k), Math.round(a.green + (tgt.g - a.green) * k), Math.round(a.blue + (tgt.b - a.blue) * k));

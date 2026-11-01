@@ -17,6 +17,7 @@ const WARM = 0xffc070;
 const rand = (a, b) => a + Math.random() * (b - a);
 
 // 캔버스 텍스처 하나를 그린다. F(x,y,w,h,색,투명도) 로 픽셀 사각형을 칠한다
+const lerpTint = (a, b, k) => { const c = (s) => [(a >> s) & 255, (b >> s) & 255]; return [16, 8, 0].reduce((v, s) => { const [x, y] = c(s); return v | (Math.round(x + (y - x) * k) << s); }, 0); };
 function canvasTex(scene, key, w, h, draw) {
   if (scene.textures.exists(key)) return key;
   const t = scene.textures.createCanvas(key, Math.ceil(w), Math.ceil(h)), c = t.getContext();
@@ -447,12 +448,14 @@ function leafArt(scene, k) {
 // 방울탑 정문 외관 (초거대 1층 정면만): 탑 위층은 볼 일이 없다 — 정문 앞에선 카메라가 방 천장 위로 올라가지 않는다(GameScene.camBounds)
 //  화면 위쪽은 거대한 1층 처마 밑면(서까래 · 공포 · 단청 · 황금 풍경)이 가로로 꽉 막고, 아래는 굵은 붉은 기둥 · 격자 벽 · 청사초롱 ·
 //  사람 다섯 키만 한 활짝 열린 양개 정문 · 넓은 돌 기단과 계단. 정문 안쪽은 깊숙이 금빛 등불이 비친다
+//  탑 안은 이미 침식되었다: 정문 틈에서 보랏빛 침식 균열이 기둥 · 벽 · 기단을 타고 번지고, 단청은 군데군데 잿빛으로 바래고,
+//  풍경 몇 개는 검게 녹슬고 청사초롱 하나는 꺼져 있다. 문 안쪽 금빛 등불 둘레엔 검보라 장기가 고여 있다
 //  W 640 × H 300 · 정문 한가운데 = 가로 중앙 · 바닥 = 아래 끝 (오른쪽 끝은 방 벽 속으로 들어간다)
 function bellGateArt(scene) {
   const W = 640, H = 300, cx = W / 2;
   const stone = 0x8a8278, stoneD = 0x5a544c, stoneHi = 0xc8c0b0, red = 0xb83a24, redD = 0x7a2010, redHi = 0xe86a4a, wood = 0x5a3018, woodD = 0x3a1c0c;
   const under = 0x1e2a30, underHi = 0x34464e, gold = 0xffd060, teal = 0x2a8a7a, tealD = 0x1a5a50, green = 0x3aa85a;
-  return canvasTex(scene, 'prop:bellgate2', W, H, (F, c) => {
+  return canvasTex(scene, 'prop:bellgate3', W, H, (F, c) => {
     // ---- 1층 처마 밑면 (0 → 58): 화면 위를 가로로 꽉 막는 거대한 지붕 ----
     F(0, 0, W, 58, under);
     for (let x = -40; x < W + 40; x += 9) { c.strokeStyle = css(underHi); c.lineWidth = 1; c.beginPath(); c.moveTo(cx + (x - cx) * .55, 0); c.lineTo(x, 40); c.stroke(); }   // 처마 밑 서까래 결 (안쪽으로 모인다)
@@ -487,7 +490,7 @@ function bellGateArt(scene) {
     }
     // ---- 정문 (156 → 270): 사람 다섯 키 · 깊숙이 열린 양개 목조문 ----
     const dx0 = cx - 66, dx1 = cx + 66, dt = 156, db = y1b;
-    const g = c.createRadialGradient(cx, db - 40, 6, cx, db - 36, 110); g.addColorStop(0, '#ffe8a0'); g.addColorStop(.3, '#d88a3a'); g.addColorStop(.7, '#5a2410'); g.addColorStop(1, '#1a0804');
+    const g = c.createRadialGradient(cx, db - 40, 6, cx, db - 36, 110); g.addColorStop(0, '#ffe8a0'); g.addColorStop(.25, '#c87a4a'); g.addColorStop(.55, '#4a1a3a'); g.addColorStop(1, '#12041a');
     c.fillStyle = g; c.fillRect(dx0, dt, dx1 - dx0, db - dt);
     c.fillStyle = '#7a4a24'; c.beginPath(); c.moveTo(dx0, db); c.lineTo(cx - 30, db - 44); c.lineTo(cx + 30, db - 44); c.lineTo(dx1, db); c.closePath(); c.fill();   // 안쪽 마루 (원근)
     for (let k = 1; k < 7; k++) { const y = db - k * 7, w = 66 - k * 6; F(cx - w, y, w * 2, 1, 0x4a2a14); }
@@ -521,6 +524,35 @@ function bellGateArt(scene) {
     F(0, 270, W, 10, stone); F(0, 270, W, 1, stoneHi);
     for (let x = 4; x < W; x += 26) { F(x, 282, 1, 18, 0x3a342c); F(x + 13, 272, 1, 8, stoneD); }   // 돌 이음매
     for (let k = 0; k < 6; k++) { const w = 104 - k * 5, y = H - 5 - k * 5; F(cx - w, y, w * 2, 5, k % 2 ? stone : shade(stone, 1.1)); F(cx - w, y, w * 2, 1, stoneHi); }   // 계단 (앞으로 넓어진다)
+    // ---- 침식 흔적 ----
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let x = 2, k = 0; x < W - 8; x += 10, k++) if (rnd() < .3) { F(x, 90, 8, 8, 0x4a4250); F(x + 2, 92, 3, 2, 0x5a5262); }   // 잿빛으로 바랜 단청
+    for (let x = 2; x < W - 10; x += 20) if (rnd() < .25) { F(x, 60, 16, 18, 0x3a3440); F(x + 4, 66, 6, 2, 0x4a4250); }   // 바랜 공포
+    for (let x = 22; x < W; x += 58) if (rnd() < .4) { F(x - 3, 65, 7, 8, 0x4a3a2a); F(x - 2, 66, 2, 4, 0x6a5a3a); F(x - 4, 72, 9, 2, 0x2a2018); }   // 검게 녹슨 풍경
+    { const lx = W - 40; F(lx - 10, 121, 21, 22, 0x3a1a24); F(lx - 8, 121, 17, 22, 0x4a2430); F(lx - 4, 124, 5, 16, 0x5a3040); F(lx + 4, 130, 6, 10, 0x1a0814); }   // 꺼진 청사초롱 (찢긴 자국)
+    // 빛바랜 칠: 전체를 검보라로 한 겹 가라앉히고, 처마 쪽(위)은 더 어둡게
+    c.save(); c.globalCompositeOperation = 'source-atop'; c.fillStyle = 'rgba(28,10,40,.32)'; c.fillRect(0, 0, W, H);
+    const dk = c.createLinearGradient(0, 0, 0, 200); dk.addColorStop(0, 'rgba(14,4,22,.55)'); dk.addColorStop(1, 'rgba(14,4,22,0)'); c.fillStyle = dk; c.fillRect(0, 0, W, 200); c.restore();
+    // 보랏빛 침식 균열: 정문 틈에서 시작해 갈라지며 번진다 (검은 골 + 보랏빛 심 + 끝의 빛 알갱이)
+    const vein = (x, y, ang, len, depth) => {
+      for (let i = 0; i < len; i++) {
+        x += Math.cos(ang) * 2; y += Math.sin(ang) * 2; ang += (rnd() - .5) * .7;
+        if (x < 0 || x >= W || y < 60 || y >= H) return;
+        F(Math.round(x) - 1, Math.round(y), 2, 2, 0x1a0824); F(Math.round(x), Math.round(y), 1, 1, i % 4 ? 0x7a2ad8 : 0xc070ff);
+        if (depth > 0 && rnd() < .035) vein(x, y, ang + (rnd() < .5 ? -.9 : .9), len * .5 - i * .3, depth - 1);
+      }
+      F(Math.round(x), Math.round(y), 2, 2, 0xd890ff);
+    };
+    for (const d of [-1, 1]) {
+      const ex = d < 0 ? dx0 - 30 : dx1 + 30;
+      vein(ex, db - 20, d < 0 ? Math.PI * 1.15 : -Math.PI * .15, 46, 2);    // 기단을 따라 옆으로
+      vein(ex, db - 60, d < 0 ? Math.PI * 1.3 : -Math.PI * .3, 38, 2);     // 벽을 타고 비스듬히 위로
+      vein(ex - d * 10, dt - 10, -Math.PI / 2 - d * .4, 22, 1);            // 인방 · 현판 쪽으로
+    }
+    vein(cx - 120, db + 8, Math.PI * 1.02, 40, 1); vein(cx + 120, db + 10, -.02, 40, 1);   // 돌 기단 균열
+    // 정문 문턱에 고인 검보라 장기
+    const mg = c.createRadialGradient(cx, db, 4, cx, db, 90); mg.addColorStop(0, 'rgba(90,20,120,.55)'); mg.addColorStop(1, 'rgba(30,6,40,0)');
+    c.fillStyle = mg; c.fillRect(cx - 100, db - 60, 200, 90);
     // 왼쪽 끝: 처마가 하늘로 휘어 오르며 화면 밖으로 (오른쪽 끝은 방 벽 속)
     c.save(); c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.moveTo(0, 0); c.lineTo(34, 0); c.quadraticCurveTo(8, 20, 0, 46); c.closePath(); c.fill(); c.restore();
     F(2, 40, 6, 8, gold); F(0, 36, 3, 5, gold);
@@ -1075,10 +1107,11 @@ export class Props {
       for (let x = r.left + 4; x < r.right - 4; x += 3 + ((x * 7) % 4)) {
         const tx = Math.floor(x / TILE);
         if (!floorAt(tx, r.F)) continue;
-        this.add(s.add.image(x, Y - 1 + ((x * 13) % 3) * .5, leafArt(s, (x * 5) % 3)).setOrigin(.5, 1).setDepth(10.3).setRotation(((x * 31) % 7) * .2).setAlpha(.95));
+        const leaf = this.add(s.add.image(x, Y - 1 + ((x * 13) % 3) * .5, leafArt(s, (x * 5) % 3)).setOrigin(.5, 1).setDepth(10.3).setRotation(((x * 31) % 7) * .2).setAlpha(.95));
+        if (r.trailEnd && x > r.doorTx * TILE - 300) leaf.setTint(lerpTint(0xffffff, 0x6a4a7a, Math.min(1, (x - r.doorTx * TILE + 300) / 200)));   // 정문 가까이 시든 잎
       }
       // 따스한 가을 햇살 줄기
-      for (let x = r.left + 60; x < r.right; x += 160) this.add(s.add.image(x, r.top + 10, 'glow').setOrigin(.5, 0).setBlendMode(ADD).setTint(0xffd8a0).setScale(1.2, 5).setAlpha(.12).setDepth(3.2).setAngle(-18));
+      for (let x = r.left + 60; x < r.right; x += 160) if (!(r.trailEnd && x > r.doorTx * TILE - 420)) this.add(s.add.image(x, r.top + 10, 'glow').setOrigin(.5, 0).setBlendMode(ADD).setTint(0xffd8a0).setScale(1.2, 5).setAlpha(.12).setDepth(3.2).setAngle(-18));
       // 방울탑 입구 (방울로드 끝): 외관 + 금빛 풍경 반짝임 + 현판 빛
       if (r.trailEnd) {
         // 화면을 압도하는 거대한 1층 정면 (위층은 보이지 않는다 — 카메라가 방 천장 위 4칸까지만) — 정문 한가운데 = r.doorTx
@@ -1087,13 +1120,20 @@ export class Props {
         this.lit(s.add.image(gx, Y + 2, art).setOrigin(.5, 1).setDepth(3.4));
         // 방 천장 위로 솟은 처마는 천장 바위 타일 앞에 그려 화면 위로 끝없이 이어지게 (보이는 4칸 남짓만)
         if (cutH > 0) { const c0 = Math.max(0, cutH - 88); this.lit(s.add.image(gx, Y + 2, art).setOrigin(.5, 1).setCrop(0, c0, AW, cutH - c0).setDepth(10.45)); }
-        this.add(s.add.image(gx, Y - 120, 'glow').setBlendMode(ADD).setTint(0xffc060).setScale(9, 6).setAlpha(.06).setDepth(3.3));   // 탑을 감싸는 금빛 햇무리
-        this.add(s.add.text(gx, Y - 175, '鈴 塔 · 방울탑', { fontFamily: 'Galmuri9', fontSize: '9px', color: '#ffe0a0', stroke: '#2a1408', strokeThickness: 3, resolution: 1 }).setOrigin(.5).setDepth(3.5));
+        // 탑을 감싸는 검보라 장기 (처마 밑에 고여 천천히 일렁인다)
+        for (let k = 0; k < 5; k++) {
+          const fog = this.add(s.add.image(gx - 260 + k * 130, Y - 250 + (k % 2) * 30, 'glow').setTint(0x1a0624).setScale(5, 2.2).setAlpha(.45).setDepth(10.46));
+          this.pulses.push({ o: fog, base: .4, amp: .12, sp: .4 + k * .13 });
+        }
+        this.add(s.add.text(gx, Y - 175, '鈴 塔 · 방울탑', { fontFamily: 'Galmuri9', fontSize: '9px', color: '#d8b8a0', stroke: '#2a1408', strokeThickness: 3, resolution: 1 }).setOrigin(.5).setDepth(3.5));
         // 정문 안쪽 등불빛 (숨 쉬듯 일렁인다) · 정문 앞 빛
         const inner = this.add(s.add.image(gx, Y - 50, 'glow').setBlendMode(ADD).setTint(0xffc070).setScale(3.2, 3.6).setAlpha(.4).setDepth(3.45));
-        this.pulses.push({ o: inner, base: .26, amp: .1, sp: 1.3 });
-        this.light(gx, Y - 60, 200, 0xffb060, 1.0);
-        this.light(gx, Y - 150, 300, 0xffd8a0, .45);
+        this.pulses.push({ o: inner, base: .2, amp: .08, sp: 1.3 });
+        const miasma = this.add(s.add.image(gx, Y - 6, 'glow').setBlendMode(ADD).setTint(0x9a3aff).setScale(5, 1.2).setAlpha(.3).setDepth(10.35));   // 문턱의 보랏빛 장기
+        this.pulses.push({ o: miasma, base: .26, amp: .14, sp: .8 });
+        this.light(gx, Y - 60, 180, 0xffb060, .7);
+        this.light(gx, Y - 30, 260, 0x9a3aff, 1.1);
+        this.light(gx, Y - 150, 300, 0xb898d8, .3);
         // 정문 출입 (오박사 연구소처럼 ↑/F → 암전 → 탑 안 1층 출입문 앞)
         if (r.portalTo) this.interacts.push({ kind: 'door', pair: 'belltower', side: 'out', face: -1, x: gx, y: Y, range: 60, used: false, repeat: true, prompt: '[F 또는 ↑ : 방울탑 안으로 들어가기]', promptY: Y - 128, door: null, glowAt: { x: gx, y: Y - 50 } });
       }
