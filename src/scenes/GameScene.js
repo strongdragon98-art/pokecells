@@ -376,7 +376,7 @@ export default class GameScene extends Phaser.Scene {
 
   // ---------------- 침식 (Room.depth 0 입구 ~ 1 보스방 앞) · 지방 정화 ----------------
   // 방의 침식 깊이 (정화한 지방은 어디든 0)
-  depthOf(room) { return !room || (this.level && this.level.purified) || room.trail ? 0 : room.tower ? Math.min(.45, room.depth || 0) : room.depth || 0; }   // 방울로드: 가을 햇살 · 방울탑 안: 횃불로 은은하게 밝다
+  depthOf(room) { return !room || (this.level && this.level.purified) || room.trail || room.seaBridge ? 0 : room.tower || room.pillar ? Math.min(.45, room.depth || 0) : room.stratosphere ? Math.min(.3, room.depth || 0) : room.depth || 0; }   // 131번 수로: 85% 밤바다 · 하늘기둥 안: 벽 틈 채광 · 성층권: 별빛   // 방울로드: 가을 햇살 · 방울탑 안: 횃불로 은은하게 밝다
   // 몹의 침식 단계 Ⅰ~Ⅳ: 보스방에 가까울수록 높다
   corruptLevel(room) { const d = this.depthOf(room); return d < .25 ? 1 : d < .5 ? 2 : d < .75 ? 3 : 4; }
   // 타일 색: 초입은 햇살처럼 따뜻하게 → 중간은 본래 색 → 보스방 앞은 보랏빛 잿빛으로 가라앉는다 (정화한 지방은 맑게)
@@ -466,7 +466,7 @@ export default class GameScene extends Phaser.Scene {
     for (const c of this.chests) { c.img.destroy(); c.glow.destroy(); }
     this.chests = [];
     for (const o of this.worldObjs) o.destroy();
-    this.worldObjs = []; this.sunbeams = null;   // 햇빛 줄기도 worldObjs 와 함께 사라졌으니 새 월드에서 다시 만든다 (updateAtmosphere)
+    this.worldObjs = []; this.sunbeams = null; this.rainSheet = this.weatherVeil = null; this.cloudSeas = []; this.cracks = [];   // 햇빛 줄기도 worldObjs 와 함께 사라졌으니 새 월드에서 다시 만든다 (updateAtmosphere)
     if (this.portal) { this.portal.g.destroy(); this.portal.glow.destroy(); this.portal = null; }
     if (this.npcs) { this.npcs.destroy(); this.npcs = null; }
     if (this.props) { this.props.destroy(); this.props = null; }
@@ -1078,6 +1078,8 @@ export default class GameScene extends Phaser.Scene {
     this.updatePortal(dt);
     this.updateLights(dt);
     this.updateAtmosphere(dt);
+    this.updateWeather(dt);
+    this.updateCracks(dt);
     this.fx.update(dt);
     const cam = this.cameras.main;
     cam.followOffset.x += (-this.player.face * 26 - cam.followOffset.x) * Math.min(1, dt * 3);
@@ -1097,7 +1099,7 @@ export default class GameScene extends Phaser.Scene {
     // 비네트: 가운데 맑은 시야를 넓게 (예전보다 2.5배 이상) · 가장자리 15~20% 에만 검붉은 긴장감
     if (this.vignetteFx) { this.vignetteFx.radius = .98 - c * .06; this.vignetteFx.strength = .18 + c * .17; }
     // 햇빛 줄기: 화면 위에서 비스듬히 (깊어질수록 옅어지다 사라진다)
-    const sun = Phaser.Math.Clamp(1 - c / .45, 0, 1) * (this.room && this.room.under ? .25 : 1);
+    const R0 = this.room, sun = Phaser.Math.Clamp(1 - c / .45, 0, 1) * (R0 && R0.under ? .25 : 1) * (R0 && (R0.seaBridge || R0.rain || R0.drought || R0.stratosphere) ? 0 : 1);
     if (!this.sunbeams) {
       sunbeamTexture(this);
       this.sunbeams = [0, 1, 2, 3, 4].map(i => this.add.image(0, 0, 'fx:sunbeam').setOrigin(.5, 0).setBlendMode(Phaser.BlendModes.ADD).setTint(0xfff0c0).setDepth(23.5).setAngle(-22).setAlpha(0));
@@ -1112,7 +1114,7 @@ export default class GameScene extends Phaser.Scene {
       this.fx.burst(v.x + Math.random() * v.width, v.y + Math.random() * v.height * .8, [0xfff0c0, 0xffe08a], 1, 8, { grav: -6, bounce: false, glow: true, life: 1.6, size: 1, drag: .99 });
     }
     // 하늘: 침식이 옅으면 맑은 낮 하늘이 먼 배경을 덮고, 깊어질수록 먼·중간 배경이 검붉게 가라앉는다
-    if (this.daySky) this.daySky.setAlpha(Phaser.Math.Clamp(1 - c / .42, 0, 1) * .9);
+    if (this.daySky) this.daySky.setAlpha(Phaser.Math.Clamp(1 - c / .42, 0, 1) * .9 * (R0 && (R0.seaBridge || R0.rain || R0.drought || R0.stratosphere) ? 0 : 1));
     const bgT = c < .45 ? 0xffffff : lerpColor(0xffffff, 0x6a3a4a, (c - .45) / .55);
     this.bgFar.setTint(bgT); for (const t of Object.values(this.bgMids)) t.setTint(c < .45 ? lerpColor(0xd8e4f0, 0xffffff, c / .45) : bgT);
     if (c > .45 && Math.random() < (c - .45) * .9) {   // 보스방에 가까울수록: 독기 어린 보라 · 핏빛 홀씨가 바닥에서 피어오른다
@@ -1130,9 +1132,14 @@ export default class GameScene extends Phaser.Scene {
       const lit = c < .5 ? shade(deep, 1.45 - c * .9) : shade(deep, 1 - (c - .5) * .76);
       let base = this.room && this.room.type === 'village' ? 0x8a7258 : this.room && this.room.under ? shade(lit, .72) : lit;   // 시내는 따뜻하게 · 지하는 어둡게
       // 최소 밝기 보장: 보스방 바로 앞 · 가장 깊은 동굴이라도 초입 밝기의 60% 아래로는 떨어지지 않는다 (방울탑 안은 72%) — 지형·함정이 늘 보이게
-      const lit0 = shade(lerpColor(amb, 0xffe2b0, .35), 1.45), floorK = this.room && this.room.tower ? .72 : .6;
+      const lit0 = shade(lerpColor(amb, 0xffe2b0, .35), 1.45), floorK = this.room && this.room.pillar ? .78 : this.room && this.room.tower ? .72 : .6;
       base = lumFloor(base, lumOf(lit0) * floorK);
       if (this.room && this.room.trail) base = lerpColor(lit0, 0xffd8a0, .25);   // 방울로드: 가을 햇살처럼 환하고 따뜻하게
+      const R = this.room;   // 호연: 가뭄은 붉은 주황 · 폭우는 푸르게 · 131번 수로는 에메랄드 밤바다(85%) · 하늘기둥 안 78% · 성층권은 별빛처럼 맑게
+      if (R && R.drought) base = lumFloor(lerpColor(base, 0xff6a3a, .38), lumOf(lit0) * .62);
+      if (R && R.rain) base = lumFloor(lerpColor(base, 0x3a5aa0, .32), lumOf(lit0) * .6);
+      if (R && R.seaBridge) base = shade(lerpColor(lit0, 0xa0ffe0, .22), .85);
+      if (R && R.stratosphere) base = lumFloor(lerpColor(base, 0xa8d8ff, .25), lumOf(lit0) * .8);
       const tgt = Phaser.Display.Color.IntegerToRGB(base), a = this.ambient, k = Math.min(1, dt * 1.5);
       a.setTo(Math.round(a.red + (tgt.r - a.red) * k), Math.round(a.green + (tgt.g - a.green) * k), Math.round(a.blue + (tgt.b - a.blue) * k));
       this.lights.setAmbientColor(a.color);
@@ -1258,7 +1265,175 @@ export default class GameScene extends Phaser.Scene {
         this.capsule = { img, glow, x, gy, room: r };
       }
       if (r.rooftop) this.rooftopSky(r);
+      if (r.stratosphere) this.stratosphereSky(r);
     }
+    this.buildCracks();
+  }
+  // 천공의 제단(하늘기둥 꼭대기): 위는 성층권의 별과 에메랄드 오로라 · 아래는 끝없는 구름바다
+  stratosphereSky(r) {
+    const W = r.right - r.left, H = r.bottom - r.top, ADD = Phaser.BlendModes.ADD;
+    if (!this.textures.exists('fx:strato')) {
+      const t = this.textures.createCanvas('fx:strato', 4, 128), c = t.getContext(), g = c.createLinearGradient(0, 0, 0, 128);
+      g.addColorStop(0, '#02040e'); g.addColorStop(.45, '#0a1a3a'); g.addColorStop(.75, '#1a4a6a'); g.addColorStop(1, '#8ac8d8');
+      c.fillStyle = g; c.fillRect(0, 0, 4, 128); t.refresh();
+    }
+    if (!this.textures.exists('fx:cloudsea')) {   // 구름바다 (128×28 반복)
+      const t = this.textures.createCanvas('fx:cloudsea', 128, 28), c = t.getContext();
+      for (let k = 0; k < 14; k++) { const x = (k * 37) % 128, y = 6 + (k * 11) % 10, rr = 7 + (k * 5) % 7; c.fillStyle = k % 3 ? '#e8f0f4' : '#c0d4e0'; for (const dx of [-128, 0, 128]) { c.beginPath(); c.arc(x + dx, y + rr * .6, rr, 0, Math.PI * 2); c.fill(); } }
+      c.fillStyle = '#e8f0f4'; c.fillRect(0, 14, 128, 14); c.fillStyle = '#ffffff'; for (let x = 0; x < 128; x += 9) c.fillRect(x, 6 + (x % 5), 4, 1);
+      t.refresh();
+    }
+    const objs = [this.add.image(r.left, r.top, 'fx:strato').setOrigin(0).setDisplaySize(W, H).setDepth(1.65)];
+    for (let k = 0; k < 70; k++) {   // 별
+      const st = this.add.image(r.left + ((k * 97) % 1000) / 1000 * W, r.top + ((k * 61) % 1000) / 1000 * H * .6, 'px').setTint(k % 5 ? 0xffffff : 0xa8ffe0).setScale(k % 7 ? .5 : 1).setAlpha(.8).setDepth(1.68);
+      if (k % 3 === 0) this.tweens.add({ targets: st, alpha: .2, duration: 700 + (k % 9) * 160, yoyo: true, repeat: -1 });
+      objs.push(st);
+    }
+    for (let k = 0; k < 5; k++) {   // 에메랄드 오로라 커튼
+      const au = this.add.image(r.left + W * (.1 + k * .2), r.top + H * (.18 + (k % 2) * .08), 'glow').setOrigin(.5, 0).setBlendMode(ADD).setTint(k % 2 ? 0x4affb0 : 0x2ad8a0).setScale(2.6, 3.4).setAlpha(.3).setDepth(1.7);
+      this.tweens.add({ targets: au, scaleX: 3.4, alpha: .14, x: au.x + 30, duration: 2600 + k * 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      objs.push(au);
+    }
+    const gy = this.groundBelow(r.cx, r.bottom - 24);
+    const far = this.add.tileSprite(r.left, gy - 22, W, 28, 'fx:cloudsea').setOrigin(0, 0).setDepth(1.75).setAlpha(.55).setTint(0xb8d0e8);   // 먼 구름바다
+    const near = this.add.tileSprite(r.left, gy - 8, W, 28, 'fx:cloudsea').setOrigin(0, 0).setDepth(10.5).setAlpha(.9);   // 제단 발치를 감싸는 구름
+    this.cloudSeas.push({ o: far, sp: 6 }, { o: near, sp: 14 });
+    objs.push(far, near);
+    this.worldObjs.push(...objs);
+  }
+
+  // ---------------- 하늘기둥: 삭아 버린 바닥 ----------------
+  //  수천 년 바닷바람에 깎인 발판(통과 발판 'P' 줄) 몇 군데에 금이 가 있다. 그 위에 0.4초 서 있으면 와르르 무너지고(아래층으로 떨어질 뿐 — 다시 오를 수 있다),
+  //  대시로 지나가면 무너지지 않는다. 무너진 발판은 4초 뒤 돌 조각이 다시 맞물리며 돌아온다 (월드 생성 · 저장과 무관한 런타임 기믹)
+  buildCracks() {
+    const lv = this.level, G = lv.grid; this.cracks = [];
+    this.crackG = this.add.graphics().setDepth(10.55); this.worldObjs.push(this.crackG);
+    for (const r of lv.rooms) {
+      if (!r.pillar) continue;
+      const ty0 = Math.floor(r.top / TILE) + 2, ty1 = Math.floor(r.bottom / TILE) - 1, tx0 = Math.floor(r.left / TILE), tx1 = Math.floor(r.right / TILE) - 1;
+      for (let ty = ty0; ty <= ty1; ty++) {
+        if (ty === r.F) continue;   // 방의 바닥줄은 늘 튼튼하다
+        for (let tx = tx0; tx <= tx1; tx++) {
+          if (G[ty][tx] !== 'P' || G[ty - 1][tx] !== '.') continue;
+          let e = tx; while (e + 1 <= tx1 && G[ty][e + 1] === 'P' && G[ty - 1][e + 1] === '.') e++;
+          if (e - tx + 1 >= 3 && (tx * 7 + ty * 13) % 5 < 3) {   // 3칸 이상 발판 중 대략 절반
+            const a = tx + (e - tx >= 5 ? 1 : 0), b = Math.min(e, a + 3);
+            this.cracks.push({ r, ty, tx0: a, tx1: b, idx: [], t: 0, down: false, seed: tx * 31 + ty });
+          }
+          tx = e;
+        }
+      }
+    }
+  }
+  updateCracks(dt) {
+    const g = this.crackG; if (!g || !this.cracks || !this.cracks.length) return;
+    g.clear();
+    const R = this.room; if (!R || !R.pillar) return;
+    const p = this.player, lv = this.level, now = this.time.now / 1000;
+    for (const c of this.cracks) {
+      if (c.r !== R) continue;
+      const x0 = c.tx0 * TILE, x1 = (c.tx1 + 1) * TILE, y = c.ty * TILE;
+      if (c.down) {
+        c.t -= dt;
+        const inside = p.b.right > x0 && p.b.x < x1 && p.bottom > y - 2 && p.b.y < y + TILE;
+        if (c.t <= 0 && !inside) this.restoreCrack(c);
+        continue;
+      }
+      const on = p.onGround && !p.dash && Math.abs(p.bottom - y) < 4 && p.b.right > x0 + 2 && p.b.x < x1 - 2;
+      if (on) {
+        if (c.t === 0) Sfx.play('crack');
+        c.t += dt;
+        if (Math.random() < .5) this.fx.burst(x0 + Math.random() * (x1 - x0), y + 2, [0x8a9a96, 0x5a6a66], 1, 30, { angle: Math.PI / 2, spread: .6, up: -10, grav: 300, life: .5 });
+        if (c.t >= .4) { this.collapseCrack(c); continue; }
+      } else c.t = 0;
+      // 금 간 자리: 흔들릴수록 붉게 번쩍인다
+      const k = c.t / .4, jit = k > 0 ? Math.sin(now * 60) * k * 1.2 : 0;
+      g.lineStyle(1, k > 0 ? 0xff8a5a : 0x1a1410, k > 0 ? .95 : .85);
+      for (let x = x0 + 3; x < x1 - 3; x += 7 + (c.seed + x) % 5) {
+        const s = (c.seed + x) % 3;
+        g.beginPath(); g.moveTo(x + jit, y + 1); g.lineTo(x + 2 + jit, y + 3 + s); g.lineTo(x - 1 + jit, y + 6); g.lineTo(x + 3 + jit, y + 9 + s); g.strokePath();
+        g.lineBetween(x + 2 + jit, y + 3 + s, x + 6 + jit, y + 4 + s);
+      }
+      g.fillStyle(0x4affb0, .18 + Math.sin(now * 3 + c.seed) * .08); g.fillRect(x0 + 1, y - 1, x1 - x0 - 2, 1);   // 발판 위 옅은 경고선
+    }
+  }
+  setCrackTiles(c, on) {
+    const lv = this.level;
+    for (let tx = c.tx0, i = 0; tx <= c.tx1; tx++, i++) {
+      const r = lv.cellRoom.get(Math.floor(tx / CW) + ',' + Math.floor(c.ty / CH)); if (!r || !r.layer) continue;
+      if (!on) { c.idx[i] = lv.data[c.ty][tx]; lv.grid[c.ty][tx] = '.'; lv.data[c.ty][tx] = -1; r.layer.removeTileAt(tx - r.X0, c.ty - r.Y0); }
+      else { lv.grid[c.ty][tx] = 'P'; lv.data[c.ty][tx] = c.idx[i]; const t = r.layer.putTileAt(c.idx[i], tx - r.X0, c.ty - r.Y0); if (t) t.setCollision(false, false, true, false); }
+    }
+  }
+  collapseCrack(c) {
+    this.setCrackTiles(c, false);
+    c.down = true; c.t = 4;
+    const x0 = c.tx0 * TILE, w = (c.tx1 - c.tx0 + 1) * TILE, y = c.ty * TILE;
+    this.fx.shatter(x0 + w / 2, y + TILE / 2, w, TILE, { n: 22, speed: 140, up: 40 });
+    this.fx.burst(x0 + w / 2, y + 4, [0x8a9a96, 0x5a6a66, 0xc8d8d0], 26, 120, { up: 30, life: .8 });
+    this.fx.shake(.01, 220); Sfx.play('boom');
+    this.events.emit('toast', '발밑이 무너졌다! 금 간 바닥은 대시로 지나가자');
+  }
+  restoreCrack(c) {
+    this.setCrackTiles(c, true);
+    c.down = false; c.t = 0;
+    const x0 = c.tx0 * TILE, w = (c.tx1 - c.tx0 + 1) * TILE, y = c.ty * TILE;
+    this.fx.burst(x0 + w / 2, y + 4, [0x4affb0, 0xc8d8d0], 14, 60, { up: 20, glow: true, life: .6 });
+    this.fx.glow(x0 + w / 2, y + 4, 40, 0x4affb0, 400, .5);
+  }
+
+  // ---------------- 호연 날씨 ----------------
+  //  가뭄 길: 붉은 화산재가 내리고 땅속에서 불티가 솟는다 · 폭우 해안: 세찬 빗줄기 + 푸른 번개 · 131번 수로: 초록 바람 입자
+  //  성층권: 별바람 · 구름바다가 흐른다
+  updateWeather(dt) {
+    const R = this.room, v = this.cameras.main.worldView, t = this.time.now;
+    for (const c of this.cloudSeas || []) c.o.tilePositionX += dt * c.sp;
+    // 화면 전체 색 베일: 가뭄은 붉은 주황 · 폭우는 짙은 청색
+    if (!this.weatherVeil) { this.weatherVeil = this.add.image(0, 0, 'px').setOrigin(0).setDepth(23.4).setAlpha(0); this.worldObjs.push(this.weatherVeil); }
+    const veilA = R && R.drought ? .1 : R && R.rain ? .14 : 0, wv = this.weatherVeil;
+    wv.setAlpha(wv.alpha + (veilA - wv.alpha) * Math.min(1, dt * 2)).setVisible(wv.alpha > .005);
+    if (R && (R.drought || R.rain)) wv.setTint(R.drought ? 0xff5a1a : 0x0a2a6a).setBlendMode(R.drought ? Phaser.BlendModes.ADD : Phaser.BlendModes.NORMAL);
+    wv.setPosition(v.x - 4, v.y - 4).setDisplaySize(v.width + 8, v.height + 8);
+    // 빗줄기
+    const raining = !!(R && R.rain);
+    if (raining && !this.rainSheet) {
+      if (!this.textures.exists('fx:rain')) {
+        const tx = this.textures.createCanvas('fx:rain', 64, 64), c = tx.getContext();
+        for (let k = 0; k < 22; k++) { const x = (k * 29) % 64, y = (k * 41) % 64, len = 6 + (k % 4) * 2; c.strokeStyle = k % 3 ? 'rgba(170,200,255,.55)' : 'rgba(230,240,255,.8)'; c.lineWidth = 1; for (const dy of [0, -64]) for (const dx of [0, 64, -64]) { c.beginPath(); c.moveTo(x + dx, y + dy); c.lineTo(x + dx - len * .35, y + dy + len); c.stroke(); } }
+        tx.refresh();
+      }
+      this.rainSheet = this.add.tileSprite(0, 0, 64, 64, 'fx:rain').setOrigin(0).setDepth(23.6).setAlpha(0);
+      this.worldObjs.push(this.rainSheet);
+    }
+    if (this.rainSheet) {
+      const rs = this.rainSheet, a = raining ? .85 : 0;
+      rs.setAlpha(rs.alpha + (a - rs.alpha) * Math.min(1, dt * 2.5)).setVisible(rs.alpha > .01);
+      if (rs.visible) { rs.setPosition(v.x, v.y).setSize(v.width, v.height); rs.tilePositionX = v.x - t * .12; rs.tilePositionY = v.y - t * .42; }
+    }
+    if (raining) {
+      if (Math.random() < .5) this.fx.burst(v.x + Math.random() * v.width, this.groundBelow(v.x + Math.random() * v.width, v.y + v.height * .4) - 1, [0xa8c8ff, 0xffffff], 2, 40, { angle: -Math.PI / 2, spread: 1.6, up: 20, life: .25, size: 1 });   // 튀는 빗방울
+      this.boltT = (this.boltT ?? 2) - dt;
+      if (this.boltT <= 0) { this.boltT = 2.4 + Math.random() * 3.6; this.lightning(v); }
+    }
+    if (R && R.drought) {   // 화산재 · 불티
+      if (Math.random() < .7) this.fx.burst(v.x + Math.random() * v.width * 1.2, v.y - 2, [0x6a5a5a, 0x8a7a7a, 0x4a3a3a, 0xff6a2a], 1, 18, { angle: Math.PI / 2 + .4, spread: .5, up: -6, grav: 10, bounce: false, life: 3.4, size: Math.random() < .3 ? 2 : 1, drag: .995 });
+      if (Math.random() < .25) this.fx.embers(v.x + Math.random() * v.width, v.y + v.height, [0xff3a1a, 0xff8a2a, 0xffd060], 1, { speed: 30, up: 60, life: 1.6 });
+    }
+    if (R && R.seaBridge && Math.random() < .45) this.fx.burst(v.x - 4, v.y + Math.random() * v.height * .85, [0x8affc8, 0x4affb0, 0xd8fff0], 1, 150, { angle: -.05, spread: .2, up: 0, grav: -4, bounce: false, glow: true, life: 2.4, size: 1, drag: .998 });   // 초록 바람
+    if (R && R.stratosphere && Math.random() < .3) this.fx.burst(v.x + v.width + 4, v.y + Math.random() * v.height * .7, [0xa8ffe0, 0xffffff], 1, 120, { angle: Math.PI + .05, spread: .2, up: 0, grav: 0, bounce: false, glow: true, life: 2.6, size: 1, drag: 1 });   // 성층권 별바람
+  }
+  // 푸른 번개: 하늘에서 지그재그로 내리꽂히고 화면이 번쩍인다
+  lightning(v) {
+    const x = v.x + v.width * (.15 + Math.random() * .7), y1 = this.groundBelow(x, v.y + 10);
+    const g = this.add.graphics().setDepth(23.7).setBlendMode(Phaser.BlendModes.ADD);
+    const pts = [[x, v.y - 6]]; let cx = x;
+    for (let y = v.y + 14; y < y1; y += 14 + Math.random() * 10) { cx += (Math.random() - .5) * 26; pts.push([cx, y]); }
+    pts.push([cx, y1]);
+    for (const [w, col, a] of [[5, 0x2a6aff, .45], [2, 0x8ad8ff, .95], [1, 0xffffff, 1]]) { g.lineStyle(w, col, a); g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (const q of pts) g.lineTo(q[0], q[1]); g.strokePath(); }
+    this.tweens.add({ targets: g, alpha: 0, duration: 320, delay: 60, onComplete: () => g.destroy() });
+    this.cameras.main.flash(140, 120, 170, 255, true);
+    this.fx.burst(cx, y1 - 2, [0x8ad8ff, 0xffffff], 10, 120, { up: 60, glow: true, life: .4 });
+    Sfx.play('zap');
   }
   rooftopSky(r) {
     const W = r.right - r.left, H = r.bottom - r.top, ADD = Phaser.BlendModes.ADD;
@@ -1336,6 +1511,31 @@ export default class GameScene extends Phaser.Scene {
       later(2200, () => this.tweens.add({ targets: [pool, rim], scaleX: 0, alpha: 0, duration: 600, onComplete: () => { pool.destroy(); rim.destroy(); } }));
       return true;
     }
+    if (key === 'rayquaza') {   // 하늘이 에메랄드빛으로 번쩍 → 거센 돌풍 → 하늘이 갈라지고 → 유성처럼 회전하며 내리꽂혀 포효 · 충격파
+      const v = cam.worldView;
+      cam.flash(500, 120, 255, 190, true); Sfx.play('boss'); this.fx.shake(.008, 1400);
+      for (let k = 0; k < 50; k++) this.time.delayedCall(k * 24, () => this.fx.burst(v.x - 4, v.y + Math.random() * v.height, [0xa8ffe0, 0x4affb0, 0xffffff], 1, 420, { angle: 0, spread: .1, up: 0, grav: 0, bounce: false, glow: true, life: .9, size: 2, drag: 1 }));
+      const g = this.add.graphics().setDepth(23.8).setBlendMode(ADD), o = { s: 0 };   // 하늘이 찢어진다
+      const pts = []; for (let x = v.x - 10; x <= v.x + v.width + 10; x += 18) pts.push([x, v.y + 26 + (Math.random() - .5) * 18]);
+      const split = () => { g.clear(); for (const [w, col, a] of [[10 * o.s, 0x2aff9a, .35], [4 * o.s, 0x8affd0, .8], [1.5 * o.s, 0xffffff, 1]]) { g.lineStyle(Math.max(.5, w), col, a); g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (const q of pts) g.lineTo(q[0], q[1]); g.strokePath(); } };
+      later(500, () => { Sfx.play('shatter'); this.tweens.add({ targets: o, s: 1, duration: 500, ease: 'Cubic.easeOut', onUpdate: split }); });
+      later(1100, () => spawn(cx, b => {
+        const sp = b.sprite;
+        this.tweens.add({ targets: sp, angle: 1080, duration: 1200, ease: 'Quad.easeIn', onComplete: () => sp.setAngle(0) });
+        for (let k = 0; k < 20; k++) this.time.delayedCall(k * 55, () => { if (b.alive) { this.fx.burst(b.x, b.y, [0x4affb0, 0xffe060, 0xffffff], 4, 70, { glow: true, life: .5, grav: 0, bounce: false }); this.fx.ghost && this.fx.ghost(sp, 0x4affb0, .5, 260); } });
+        b.introPath(cx, v.y - 60, cx, gy - 92, 1200, 'Quad.easeIn', () => {
+          sp.setAngle(0);
+          for (let k = 0; k < 4; k++) this.time.delayedCall(k * 90, () => this.fx.ring(cx, gy - 40, 60 + k * 50, k % 2 ? 0xffffff : 0x4affb0, 520));
+          this.fx.burst(cx, gy - 30, [0x4affb0, 0xffe060, 0xffffff], 50, 300, { up: 80, glow: true, life: .8 });
+          for (let k = 0; k < 30; k++) this.fx.burst(cx, gy - 4, [0xe8f0f4, 0xc0d4e0], 1, 320, { angle: k % 2 ? 0 : Math.PI, spread: .3, up: 10, grav: 0, bounce: false, life: .8, size: 2 });   // 구름이 갈라지는 충격파
+          cam.flash(220, 200, 255, 230, true); this.fx.shake(.03, 700); Sfx.play('boom'); Sfx.play('boss');
+          this.events.emit('toast', '레쿠쟈가 포효한다!');
+          this.tweens.add({ targets: o, s: 0, duration: 700, onUpdate: split, onComplete: () => g.destroy() });
+        });
+      }));
+      later(4000, () => { if (g.scene) g.destroy(); });
+      return true;
+    }
     const BEAST = { raikou: [0xffe040, 'zap'], entei: [0xff6a2a, 'fire'], suicune: [0x8ad8ff, 'water'] }[key];
     if (BEAST) {   // 하늘에서 번개 · 불기둥 · 물기둥과 함께 내리꽂힌다
       const [col, sfx] = BEAST, v = cam.worldView;
@@ -1368,6 +1568,11 @@ export default class GameScene extends Phaser.Scene {
     } });
     this.fx.glow(e.x, e.y, 70, 0xfff2b0, 1600, .6);
     e.breathTw = this.tweens.add({ targets: s, scaleY: s.scaleY * 1.035, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });   // 평화롭게 숨 쉰다
+    if (e.flying || (e.def && (e.def.fly || e.def.flying))) {   // 날짐승(레쿠쟈 · 칠색조 …): 공중에서 위엄 있게 유영한다
+      if (e.b) { e.b.setAllowGravity(false); e.b.setVelocity(0, 0); e.b.enable = false; }
+      e.bobTw = this.tweens.add({ targets: s, y: s.y - 10, duration: 1800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      e.swayTw = this.tweens.add({ targets: s, x: s.x + 14, duration: 3200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    }
     (this.restingBosses = this.restingBosses || []).push(e);
   }
   updateResting() {
@@ -1704,7 +1909,7 @@ export default class GameScene extends Phaser.Scene {
     if (e.boss) { this.bossDefeated(e); return; }
     if (e.elite && this.stageIdx === 2 && this.player.quests && this.player.quests.zTrial === 1) {   // 호연의 시련: 엘리트 수호자를 넘었다 → 루네시티 시련 캡틴에게
       this.player.quests.zTrial = 2;
-      this.time.delayedCall(900, () => this.events.emit('banner', '시련 달성!', '수호자의 시련을 넘었다 · 루네시티의 시련 캡틴에게 돌아가자'));
+      this.time.delayedCall(900, () => this.events.emit('banner', '시련 달성!', '수호자의 시련을 넘었다 · 하늘기둥 입구의 시련 캡틴에게 돌아가자'));
     }
     if (e.elite) {   // 엘리트 보상: 이상한사탕 100% · 장착형 전술 도구 25%
       this.spawnPickup('candy', e.x, e.y - 4);

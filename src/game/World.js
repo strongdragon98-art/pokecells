@@ -555,6 +555,27 @@ export function buildChapter(ch, ci, retry = 0) {
         }
       }
     }
+    // 호연 기상 이변 · 하늘기둥 (지역 bg 로 찾는다 · 난수를 쓰지 않는다)
+    //  굴뚝산(volcano) 지상 = 가뭄 길 (붉은 화산재 · 일식 · 용암 균열) → 본 경로 마지막 방 끝에 대지의 동굴 입구
+    //  해저동굴(seacave) 지상 = 폭우 해안 (빗줄기 · 푸른 번개 · 발밑 바닷물) → 본 경로 첫 지상 방 끝에 해저동굴 입구
+    //  하늘기둥(skypillar) 첫 방 = 131번 수로 고대 돌다리 (에메랄드 바다 · 달 · 오로라) → 끝에 하늘기둥 외관 + 장로 · 시련 캡틴
+    //  하늘기둥 안 = 채광 · 발광 수정 · 금 간 바닥(GameScene.buildCracks) · 레쿠쟈 아레나 = 성층권 천공의 제단
+    {
+      const idx = bg => ch.areas.findIndex(a => a.bg === bg);
+      const main = ai => rooms.filter(r => r.ai === ai && r.main && !r.under).sort((a, b) => a.id - b.id);
+      const vi = idx('volcano'), si = idx('seacave'), pi = idx('skypillar');
+      if (vi >= 0) { for (const r of rooms) if (r.ai === vi && !r.under) r.drought = true; const m = main(vi).filter(r => r.type !== 'mini' && r.type !== 'boss'); if (m.length) m[m.length - 1].magmaGate = true; }
+      if (si >= 0) { for (const r of rooms) if (r.ai === si && !r.under) r.rain = true; const m = main(si).filter(r => r.type === 'combat'); if (m.length) m[0].seaGate = true; }
+      if (pi >= 0) {
+        const m = main(pi), bridge = m.find(r => r.type !== 'boss');
+        for (const r of rooms) if (r.ai === pi) { if (r.type === 'boss') r.stratosphere = true; else if (r !== bridge) r.pillar = true; }
+        if (bridge) {
+          bridge.seaBridge = true;
+          placeNpcs(bridge, ['pillar_elder', 'trial_captain'], [bridge.tx0 + 4, bridge.tx0 + 8]);   // 좁은 다리 방: 장로 · 캡틴이 나란히 (하늘기둥 외관은 오른쪽 끝)
+          for (const n of npcs) if (n.room === bridge) { n.face = 1; n.guide = true; }
+        }
+      }
+    }
     // 조작 힌트 (관동 초입): 태초마을을 나서 처음 만나는 전투 구역 입구엔 부상당한 베테랑(차징 샷),
     //  통과 발판이 처음 나오는 구역 앞엔 실프 연구원(공중 내려찍기). 난수를 쓰지 않으므로 같은 시드의 지형·저장 서명은 그대로다
     if (ci === 0) {

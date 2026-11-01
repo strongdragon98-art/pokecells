@@ -901,7 +901,7 @@ export class Player extends Actor {
     const sc = this.scene;
     if (!this.z.has) {   // Z링 + 이 포켓몬 속성의 Z크리스탈을 전용 칸에 끼워야 한다
       const t = zTypeOf(this.m.key);
-      sc.events.emit('toast', !this.zRing ? 'Z링이 없다 — 호연지방 루네시티의 시련 캡틴을 찾아가 보자' : `${this.form().name}의 Z크리스탈 칸에 ${crystalName(t)}를 끼워야 한다 (가방)`);
+      sc.events.emit('toast', !this.zRing ? 'Z링이 없다 — 호연지방 하늘기둥 입구(131번 수로)의 시련 캡틴을 찾아가 보자' : `${this.form().name}의 Z크리스탈 칸에 ${crystalName(t)}를 끼워야 한다 (가방)`);
       Sfx.play('deny'); return;
     }
     if (this.z.cd > 0) { sc.events.emit('toast', `Z기술 재사용까지 ${Math.ceil(this.z.cd)}초`); Sfx.play('deny'); return; }

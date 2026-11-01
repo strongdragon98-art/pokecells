@@ -211,7 +211,7 @@ export const GameMenu = {
     } else if (s.id === 'crystal') {
       const t = zTypeOf(m.key);
       if (s.crystal) { info(crystalName(s.crystal), `${p.zRing ? 'Z링과 공명 중' : 'Z링이 없어 빛나지 않는다'}${s.crystal !== t ? ` · 이 포켓몬의 Z기술은 ${crystalName(t)}가 필요하다` : ' · Q 로 Z기술'}`, '#ffe68a'); btn('🎒 빼서 가방에', () => { if (p.unequipCrystal(m)) { Sfx.play('item'); this.showInv({ socket: 'crystal' }); } }); }
-      else { const has = (p.crystals[t] || 0) > 0; info(`빈 Z크리스탈 칸 (${crystalName(t)})`, has ? `가방에 ${crystalName(t)}가 있다 — 끼우면 Q 로 Z기술` : p.zRing ? `${crystalName(t)}가 필요하다` : 'Z링이 없다 — 호연지방 루네시티의 시련 캡틴을 찾아가자'); if (has) btn('✨ 끼우기', () => { if (p.equipCrystal(m, t)) { Sfx.play('item'); this.showInv({ socket: 'crystal' }); } }); }
+      else { const has = (p.crystals[t] || 0) > 0; info(`빈 Z크리스탈 칸 (${crystalName(t)})`, has ? `가방에 ${crystalName(t)}가 있다 — 끼우면 Q 로 Z기술` : p.zRing ? `${crystalName(t)}가 필요하다` : 'Z링이 없다 — 호연지방 하늘기둥 입구(131번 수로)의 시련 캡틴을 찾아가자'); if (has) btn('✨ 끼우기', () => { if (p.equipCrystal(m, t)) { Sfx.play('item'); this.showInv({ socket: 'crystal' }); } }); }
     } else { info(`빈 칸 (${s.label})`, `일반 도구 칸 ${p.equipCount(m)} / ${MAX_EQUIP} · 가방 탭에서 도구를 고르고 장착`); btn('🎒 가방 탭으로', () => this.menuGo('bag')); }
   },
 
