@@ -715,8 +715,10 @@ export default class UIScene extends Phaser.Scene {
   // 🧊 3D 입체 모델링: 원근 홀로그램 받침대 위에 전신 도트가 떠서 숨 쉬듯 오르내린다 (도트는 돌리지 않는다 · 마우스를 올리면 카메라가 살짝 기운다)
   //  속성 색 테두리광이 은은하게 일렁이고, 발밑 그림자는 떠오르는 높이만큼 줄어든다
   tmTile3D(tile, e, picked) {
-    const p = this.gs.player, types = p.typesOf(e.m), col = typeColor(types[0]), key = p.formKey(e.m), tx = this.textures;
-    const src = tx.exists(`icon:${key}`) ? `icon:${key}` : tx.exists(`portrait:${key}`) ? `portrait:${key}` : roundPortrait(this, p.portraitKey(e.m));
+    // 지금 모습의 전신 도트: 진화 단계(formKey) · 메가진화했으면 메가 모습(portraitKey 가 메가 키를 준다)
+    const p = this.gs.player, types = p.typesOf(e.m), col = typeColor(types[0]), tx = this.textures;
+    const keys = [p.portraitKey(e.m), p.formKey(e.m)], key = keys.find(k => tx.exists(`icon:${k}`));
+    const src = key ? `icon:${key}` : tx.exists(`portrait:${keys[0]}`) ? `portrait:${keys[0]}` : roundPortrait(this, keys[0]);
     const bg = this.add.graphics(); tile.add(bg);
     glassPanel(bg, -56, -62, 112, 124, { r: 10, fill: 0x060a14, border: picked ? HK.goldN : 0x48e5ff, borderAlpha: e.ok ? .6 : .2, alpha: .95 });
     // 원근 받침대: 겹 타원 + 홀로그램 고리 + 위로 비치는 빛기둥
