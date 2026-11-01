@@ -183,6 +183,7 @@ class AudioSys {
       case 'evolve': for (let k = 0; k < 6; k++) this.tone(k % 2 ? 660 : 523, .1, 'square', .04, 0, k * .08); this.arp([784, 988, 1175, 1568, 2093], .09, 'square', .06); this.tone(1568, .7, 'triangle', .05, 0, .55); break;
       // Z기술: 낮게 모였다가 솟는 굉음
       case 'zmove': this.tone(90, .9, 'sawtooth', .1, 900); this.hiss(.9, .14, 600, 0, 1); this.arp([523, 659, 784, 1047, 1319, 1568], .07, 'square', .05); break;
+      case 'stance': this.hiss(.14, .14, 2600, 0, 1.4); this.drop(260, 120, .12, 'triangle', .1); break;   // 패링 자세: 쉭-!
       case 'parry': this.tone(2793, .18, 'square', .06, -400); this.tone(4186, .12, 'triangle', .05, -900, .005); this.nz(.06, .35, 'highpass', 5200, 2); this.drop(220, 70, .2, 'sine', .3); this.tone(1760, .35, 'triangle', .04, 0, .03); break;   // 챙-!! (금속 충돌 + 묵직한 저음)
       case 'ting': this.tone(2637, .22, 'triangle', .07); this.tone(3951, .16, 'sine', .05, 0, .02); this.hiss(.08, .05, 7000, 0, 4); break;   // 퍼펙트 차징 창: 팅-!
       case 'ocrit': this.drop(160, 40, .4, 'sine', .4); this.arp([1319, 1976, 2637], .04, 'square', .06); this.nz(.18, .3, 'highpass', 3600, 1, 0, 1200); break;   // OVERCHARGE CRITICAL

@@ -62,10 +62,10 @@ const CHG_FAST = [1, .65, .52, .4];   // 고속 축전 코일 장 수 → 차징
 // 평타(Z 연타) 3타 콤보 리듬: 템포를 늦추고(동작 시간 ×COMBO_TEMPO · 공격 속도 약 -33%) 한 방을 키운다 (기본 ×1.35 · 1타 1 → 2타 1.2 → 3타 1.6)
 //  3타 피니시 뒤 COMBO_RECOVER 초 숨 고르기 (대시 · 점프 · X · C · 메가 · Z기술 입력으로 즉시 캔슬)
 const COMBO_TEMPO = 1.5, COMBO_DMG = 1.35, COMBO_STEP = [1, 1.2, 1.6], COMBO_RECOVER = .42;
-// 평타 맞받아치기 패링 (3타 피니시에만): 근접형은 휘두르기 시작 PARRY_WIN 초 동안 앞쪽 타격 범위 · 원거리형은 탄을 쏘는 순간부터 PARRY_WIN 초 동안 몸 둘레 PULSE_R px 충격파
-//  성공하면 피해 무효 + 0.3초 무적 · 투사체는 반사(2배 속도 · 200%) · 근접 공격은 상대 경직(보스 그로기 +25) + X·C·필살기 쿨타임 -1.5초 · 후딜레이 초기화
-//  같은 패링은 PARRY_CD 초에 한 번 (Z 연타로 연속 패링 방지)
-export const PARRY_WIN = .15, PULSE_R = 75, PARRY_CD = .6;
+// 패링 자세 (지상 ↓ + Z 전용 — 평타에는 패링 판정이 없다): PARRY_WIN 초 동안 몸 둘레 PARRY_R px 의 근접 공격 · 적 투사체를 받아친다
+//  헛방이면 WHIFF_T 초 자세 무너짐 + 재사용 PARRY_CD 초 · 성공하면 둘 다 즉시 0 (연속 패링)
+//  성공: 피해 무효 + 0.35초 무적 · 투사체 반사(2배 속도 · 250%) · 근접 카운터(충격파 · 보스 그로기 +30 · X·C·필살기 쿨 -2초 · 다음 한 방 확정 치명타)
+export const PARRY_WIN = .22, PARRY_R = 70, PARRY_CD = 1.8, WHIFF_T = .45;
 const PERFECT_WIN = .25, CHARGE_CRIT = 1.5, MULTI_T = .3;   // 퍼펙트 차징 창(초) · 그때 떼면 피해 ×1.5 (+ 확정 치명타) · 보스/엘리트 다단히트 시간
 
 export class Player extends Actor {
@@ -446,7 +446,7 @@ export class Player extends Actor {
     const sc = this.scene, b = this.b, sp = this.sp;
     this.lastInput = inp;
     this.potionCd = Math.max(0, (this.potionCd || 0) - dt);   // 상처약 퀵슬롯 재사용 (GameScene.quickPotion)
-    this.zLock = Math.max(0, (this.zLock || 0) - dt); this.parryCd = Math.max(0, (this.parryCd || 0) - dt);   // 3타 후딜레이 · 패링 내부 쿨타임
+    this.zLock = Math.max(0, (this.zLock || 0) - dt); this.parryCd = Math.max(0, (this.parryCd || 0) - dt);   // 3타 후딜레이 · 패링 재사용 대기
     this.inv -= dt; this.dashCd -= dt; this.swapCd -= dt; this.diveCd -= dt; this.comboT -= dt; this.zBuf -= dt; this.dropT -= dt; this.hurtT -= dt; this.speedBuff -= dt;
     this.z.cd = Math.max(0, this.z.cd - dt);
     for (const m of this.members) for (const k in m.cd) m.cd[k] = Math.max(0, m.cd[k] - dt);
@@ -488,6 +488,12 @@ export class Player extends Actor {
     // 공중 내려찍기: 공중에서 ↓ + Z (모든 포켓몬 공통) — 바닥을 강타하는 충격파 · 적 머리 밟기 · 위기 탈출
     //  ↓ + ← · → (조이스틱은 수평보다 아래 어느 쪽이든)이면 그 방향으로 대각선 강하
     const diveAim = inp.diveAim || ((inp.downAim ?? inp.down) ? { x: dir, y: 1 } : null);
+    // 지상 ↓ + Z: 패링 자세 (평타 콤보 중에도 끊고 들어간다 · 자세 무너짐 · Z기술 중엔 안 된다)
+    if (inp.zP && (inp.downAim ?? inp.down) && this.onGround && !this.dash && (!this.action || this.action.comboStep)) {
+      inp.zP = false; this.zBuf = 0;
+      this.startParry();
+    }
+    this.drawParryGauge(dt);
     if (inp.zP && diveAim && !this.onGround && !this.dash && this.diveCd <= 0 && !(this.action && (this.action.dive || this.action.noDash || this.action.slot === 'zmove'))) {
       inp.zP = false; this.zBuf = 0;
       this.startDive(diveAim);
@@ -804,6 +810,10 @@ export class Player extends Actor {
     if (a.end) a.end(this, a);
     if (a.comboStep && !interrupted) { this.combo = (this.combo + 1) % 3; this.comboT = .45; }
     if (a.comboStep && a.finisher && !interrupted) this.zLock = COMBO_RECOVER;   // 3타 뒤 숨 고르기
+    if (a.parry) {   // 패링 자세가 끝났다: 실드를 걷고, 아무것도 받아치지 못했으면 헛방
+      if (this.parryFx) { const g = this.parryFx; this.parryFx = null; this.scene.tweens.add({ targets: g, alpha: 0, duration: 120, onComplete: () => g.destroy() }); }
+      if (!a.parried) this.parryWhiff();
+    }
   }
 
   // 3타 피니시 연출: 근접형은 전방 내려찍기 충격 + 바닥 파편 · 원거리형은 발사 반동 (강화 관통탄은 Combat.spawnProjectile)
@@ -817,54 +827,86 @@ export class Player extends Actor {
     Sfx.play('punch');
   }
 
-  // ---------------- 평타 맞받아치기 패링 (Clash Parry) ----------------
-  //  지금 열려 있는 패링 판정: null · { ranged: true, x, y, r } (원거리형 발사 충격파) · { ranged: false, x, y, w, h } (근접형 앞쪽 타격 범위)
-  //  원거리형인지는 그 평타가 탄을 쐈는지로 안다 (Combat.spawnProjectile 이 a.pulseAt 을 적는다 — 한 기술 안에서 근접 2타 + 원거리 3타도 따로 판정)
+  // 평타가 탄을 쏜 순간 (Combat.spawnProjectile): 원거리형 표시 — 3타 피니시 연출(finisherFx)이 근접 · 원거리를 가른다
+  comboPulse() { const a = this.action; if (a && a.comboStep && a.pulseAt == null) a.pulseAt = a.t; }
+
+  // ---------------- 패링 자세 (지상 ↓ + Z · 모바일: 조이스틱 아래 + 평타) ----------------
+  //  제자리에 무게중심을 낮추고 전방에 반달 가드 실드를 펼친다 — PARRY_WIN 초 동안 몸 둘레 PARRY_R px 안으로 들어온 근접 공격 · 적 투사체를 받아친다
+  //  헛방(아무것도 못 받아침): 실드가 깨지며 WHIFF_T 초 자세 무너짐(이동 · 점프 · 공격 · 대시 불가) + 패링 재사용 PARRY_CD 초
+  //  성공: 후딜레이 · 쿨타임 즉시 초기화 (연속 공격도 리듬에 맞춰 챙! 챙! 챙!)
+  startParry() {
+    const sc = this.scene, f = this.face;
+    if (this.parryCd > 0) { this.parryGaugeT = .9; Sfx.play('deny'); return; }   // 쿨타임: 옆에 회색 방패 게이지
+    if (this.action) this.endAction(true);
+    this.chg.t = 0; this.chg.lvl = 0; this.chg.fullAt = null; this.chgAura.setVisible(false);
+    this.b.setVelocityX(0);
+    this.startAction({ dur: PARRY_WIN, mm: 0, noDash: true, lockFace: 'hard', anim: 'Idle', parry: true }, 'parry');
+    this.squash(1.25, .78);
+    // 반달 가드 실드 (푸른 · 은빛) + 육각 배리어 잔상
+    const g = sc.add.graphics().setDepth(23).setBlendMode(Phaser.BlendModes.ADD), cx = this.x + f * 6, cy = this.y - 2;
+    const draw = k => {
+      g.clear();
+      g.lineStyle(4, 0x6ac8ff, .55 * k); g.beginPath(); g.arc(cx, cy, 30, f > 0 ? -1.25 : Math.PI - 1.25, f > 0 ? 1.25 : Math.PI + 1.25); g.strokePath();
+      g.lineStyle(1.5, 0xffffff, .9 * k); g.beginPath(); g.arc(cx, cy, 32, f > 0 ? -1.15 : Math.PI - 1.15, f > 0 ? 1.15 : Math.PI + 1.15); g.strokePath();
+      const pts = []; for (let i = 0; i < 6; i++) { const an = Math.PI / 6 + i * Math.PI / 3; pts.push({ x: cx + f * 14 + Math.cos(an) * 16, y: cy + Math.sin(an) * 16 }); }
+      g.lineStyle(1, 0xbfe6ff, .5 * k); g.strokePoints(pts, true);
+    };
+    draw(1);
+    this.parryFx = g;
+    sc.tweens.addCounter({ from: 1, to: .5, duration: PARRY_WIN * 1000, onUpdate: tw => { if (g.scene) draw(tw.getValue()); } });
+    sc.fx.burst(cx + f * 20, cy, [0x6ac8ff, 0xffffff], 6, 60, { grav: 0, bounce: false, glow: true, life: .2 });
+    Sfx.play('stance');
+  }
+  // 지금 열린 패링 판정 (패링 자세 동안만): { x, y, r } — 몸 둘레 · 전방 실드
   parryZone() {
     const a = this.action;
-    if (!a || !a.comboStep || !a.finisher || this.parryCd > 0) return null;   // 1 · 2타는 패링하지 않는다
-    if (a.pulseAt != null) return a.t - a.pulseAt <= PARRY_WIN ? { ranged: true, x: this.x, y: this.y, r: PULSE_R } : null;
-    if (a.t > PARRY_WIN) return null;
-    const f = this.face, reach = 38 * this.mods.sizeMul * (this.T.size || 1);
-    return { ranged: false, x: f > 0 ? this.x - 8 : this.x - reach, y: this.y - 28, w: reach + 8, h: 50 };
+    return a && a.parry && !a.parried && a.t <= PARRY_WIN ? { x: this.x + this.face * 6, y: this.y - 2, r: PARRY_R } : null;
   }
-  // 점(반지름 r)이 판정 안에 있나
-  inParry(z, x, y, r = 0) {
-    if (z.ranged) return Math.hypot(x - z.x, y - z.y) <= z.r + r;
-    return x + r >= z.x && x - r <= z.x + z.w && y + r >= z.y && y - r <= z.y + z.h;
+  inParry(z, x, y, r = 0) { return Math.hypot(x - z.x, y - z.y) <= z.r + r; }
+  // 헛방: 실드가 깨져 흩어지고 자세가 무너진다
+  parryWhiff() {
+    const sc = this.scene;
+    this.parryCd = PARRY_CD;
+    sc.fx.burst(this.x + this.face * 20, this.y - 2, [0x8a9ab0, 0xbfe6ff], 12, 110, { glow: true, life: .35 });
+    sc.fx.floatText(this.x, this.b.y - 18, '헛방!', '#9aa6b8', 9);
+    Sfx.play('crack');
+    this.startAction({ dur: WHIFF_T, mm: 0, noDash: true, lockFace: 'hard', anim: 'Idle', whiff: true }, 'whiff');
+    this.squash(.85, 1.1);
   }
-  // 원거리형 평타가 탄을 쏜 순간: 몸 둘레로 퍼지는 영거리 충격파 고리 (패링 판정이 이때부터 열린다)
-  comboPulse() {
-    const a = this.action, sc = this.scene;
-    if (!a || !a.comboStep || a.pulseAt != null) return;
-    a.pulseAt = a.t;
-    if (!a.finisher) return;   // 충격파 고리(패링 판정)는 3타에만
-    const col = typeColor(SKILLS[this.skillId('z')].type), g = sc.add.graphics().setDepth(23).setBlendMode(Phaser.BlendModes.ADD);
-    const ring = { r: 34 };
-    sc.tweens.add({ targets: ring, r: PULSE_R, duration: PARRY_WIN * 1000, ease: 'Quad.easeOut', onUpdate: () => { if (!g.scene) return; const k = (ring.r - 34) / (PULSE_R - 34); g.clear().lineStyle(2, col, .4 * (1 - k)).strokeCircle(this.x, this.y, ring.r).lineStyle(1, 0xffffff, .3 * (1 - k)).strokeCircle(this.x, this.y, ring.r - 3); }, onComplete: () => g.destroy() });
-  }
-  // 패링 성공 (x, y: 부딪힌 자리 · kind: 'proj' 투사체 반사 · 'melee' 근접 공격 쳐내기)
+  // 패링 성공 (x, y: 부딪힌 자리 · kind: 'proj' 투사체 반사 · 'melee' 근접 공격 받아치기)
   doParry(x, y, kind) {
-    const sc = this.scene, m = this.m, f = this.face;
-    this.parryCd = PARRY_CD; this.inv = Math.max(this.inv, .3);
-    sc.fx.starburst(x, y, 0xffe36a, 1.3, { debris: false });
-    sc.fx.ring(x, y, 26, 0xffffff, 220); sc.fx.ring(x, y, 40, 0xffe36a, 320);
-    sc.fx.burst(x, y, [0xffe36a, 0xffffff], 16, 200, { glow: true, grav: 0, bounce: false, life: .3 });
-    sc.fx.floatText(this.x, this.b.y - 24, '⚡ PARRY!', '#ffe36a', 13);
-    sc.fx.hitStop(90);
+    const sc = this.scene, m = this.m, f = this.face, a = this.action;
+    if (a && a.parry) { a.parried = true; this.endAction(true); }   // 자세를 풀고 후딜레이 없이 바로 움직인다
+    this.parryCd = 0; this.zLock = 0; this.inv = Math.max(this.inv, .35);
+    sc.fx.starburst(x, y, 0xffe36a, 1.5, { debris: false });
+    sc.fx.ring(x, y, 28, 0xffffff, 220); sc.fx.ring(x, y, 46, 0xffe36a, 340);
+    sc.fx.burst(x, y, [0xffe36a, 0xffffff, 0x6ac8ff], 20, 220, { glow: true, grav: 0, bounce: false, life: .32 });
+    sc.fx.floatText(this.x, this.b.y - 24, '⚡ PERFECT PARRY!', '#ffe36a', 13);
+    sc.fx.hitStop(100);
     const cam = sc.cameras.main;
-    if (!cam.zoomEffect.isRunning) { const z0 = cam.zoom; cam.zoomTo(z0 * 1.045, 60, 'Quad.easeOut', true); sc.time.delayedCall(90, () => cam.zoomTo(z0, 200, 'Sine.easeOut', true)); }
+    if (!cam.zoomEffect.isRunning) { const z0 = cam.zoom; cam.zoomTo(z0 * 1.05, 60, 'Quad.easeOut', true); sc.time.delayedCall(100, () => cam.zoomTo(z0, 220, 'Sine.easeOut', true)); }
     Sfx.play('parry');
     if (kind !== 'melee') return;
-    // 근접 카운터: 상대가 크게 경직 (보스는 그로기 +25) · X · C · 메가 필살기 쿨타임 -1.5초 · 평타 후딜레이 초기화
-    const e = sc.enemies.filter(q => q.alive && !q.intangible && Math.abs(q.x - x) < 110 && Math.abs(q.y - this.y) < 90).sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0];
-    if (e) {
-      if (e.boss) { if (e.addStaggerRaw) e.addStaggerRaw(25); }
-      else { sc.combat.applyStatus(e, { stun: 1.1 }); e.knock(f * 260, -160); }
-      sc.fx.ring(e.x, e.y, 30, 0xffe36a, 300);
-    }
-    for (const k of ['x', 'c', 'r']) if (m.cd[k] > 0) m.cd[k] = Math.max(0, m.cd[k] - 1.5);
-    this.zLock = 0;
+    // 근접 카운터: 전방 충격파 · 상대 큰 경직 (보스 그로기 +30) · X · C · 메가 필살기 쿨타임 -2초 · 다음 평타/차징 한 방 확정 치명타
+    const type = this.types[0], cx = this.x + f * 26;
+    sc.combat.hitCircle(cx, this.y, 40 * this.mods.sizeMul, 1.5, type, { kbx: 280, kby: -180, hs: 40, stun: 1.2 });
+    sc.fx.ring(cx, this.y, 40 * this.mods.sizeMul, 0xffe36a, 300);
+    const e = sc.enemies.filter(q => q.alive && !q.intangible && Math.abs(q.x - x) < 120 && Math.abs(q.y - this.y) < 100).sort((p1, p2) => Math.abs(p1.x - x) - Math.abs(p2.x - x))[0];
+    if (e && e.boss && e.addStaggerRaw) e.addStaggerRaw(30);
+    for (const k of ['x', 'c', 'r']) if (m.cd[k] > 0) m.cd[k] = Math.max(0, m.cd[k] - 2);
+    this.critNext = sc.time.now + 4000;   // 4초 안의 다음 한 방 (Combat.damageEnemy)
+  }
+  // 쿨타임 중 ↓ + Z: 캐릭터 옆에 작은 회색 방패 + 남은 쿨타임 고리
+  drawParryGauge(dt) {
+    this.parryGaugeT = Math.max(0, (this.parryGaugeT || 0) - dt);
+    const show = this.parryGaugeT > 0 && this.parryCd > 0;
+    if (!show) { if (this.parryGauge) this.parryGauge.clear(); return; }
+    const g = this.parryGauge || (this.parryGauge = this.scene.add.graphics().setDepth(60));
+    const x = this.x + 16, y = this.top - 6, k = this.parryCd / PARRY_CD;
+    g.clear();
+    g.fillStyle(0x1a1a24, .7); g.fillCircle(x, y, 7);
+    g.fillStyle(0x9aa0b0, .9); g.fillPoints([{ x: x - 4, y: y - 4 }, { x: x + 4, y: y - 4 }, { x: x + 4, y: y }, { x, y: y + 5 }, { x: x - 4, y }], true);
+    g.lineStyle(1.5, 0xd0d4e0, .9); g.beginPath(); g.arc(x, y, 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); g.strokePath();
   }
 
   // ---------------- 공중 내려찍기 (↓ + Z, 공중) ----------------
@@ -943,7 +985,7 @@ export class Player extends Actor {
   chargePerfect() { const c = this.chg; return c.fullAt != null && c.t - c.fullAt <= PERFECT_WIN; }
   updateCharge(dt, inp) {
     const c = this.chg, a = this.action, sc = this.scene;
-    const blocked = this.dash || (a && (a.dive || a.slot === 'zmove' || a.slot === 'charge'));
+    const blocked = this.dash || (a && (a.dive || a.slot === 'zmove' || a.slot === 'charge' || a.parry || a.whiff));
     if (inp.zH && !blocked) {
       c.t += dt;
       const max = this.chargeMax();
@@ -1246,10 +1288,10 @@ export class Player extends Actor {
     const sc = this.scene, a = this.action;
     if (!o.force && (this.inv > 0 || this.intangible || this.dash)) return false;
     if (sc.testGod) return false;   // 테스트룸: 무적 (보스 패턴 구경)
-    // 평타 패링: 근접 공격이 앞쪽 타격 범위(근접형) · 몸 둘레 75px(원거리형) 안에서 들어오면 쳐낸다 (투사체는 Combat 이 먼저 반사)
+    // 패링 자세(지상 ↓ + Z): 몸 둘레 70px 안에서 들어온 근접 공격을 받아친다 (투사체는 Combat 이 먼저 반사)
     const pz = !o.noParry && srcX != null && this.parryZone();
-    if (pz && this.inParry(pz, srcX, this.y - 4, pz.ranged ? 0 : 24) && (pz.ranged || (srcX - this.x) * this.face > -10)) {   // 근접형은 바라보는 쪽에서 온 공격만
-      this.doParry(pz.ranged ? (srcX + this.x) / 2 : this.x + this.face * 18, this.y - 4, 'melee');
+    if (pz && Math.abs(srcX - pz.x) <= pz.r + 24) {
+      this.doParry((srcX + this.x) / 2, this.y - 4, 'melee');
       return false;
     }
     if (a && a.guard === 'counter') {

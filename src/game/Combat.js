@@ -41,7 +41,9 @@ export class Combat {
     if (mods.execute && e.hp <= e.maxhp * .25) d *= 1 + mods.execute;   // 특성 카드: 마무리 일격
     if (e.groggyT > 0) d *= GROGGY_MUL;   // 보스 그로기(약점 누적으로 자세 무너짐): 받는 피해 ×1.35
     if (e.guardMul) d *= e.guardMul;
-    const crit = !o.dot && Math.random() < .06 + (o.crit || 0) + mods.crit;
+    const sure = !o.dot && p.critNext > this.s.time.now;   // 패링 카운터 뒤 다음 한 방은 확정 치명타
+    if (sure) p.critNext = 0;
+    const crit = sure || (!o.dot && Math.random() < .06 + (o.crit || 0) + mods.crit);
     if (crit) d *= 1.6 * (mods.critMul || 1);   // 피트렌즈: 급소 피해 +20%
     d += o.flat || 0;
     d = Math.max(1, Math.round(d * (.92 + Math.random() * .16)));
@@ -206,7 +208,7 @@ export class Combat {
     Cores.projectile(this, q);   // 보스의 코어: 무지갯빛 불꽃 · 백옥 사거리 · 델타스트림 (game/Cores.js)
     if (q.owner === 'player') {
       const pa = this.p.action;
-      if (pa && pa.comboStep && !this.chargeSpawn && !q.bonus) {   // 평타가 쏜 탄: 원거리형 패링 충격파 · 3타 피니시는 1.5배 강화 관통탄
+      if (pa && pa.comboStep && !this.chargeSpawn && !q.bonus) {   // 평타가 쏜 탄: 원거리형 표시 · 3타 피니시는 1.5배 강화 관통탄
         this.p.comboPulse();
         if (pa.finisher) { q.r *= 1.5; q.pierce = Math.max(q.pierce, 3); q.pow = (q.pow || 1) * 1.3; }
       }
@@ -279,8 +281,8 @@ export class Combat {
           if (--q.pierce <= 0) { dead = true; why = 'done'; break; }
         }
       } else if (!dead && q.owner === 'enemy' && p.parryZone() && p.inParry(p.parryZone(), q.x, q.y, q.r)) {
-        // 평타 패링 → 반사: 아군 황금빛 탄이 되어 2배 속도 · 200% 피해로 되돌아간다
-        q.owner = 'player'; q.vx = -q.vx * 2; q.vy = -q.vy * 2; q.grav = 0; q.dmg = Math.max(q.dmg * 2, p.atk * 2); q.hit = new Set(); q.life = 1.5; q.homing = 0; q.tier = 3; q.ghost = false;
+        // 패링 자세(지상 ↓ + Z) → 반사: 아군 황금빛 탄이 되어 2배 속도 · 250% 피해로 되돌아간다
+        q.owner = 'player'; q.vx = -q.vx * 2; q.vy = -q.vy * 2; q.grav = 0; q.dmg = Math.max(q.dmg * 2.5, p.atk * 2.5); q.hit = new Set(); q.life = 1.5; q.homing = 0; q.tier = 3; q.ghost = false;
         q.color = 0xffe36a; q.status = { kb: 0 };
         p.doParry(q.x, q.y, 'proj');
         continue;
@@ -297,7 +299,7 @@ export class Combat {
         this.killProj(q, i);
       }
     }
-    // 투사체끼리 부딪혀 사라지던 규칙(clashProjectiles)은 껐다 — 적 탄은 평타 3타 패링으로 쳐낸다 (Player.parryZone)
+    // 투사체끼리 부딪혀 사라지던 규칙(clashProjectiles)은 껐다 — 적 탄은 패링 자세(지상 ↓ + Z)로 쳐낸다 (Player.parryZone)
   }
 
   // ---------------- 투사체끼리 부딪힘 (플레이어 쪽 ↔ 적 쪽) ----------------
