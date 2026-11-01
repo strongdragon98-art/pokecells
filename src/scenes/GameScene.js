@@ -1185,18 +1185,31 @@ export default class GameScene extends Phaser.Scene {
   // 발밑: 검보라 그림자 타원 3겹 + 바닥에서 일렁이는 침식 불꽃 / 머리: 붉은 안광이 남기는 실선 궤적
   // 발밑 타원 그림자는 크기별로 한 번 구운 텍스처(흰색)를 적마다 두 장의 이미지로 띄워 색·투명도·위치만 바꾼다
   //  (예전엔 매 프레임 그래픽에 한 줄씩 fillRect). 일렁이는 침식 불꽃 몇 줄과 안광 궤적만 그래픽에 그린다
-  // 엘리트: 몸을 감싸 일렁이는 붉은 오라 + 위로 피어오르는 불티 + 머리 위 '🔥 엘리트' 이름표
+  // 엘리트: 몸을 감싸 일렁이는 붉은 오라 + 위로 피어오르는 불티 + 머리 위 [왕관 · 포켓몬 이름 · 작은 체력바]
   drawElite(e, t) {
     if (!e.eliteGlow) {
       e.eliteGlow = this.add.image(e.x, e.y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(0xff2a1a).setDepth(e.sprite.depth - .3);
-      e.eliteTag = this.add.text(e.x, e.top, '🔥 엘리트', { fontFamily: 'Galmuri9', fontSize: '8px', color: '#ff7a5a', stroke: '#1a0404', strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(56);
+      e.eliteTag = this.add.text(e.x, e.top, e.name, { fontFamily: 'Galmuri9', fontSize: '8px', color: '#ffd8c8', stroke: '#1a0404', strokeThickness: 3, resolution: 1 }).setOrigin(0, 1).setDepth(56);
+      if (!this.textures.exists('elite-crown')) {   // 9×7 금빛 왕관 (붉은 보석)
+        const cg = this.make.graphics({ x: 0, y: 0, add: false }), rows = ['k...k...k', 'yk.kyk.ky', 'yykyyykyy', 'yyyyryyyy', 'yyyyyyyyy', 'ooooooooo', 'kkkkkkkkk'];
+        const col = { y: 0xffd050, o: 0xc88a20, r: 0xff3a3a, k: 0x3a1a04 };
+        rows.forEach((row, y) => [...row].forEach((ch, x) => { if (col[ch]) { cg.fillStyle(col[ch], 1); cg.fillRect(x, y, 1, 1); } }));
+        cg.generateTexture('elite-crown', 9, 7); cg.destroy();
+      }
+      e.eliteCrown = this.add.image(e.x, e.top, 'elite-crown').setOrigin(0, 1).setDepth(56);
+      e.eliteBar = this.add.graphics().setDepth(56);
     }
     const on = e.alive && e.sprite.alpha > .05;
-    e.eliteGlow.setVisible(on); e.eliteTag.setVisible(on);
+    e.eliteGlow.setVisible(on); e.eliteTag.setVisible(on); e.eliteCrown.setVisible(on); e.eliteBar.setVisible(on);
     if (!on) return;
     const s = (e.b.height / 18) * (1 + Math.sin(t * 7 + e.auraT) * .1);
     e.eliteGlow.setPosition(e.x, e.y).setScale(s * .9, s * 1.1).setAlpha(.55 + Math.sin(t * 11) * .12);
-    e.eliteTag.setPosition(Math.round(e.x), Math.round(e.top - 6));
+    // 이름표 줄: [왕관 이름] 가운데 정렬 · 그 아래 작은 체력바
+    const by = Math.round(e.top - 6), tw = e.eliteTag.width, x0 = Math.round(e.x - (tw + 11) / 2);
+    e.eliteCrown.setPosition(x0, by - 6); e.eliteTag.setPosition(x0 + 11, by - 3);
+    const bw = 26, bx = Math.round(e.x - bw / 2), k = Math.max(0, Math.min(1, e.hp / e.maxhp));
+    e.eliteBar.clear().fillStyle(0x1a0404, .85).fillRect(bx - 1, by - 1, bw + 2, 4).fillStyle(0x4a1a1a, 1).fillRect(bx, by, bw, 2)
+      .fillStyle(k > .5 ? 0x6ae06a : k > .25 ? 0xffc040 : 0xff4a3a, 1).fillRect(bx, by, Math.ceil(bw * k), 2);
     if (!e.asleep && Math.random() < .5) this.fx.embers(e.x + (Math.random() - .5) * e.b.width, e.bottom - 2, [0xff3a2a, 0xffa040, 0xffe08a], 1, { speed: 45 });
   }
 
