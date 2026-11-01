@@ -25,11 +25,13 @@ export const UNLOCK_KILLS = 10;
 //  메가스톤: 제3구역 보스 드랍 → 3단이면 V 로 영구 메가진화, 마지막 제4구역을 메가로 싸운다
 export const EVO_EXP = [30, 150];
 export const EXP_PURIFY = 1, EXP_BOSS = 12;
-export const DROPS = { zcrystal: 0, megastone: 2 };   // 몇 번째 챕터(0부터) 최종 보스가 떨어뜨리나 — 뮤츠: Z크리스탈 · 레쿠쟈: 메가스톤
+// 몇 번째 챕터(0부터) 최종 보스가 떨어뜨리나 — 뮤츠: 전설 유물 「뮤츠의 코어」 · 레쿠쟈: 메가스톤 (키스톤 · 첫 메가스톤은 성도 방울탑 노승려 · Z링은 호연 시련 캡틴)
+export const DROPS = { core: 0, megastone: 2 };
 // 단계별 배율: atk 공격력 · hp 최대 체력 · size 몸집 · fx 스킬 이펙트(범위·궤적) 크기
 //  proj 투사체 크기·판정 반경 (진화할수록 눈에 띄게 커진다. 꼬리·적중 연출도 단계별로 화려해짐)
+//  1단은 수수하게: 공격력 ×0.8 · 이펙트·투사체 작게 · 투사체는 한 번에 1발만 (Combat.spawnProjectile) → 진화·카드로 강해지는 맛
 export const TIERS = [
-  { name: '1단', atk: 1, hp: 1, size: 1, fx: 1, proj: 1 },
+  { name: '1단', atk: .8, hp: 1, size: 1, fx: .9, proj: .85 },
   { name: '2단', atk: 1.3, hp: 1.15, size: 1.08, fx: 1.2, proj: 1.45 },
   { name: '3단', atk: 1.65, hp: 1.3, size: 1.16, fx: 1.4, proj: 1.9 },
   { name: '메가', atk: 2, hp: 1.45, size: 1.24, fx: 1.65, proj: 2.3 }

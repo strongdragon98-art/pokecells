@@ -26,6 +26,7 @@ import { archetypeOf } from '../data/moveRules.js';
 import { MOVE_DB } from '../data/MoveDatabase.js';
 import { onDashTick } from './Perks.js';
 import { chargeSigOf } from './Signature.js';
+import { usesStone, stoneName, zTypeOf, crystalName } from '../data/gear.js';
 
 const SWAP_CD = 3;
 // 진화 단계별 보이는 크기 (1단 모습 기준): 2단 ×1.32 · 3단 ×1.72 · 메가는 3단의 ×1.1 (거다이맥스처럼 부풀지 않게)
@@ -69,8 +70,15 @@ export class Player extends Actor {
     this.action = null; this.combo = 0; this.comboT = 0; this.zBuf = 0;
     this.chg = { t: 0, lvl: 0, st: 0 }; this.diveCd = 0;   // Z 홀드 차징 · 공중 내려찍기
     const self = this;                                 // mega.active = 출전 포켓몬이 메가진화했는가 (포켓몬마다, 그 판 끝까지 유지)
-    this.mega = { stones: 0, get active() { return self.m.mega; }, set active(v) { self.m.mega = v; } };
-    this.z = { has: false, cd: 0 };                    // Z크리스탈 · Z기술 재사용 대기
+    // 메가스톤 · Z크리스탈 (data/gear.js): 키스톤 · Z링은 파티 공용, 돌·크리스탈은 포켓몬마다 전용 칸 (m.gear)
+    this.keyStone = false; this.zRing = false;
+    this.stones = new Set();   // 가방의 메가스톤 (계열 id · 아직 아무도 안 낀 것)
+    this.crystals = {};        // 가방의 Z크리스탈 { 속성: 개수 }
+    this.quests = {};          // 이야기 진행: zTrial (0 없음 · 1 시련 받음 · 2 시련 통과 · 3 Z링 받음) · monk (방울탑 키스톤 받음) …
+    //  stones: 지금 출전 포켓몬이 메가진화할 수 있으면 1 (예전 '파티 공용 메가스톤 개수' 자리 — 늘리면 메가스톤을 얻는다)
+    this.mega = { get stones() { return self.megaReady() ? 1 : 0; }, set stones(v) { if (v > (self.megaReady() ? 1 : 0)) self.gainStone(); }, get active() { return self.m.mega; }, set active(v) { self.m.mega = v; } };
+    //  has: 지금 출전 포켓몬이 Z기술을 쓸 수 있나 (Z링 + 맞는 Z크리스탈 장착) · 참으로 두면 Z링과 크리스탈을 얻는다
+    this.z = { cd: 0, get has() { return self.canZ(); }, set has(v) { if (v) self.gainZ(); } };   // Z기술 재사용 대기
     this.stageBonus = 1;                               // 스테이지를 넘을 때마다 최대 체력 ×1.15
     this.intangible = false;
     this.wasGround = false; this.lastVy = 0;
@@ -94,7 +102,8 @@ export class Player extends Actor {
       tier: 0, exp: 0, mega: false, megaPick: 0, items: {}, perks: {}, mods: computeMods({}, {}),   // perks: 기술머신 특성 카드 (game/Perks.js)
       skills: { ...(sp.evo[0].skills || sp.skills) }, ups: new Set(), atkBonus: 1, cdBonus: 1,   // 기술머신: 바꿔 단 기술 · 받은 강화 카드 · 숙련 보너스
       learned: Object.values(sp.evo[0].skills || sp.skills),   // 배운 기술 전부 (가방 → 기술에서 Z·X·C 자리에 골라 넣는다)
-      chargeType: null   // 차징 샷·내려찍기 속성 (듀얼 타입은 가방에서 두 속성 중 고른다 · null 이면 첫 속성)
+      chargeType: null,   // 차징 샷·내려찍기 속성 (듀얼 타입은 가방에서 두 속성 중 고른다 · null 이면 첫 속성)
+      gear: { stone: null, crystal: null }   // 전용 칸: 메가스톤(계열 id) · Z크리스탈(속성)
     };
   }
 
@@ -284,6 +293,61 @@ export class Player extends Actor {
     this.addExp(gain, m);
     return { gain, evolved: m.tier > t0 };
   }
+
+  // ---------------- 메가스톤 · Z크리스탈 (data/gear.js) ----------------
+  // 이 포켓몬이 지금 메가진화(폼체인지)할 수 있게 갖췄나: 폼체인지 전설은 그 아이템 · 나머지는 키스톤 + 자기 메가스톤 장착
+  megaReady(m = this.m) {
+    const want = m.sp.megas[m.megaPick || 0] || m.sp.megas[0];
+    if (want && want.item) return this.formItems.has(want.item);
+    return this.keyStone && !!m.sp.megas.length && m.gear.stone === m.key;
+  }
+  canZ(m = this.m) { return this.zRing && m.gear.crystal === zTypeOf(m.key); }
+  // 메가스톤 얻기: line 계열의 돌 (안 주면 출전 포켓몬 → 돌이 없는 다른 파티 포켓몬 순). 그 계열이 파티에 있으면 바로 낀다
+  //  반환: 얻은 계열 id (줄 게 없으면 null)
+  gainStone(line = null) {
+    if (!line) line = [this.m, ...this.members].map(m => m.key).find(k => usesStone(k) && !this.stones.has(k) && !this.members.some(m => m.key === k && m.gear.stone === k) && !(this.stored[k] && this.stored[k].gear.stone === k));
+    if (!line || !usesStone(line)) return null;
+    const m = this.members.find(q => q.key === line) || this.stored[line];
+    if (m && !m.gear.stone) m.gear.stone = line; else this.stones.add(line);
+    return line;
+  }
+  // Z링 + 파티 포켓몬들의 Z크리스탈 (빈 칸이면 바로 낀다)
+  gainZ() {
+    this.zRing = true;
+    for (const m of this.members) this.gainCrystal(zTypeOf(m.key));
+  }
+  gainCrystal(type) {
+    const m = this.members.find(q => !q.gear.crystal && zTypeOf(q.key) === type);
+    if (m) m.gear.crystal = type; else this.crystals[type] = (this.crystals[type] || 0) + 1;
+    return type;
+  }
+  // 전용 칸 끼우기 · 빼기 (가방 ↔ 포켓몬)
+  equipStone(m) {
+    if (m.gear.stone || !this.stones.has(m.key)) return false;
+    this.stones.delete(m.key); m.gear.stone = m.key; return true;
+  }
+  unequipStone(m) {
+    if (!m.gear.stone) return false;
+    if (m.mega && m === this.m) return false;   // 메가진화 중엔 뺄 수 없다
+    this.stones.add(m.gear.stone); m.gear.stone = null; return true;
+  }
+  equipCrystal(m, type) {
+    if (!this.crystals[type]) return false;
+    if (m.gear.crystal) this.crystals[m.gear.crystal] = (this.crystals[m.gear.crystal] || 0) + 1;
+    if (--this.crystals[type] <= 0) delete this.crystals[type];
+    m.gear.crystal = type; return true;
+  }
+  unequipCrystal(m) {
+    if (!m.gear.crystal) return false;
+    this.crystals[m.gear.crystal] = (this.crystals[m.gear.crystal] || 0) + 1; m.gear.crystal = null; return true;
+  }
+  // 테스트룸: 키스톤 · Z링 · 파티 모두의 메가스톤과 Z크리스탈을 끼워 준다
+  grantAll() {
+    this.keyStone = true; this.zRing = true;
+    for (const m of this.members) { if (usesStone(m.key)) m.gear.stone = m.key; m.gear.crystal = zTypeOf(m.key); }
+  }
+  stoneLabel(line) { return stoneName(line); }
+  crystalLabel(type) { return crystalName(type); }
 
   // ---------------- 아이템 장착 (포켓몬마다) ----------------
   // 주운 아이템은 출전 중인 포켓몬이 바로 장착한다 (장착 칸 5개가 차 있으면 가방으로). 가방(I)에서 장착하거나 빼 둘 수 있다.
@@ -756,7 +820,7 @@ export class Player extends Actor {
 
   fireCharge(lvl) {
     const sig = chargeSigOf(this);   // 계열 고유 차징 (game/Signature.js): 개굴닌자 거대 수리검 · 울머기 저격탄 …
-    const sc = this.scene, type = sig ? sig.type : this.chargeType(), col = typeColor(type), spec = CHARGE_SHOT[lvl], evo = this.tierIdx, s = this.mods.sizeMul * this.T.proj * (evo >= 2 ? 1.2 : 1);   // 3단·메가는 탄이 더 크다
+    const sc = this.scene, type = sig ? sig.type : this.chargeType(), col = typeColor(type), spec = CHARGE_SHOT[lvl], evo = this.tierIdx, s = this.mods.sizeMul * this.T.proj * (evo >= 2 ? 1.2 : 1) * (this.mods.psyCore ? 1.3 : 1);   // 3단·메가는 탄이 더 크다 · 뮤츠의 코어 +30%
     if (this.action) this.endAction(true);
     this.chgAura.setVisible(false);
     this.startAction({
@@ -765,7 +829,7 @@ export class Player extends Actor {
         sc.combat.chargeSpawn = true;   // 이 순간 만든 탄은 차징 탄 (연습용 나무 상자 · Combat.spawnProjectile)
         if (sig) {
           sig.fire(this, lvl, s, f);
-          if (lvl >= 2) sc.fx.floatText(this.x, this.b.y - 16, sig.name[lvl - 1] + '!', lvl >= 3 ? '#ffe36a' : '#ffffff', lvl >= 3 ? 12 : 10);
+          if (lvl >= 2) sc.fx.floatText(this.x, this.b.y - 16, (sig.nameOf ? sig.nameOf(this, lvl) : sig.name[lvl - 1]) + '!', lvl >= 3 ? '#ffe36a' : '#ffffff', lvl >= 3 ? 12 : 10);
           if (lvl >= 3) sc.fx.hitStop(60);
         } else {
           const q = sc.combat.spawnProjectile({
@@ -781,6 +845,7 @@ export class Player extends Actor {
             },
             onExpire: q => { if (evo >= 2) { sc.fx.ring(q.x, q.y, 30 * s, col, 300); sc.combat.hitCircle(q.x, q.y, 26 * s, .6 + lvl * .3, type, { kbx: 160, kby: -160, hs: 30, proc: true }); } if (q.beam) { const bm = q.beam; q.beam = null; sc.tweens.add({ targets: bm, alpha: 0, duration: 420, onComplete: () => bm.destroy() }); } }
           });
+          if (this.mods.psyCore && type === 'psychic') sc.combat.spawnProjectile({ owner: 'player', x, y: y - 8, vx: f * spec.speed * .92, vy: -spec.speed * .08, r: spec.r * s * .7, mul: spec.mul * .6, type, kind: CHARGE_KIND[type] || 'wave', color: col, life: spec.life, pierce: spec.pierce, light: true, tier: Math.max(this.tierIdx, lvl), pow: s, kb: 160, stream: false, status: { heavy: true } });   // 뮤츠의 코어: 에스퍼 차징 탄 +1
           if (lvl >= 3) { q.x0 = x; q.beam = sc.add.graphics().setDepth(28).setBlendMode(Phaser.BlendModes.ADD); sc.cameras.main.flash(180, 255, 255, 255, true); sc.fx.hitStop(60); }
         }
         sc.combat.chargeSpawn = false;
@@ -828,7 +893,11 @@ export class Player extends Actor {
   // ---------------- Z기술 (Q) ----------------
   useZMove() {
     const sc = this.scene;
-    if (!this.z.has) { sc.events.emit('toast', 'Z크리스탈이 없다 (스테이지 2 보스가 지니고 있다)'); Sfx.play('deny'); return; }
+    if (!this.z.has) {   // Z링 + 이 포켓몬 속성의 Z크리스탈을 전용 칸에 끼워야 한다
+      const t = zTypeOf(this.m.key);
+      sc.events.emit('toast', !this.zRing ? 'Z링이 없다 — 호연지방 루네시티의 시련 캡틴을 찾아가 보자' : `${this.form().name}의 Z크리스탈 칸에 ${crystalName(t)}를 끼워야 한다 (가방)`);
+      Sfx.play('deny'); return;
+    }
     if (this.z.cd > 0) { sc.events.emit('toast', `Z기술 재사용까지 ${Math.ceil(this.z.cd)}초`); Sfx.play('deny'); return; }
     if (this.dash) return;
     this.z.cd = Z_CD;
@@ -844,7 +913,10 @@ export class Player extends Actor {
     if (want && want.item) {
       if (!this.formItems.has(want.item)) { const it = FORM_ITEMS[want.item]; sc.events.emit('toast', `${it.name}이(가) 없다 (${this.form().name} 보스를 정화하면 떨어뜨린다)`); Sfx.play('deny'); return; }
     } else {
-      if (mg.stones <= 0) { sc.events.emit('toast', '메가스톤이 없다 (스테이지 3 보스가 지니고 있다)'); Sfx.play('deny'); return; }
+      if (!this.megaReady()) {   // 키스톤 + 이 계열 메가스톤을 전용 칸에
+        sc.events.emit('toast', !this.keyStone ? '키스톤이 없다 — 성도지방 방울탑의 노승려가 무언가 알고 있다' : !this.sp.megas.length ? `${this.form().name}은(는) 메가스톤으로 메가진화하지 않는다` : `${this.form().name}의 메가스톤 칸에 ${stoneName(this.m.key)}를 끼워야 한다 (가방)`);
+        Sfx.play('deny'); return;
+      }
       if (this.tier < 2) { sc.events.emit('toast', `${this.form().name}은(는) 3단 진화 후에 메가진화할 수 있다 (진화까지 ${this.expToNext()})`); Sfx.play('deny'); return; }
     }
     if (this.sp.megas[variant]) this.m.megaPick = variant;

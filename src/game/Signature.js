@@ -17,8 +17,14 @@ export const CHARGE_SIG = {
   // ===== 개굴닌자: 등에 진 거대 물수리검 — 앞으로 날아갔다가 되돌아오며 닿는 적을 계속 벤다 =====
   water_shuriken: {
     name: ['큰 물수리검', '거대 물수리검', '초거대 물수리검'], type: 'water',
+    nameOf: (p, lvl) => (p.tierIdx === 0 ? ['큰 거품', '왕거품', '거품 폭탄'][lvl - 1] : ['큰 물수리검', '거대 물수리검', '초거대 물수리검'][lvl - 1]),
     fire(p, lvl, s, f) {
       const sc = p.scene, bond = p.mega.active ? 1.25 : 1;
+      if (p.tierIdx === 0) {   // 1단 개구마르: 아직 수리검이 없다 — 기를 모아 부풀린 큰 거품 한 발 (단계마다 크고 세게, 터지면 물보라)
+        sc.combat.spawnProjectile({ owner: 'player', x: p.x + f * 12, y: p.y - 4, vx: f * 230, vy: 0, r: (5 + lvl * 2) * s, mul: 0, type: 'water', kind: 'bubble', color: 0x8ad8ff, life: 1.1, light: true, tier: lvl, pow: s, boom: { r: (22 + lvl * 8) * s, mul: 1.6 + lvl * .8, kb: 180 } });
+        Sfx.play('water');
+        return;
+      }
       const spec = [null, { r: 9, mul: 1.1, sp: 340, ret: .42, life: 1.5 }, { r: 14, mul: 1.3, sp: 380, ret: .5, life: 1.8 }, { r: 24, mul: 1.6, sp: 420, ret: .6, life: 2.2 }][lvl];
       const big = (r, mul, oy, ang = 0) => sc.combat.spawnProjectile({
         owner: 'player', x: p.x + f * 12, y: p.y + oy, vx: Math.cos(ang) * spec.sp * f, vy: Math.sin(ang) * spec.sp, r: r * s * bond, mul, type: 'water', kind: 'shuriken', color: 0x4ac0ff,
@@ -35,7 +41,7 @@ export const CHARGE_SIG = {
         onExpire: q => { if (lvl >= 2) { sc.fx.ring(q.x, q.y, q.r * 1.6, 0x8ad8ff, 260); sc.combat.hitCircle(q.x, q.y, q.r * 1.4, .8 * lvl, 'water', { proc: true, kbx: 160, kby: -160, hs: 40 }); } }
       });
       big(spec.r, spec.mul, -6);
-      if (lvl >= 3) {   // 초거대: 작은 수리검 두 장이 위아래로 따라 붙는다
+      if (lvl >= 3 && p.tierIdx >= 2) {   // 초거대 (3단부터): 작은 수리검 두 장이 위아래로 따라 붙는다
         big(8, .7, -6, -.18); big(8, .7, -6, .18);
         sc.cameras.main.flash(160, 140, 210, 255, true);
       }
@@ -203,7 +209,7 @@ export const CHARGE_SIG = {
   psycho_cut: {
     name: ['사이코 블레이드', '사이코 블레이드 폭풍', '사이코 블레이드 · 무한'], type: 'psychic',
     fire(p, lvl, s, f) {
-      const sc = p.scene, n = [0, 4, 6, 10][lvl];
+      const sc = p.scene, n = [0, 4, 6, 10][lvl] + (p.mods.psyCore ? 1 : 0);   // 뮤츠의 코어: 칼날 +1
       for (let k = 0; k < n; k++) {
         const a = (k / n) * Math.PI * 2;
         sc.combat.spawnProjectile({ owner: 'player', x: p.x + Math.cos(a) * 20 * s, y: p.y + Math.sin(a) * 20 * s, vx: 0, vy: 0, r: 5 * s, mul: 1.8, type: 'psychic', kind: 'leaf', color: 0xff6ad8,

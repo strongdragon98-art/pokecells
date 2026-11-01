@@ -49,6 +49,17 @@ export const NPCS = {
       '옆에 금이 간 바위를 실험용으로 갖다 놨어요. 점프해서 {y:<↓ + %z%|↓ + 평타>}로 위에서 내리치면 산산조각 날 거예요!'],
     pure: ['침식 데이터가 0이에요! 그래도 {y:공중 내려찍기}는 정화된 땅에서도 쓸모가 많답니다.'] },
 
+  // ── 이야기 NPC (대사는 진행에 따라 GameScene.storyTalk 가 고른다 · 여기 lines 는 처음 대사) ──
+  //  노승려(인주시티 · 방울탑 아래): 칠색조를 정화하면 키스톤 + 첫 메가스톤
+  elder_monk: { name: '방울탑 노승려', look: 'monk', hint: '💬 방울탑의 종소리…',
+    lines: ['방울탑은 성스러운 불꽃의 새가 내려앉던 곳… 지금은 심연의 기운에 휩싸여 종이 울리지 않는구려.', '탑 꼭대기의 {y:칠색조}를 정화해 준다면, 이 늙은이가 보답할 것이 있소.'] },
+  //  알로라 시련 캡틴(루네시티): 시련(엘리트 수호자)을 넘으면 Z링 + Z크리스탈
+  trial_captain: { name: '알로라 시련 캡틴', look: 'captain', hint: '💬 태고의 빛, Z파워…',
+    lines: ['알로라에서 파견 나온 시련 캡틴이라네.'] },
+  //  고대석 수집가(금빛시티 · 축복시티): 이상한사탕 2개 → 출전 포켓몬의 메가스톤
+  stone_collector: { name: '방랑하는 고대석 수집가', look: 'collector', hint: '💬 반짝이는 돌 있소…',
+    lines: ['나는 각지의 고대석을 모으는 수집가라네.'] },
+
   // ── 관동 · 태초마을 ──
   redmom: { name: '레드의 엄마', look: 'mom',
     lines: [
@@ -169,10 +180,10 @@ export const TOWNS = {
   회색시티: ['nurse', 'museum', 'hiker'],
   노랑시티: ['silph', 'saffron_girl'],
   연두마을: ['elm', 'newbark_boy', 'newbark_mom'],
-  금빛시티: ['radio_dj'],
-  인주시티: ['kimono'],
+  금빛시티: ['radio_dj', 'stone_collector'],
+  인주시티: ['kimono', 'elder_monk'],
   등화도시: ['lighthouse', 'lily_girl', 'fisher'],
-  루네시티: ['sootopolis'],
-  축복시티: ['snow_kid', 'snow_lady', 'snow_hiker'],
+  루네시티: ['sootopolis', 'trial_captain'],
+  축복시티: ['snow_kid', 'snow_lady', 'snow_hiker', 'stone_collector'],
   뇌문시티: ['ferris', 'nimbasa_boy', 'nurse2']
 };

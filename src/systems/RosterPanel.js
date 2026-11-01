@@ -6,7 +6,7 @@ import Phaser from 'phaser';
 import { SPECIES, SKILLS } from '../data/pokemon.js';
 import { LINES, CATS, unlockHint } from '../data/roster.js';
 import { HK, hkText, hiImage, fadeLine, glassPanel, typePill } from './ui.js';
-import { roundPortrait } from './Textures.js';
+import { roundPortrait, skillIcon } from './Textures.js';
 import { RES } from '../config.js';
 import { Save } from './Save.js';
 import { Sfx } from './Audio.js';
@@ -155,7 +155,7 @@ export class RosterPanel {
       for (const sl of ['z', 'x', 'c']) {
         const sk = SKILLS[set[sl]];
         if (!sk || y > Y + H - 14) continue;
-        L.add(s.add.image(X + 16, y + 5, `sk:${set[sl]}`).setDisplaySize(11, 11));
+        L.add(s.add.image(X + 16, y + 5, skillIcon(s, set[sl])).setDisplaySize(11, 11));
         const nm = hkText(s, X + 25, y, `${label}${sl.toUpperCase()} ${sk.name}`, 8, HK.gold, { bold: true });
         L.add(nm);
         // 설명은 이름 뒤 남은 폭에 맞춰 자른다

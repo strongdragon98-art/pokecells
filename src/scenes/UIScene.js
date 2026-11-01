@@ -16,10 +16,11 @@ const PERK_ICON = { 능력치: '⚔', 기동: '➶', 유틸: '✚', '속성 부�
 import { HK, hkText, darkBand, hkMenu, hiImage, fadeLine, bar3d, glassPanel, glassButton, typePill } from '../systems/ui.js';
 import { MapView, VP } from '../systems/MapView.js';
 import { TouchControls } from '../systems/TouchControls.js';
-import { tagIcon, roundPortrait, itemArt, hiTex, dashIcon } from '../systems/Textures.js';
+import { tagIcon, roundPortrait, itemArt, hiTex, dashIcon, skillIcon } from '../systems/Textures.js';
 import { CHG_SHOW, CHG_AT } from '../game/Player.js';
 import { megaUltOf, megaSymbol, MEGA_ULT_CD, MEGA_ULT } from '../game/Spectacle.js';
 import { CHARGE_SIG } from '../game/Signature.js';
+import { installGameMenu } from './GameMenu.js';
 import { npcArt } from '../game/Npc.js';
 import { bossHome } from '../game/TestRoom.js';
 import { Save } from '../systems/Save.js';
@@ -753,7 +754,7 @@ export default class UIScene extends Phaser.Scene {
     face.add(hkText(this, W / 2 - pad, top + 8, card.cat || (card.kind === 'move' ? '새 기술 · 타 속성' : card.kind === 'up' ? '기술 강화' : '숙련'), 7.5, HK.dim, { origin: [1, 0] }));
     const iconId = card.kind === 'move' ? card.id : card.kind === 'up' ? card.skill : null, tcol = card.kind === 'perk' || card.kind === 'mastery' ? st.glow : typeColor(card.type);
     face.add(this.add.image(0, top + 50, 'glow').setBlendMode(ADD).setTint(tcol).setScale(.9).setAlpha(.5));
-    if (iconId && this.textures.exists(`sk:${iconId}`)) face.add(this.add.image(0, top + 50, `sk:${iconId}`).setDisplaySize(42, 42));
+    if (iconId && SKILLS[iconId]) face.add(this.add.image(0, top + 50, skillIcon(this, iconId)).setDisplaySize(42, 42));
     else face.add(hkText(this, 0, top + 50, PERK_ICON[card.cat] || '✦', 24, gcss, { origin: .5, glow: true }));
     // 이름: '불꽃세례 개조: 푸른 연옥' 은 두 줄 (작은 머리글 + 큰 이름)
     const [head, main] = card.name.includes(': ') ? card.name.split(': ') : [null, card.name];
@@ -1301,198 +1302,6 @@ export default class UIScene extends Phaser.Scene {
   testFight() { if (!this.testBossKey) return; Sfx.play('swap'); this.gs.testBoss(this.testBossKey, !!this.testChainOn); }
   testHalf() { if (this.gs.testBossHalf()) { Sfx.play('select'); this.gs.toggleOverlay('test'); } else this.showTest('boss', '싸우는 보스가 없어요'); }
 
-  // ---------------- 가방 (I) ----------------
-  //  위: 포켓몬 한 마리씩 (1~3 탭으로 바꿔 보기) — 진화 단계 · 체력 · 경험치 · 능력치 · 아이템 효과
-  //      + 장착 칸 5개(같은 아이템 2개면 2칸) + 기술 Z · X · C
-  //  아래 왼쪽: [도구] 내 가방(장착 안 한 아이템 전부 + 중요한 물건) / [기술] 이 포켓몬이 배운 기술 전부
-  //  아래 오른쪽: 고른 것 설명 + 버튼 — 도구: 장착하기 / 가방에 넣기 · 기술: Z·X·C 자리에 넣기 (이미 있으면 맞바꿈)
-  //  키보드: 1~3 · Q/E 포켓몬 · Tab 도구↔기술 · ← → 고르기 · Enter 장착/빼기 · Z·X·C 고른 기술을 그 자리에
-  showInv(sel = this.invSel) {
-    this.clearOverlay();
-    const gs = this.gs, p = gs.player, g = this.gOver, L = this.overlay.setVisible(true);
-    if (this.invMember == null || !p.members[this.invMember]) this.invMember = p.idx;
-    if (!this.invTab) this.invTab = 'items';
-    const mi = this.invMember, m = p.members[mi], sp = m.sp, Tm = TIERS[p.tierOf(m)], used = p.equipCount(m), tab = this.invTab;
-    g.fillStyle(0x05040a, .97); g.fillRect(0, 0, GAME_W, GAME_H);
-    L.add(hkText(this, 320, 21, '가방', 14, HK.ivory, { ls: 8, bold: true, origin: .5, glow: true }));
-    this.overlayChrome(L, 'inv');
-    // 고를 수 있는 것: 도구 탭 = 장착 칸(한 칸 = 아이템 1개) + 가방 · 기술 탭 = Z·X·C + 배운 기술
-    const worn = [];
-    for (const id of Object.keys(m.items)) for (let k = 0; k < m.items[id]; k++) worn.push(id);
-    const bag = Object.keys(p.bag), slots = ['z', 'x', 'c'];
-    const candy = p.candy > 0 ? [{ id: 'rare_candy', from: -2, candy: true }] : [];   // 이상한사탕 (가방 맨 앞)
-    const itemList = [...worn.map((id, k) => ({ id, from: mi, k })), ...candy, ...bag.map(id => ({ id, from: -1 }))];
-    const skillList = [...slots.map(s => ({ skill: m.skills[s], slot: s })), ...m.learned.filter(id => !slots.some(s => m.skills[s] === id)).map(id => ({ skill: id, slot: null }))];
-    if (sel && sel.skill) { if (!m.learned.includes(sel.skill)) sel = null; else sel = { skill: sel.skill, slot: slots.find(s => m.skills[s] === sel.skill) || null }; }
-    else if (sel) {
-      if (!itemList.some(s => s.id === sel.id && s.from === sel.from)) sel = null;
-      else if (sel.from >= 0 && sel.k == null) sel = itemList.find(s => s.id === sel.id && s.from === sel.from);
-    }
-    this.invSel = sel; this.invList = tab === 'skills' ? skillList : itemList;
-    const isSel = s => sel && (s.skill ? sel.skill === s.skill : !sel.skill && sel.id === s.id && sel.from === s.from && (sel.from < 0 || sel.k === s.k));
-    // 칸 하나 (누르면 고른다): 도구는 본가 그림, 기술은 기술 아이콘
-    const cell = (x, y, S, s, n, key) => {
-      const on = s && isSel(s);
-      g.fillStyle(on ? 0x3a3060 : 0x15131f, on ? 1 : .92); g.fillRoundedRect(x - S / 2, y - S / 2, S, S, 5);
-      g.lineStyle(on ? 1.8 : 1, on ? HK.goldN : HK.ivoryN, on ? .95 : s ? .32 : .14); g.strokeRoundedRect(x - S / 2, y - S / 2, S, S, 5);
-      if (key) L.add(hkText(this, x - S / 2 + 4, y - S / 2 + 2, key, 8, HK.gold, { bold: true }));
-      if (!s) { g.lineStyle(1, HK.ivoryN, .18); g.lineBetween(x - 5, y, x + 5, y); g.lineBetween(x, y - 5, x, y + 5); return; }   // 빈 칸: 흐린 +
-      L.add(s.skill ? this.add.image(x + 2, y + 2, `sk:${s.skill}`).setDisplaySize(S - 12, S - 12) : this.itemImage(x, y, s.id, S - 8, 1.6));
-      if (n > 1) L.add(this.add.text(x + S / 2 - 2, y + S / 2 - 1, `×${n}`, txt(8, '#ffffff', { stroke: '#000', strokeThickness: 3 })).setOrigin(1, 1));
-      if (s.skill) {   // 속성 배지 (칸 오른쪽 아래 모서리 · 속성색 마름모)
-        const tc = typeColor(SKILLS[s.skill].type), bx = x + S / 2 - 5, by = y + S / 2 - 5;
-        g.fillStyle(0x07060e, 1); g.fillTriangle(bx - 5, by, bx, by - 5, bx + 5, by); g.fillTriangle(bx - 5, by, bx, by + 5, bx + 5, by);
-        g.fillStyle(tc, 1); g.fillTriangle(bx - 3.5, by, bx, by - 3.5, bx + 3.5, by); g.fillTriangle(bx - 3.5, by, bx, by + 3.5, bx + 3.5, by);
-      }
-      const z = this.add.zone(x, y, S + 4, S + 4).setInteractive({ useHandCursor: true });
-      z.on('pointerdown', () => { Sfx.play('select'); if (s.skill) this.invTab = 'skills'; else this.invTab = 'items'; this.showInv(s); });
-      if (s.skill) this.tipOn(z, SKILLS[s.skill].type, SKILLS[s.skill].name, x, y - S / 2);
-      L.add(z);
-    };
-
-    // ── 포켓몬 탭 (1~3): 작은 초상화 + 이름 + 장착 수, 출전 중이면 금빛 점
-    p.members.forEach((pm, i) => {
-      const x = 16 + i * 156, y = 44, w = 150, h = 30, on = i === mi;
-      glassPanel(g, x, y, w, h, { r: 10, fill: on ? 0x221e34 : 0x0f0d18, border: on ? HK.goldN : HK.ivoryN, borderAlpha: on ? .75 : .25, alpha: .92 });
-      L.add(this.add.image(x + 18, y + 15, roundPortrait(this, p.portraitKey(pm))).setScale(.55).setAlpha(pm.alive ? 1 : .4));
-      L.add(hkText(this, x + 36, y + 15, `${i + 1}  ${p.formName(pm)}`, 10.5, on ? HK.gold : pm.alive ? HK.ivory : HK.faint, { bold: on, origin: [0, .5] }));
-      if (i === p.idx) { g.fillStyle(HK.goldN, .9); g.fillCircle(x + w - 12, y + 15, 3); }
-      L.add(hkText(this, x + w - 20, y + 15, `${p.equipCount(pm)}/${MAX_EQUIP}`, 8.5, HK.dim, { origin: [1, .5] }));
-      if (!on) {
-        const z = this.add.zone(x, y, w, h).setOrigin(0).setInteractive({ useHandCursor: true });
-        z.on('pointerdown', () => { Sfx.play('select'); this.invMember = i; this.showInv(null); });
-        L.add(z);
-      }
-    });
-    L.add(hkText(this, 624, 59, '● 출전 중', 8.5, HK.gold, { origin: [1, .5] }));
-
-    // ── 고른 포켓몬: 초상화 · 이름 · 타입 · 체력 · 경험치 · 능력치 · 아이템 효과 · 장착 칸 5개 · 기술 Z X C
-    const PY = 80, PH = 128;
-    glassPanel(g, 16, PY, 608, PH, { border: mi === p.idx ? HK.goldN : HK.ivoryN, borderAlpha: mi === p.idx ? .5 : .2 });
-    L.add(this.add.image(62, PY + 50, roundPortrait(this, p.portraitKey(m))).setScale(1.5).setAlpha(m.alive ? 1 : .4));
-    L.add(hiImage(this, 62, PY + 50, 'gloss').setScale(1.5 / RES));
-    L.add(hiImage(this, 62, PY + 50, mi === p.idx ? 'slot3d-gold' : 'slot3d').setScale(1.5 / RES));
-    L.add(hkText(this, 62, PY + 88, `${Tm.name}${m.alive ? '' : ' · 기절'}`, 9, m.alive ? HK.gold : HK.faint, { bold: true, origin: [.5, 0] }));
-    L.add(hkText(this, 62, PY + 102, mi === p.idx ? '출전 중' : '대기', 8.5, mi === p.idx ? HK.gold : HK.dim, { origin: [.5, 0] }));
-    const nm = hkText(this, 112, PY + 6, p.formName(m), 13, m.alive ? HK.ivory : HK.faint, { bold: true });
-    L.add(nm);
-    let tx = nm.x + nm.width + 8;
-    for (const ty of p.typesOf(m)) tx += typePill(this, L, tx, PY + 9, ty, 8.5) + 4;
-    L.add(hkText(this, 336, PY + 9, '체력', 8.5, HK.dim));
-    bar3d(g, 362, PY + 14, 92, 4, m.hp / m.maxhp, m.hp / m.maxhp > .25 ? 0x6ae08a : 0xff6a6a);
-    L.add(hkText(this, 460, PY + 9, `${Math.ceil(m.hp)}/${m.maxhp}`, 8.5, HK.ivory));
-    const done = m.tier >= EVO_EXP.length;
-    L.add(hkText(this, 518, PY + 9, '경험치', 8.5, HK.dim));
-    bar3d(g, 552, PY + 14, 60, 4, p.expProgress(m), m.mega ? 0xff8ad0 : 0xb07aff);
-    L.add(hkText(this, 612, PY + 20, m.mega ? '메가 ★' : done ? '3단 완료' : `${m.exp}/${EVO_EXP[m.tier]}`, 8, HK.dim, { origin: [1, 0] }));
-    const atk = Math.round(sp.atk * Tm.atk * 10) / 10, spd = Math.round(sp.speed * (m.mega ? 1.1 : 1));
-    L.add(hkText(this, 112, PY + 30, `공격 ${atk}   속도 ${spd}   점프 ${sp.jumps}단${sp.hover ? ' · 부유' : ''}   기술 크기 ×${Tm.fx}   교체 · ${TAGS[sp.tag].name}`, 8.5, HK.dim));
-    const mt = this.modsText(m.mods);
-    L.add(hkText(this, 112, PY + 45, `아이템 효과  ${mt || '없음'}`, 8.5, mt ? HK.ivory : HK.faint, { style: { fixedWidth: 500 } }));
-    L.add(hkText(this, 112, PY + 64, `장착 아이템  ${used} / ${MAX_EQUIP}`, 9.5, HK.gold, { bold: true }));
-    for (let k = 0; k < MAX_EQUIP; k++) cell(130 + k * 42, PY + 100, 36, k < worn.length ? { id: worn[k], from: mi, k } : null, 1);
-    L.add(hkText(this, 362, PY + 64, '기술  ·  눌러서 바꾸기', 9.5, HK.gold, { bold: true }));
-    slots.forEach((s, k) => cell(380 + k * 46, PY + 100, 38, { skill: m.skills[s], slot: s }, 1, s.toUpperCase()));
-    // 차징 샷 · 내려찍기 속성: 듀얼 타입이면 두 속성 중 골라 쓴다 (누르면 바로 바뀐다)
-    const types = p.typesOf(m), ct = p.chargeType(m);
-    L.add(hkText(this, 518, PY + 56, '차징 · 내려찍기 속성', 8, HK.dim, { origin: [0, .5] }));
-    if (types.length > 1) types.forEach((ty, k) => {
-      const on = ty === ct;
-      glassButton(this, 518 + k * 50, PY + 64, 47, 18, typeName(ty), () => { if (p.setChargeType(m, ty)) { Sfx.play('select'); this.toast(`${p.formName(m)} 차징 속성 → ${typeName(ty)}`); this.showInv(this.invSel); } }, { size: 8.5, bold: true, layer: L, primary: on });
-      if (on) { g.fillStyle(typeColor(ty), .95); g.fillRect(518 + k * 50 + 4, PY + 80, 39, 2); }
-    });
-    else { typePill(this, L, 518, PY + 67, types[0], 8); L.add(hkText(this, 518 + 40, PY + 73, '단일 속성', 8, HK.faint, { origin: [0, .5] })); }
-    L.add(hkText(this, 518, PY + 92, `배운 기술 ${m.learned.length}개`, 8.5, HK.dim));
-    L.add(hkText(this, 518, PY + 105, m.learned.length > 3 ? '아래 [기술]에서 바꾸기' : '기술머신에서 새 기술을', 8, HK.faint));
-
-    // ── 아래 왼쪽: [도구] 내 가방 / [기술] 배운 기술
-    const BY = 214, BW = 396, BH = 132;
-    glassPanel(g, 16, BY, BW, BH);
-    const nBag = bag.reduce((s2, id) => s2 + p.bag[id], 0);
-    [['items', `도구  ${nBag}`], ['skills', `기술  ${m.learned.length}`]].forEach(([id, label], i) => {
-      glassButton(this, 24 + i * 92, BY + 6, 86, 24, label, () => { if (this.invTab !== id) { this.invTab = id; Sfx.play('select'); this.showInv(null); } }, { size: 10, bold: true, layer: L, primary: tab === id });
-    });
-    if (tab === 'items') {
-      L.add(hkText(this, 214, BY + 18, '내 가방 · 장착하지 않은 아이템', 8.5, HK.dim, { origin: [0, .5] }));
-      if (!bag.length && !candy.length) L.add(hkText(this, 16 + BW / 2, BY + 58, '비어 있어요 — 장착 칸에서 「가방에 넣기」를 하거나,\n장착 칸이 가득 찼을 때 주운 아이템이 여기로 와요', 8.5, HK.faint, { origin: .5, style: { align: 'center', lineSpacing: 3 } }));
-      const bagCells = [...candy.map(c => [c, p.candy]), ...bag.map(id => [{ id, from: -1 }, p.bag[id]])];
-      bagCells.slice(0, 20).forEach(([s, n], k) => cell(42 + (k % 10) * 36, BY + 52 + Math.floor(k / 10) * 34, 30, s, n));
-      // 중요한 물건 (파티 공용 · 장착하지 않는다)
-      const KY = BY + 114;
-      g.lineStyle(1, HK.ivoryN, .12); g.lineBetween(26, KY - 11, 16 + BW - 10, KY - 11);
-      L.add(hkText(this, 26, KY, '중요한 물건', 9, HK.dim, { bold: true, origin: [0, .5] }));
-      let kx = 104;
-      if (p.z.has) { L.add(this.add.image(kx, KY, 'zcrystal').setScale(1.4)); L.add(hkText(this, kx + 12, KY, 'Z크리스탈 (Z기술)', 8.5, HK.ivory, { origin: [0, .5] })); kx += 124; }
-      if (p.mega.stones) { L.add(this.add.image(kx, KY, 'megastone').setScale(1.4)); L.add(hkText(this, kx + 12, KY, `메가스톤 ×${p.mega.stones} (메가진화)`, 8.5, HK.ivory, { origin: [0, .5] })); kx += 140; }
-      if (!p.z.has && !p.mega.stones) L.add(hkText(this, kx, KY, '아직 없음 — 지방 보스가 Z크리스탈 · 메가스톤을 떨어뜨린다', 8.5, HK.faint, { origin: [0, .5] }));
-    } else {
-      L.add(hkText(this, 214, BY + 18, `${p.formName(m)}이(가) 배운 기술 · 골라서 Z·X·C 에`, 8.5, HK.dim, { origin: [0, .5] }));
-      // 배운 기술: 3열 목록 (아이콘 · 이름 · 장착 중이면 자리 글자)
-      m.learned.slice(0, 12).forEach((id, k) => {
-        const col = k % 3, row = Math.floor(k / 3), x = 24 + col * 128, y = BY + 38 + row * 23, w = 124, h = 21;
-        const s = { skill: id, slot: slots.find(sl => m.skills[sl] === id) || null }, on = isSel(s), sk = SKILLS[id];
-        g.fillStyle(on ? 0x3a3060 : 0x15131f, on ? 1 : .85); g.fillRoundedRect(x, y, w, h, 5);
-        g.lineStyle(on ? 1.6 : 1, on ? HK.goldN : HK.ivoryN, on ? .9 : .2); g.strokeRoundedRect(x, y, w, h, 5);
-        L.add(this.add.image(x + 12, y + h / 2, `sk:${id}`).setDisplaySize(15, 15));
-        const name = hkText(this, x + 23, y + h / 2, sk.name, 8.5, on ? HK.ivory : HK.dim, { bold: on, origin: [0, .5] });
-        if (name.width > w - 44) name.setScale((w - 44) / name.width, 1);
-        L.add(name);
-        if (s.slot) { g.fillStyle(HK.goldN, .9); g.fillRoundedRect(x + w - 18, y + 4, 14, 13, 3); L.add(hkText(this, x + w - 11, y + h / 2, s.slot.toUpperCase(), 8, '#1a1008', { bold: true, origin: .5 })); }
-        g.fillStyle(typeColor(sk.type), .95); g.fillRect(x + 2, y + 3, 2, h - 6);   // 왼쪽 속성색 띠
-        const z = this.add.zone(x, y, w, h).setOrigin(0).setInteractive({ useHandCursor: true });
-        z.on('pointerdown', () => { Sfx.play('select'); this.showInv(s); });
-        this.tipOn(z, sk.type, sk.name, x + w / 2, y);
-        L.add(z);
-      });
-      if (m.learned.length > 12) L.add(hkText(this, 16 + BW - 12, BY + BH - 10, `+${m.learned.length - 12}`, 8.5, HK.dim, { origin: [1, .5] }));
-    }
-
-    // ── 아래 오른쪽: 고른 것 설명 + 버튼
-    const DX = 418, DW = 206;
-    glassPanel(g, DX, BY, DW, BH);
-    if (sel && sel.skill) {
-      const sk = SKILLS[sel.skill], combo = !sk.cd;
-      L.add(this.add.image(DX + 24, BY + 24, `sk:${sel.skill}`).setDisplaySize(30, 30));
-      const sn = hkText(this, DX + 46, BY + 8, sk.name, 11, HK.ivory, { bold: true });
-      if (sn.width > DW - 54) sn.setScale((DW - 54) / sn.width, 1);
-      L.add(sn);
-      const tw = typePill(this, L, DX + 46, BY + 27, sk.type, 8);
-      L.add(this.tipOn(this.add.zone(DX + 46, BY + 26, tw, 14).setOrigin(0).setInteractive({ useHandCursor: true }), sk.type, sk.name, DX + 46 + tw / 2, BY + 26));
-      L.add(hkText(this, DX + 50 + tw, BY + 27, combo ? '연타 · Z 전용' : `재사용 ${Math.round(p.cdOf(sel.skill, m) * 10) / 10}초`, 8, HK.dim));
-      const ups = [...m.ups].filter(u => UPGRADES[u] && UPGRADES[u].skill === sel.skill).map(u => UPGRADES[u].name.split(': ').pop());
-      L.add(hkText(this, DX + 10, BY + 44, sk.desc + (ups.length ? `\n강화: ${ups.join(' · ')}` : ''), 8.5, HK.ivory, { style: { wordWrap: { width: DW - 20, useAdvancedWrap: true }, lineSpacing: 2 } }));
-      L.add(hkText(this, DX + DW / 2, BY + BH - 44, sel.slot ? `${sel.slot.toUpperCase()} 자리에 장착 중 · 다른 자리를 누르면 맞바꿈` : '배운 기술 · 넣을 자리를 누르세요', 8, sel.slot ? HK.gold : HK.dim, { origin: .5 }));
-      slots.forEach((s, k) => {
-        const here = sel.slot === s, ok = !here && (!combo || s === 'z') && !(sel.slot && !SKILLS[m.skills[s]].cd && sel.slot !== 'z');
-        glassButton(this, DX + 8 + k * 64, BY + BH - 34, 60, 28, here ? `${s.toUpperCase()} 장착` : `${s.toUpperCase()} 자리`, () => this.invSetSkill(s), { size: 10, bold: true, layer: L, primary: ok }).setEnabled(ok);
-      });
-    } else if (sel && sel.candy) {
-      L.add(this.itemImage(DX + 26, BY + 26, 'rare_candy', 34, 2.2));
-      L.add(hkText(this, DX + 50, BY + 10, `이상한사탕  ×${p.candy}`, 11, HK.ivory, { bold: true }));
-      L.add(hkText(this, DX + 50, BY + 30, '엘리트 처치 보상 · 파티 공용', 8.5, HK.dim));
-      L.add(hkText(this, DX + 10, BY + 48, '다음 진화 경험치의 40%를 바로 채운다 (차면 진화) · 최종 진화면 체력 회복 + 공격력 +3%', 8, HK.ivory, { style: { wordWrap: { width: DW - 20, useAdvancedWrap: true }, lineSpacing: 1 } }));
-      L.add(hkText(this, DX + DW / 2, BY + BH - 44, '누구에게 먹일까?', 8.5, HK.gold, { origin: .5, bold: true }));
-      const n = p.members.length, bw = Math.floor((DW - 16 - (n - 1) * 4) / n);
-      p.members.forEach((pm, i) => {
-        glassButton(this, DX + 8 + i * (bw + 4), BY + BH - 34, bw, 28, `${i + 1} ${p.formName(pm)}`, () => this.feedCandy(i), { size: n > 2 ? 8.5 : 10, bold: true, layer: L, primary: i === mi });
-      });
-    } else if (sel) {
-      const it = ITEMS[sel.id];
-      L.add(this.itemImage(DX + 26, BY + 26, sel.id, 34, 2.2));
-      L.add(hkText(this, DX + 50, BY + 10, it.name, 11, HK.ivory, { bold: true, style: { wordWrap: { width: DW - 58, useAdvancedWrap: true } } }));
-      L.add(hkText(this, DX + 50, BY + 30, sel.from < 0 ? '가방에 있음' : `${p.formName(m)} 장착 중`, 8.5, sel.from < 0 ? HK.dim : HK.gold));
-      L.add(hkText(this, DX + 10, BY + 52, it.desc, 9, HK.ivory, { style: { wordWrap: { width: DW - 20, useAdvancedWrap: true }, lineSpacing: 2 } }));
-      const full = used >= MAX_EQUIP;
-      const label = sel.from >= 0 ? '가방에 넣기' : full ? `장착 칸이 가득 (${used}/${MAX_EQUIP})` : `${p.formName(m)}에게 장착`;
-      glassButton(this, DX + 8, BY + BH - 34, DW - 16, 28, label, () => this.invAction(), { size: 10, bold: true, layer: L, primary: sel.from < 0 && !full }).setEnabled(sel.from >= 0 || !full);
-    } else {
-      L.add(hkText(this, DX + DW / 2, BY + BH / 2, tab === 'skills' ? '기술을 누르면 설명과\nZ · X · C 자리 버튼이 나와요' : itemList.length ? '장착 칸이나 가방의 아이템을\n누르면 설명과 버튼이 나와요' : '아직 아이템이 없어요\n보스를 쓰러뜨리면 얻고,\n시내 자판기에서도 가끔 나와요', 9, HK.faint, { origin: .5, style: { align: 'center', lineSpacing: 5 } }));
-    }
-    if (!this.touch.visible) { const kl = a => keyLabel(Settings.key(a)); L.add(hkText(this, 320, 353, `${kl('bag')} · Esc 닫기  ·  ${kl('map')} 지도  ·  1~3 · Q / E 포켓몬  ·  Tab 도구↔기술  ·  ← → 고르기  ·  Enter 장착/빼기  ·  ${kl('z')} · ${kl('x')} · ${kl('c')} 기술 자리`, 7.5, HK.faint, { origin: .5 })); }
-    this.input.keyboard.on('keydown', this.onOverlayKey, this);
-    this.overlayMode = 'inv';
-  }
-
   // ---------------- 스킬 바 ----------------
   //  칸마다: 스킬 초상화 · 속성(배지/색 띠) · 단축키 · 쿨타임 · Z 칸은 차징 게이지와 단계 점
   updateSkillBar(p, time) {
@@ -1504,7 +1313,7 @@ export default class UIScene extends Phaser.Scene {
       if (s.id === 'dash') { type = p.types[0]; tex = dashIcon(this, type); cd = Math.max(0, p.dashCd); max = .55 * p.mods.dashCdMul; name = '대시 회피'; }
       else if (s.id === 'zmove') { on = p.z.has; type = 'normal'; tex = 'zcrystal-hi'; cd = p.z.cd; max = Z_CD; name = 'Z기술'; }
       else if (s.id === 'ult') { on = p.mega.active; type = megaUltOf(p).type; tex = megaSymbol(this); cd = m.cd.r || 0; max = MEGA_ULT_CD; name = `메가 필살기 · ${megaUltOf(p).name}`; }
-      else { const id = p.skillId(s.id), sk = SKILLS[id]; type = sk.type; tex = `sk:${id}`; cd = m.cd[s.id]; max = p.cdOf(id) || 1; name = sk.name; }
+      else { const id = p.skillId(s.id), sk = SKILLS[id]; type = sk.type; tex = skillIcon(this, id); cd = m.cd[s.id]; max = p.cdOf(id) || 1; name = sk.name; }
       for (const v of [s.icon, s.cd, s.key, s.badge]) v.setVisible(on);
       if (on) s.zone.setInteractive(); else s.zone.disableInteractive();
       s.tipType = on && s.id !== 'dash' && s.id !== 'zmove' ? type : null; s.tipName = name;
@@ -1621,42 +1430,10 @@ export default class UIScene extends Phaser.Scene {
     return obj;
   }
 
-  // 이상한사탕을 i번째 포켓몬에게
-  feedCandy(i) {
-    const p = this.gs.player, m = p.members[i];
-    if (!m || !p.candy) { Sfx.play('deny'); return; }
-    const before = p.formName(m), r = p.feedCandy(m);
-    if (!r) { Sfx.play('deny'); return; }
-    Sfx.play(r.evolved ? 'evolve' : 'heal');
-    this.toast(r.maxed ? `${before}이(가) 이상한사탕을 먹었다! 체력 회복 · 공격력 +3%` : r.evolved ? `${before}이(가) 이상한사탕을 먹고 ${p.formName(m)}(으)로 진화했다!` : `${before}이(가) 이상한사탕을 먹었다! 경험치 +${r.gain}`, 'rare_candy');
-    this.invMember = i;
-    this.showInv(p.candy > 0 ? { id: 'rare_candy', from: -2, candy: true } : null);
-  }
-
-  // 고른 기술을 slot 에 (다른 자리에 있으면 맞바꿈)
-  invSetSkill(slot) {
-    const sel = this.invSel, p = this.gs.player, m = p.members[this.invMember];
-    if (!sel || !sel.skill) return;
-    if (!p.setSkill(m, sel.skill, slot)) { Sfx.play('deny'); if (!SKILLS[sel.skill].cd && slot !== 'z') this.toast('연타 기술은 Z 자리 전용이에요'); return; }
-    Sfx.play('item');
-    this.showInv({ skill: sel.skill });
-  }
-
   // 아이템 그림: 본가 가방 아이콘을 size 크기로 (못 받았으면 도트 아이콘을 fb 배로)
   itemImage(x, y, id, size, fb = 1) {
     const k = itemArt(this, id, size);
     return this.add.image(x, y, k || `it:${id}`).setScale(k ? 1 / RES : fb);
-  }
-
-  // 고른 아이템: 가방에 있으면 지금 보는 포켓몬에게 장착, 장착 칸에 있으면 가방에 넣기
-  invAction() {
-    const sel = this.invSel, p = this.gs.player, mi = this.invMember;
-    if (!sel || sel.skill) return;
-    if (sel.candy) { this.feedCandy(mi); return; }   // 키보드 Enter: 지금 보는 포켓몬에게 이상한사탕
-    const to = sel.from < 0 ? mi : -1;
-    if (!p.moveItem(sel.id, sel.from, to)) { Sfx.play('deny'); if (to >= 0) this.toast(`장착 칸은 ${MAX_EQUIP}개까지예요 — 먼저 하나를 가방에 넣으세요`); return; }
-    Sfx.play('item');
-    this.showInv(to < 0 ? { id: sel.id, from: -1 } : null);
   }
 
   // ---------------- 설정 (O) ----------------
@@ -1770,7 +1547,7 @@ export default class UIScene extends Phaser.Scene {
       const pick = i => { Settings.set('hudStyle', HUD_STYLES[i][0]); Sfx.play('select'); this.showSettings(row); };
       HUD_STYLES.forEach(([id, name], i) => glassButton(this, TX - 34 + i * 70, y - 13, 66, 26, name.split(' · ')[0], () => pick(i), { size: 9.5, bold: true, layer: L, primary: cur === id }));
       const pg = this.add.graphics(), pgt = this.add.graphics(), pk = hkText(this, 0, 0, 'Z', 8, '#ffffff', { bold: true, origin: .5 }), pb = hkText(this, 0, 0, '', 7, '#ffffff', { bold: true, origin: .5 });
-      const px = PX + PW - 30, ic = this.add.image(px, y, `sk:${this.gs.player ? this.gs.player.skillId('x') : 'flamethrower'}`).setDisplaySize(cur === 'C' ? 24 : 26, cur === 'C' ? 24 : 26);
+      const px = PX + PW - 30, ic = this.add.image(px, y, skillIcon(this, this.gs.player ? this.gs.player.skillId('x') : 'flamethrower')).setDisplaySize(cur === 'C' ? 24 : 26, cur === 'C' ? 24 : 26);
       L.add([pg, ic, pgt, pk, pb]);
       const pt = this.gs.player ? SKILLS[this.gs.player.skillId('x')].type : 'fire';
       pb.setText(cur === 'B' ? typeName(pt).slice(0, 1) : '');
@@ -2005,9 +1782,9 @@ export default class UIScene extends Phaser.Scene {
     const megaKind = sp.megas.some(m => m.bond) ? '유대변화' : sp.megas.some(m => m.item) ? '폼체인지' : sp.megas.length ? '메가진화' : '각성';
     const ultName = ult ? ult.name : `${sp.megas.length ? sp.megas[0].name : sp.mega.name} 각성 필살기`;   // 표에 없으면 게임(megaUltOf)과 같은 이름
     const cards = [
-      { key: 'Z', icon: `sk:${sk.z}`, name: SKILLS[sk.z].name, type: SKILLS[sk.z].type, desc: SKILLS[sk.z].desc + (sig ? '' : ' 꾹 눌렀다 떼면 속성 차징 샷.') },
-      { key: 'X', icon: `sk:${sk.x}`, name: SKILLS[sk.x].name, type: SKILLS[sk.x].type, desc: SKILLS[sk.x].desc },
-      { key: 'C', icon: `sk:${sk.c}`, name: SKILLS[sk.c].name, type: SKILLS[sk.c].type, desc: SKILLS[sk.c].desc },
+      { key: 'Z', icon: skillIcon(this, sk.z), name: SKILLS[sk.z].name, type: SKILLS[sk.z].type, desc: SKILLS[sk.z].desc + (sig ? '' : ' 꾹 눌렀다 떼면 속성 차징 샷.') },
+      { key: 'X', icon: skillIcon(this, sk.x), name: SKILLS[sk.x].name, type: SKILLS[sk.x].type, desc: SKILLS[sk.x].desc },
+      { key: 'C', icon: skillIcon(this, sk.c), name: SKILLS[sk.c].name, type: SKILLS[sk.c].type, desc: SKILLS[sk.c].desc },
       { key: 'V', icon: 'megastone', name: megaName, type: (sp.megas[0] || sp.mega).types[0], desc: `${sp.legend ? '' : '3단 진화 뒤 '}${sp.megas.some(m => m.item) ? '폼체인지 아이템' : '메가스톤'}으로 ${megaKind} — 더 강한 모습으로 그 판 끝까지 싸운다.` },
       { key: 'R', icon: megaSymbol(this), name: ultName, type: ult ? ult.type : sp.types[0], desc: '메가진화 중에만 쓰는 전용 필살기. 컷인과 함께 화면을 뒤덮는 대연출이 이어서 터진다.' }
     ];
@@ -2102,18 +1879,7 @@ export default class UIScene extends Phaser.Scene {
       else if (e.code === 'KeyR') { const r = this.dbgRooms[i]; if (r) { this.gs.debugRefight(this.dbgCi, r.id); Sfx.play('select'); this.showDebug(this.dbgCi, i); } }
       return;
     }
-    if (this.overlayMode === 'inv') {
-      const list = this.invList || [], sel = this.invSel, n = this.gs.player.members.length;
-      const i = list.findIndex(s => sel && (s.skill ? s.skill === sel.skill : !sel.skill && s.id === sel.id && s.from === sel.from && (s.from < 0 || s.k === sel.k)));
-      if (e.code === 'Tab') { Sfx.play('select'); this.invTab = this.invTab === 'skills' ? 'items' : 'skills'; this.showInv(null); return; }
-      const slotKey = ['z', 'x', 'c'].find(sl => keyNameFromEvent(e) === Settings.key(sl));
-      if (sel && sel.skill && slotKey) { this.invSetSkill(slotKey); return; }
-      if ((e.code === 'ArrowRight' || e.code === 'ArrowLeft') && list.length) { Sfx.play('select'); this.showInv(list[(i + (e.code === 'ArrowRight' ? 1 : -1) + list.length) % list.length]); }
-      else if (/^(Digit|Numpad)[1-3]$/.test(e.code)) { const k = +e.code.slice(-1) - 1; if (k < n) { Sfx.play('select'); this.invMember = k; this.showInv(null); } }
-      else if (e.code === 'KeyQ' || e.code === 'KeyE') { Sfx.play('select'); this.invMember = (this.invMember + (e.code === 'KeyE' ? 1 : n - 1)) % n; this.showInv(null); }
-      else if (e.code === 'Enter' || e.code === 'Space') this.invAction();
-      return;
-    }
+    if (this.overlayMode === 'inv') { this.menuKey(e); return; }   // 4탭 메뉴 (scenes/GameMenu.js)
     if (this.overlayMode === 'tm') {
       const it = this.gs.tmActive, n = /^(Digit|Numpad)[1-3]$/.test(e.code) ? +e.code.slice(-1) : 0;
       if (!it) return;
@@ -2139,3 +1905,6 @@ export default class UIScene extends Phaser.Scene {
     this.gs.backToLobby();
   }
 }
+
+// 4탭 메뉴 (🐾 포켓몬 · ⚔️ 기술 & 카드 · 🎒 가방 · 📖 정화 도감) — scenes/GameMenu.js
+installGameMenu(UIScene);

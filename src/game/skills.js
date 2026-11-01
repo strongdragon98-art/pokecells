@@ -41,7 +41,7 @@ function strikeHit(p, o) {
 //  stream: 연속 투사체 — 불꽃세례·거품광선·전기쇼크 연사, 그리고 여러 갈래로 나가는 탄. 나머지(물대포·섀도볼 단발 등)는 단발
 //  크기·판정은 진화 단계의 proj 배율(1 · 1.45 · 1.9 · 메가 2.3)을 따로 따른다. tier 는 연출 단계용
 function shoot(p, o) {
-  const count = (o.count ?? 1) + p.mods.extraProj, spread = o.spread ?? .12, s = p.mods.sizeMul * p.T.proj;
+  const count = (o.count ?? 1) + p.mods.extraProj + (p.mods.psyCore && o.type === 'psychic' ? 1 : 0), spread = o.spread ?? .12, s = p.mods.sizeMul * p.T.proj;   // 뮤츠의 코어: 에스퍼 투사체 +1
   const boom = o.boom && Object.assign({}, o.boom, { r: o.boom.r * (1 + (s - 1) * .6) });   // 폭발 반경은 조금 덜 (메가 ≈ 1.8배)
   const base = o.angle ?? 0;
   for (let i = 0; i < count; i++) {

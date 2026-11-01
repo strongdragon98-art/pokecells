@@ -80,7 +80,6 @@ export class SpriteLoader {
   queueManifest(manifest) {
     this.manifest = manifest;
     const load = this.scene.load;
-    for (const [id, file] of Object.entries(manifest.icons || {})) load.text(`svg:${id}`, `assets/${file}`);   // 스킬 아이콘
     for (const [id, file] of Object.entries(manifest.items || {})) load.image(`itm:${id}`, `assets/${file}`);   // 가방 아이템 그림 (본가 아이콘)
     for (const [key, e] of Object.entries(manifest.pokemon)) {
       if (e.portrait) load.image(`portrait:${key}`, `assets/${e.portrait}`);

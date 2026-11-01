@@ -425,6 +425,42 @@ function terminalArt(scene) {
   });
 }
 // 간이 회복기 표지판: 쇠기둥 + 청록 판(테두리 금색) + 하얀 회복 십자 + 아래 화살표
+// 간이 회복기 쉼터 (할로우 나이트의 벤치 방처럼): 등 뒤를 감싸는 아치형 돌벽 · 나무 벤치 · 따뜻한 가로등
+function shelterArchArt(scene) {
+  const st = 0x2a2634;
+  return canvasTex(scene, 'prop:shelter', 132, 76, (F, c) => {
+    // 안쪽: 따뜻한 빛이 고인 벽감 (위가 둥근 아치)
+    const g = c.createRadialGradient(66, 60, 6, 66, 52, 70);
+    g.addColorStop(0, 'rgba(255,190,110,0.32)'); g.addColorStop(.55, 'rgba(120,80,60,0.22)'); g.addColorStop(1, 'rgba(20,16,28,0.0)');
+    c.fillStyle = g; c.beginPath(); c.moveTo(14, 76); c.lineTo(14, 34); c.quadraticCurveTo(66, -10, 118, 34); c.lineTo(118, 76); c.closePath(); c.fill();
+    // 돌 아치 테두리 (벽돌 줄눈)
+    c.lineWidth = 7; c.strokeStyle = css(st); c.beginPath(); c.moveTo(10, 76); c.lineTo(10, 34); c.quadraticCurveTo(66, -12, 122, 34); c.lineTo(122, 76); c.stroke();
+    c.lineWidth = 1; c.strokeStyle = css(shade(st, 1.6)); c.beginPath(); c.moveTo(7, 76); c.lineTo(7, 34); c.quadraticCurveTo(66, -16, 125, 34); c.lineTo(125, 76); c.stroke();
+    for (let k = 0; k < 9; k++) { const a = Math.PI * (k + .5) / 9, x = 66 - Math.cos(a) * 56, y = 34 - Math.sin(a) * 40; F(x - 1, y - 1, 2, 2, shade(st, .6)); }
+    // 기둥 받침
+    F(3, 66, 14, 10, shade(st, .8)); F(115, 66, 14, 10, shade(st, .8)); F(3, 66, 14, 1, shade(st, 1.5)); F(115, 66, 14, 1, shade(st, 1.5));
+  });
+}
+function benchArt(scene) {
+  const wood = 0x8a5a32, iron = 0x2a2a34;
+  return canvasTex(scene, 'prop:bench', 30, 15, F => {
+    F(2, 0, 26, 3, shade(wood, .8)); F(2, 0, 26, 1, shade(wood, 1.35));            // 등받이
+    F(3, 3, 2, 6, iron); F(25, 3, 2, 6, iron);                                     // 등받이 기둥
+    F(0, 7, 30, 3, wood); F(0, 7, 30, 1, shade(wood, 1.4)); F(0, 9, 30, 1, shade(wood, .6));   // 앉는 판
+    F(2, 10, 2, 5, iron); F(26, 10, 2, 5, iron); F(1, 14, 4, 1, iron); F(25, 14, 4, 1, iron);   // 쇠 다리
+    F(4, 4, 22, 1, shade(wood, .55));
+  });
+}
+function streetlampArt(scene) {
+  const iron = 0x22222c;
+  return canvasTex(scene, 'prop:lamp', 12, 48, F => {
+    F(5, 12, 2, 34, iron); F(6, 12, 1, 34, shade(iron, 1.6));                       // 기둥
+    F(3, 45, 6, 3, iron); F(4, 44, 4, 1, shade(iron, 1.4));                         // 받침
+    F(2, 3, 8, 9, iron); F(3, 4, 6, 7, 0xffc070); F(4, 5, 2, 5, 0xfff0c8); F(7, 5, 1, 5, 0xffa040);   // 등불 유리
+    F(1, 2, 10, 2, iron); F(4, 0, 4, 2, iron); F(3, 12, 6, 1, iron);
+  });
+}
+
 function termSignArt(scene) {
   const teal = 0x2ac0a8;
   return canvasTex(scene, 'prop:termsign', 18, 30, F => {
@@ -825,6 +861,7 @@ export class Props {
       if (sx !== null) { this.lit(s.add.image(sx, Y + 1, termSignArt(s)).setOrigin(.5, 1).setDepth(6.4)); this.pulses.push({ o: this.glow(sx, Y - 22, .35, 0x4affd8, .5, 6.5), base: .35, amp: .2, sp: 2 }); }
       this.add(s.add.text(x, Y - 62, '간이 회복기', { fontFamily: 'Galmuri9', fontSize: '9px', color: '#7dffd8', stroke: '#0a1a1c', strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(6.6));
       this.pulses.push({ o: holo, base: .4, amp: .18, sp: 2.2 }, { o: pad, base: .4, amp: .15, sp: 1.4 });
+      this.shelter(tm, x, Y, sx);
       this.interacts.push({ kind: 'terminal', idx: i, data: tm, x, y: Y, range: 26, used: false, repeat: true, prompt: '[F 또는 ↑ : 간이 회복기]', promptY: Y - 50, holo, beam, lightObj: l, near: false });
     });
     this.buildSurfaceDecor();
@@ -1014,6 +1051,33 @@ export class Props {
     }
     const v = s.cameras.main.worldView, seen = it.x > v.x - 60 && it.x < v.right + 60 && it.y > v.y - 60 && it.y < v.bottom + 140;   // 화면 밖 기술머신은 불씨를 뿜지 않는다
     if (seen && Math.random() < (near ? .7 : .16)) s.fx.embers(it.x + (Math.random() - .5) * 30, it.y - 10 - Math.random() * (near ? 90 : 50), near ? [0xffd25a, 0xb08aff, 0xffffff] : [0x9ad8ff, 0xffffff], 1, { speed: near ? 40 : 12 });
+  }
+
+  // 간이 회복기 쉼터: 아치형 돌벽감(따뜻한 빛) · 표지판 반대편에 나무 벤치 · 그 너머 주황 가로등 · 떠다니는 평화로운 빛무리
+  //  적은 들어오지 못한다 (GameScene.guardSafeZones) — 어두운 던전 속에서 숨을 돌리는 자리
+  shelter(tm, x, Y, signX) {
+    const s = this.s, G = this.level.grid;
+    const floor = tx => G[tm.g] && (G[tm.g][tx] === 'S' || G[tm.g][tx] === 'B') && [1, 2, 3].every(h => G[tm.g - h] && G[tm.g - h][tx] === '.');
+    this.add(s.add.image(x, Y + 1, shelterArchArt(s)).setOrigin(.5, 1).setDepth(5.6).setAlpha(.95));
+    this.add(s.add.image(x, Y - 26, 'glow').setBlendMode(ADD).setTint(0xffb060).setScale(2.6, 1.4).setAlpha(.18).setDepth(5.65));
+    const side = signX !== null && signX < x ? 1 : -1;   // 표지판 반대쪽에 벤치
+    const tx = Math.floor(x / TILE);
+    const bx = [2, 3].map(d => tx + side * d).find(t => floor(t) && floor(t + 1));
+    if (bx !== undefined) this.lit(s.add.image(bx * TILE + 16, Y + 1, benchArt(s)).setOrigin(.5, 1).setDepth(6.35).setFlipX(side < 0));
+    const lx = [4, 5, -4].map(d => tx + side * d).find(t => floor(t));
+    if (lx !== undefined) {
+      const lampX = lx * TILE + 8;
+      this.lit(s.add.image(lampX, Y + 1, streetlampArt(s)).setOrigin(.5, 1).setDepth(6.36));
+      const halo = this.glow(lampX, Y - 41, .9, 0xffb060, .55, 6.37);
+      this.add(s.add.image(lampX, Y - 1, 'glow').setBlendMode(ADD).setTint(0xffa050).setScale(1.4, .25).setAlpha(.35).setDepth(5.95));   // 발밑에 고인 불빛
+      const L = this.light(lampX, Y - 38, 120, 0xffb060, 1.4);
+      this.flickers.push({ objs: [halo], base: [.55], rate: .25, light: L, lightK: 1.4, off: 0 });
+    }
+    // 빛무리: 쉼터 안을 천천히 떠오르다 사라지는 금빛·청록빛 알갱이
+    for (let k = 0; k < 7; k++) {
+      const m = this.add(s.add.image(x + (k - 3) * 11, Y - 6, 'glow').setBlendMode(ADD).setTint(k % 2 ? 0xffe0a0 : 0x8affd8).setScale(.08 + (k % 3) * .03).setAlpha(0).setDepth(6.6));
+      s.tweens.add({ targets: m, y: Y - 44 - (k % 3) * 8, alpha: { from: .9, to: 0 }, x: m.x + (k % 2 ? 6 : -6), duration: 2600 + k * 230, delay: k * 380, repeat: -1 });
+    }
   }
 
   // 간이 회복기: 반경 안에 들어서면 연결(자동 저장 + 부활 자리) — 들어설 때마다 한 번

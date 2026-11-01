@@ -59,10 +59,11 @@ export class Combat {
       Sfx.play(o.heavy ? 'hit_heavy' : eff === 'super' ? 'hit_super' : eff === 'weak' ? 'hit_weak' : 'hit_normal');   // heavy: 차징 샷 · 내려찍기 (저음 폭발)
       if (crit) Sfx.play('crit');
       if (!e.boss && (o.kb || o.kby)) e.knock(o.kb || 0, o.kby || 0);
+      if (mods.psyCore && type === 'psychic' && !o.proc) this.psyField(e);   // 뮤츠의 코어: 사이코 중력장
       const steal = (mods.lifesteal || 0) + (o.lifesteal || 0);
       if (steal > 0) p.heal(d * steal, true);
     }
-    if (e.boss && e.addStagger && !o.dot) e.addStagger(m === 0 ? 'immune' : eff);   // 보스 그로기 게이지 (약점 속성은 3.5배)
+    if (e.boss && e.addStagger && !o.dot) e.addStagger(m === 0 ? 'immune' : eff);   // 보스 그로기 게이지 (약점 속성 공격만 찬다 — Boss.STAGGER_GAIN)
     if (e.hp > 0) perkHit(this, e, d, type, o);
     if (p.castGrade && !o.proc && !o.dot && e.alive) this.gradeBurst(e, type, p.castGrade === '전설');   // 유니크·전설 기술 카드: 맞힌 자리마다 연쇄 폭발   // 특성 카드: 화상·빙결·마비·독·저주 부여 · 연쇄 번개 · 장판 · 블랙홀
     if (e.hp <= 0 && !(e.cheatDeath && e.cheatDeath())) this.s.killEnemy(e);   // 칠색조 부활처럼 한 번 버티는 보스
@@ -117,6 +118,26 @@ export class Combat {
   }
 
   // 사각형 범위 판정. mul = 공격력 배율
+  // 뮤츠의 코어: 에스퍼 기술이 맞은 자리에 작은 사이코 중력장 — 둘레 적을 한가운데로 끌어당겨 잠깐 묶고, 0.25초 뒤 안쪽으로 터진다 (적마다 0.35초에 한 번)
+  psyField(e) {
+    const now = this.s.time.now;
+    if (now - (e.psyAt || -999) < 350) return;
+    e.psyAt = now;
+    const x = e.x, y = e.y, R = 54;
+    for (const o of this.s.enemies) {
+      if (!o.alive || o.boss || Math.abs(o.x - x) > R || Math.abs(o.y - y) > R * .8) continue;
+      o.b.setVelocity((x - o.x) * 5, (y - o.y) * 4);   // 끌어당김
+      this.applyStatus(o, { stun: .25 });
+    }
+    this.fx.ring(x, y, R, 0xff6ad8, 260); this.fx.glow(x, y, 30, 0xb05aff, 260, .7);
+    this.fx.burst(x, y, [0xff6ad8, 0xb05aff, 0xffffff], 10, 70, { angle: 0, spread: 7, up: 0, grav: 0, bounce: false, glow: true, life: .3 });
+    this.s.time.delayedCall(250, () => {
+      if (!this.s.player) return;
+      this.hitCircle(x, y, 34, .55, 'psychic', { proc: true, kbx: 60, kby: -60, hs: 0 });
+      this.fx.ring(x, y, 34, 0xffffff, 200);
+    });
+  }
+
   hitRect(rect, mul, type, o = {}) {
     let n = 0;
     for (const e of this.s.enemies) {
@@ -168,6 +189,14 @@ export class Combat {
   //      update(q, dt) — 매 프레임 움직임을 직접 정한다 (떠올라 대기하는 파편 · 돌아오는 숟가락 · 몸 둘레를 도는 구슬) }
   spawnProjectile(c) {
     const s = this.s, color = c.color ?? typeColor(c.type);
+    // 진화 단계별 투사체 수 (한 번에 = 0.14초 안): 1단(유년기)은 단발 1발 · 2단은 2발 + 기술머신 카드로 얻은 추가 투사체 · 3단·메가는 제한 없음
+    //  → 진화와 카드 파밍으로 화면을 뒤덮는 다중 투사체를 얻는다. 차징 샷 · Z기술은 예외. 걸러진 탄은 빈 껍데기를 돌려줘 부르는 쪽이 그대로 굴러가게 한다
+    const pl = this.p;
+    if ((c.owner ?? 'player') === 'player' && !this.chargeSpawn && pl && pl.tierIdx <= 1 && !(pl.action && pl.action.slot === 'zmove')) {
+      const now = s.time.now, cap = pl.tierIdx === 0 ? 1 : 2 + (pl.mods.extraProj || 0);
+      if (now - (this.volleyAt ?? -999) >= 140) { this.volleyAt = now; this.volleyN = 0; }
+      if (++this.volleyN > cap) return { dead: true, x: c.x, y: c.y, vx: 0, vy: 0, r: c.r || 4, hit: new Set(), status: {}, life: 0 };
+    }
     const q = Object.assign({ owner: 'player', vx: 0, vy: 0, r: 4, life: 1, pierce: 1, grav: 0, t: 0, hit: new Set(), status: {} }, c);
     q.color = color;
     if (q.owner === 'player') {

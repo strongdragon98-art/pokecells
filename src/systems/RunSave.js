@@ -3,7 +3,7 @@
 //  정화한 보스 · 들른 방 · 연 상자 · 주운 상처약 · 걷힌 흙 · 무너진 벽 · 쓴 센터/자판기 · 탐험한 칸 · 지나온 지역
 //  파티(진화 단계·경험치·메가·장착 아이템·기술머신 기술)와 가방·메가스톤·Z크리스탈·공중날기 정거장도 함께 저장한다
 //  도감 해금·정화 수는 원래대로 Save.js 가 따로 자동 저장한다
-import { computeMods } from '../data/items.js';
+import { computeMods, MAX_EQUIP } from '../data/items.js';
 
 const KEY = 'pokecells.run.v2';   // v2: 튜토리얼 기술머신·엘리트 굴·회복기 보장으로 지형 생성이 바뀌었다 (v1 저장은 다른 지형이 되어 쓰지 않는다)
 
@@ -86,7 +86,8 @@ export function applyWorld(W, s) {
 // 파티 · 가방 등 플레이어 진행
 export function snapshotPlayer(p) {
   return {
-    idx: p.idx, stageBonus: p.stageBonus, bag: { ...p.bag }, stones: p.mega.stones, z: p.z.has, formItems: [...p.formItems], candy: p.candy || 0,
+    idx: p.idx, stageBonus: p.stageBonus, bag: { ...p.bag }, formItems: [...p.formItems], candy: p.candy || 0,
+    keyStone: !!p.keyStone, zRing: !!p.zRing, megaStones: [...p.stones], crystals: { ...p.crystals }, quests: { ...(p.quests || {}) },   // 메가스톤 · Z크리스탈 (data/gear.js) · 이야기 진행
     members: p.members.map(memberSnap),
     stored: Object.values(p.stored || {}).map(memberSnap)   // 포켓몬센터 보관함에 맡긴 포켓몬 (진화 · 아이템 · 기술 그대로)
   };
@@ -95,7 +96,8 @@ export function snapshotPlayer(p) {
 function memberSnap(m) {
   return {
     key: m.key, hp: Math.round(m.hp), alive: m.alive, tier: m.tier, peakTier: Math.max(m.peakTier || 0, m.tier), exp: m.exp, mega: m.mega, megaPick: m.megaPick || 0,
-    items: { ...m.items }, perks: { ...(m.perks || {}) }, skills: { ...m.skills }, ups: [...m.ups], atkBonus: m.atkBonus, cdBonus: m.cdBonus, learned: [...m.learned], chargeType: m.chargeType || null, cardGrade: { ...(m.cardGrade || {}) }
+    items: { ...m.items }, perks: { ...(m.perks || {}) }, skills: { ...m.skills }, ups: [...m.ups], atkBonus: m.atkBonus, cdBonus: m.cdBonus, learned: [...m.learned], chargeType: m.chargeType || null, cardGrade: { ...(m.cardGrade || {}) },
+    gear: { ...(m.gear || {}) }
   };
 }
 // 저장해 둔 진행을 포켓몬 m 에 덮어쓴다
@@ -104,7 +106,8 @@ function applyMember(m, d) {
   Object.assign(m, {
     tier, peakTier: tier, exp: d.exp, mega: !!d.mega, megaPick: d.megaPick || 0, alive: d.alive !== false,
     items: { ...d.items }, perks: { ...(d.perks || {}) }, mods: computeMods(d.items || {}, d.perks || {}), skills: { ...m.skills, ...d.skills }, ups: new Set(d.ups || []), cardGrade: { ...(d.cardGrade || {}) },
-    atkBonus: d.atkBonus || 1, cdBonus: d.cdBonus || 1, learned: d.learned && d.learned.length ? [...d.learned] : m.learned, chargeType: d.chargeType || null
+    atkBonus: d.atkBonus || 1, cdBonus: d.cdBonus || 1, learned: d.learned && d.learned.length ? [...d.learned] : m.learned, chargeType: d.chargeType || null,
+    gear: { stone: (d.gear && d.gear.stone) || null, crystal: (d.gear && d.gear.crystal) || null }
   });
 }
 
@@ -126,8 +129,16 @@ export function restorePlayer(p, s) {
   p.stageBonus = s.stageBonus || 1;
   p.bag = { ...(s.bag || {}) };
   p.candy = s.candy || 0;
-  p.mega.stones = s.stones || 0;
-  p.z.has = !!s.z;
+  p.keyStone = !!s.keyStone; p.zRing = !!s.zRing;
+  p.stones = new Set(s.megaStones || []); p.crystals = { ...(s.crystals || {}) }; p.quests = { ...(s.quests || {}) };
+  // 예전 저장: 파티 공용 Z크리스탈 · 메가스톤 개수 → Z링 + 파티 속성 Z크리스탈 / 키스톤 + 파티 메가스톤 (모두 전용 칸에)
+  if (s.z && !s.zRing) p.gainZ();
+  if (s.stones > 0 && !s.keyStone) { p.keyStone = true; for (let k = 0; k < Math.min(3, s.stones); k++) p.gainStone(); }
+  // 일반 도구 칸이 2칸으로 줄었다: 넘치는 것은 가방으로
+  for (const m of [...p.members, ...Object.values(p.stored)]) {
+    while (p.equipCount(m) > MAX_EQUIP) { const id = Object.keys(m.items).pop(); if (--m.items[id] <= 0) delete m.items[id]; p.bag[id] = (p.bag[id] || 0) + 1; }
+    p.refreshMods(m);
+  }
   p.formItems = new Set(s.formItems || []);
   p.idx = Math.min(s.idx || 0, p.members.length - 1);
   if (!p.m.alive) { const j = p.members.findIndex(m => m.alive); if (j >= 0) p.idx = j; }

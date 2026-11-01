@@ -15,9 +15,9 @@ const STRIKE = new Set(['dash', 'dive', 'spin', 'spark', 'glide', 'jet', 'serpen
 const HOVER_STATES = new Set(['idle', 'wind', 'fire', 'recover', 'barrage', 'blinkFire']);
 const HOVER_GAP = 30;                                      // 보스 발끝 ~ 아래 땅 (px)
 const FREE_FLYERS = new Set(['eternatus']);                // 아레나 한가운데 고정된 거대 보스는 제외
-// 약점 그로기: 상성별 게이지 증가량 (약점은 등배의 3.5배) · 그로기 시간 · 그로기 중 받는 피해 배율
-const STAGGER_GAIN = { super: 8.4, normal: 2.4, weak: .8, immune: 0 };
-export const GROGGY_T = 4.5, GROGGY_MUL = 1.35;
+// 약점 그로기: '효과가 굉장했다'(상성 우위) 공격만 게이지가 찬다 (등배·반감·무효는 0) · 그로기는 2.25초만 짧고 굵게 · 그로기 중 받는 피해 배율
+const STAGGER_GAIN = { super: 10, normal: 0, weak: 0, immune: 0 };
+export const GROGGY_T = 2.25, GROGGY_MUL = 1.35;
 
 export class Boss extends Enemy {
   constructor(scene, key, x, y, o = {}) {

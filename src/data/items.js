@@ -21,11 +21,14 @@ export const ITEMS = {
   shell_bell: { name: '조개껍질방울', desc: '준 피해의 6%만큼 회복', icon: 'bell', art: 'shellbell' },
   razor_claw: { name: '예리한손톱', desc: '급소율 +15%', icon: 'claw', art: 'razorclaw' },
   scope_lens: { name: '피트렌즈', desc: '급소율 +12% · 급소 피해 +20%', icon: 'claw', art: 'scopelens' },   // 그림은 systems/Textures.js 의 도트 (엘리트 드랍)
-  quick_claw: { name: '선제공격손톱', desc: '교대 쿨타임 -40%', icon: 'claw2', art: 'quickclaw' }
+  quick_claw: { name: '선제공격손톱', desc: '교대 쿨타임 -40%', icon: 'claw2', art: 'quickclaw' },
+  // 전설 유물 (relic: 무작위로 나오지 않는다 · 정해진 보스가 떨어뜨린다)
+  mewtwo_core: { name: '뮤츠의 코어', relic: true, desc: '🔮 전설 유물 · 뮤츠의 사이코 에너지가 응축된 핵. 에스퍼 기술·평타·차징의 투사체 +1 · 에스퍼 기술이 맞으면 사이코 중력장(주변 폭발 + 끌어당김·경직) · 차징 샷 크기 +30%', icon: 'orb', art: null }
 };
 
 export const ITEM_KEYS = Object.keys(ITEMS);
-export const MAX_EQUIP = 5;   // 포켓몬 한 마리가 장착할 수 있는 아이템 수 (같은 아이템 2개도 2칸)
+export const RANDOM_ITEM_KEYS = ITEM_KEYS.filter(k => !ITEMS[k].relic);   // 자판기 · 상자 · 보스 무작위 드랍
+export const MAX_EQUIP = 2;   // 포켓몬 한 마리의 일반 도구 칸 (같은 아이템 2개도 2칸) · 메가스톤 · Z크리스탈은 전용 칸이 따로 (data/gear.js)
 
 // 바로 쓰는 소모품 (장착하지 않는다). 상처약: 샛길 끝에서 줍는 회복약 — 출전 중인 포켓몬 체력 40% 회복
 export const CONSUMABLES = {
@@ -56,6 +59,7 @@ export function computeMods(items, perks) {
     regen: .006 * n('leftovers') + (pm.regen || 0),
     lifesteal: .06 * n('shell_bell') + (pm.lifesteal || 0),
     crit: .15 * n('razor_claw') + .12 * n('scope_lens') + (pm.crit || 0), critMul: 1 + .2 * n('scope_lens'),
-    swapCdMul: Math.pow(.6, n('quick_claw')) * (pm.swapCdMul || 1)
+    swapCdMul: Math.pow(.6, n('quick_claw')) * (pm.swapCdMul || 1),
+    psyCore: n('mewtwo_core') > 0   // 뮤츠의 코어 (Combat · skills.shoot · Player.fireCharge)
   });
 }

@@ -4,7 +4,8 @@ import { ZOOM, RES, TILE } from '../config.js';
 import { STAGES, areaLabel } from '../data/stages.js';
 import { FORM_ITEMS } from '../data/roster.js';
 import { WILD, DEX_ORDER, SPECIES, SKILLS, TIERS, wildForm, pickWildStage, EXP_PURIFY, EXP_BOSS, DROPS, EVO_EXP, ZMOVES, BOSSES } from '../data/pokemon.js';
-import { ITEMS, ITEM_KEYS, ITEM_DROP, CONSUMABLES, MAX_EQUIP } from '../data/items.js';
+import { ITEMS, RANDOM_ITEM_KEYS, ITEM_DROP, CONSUMABLES, MAX_EQUIP } from '../data/items.js';
+import { stoneName, crystalName, zTypeOf, usesStone } from '../data/gear.js';
 import { typeColor } from '../data/types.js';
 import { PLAT_SET, groundYAt, T as TILE_ID } from '../game/Level.js';
 import { buildChapter, roomAt, CW, CH } from '../game/World.js';
@@ -611,7 +612,12 @@ export default class GameScene extends Phaser.Scene {
     if (this.over || this.transitioning) return;
     if ((this.overlay === 'tm' || this.overlay === 'taxi' || this.overlay === 'debug' || this.overlay === 'test') && kind !== this.overlay) return;   // 카드·공중날기·디버그·테스트 창이 열려 있으면 다른 창으로 넘어가지 않는다
     if (this.overlay === kind && kind === 'talk') this.talkClosedAt = this.time.now;
-    if (this.overlay === kind) { this.overlay = null; this.setFrozen(false); this.consumeInput(); this.player.zBuf = 0; this.events.emit('overlay', null); if (kind === 'join') this.afterJoin(); return; }   // 지도에서 누른 Z(확대)가 공격으로 새지 않게
+    if (this.overlay === kind) {
+      this.overlay = null; this.setFrozen(false); this.consumeInput(); this.player.zBuf = 0; this.events.emit('overlay', null);
+      if (kind === 'join') this.afterJoin();
+      if (kind === 'talk' && this.talk && this.talk.onEnd) { const f = this.talk.onEnd; this.talk.onEnd = null; this.time.delayedCall(150, f); }   // 이야기 NPC 보상
+      return;
+    }   // 지도에서 누른 Z(확대)가 공격으로 새지 않게
     if (this.overlay) { this.overlay = kind; this.events.emit('overlay', kind); return; }   // 지도 ↔ 가방 바로 전환
     if (this.paused) return;
     this.overlay = kind; this.setFrozen(true); this.events.emit('overlay', kind);
@@ -817,7 +823,7 @@ export default class GameScene extends Phaser.Scene {
     this.props.markUsed(it);
     {   // 자판기 (마을마다 한 번): 가끔 강화 아이템, 아니면 오렌열매
       const lucky = Math.random() < ITEM_DROP.vending;
-      this.spawnPickup(lucky ? 'item' : 'oran', it.x, it.y - 30, lucky ? pick(ITEM_KEYS) : undefined);
+      this.spawnPickup(lucky ? 'item' : 'oran', it.x, it.y - 30, lucky ? pick(RANDOM_ITEM_KEYS) : undefined);
       this.fx.burst(it.x, it.y - 30, lucky ? [0xffe08a, 0x8ad0ff, 0xffffff] : [0x8ad0ff, 0xffffff], lucky ? 20 : 12, 90, { glow: true, up: 60 });
       this.events.emit('toast', lucky ? '프렌들리숍 자판기에서 강화 아이템이 나왔다!' : '자판기에서 오렌열매가 나왔다  ·  강화 아이템은 가끔 나온다');
       Sfx.play(lucky ? 'unlock' : 'vend');
@@ -855,9 +861,81 @@ export default class GameScene extends Phaser.Scene {
   talkTo(it) {
     if (this.overlay || this.paused || this.time.now - (this.talkClosedAt || 0) < 300) return;
     const npc = it.npc, W = this.worlds[this.stageIdx], pure = !!(W && W.purified && npc.pure);
-    this.talk = { name: npc.name, look: npc.look, tint: npc.tint, lines: pure ? npc.pure : npc.lines, page: 0, id: it.id };
+    const story = this.storyTalk(it.id);   // 이야기 NPC: 진행에 따라 대사가 바뀌고, 대화를 마치면 보상 (onEnd)
+    this.talk = { name: npc.name, look: npc.look, tint: npc.tint, lines: story ? story.lines : pure ? npc.pure : npc.lines, page: 0, id: it.id, onEnd: story && story.onEnd };
     if (this.npcs) this.npcs.greet(it, this.player.x);
     this.toggleOverlay('talk');
+  }
+
+  // ---------------- 이야기 NPC (data/npcs.js) ----------------
+  //  노승려(인주시티): 성도를 정화하면 키스톤 + 첫 메가스톤 · 시련 캡틴(루네시티): 시련(호연의 엘리트 수호자)을 넘으면 Z링 + Z크리스탈
+  //  고대석 수집가(금빛시티 · 축복시티): 이상한사탕 2개 → 출전 포켓몬의 메가스톤. 반환 { lines, onEnd } (해당 없으면 null)
+  storyTalk(id) {
+    const p = this.player, q = p.quests || (p.quests = {});
+    if (id === 'elder_monk') {
+      const freed = this.purifiedSet.has(1) || !!(this.worlds[1] && this.worlds[1].purified);
+      if (q.monk) return { lines: ['그 돌의 빛이 흐려지지 않도록, 포켓몬과의 유대를 소중히 하시오.', '다른 포켓몬의 돌은 {b:숨겨진 심연의 균열}을 정화하거나, 마을을 떠도는 {b:고대석 수집가}에게 구해 보시오.'] };
+      if (!freed) return null;   // 처음 대사 (칠색조를 정화해 달라)
+      const line = [p.m, ...p.members].map(m => m.key).find(k => usesStone(k)) || null;
+      return {
+        lines: ['종소리가… 다시 울리는구려! 탑 꼭대기에서 폭주하던 전설들을 구해 주었소.',
+          `그대와 포켓몬 사이의 깊은 유대가 이 고대의 돌을 공명시켰구려. {y:키스톤}과 {b:${line ? stoneName(line) : '메가스톤'}}을 받으시오.`,
+          '메가스톤은 그 포켓몬의 {y:메가스톤 칸}에 끼워야 하오. {y:3단 진화} 뒤 {y:<V 키|메가 버튼>}로 메가진화하면, 메가 중엔 {y:<R 키|MEGA SKILL 버튼>} 필살기도 쓸 수 있소.',
+          '다른 포켓몬의 돌은… {b:숨겨진 심연의 균열}을 정화하거나, 마을을 떠도는 {b:고대석 수집가}에게 구해 보시오.'],
+        onEnd: () => {
+          if (q.monk) return;
+          q.monk = 1; p.keyStone = true;
+          const got = line ? p.gainStone(line) : null;
+          this.rewardFx(0xff8ad0);
+          this.events.emit('banner', `키스톤${got ? ' · ' + stoneName(got) : ''} 획득!`, got ? `${SPECIES[got].name} 계열 메가스톤 칸에 끼웠다 · 3단 진화 후 V 로 메가진화` : '메가스톤을 얻으면 그 포켓몬의 메가스톤 칸에 낀다');
+          this.saveRun(true, 'story');
+        }
+      };
+    }
+    if (id === 'trial_captain') {
+      const st = q.zTrial || 0;
+      if (st >= 3) return { lines: ['Z파워는 마음과 마음이 이어질 때 빛나는 법이지. 계속 나아가게!', '새 동료가 생기면 그 속성의 {b:Z크리스탈}은 Z크리스탈을 떨어뜨리는 강적에게서 구하게나.'] };
+      if (st === 2) return {
+        lines: ['오오… 그 기운! 수호자의 시련을 넘었구먼.', '받게, 이것이 {y:Z링}이네. 그리고 자네 동료들의 속성에 맞는 {b:Z크리스탈}이지.', '{y:<Q 키|Z 버튼>}로 일격필살의 Z기술을! 크리스탈은 그 속성 포켓몬의 {y:Z크리스탈 칸}에 끼워야 빛난다네. (가방)'],
+        onEnd: () => {
+          if ((q.zTrial || 0) >= 3) return;
+          q.zTrial = 3; p.gainZ(); p.z.cd = 0;
+          this.rewardFx(0xfff6a0);
+          this.events.emit('banner', 'Z링 · Z크리스탈 획득!', `Q 로 Z기술 — ${p.members.filter(m => p.canZ(m)).map(m => ZMOVES[m.sp.zmove].name).join(' · ') || '크리스탈을 가방에서 끼우자'}`);
+          this.saveRun(true, 'story');
+        }
+      };
+      if (st === 1) return { lines: ['아직 시련이 끝나지 않았네. 이 지방 막다른 길 끝, {y:붉은 오라를 두른 엘리트 수호자}를 쓰러뜨리고 오게.'] };
+      return {
+        lines: ['알로라에서 파견 나온 시련 캡틴이라네. 카푸 수호신의 기척을 쫓다 이 호연까지 왔지.',
+          '이 심연의 어둠을 꿰뚫으려면 알로라 지방에 전해 내려오는 태고의 빛, {y:Z파워}가 필요하네.',
+          '근처 고대 제단(샛길의 시련의 방)을 수호하는 주인 포켓몬 — {y:붉은 오라를 두른 엘리트 수호자}의 시련을 돌파하고 자격을 증명해 보게!',
+          '시련을 넘으면 다시 오게. {b:Z링}과 자네 동료들의 {b:Z크리스탈}을 정식으로 내어 주지.'],
+        onEnd: () => { if (!q.zTrial) { q.zTrial = 1; this.events.emit('toast', '시련 시작 — 호연지방의 엘리트 수호자(붉은 오라)를 쓰러뜨리자'); Sfx.play('select'); } }
+      };
+    }
+    if (id === 'stone_collector') {
+      if (!p.keyStone) return { lines: ['나는 각지의 고대석을 모으는 수집가라네.', '…키스톤도 없는 손님에겐 돌을 내줄 수 없지. 성도지방 {b:인주시티}의 {b:방울탑 노승려}를 찾아가 보게.'] };
+      const line = usesStone(p.m.key) && !p.stones.has(p.m.key) && p.m.gear.stone !== p.m.key ? p.m.key : null;
+      if (!line) return { lines: ['나는 각지의 고대석을 모으는 수집가라네.', usesStone(p.m.key) ? '그 포켓몬은 이미 돌을 갖췄구먼! 다른 포켓몬을 앞세우고 다시 오게.' : '그 포켓몬에게 맞는 메가스톤은 내 수집품에 없다네. 다른 포켓몬을 앞세우고 다시 오게.'] };
+      if ((p.candy || 0) < 2) return { lines: ['나는 각지의 고대석을 모으는 수집가라네.', `그 포켓몬에게 어울리는 {b:${stoneName(line)}}이 있지. {y:이상한사탕 2개}면 내주겠네 — 엘리트 수호자들이 사탕을 지니고 있다더군.`] };
+      return {
+        lines: ['나는 각지의 고대석을 모으는 수집가라네.', `오호, 그 포켓몬에게 어울리는 {b:${stoneName(line)}}이 있지. {y:이상한사탕 2개}와 바꾸겠나? (대화를 마치면 교환)`],
+        onEnd: () => {
+          if ((p.candy || 0) < 2 || p.stones.has(line) || p.members.some(m => m.gear.stone === line)) return;
+          p.candy -= 2; p.gainStone(line);
+          this.rewardFx(0xff8ad0);
+          this.events.emit('banner', `${stoneName(line)} 획득!`, `이상한사탕 2개와 교환 · ${SPECIES[line].name} 계열 메가스톤 칸에 끼웠다`);
+        }
+      };
+    }
+    return null;
+  }
+  // 보상 받는 순간: 빛 고리 · 반짝임 · 효과음
+  rewardFx(col) {
+    const pl = this.player;
+    Sfx.play('unlock'); this.cameras.main.flash(260, 255, 240, 220, true);
+    this.fx.ring(pl.x, pl.y, 50, col, 420); this.fx.burst(pl.x, pl.y, [col, 0xffffff, 0x9ad8ff], 26, 170, { glow: true, up: 80 });
   }
 
   // ---------------- 기술머신: 카드 3장 뒤집기 → 1장 고르기 ----------------
@@ -933,6 +1011,7 @@ export default class GameScene extends Phaser.Scene {
     this.cullEnemies();
     for (const e of this.enemies) if (e.alive && !e.asleep) e.update(dt, this.player);
     for (const w of this.wanderers) w.update(dt, this.player);
+    this.guardSafeZones();
     this.drawCorruption();
     this.combat.updateProjectiles(dt);
     this.combat.updateZones(dt);
@@ -1103,6 +1182,36 @@ export default class GameScene extends Phaser.Scene {
     im.setPosition(Math.round(cx) - t.cx0, Math.round(cy) - t.R).setTint(color).setAlpha(alpha).setVisible(true);
   }
 
+  // ---------------- 안전 구역 결계 ----------------
+  //  마을(시내 · 오박사 연구소)과 간이 회복기 쉼터에는 침식된 포켓몬이 들어오지 못한다: 경계를 넘으면 결계가 번쩍이며 바깥으로 튕겨 낸다
+  //  (마을 안에선 처음부터 적이 나오지 않는다 — updateSpawns). 보스는 아레나에 갇혀 있어 상관없다
+  safeZones() {
+    if (this.safeZoneOf === this.level) return this.safeZoneList;
+    this.safeZoneOf = this.level;
+    const list = this.level.rooms.filter(r => r.type === 'village' || r.lab).map(r => ({ x0: r.left, x1: r.right, y0: r.top, y1: r.bottom, town: true }));
+    for (const t of this.level.terminals || []) { const x = t.x * TILE + 16, y = t.g * TILE; list.push({ x0: x - 76, x1: x + 76, y0: y - 80, y1: y + 6 }); }
+    return (this.safeZoneList = list);
+  }
+  guardSafeZones() {
+    if (this.level.purified || this.test) return;
+    const zones = this.safeZones(), now = this.time.now;
+    for (const e of this.enemies) {
+      if (!e.alive || e.boss || e.asleep || e.dummy) continue;
+      for (const z of zones) {
+        if (e.x < z.x0 - 4 || e.x > z.x1 + 4 || e.y < z.y0 || e.y > z.y1) continue;
+        const dir = e.x - z.x0 < z.x1 - e.x ? -1 : 1, edge = dir < 0 ? z.x0 - 10 : z.x1 + 10;
+        e.b.reset(edge, e.y); e.b.setVelocity(dir * 220, -120);
+        if (now - (e.wardAt || 0) > 500) {   // 결계가 번쩍인다
+          e.wardAt = now;
+          this.fx.ring(edge - dir * 6, e.y, 22, z.town ? 0xffe0a0 : 0x4affd8, 320);
+          this.fx.burst(edge - dir * 6, e.y, [z.town ? 0xffe0a0 : 0x4affd8, 0xffffff], 8, 90, { glow: true, angle: dir > 0 ? 0 : Math.PI, spread: 1 });
+          Sfx.play('crack');
+        }
+        break;
+      }
+    }
+  }
+
   // 화면 밖 컬링: 플레이어가 있는 방도 아니고 카메라 시야(+여유)에서도 먼 적은 잠재운다
   //  → AI·물리·세뇌 레이어 갱신을 멈추고 그림도 숨긴다. 시야 가까이 오면 그대로 깨어난다 (보스는 잠들지 않는다)
   //  잠들 때(220px)와 깰 때(150px) 거리를 달리해 경계에서 깜빡이지 않게
@@ -1186,6 +1295,7 @@ export default class GameScene extends Phaser.Scene {
     for (const s of this.level.spawns) {
       if (s.spawned || Math.abs(s.x - p.x) > reach || Math.abs(s.y - p.y) > reachY) continue;
       s.spawned = true;
+      if (s.room && (s.room.type === 'village' || s.room.lab)) continue;   // 마을 안엔 침식된 포켓몬이 나오지 않는다
       if (this.level.purified) { if (!s.elite && Math.random() < .5) this.spawnWanderer(s); continue; }   // 정화한 지방: 세뇌된 적 대신 평화로운 야생 포켓몬
       if (s.elite && s.room && s.room.hidden && !(this.level.sides || []).some(sd => sd.room === s.room && sd.revealed)) { s.spawned = false; continue; }   // 숨은 굴의 수문장은 흙이 걷힌 뒤에
       if (!s.elite && (this.level.terminals || []).some(t => Math.abs(t.x * TILE - s.x) < 150 && Math.abs(t.g * TILE - s.y) < 90)) continue;   // 간이 회복기 둘레는 안전 구역
@@ -1379,12 +1489,16 @@ export default class GameScene extends Phaser.Scene {
     if (joinedBy) this.time.delayedCall(2800, () => this.announceJoin([joinedBy]));
     if (e.boss) this.dropFormItem(e);
     if (e.boss) { this.bossDefeated(e); return; }
+    if (e.elite && this.stageIdx === 2 && this.player.quests && this.player.quests.zTrial === 1) {   // 호연의 시련: 엘리트 수호자를 넘었다 → 루네시티 시련 캡틴에게
+      this.player.quests.zTrial = 2;
+      this.time.delayedCall(900, () => this.events.emit('banner', '시련 달성!', '수호자의 시련을 넘었다 · 루네시티의 시련 캡틴에게 돌아가자'));
+    }
     if (e.elite) {   // 엘리트 보상: 이상한사탕 100% · 장착형 전술 도구 25%
       this.spawnPickup('candy', e.x, e.y - 4);
       if (Math.random() < .25) this.spawnPickup('item', e.x + 6, e.y - 4, pick(ELITE_TOOLS));
       this.fx.ring(e.x, e.y, 40, 0xffd27a, 420);
     }
-    else if (Math.random() < ITEM_DROP.wild) this.spawnPickup('item', e.x, e.y, pick(ITEM_KEYS));   // 야생은 아이템 대신 가끔 오렌열매
+    else if (Math.random() < ITEM_DROP.wild) this.spawnPickup('item', e.x, e.y, pick(RANDOM_ITEM_KEYS));   // 야생은 아이템 대신 가끔 오렌열매
     else if (Math.random() < .16) this.spawnPickup('oran', e.x, e.y);
     const r = Save.addKill(e.line || e.key);   // 정화 진행도는 진화 계열로 센다 (피카츄를 정화해도 피츄 계열 +1)
     if (r) {
@@ -1498,8 +1612,8 @@ export default class GameScene extends Phaser.Scene {
       else if (L.end) this.time.delayedCall(1400, () => tr.say(L.end));
     }
     this.events.emit('boss', null);
-    const drop = final ? (this.stageIdx === DROPS.zcrystal ? 'zcrystal' : this.stageIdx === DROPS.megastone ? 'megastone' : null) : null;
-    const sub = drop === 'zcrystal' ? '정신을 되찾았다 · Z크리스탈이 빛난다' : drop === 'megastone' ? '정신을 되찾았다 · 메가스톤이 빛난다' : hidden ? '전설이 깨어났다 · 전설의 기술 카드를 남겼다' : '정신을 되찾았다';
+    const drop = final ? (this.stageIdx === DROPS.core ? 'core' : this.stageIdx === DROPS.megastone ? 'megastone' : null) : null;
+    const sub = drop === 'core' ? '정신을 되찾았다 · 사이코 에너지가 응축된 「뮤츠의 코어」를 남겼다' : drop === 'megastone' ? '정신을 되찾았다 · 메가스톤이 빛난다' : hidden ? '전설이 깨어났다 · 전설의 기술 카드와 메가스톤을 남겼다' : '정신을 되찾았다';
     this.events.emit('banner', `${boss.name} 정화!`, sub);
     this.fx.hitStop(220);
     for (let k = 0; k < 3; k++) this.time.delayedCall(k * 160, () => { this.fx.ring(boss.x + rand(-20, 20), boss.y + rand(-20, 20), 40 + k * 10, 0xe0b0ff, 300); Sfx.play('boom'); });   // 껍질에 금이 가는 박자
@@ -1507,9 +1621,11 @@ export default class GameScene extends Phaser.Scene {
     this.time.delayedCall(700, () => {
       this.setGates(room, true);
       this.unlockArena();
-      if (drop) this.spawnPickup(drop, boss.x, boss.y - 10);
-      if (Math.random() < ITEM_DROP.boss) this.spawnPickup('item', boss.x + 14, boss.y - 10, pick(ITEM_KEYS));   // 보스는 강화 아이템 확정
-      if (hidden) { this.spawnPickup('item', boss.x - 14, boss.y - 10, pick(ITEM_KEYS)); this.time.delayedCall(1500, () => this.openLegendCards()); }
+      if (drop === 'core') this.spawnPickup('item', boss.x, boss.y - 10, 'mewtwo_core');   // 뮤츠: 전설 유물 100%
+      else if (drop) this.spawnPickup(drop, boss.x, boss.y - 10);
+      if (hidden) this.spawnPickup('megastone', boss.x, boss.y - 24);   // 숨겨진 심연의 균열: 다른 포켓몬용 메가스톤
+      if (Math.random() < ITEM_DROP.boss) this.spawnPickup('item', boss.x + 14, boss.y - 10, pick(RANDOM_ITEM_KEYS));   // 보스는 강화 아이템 확정
+      if (hidden) { this.spawnPickup('item', boss.x - 14, boss.y - 10, pick(RANDOM_ITEM_KEYS)); this.time.delayedCall(1500, () => this.openLegendCards()); }
       if (final) this.spawnPortal(room.right - 40, this.groundBelow(room.right - 40, room.top + 8));
     });
     Save.data.bestStage = Math.max(Save.data.bestStage, this.stageIdx + 1); Save.write();
@@ -1639,19 +1755,21 @@ export default class GameScene extends Phaser.Scene {
       pl.heal(pl.m.maxhp * c.heal); if (p.mark) p.mark.taken = true;
       this.events.emit('toast', `${c.name}을 썼다! ${pl.formName()} 체력 회복`, 'potion');
       Sfx.play('heal'); this.fx.burst(pl.x, pl.y, [0xd88aff, 0xffffff, 0x8affb0], 16, 110, { glow: true, up: 70 });
-    } else if (p.kind === 'zcrystal') {
-      if (pl.z.has) return;
-      pl.z.has = true; pl.z.cd = 0;
-      this.events.emit('banner', 'Z크리스탈 획득!', `Q 로 Z기술 — ${pl.members.map(m => ZMOVES[m.sp.zmove].name).join(' · ')}`);
+    } else if (p.kind === 'zcrystal') {   // Z크리스탈: 처음이면 Z링과 파티 속성 크리스탈 · 그 뒤엔 출전 포켓몬 속성 크리스탈 하나 (data/gear.js)
+      const first = !pl.zRing;
+      if (first) pl.gainZ(); else pl.gainCrystal(zTypeOf(pl.m.key));
+      pl.z.cd = 0;
+      this.events.emit('banner', first ? 'Z링 · Z크리스탈 획득!' : `${crystalName(zTypeOf(pl.m.key))} 획득!`, first ? `Q 로 Z기술 — ${pl.members.filter(m => pl.canZ(m)).map(m => ZMOVES[m.sp.zmove].name).join(' · ')}` : '가방에서 그 속성 포켓몬의 Z크리스탈 칸에 끼우면 Q 로 Z기술');
       Sfx.play('unlock'); this.fx.ring(pl.x, pl.y, 50, 0xfff6a0, 400); this.fx.burst(pl.x, pl.y, [0xfff6a0, 0xffffff, 0x9ad8ff], 24, 160, { glow: true });
     } else if (p.kind === 'formitem') {   // 폼체인지 아이템: 그 전설이 파티에 있으면 V 로 오리진폼 (포켓몬센터 보관함에서 데려올 수 있다)
       const it = FORM_ITEMS[p.id], who = Object.values(SPECIES).find(sp => sp.megas.some(m => m.item === p.id));
       pl.formItems.add(p.id);
       this.events.emit('banner', `${it.name} 획득!`, `${who ? who.name : '그 전설'}을(를) 파티에 넣고 V 로 폼체인지 — 이번 판 끝까지 유지`);
       Sfx.play('unlock'); this.fx.ring(pl.x, pl.y, 50, it.color, 400); this.fx.burst(pl.x, pl.y, [it.color, 0xffffff], 24, 160, { glow: true });
-    } else {
-      pl.mega.stones++;
-      this.events.emit('banner', '메가스톤 획득!', pl.tier >= 2 ? 'V 로 메가진화 — 이번 판 끝까지 유지' : `3단 진화 후 V 로 메가진화 (진화까지 ${pl.expToNext()})`);
+    } else {   // 메가스톤: 출전 포켓몬(없으면 돌이 없는 파티 포켓몬) 계열의 돌 — 그 포켓몬 메가스톤 칸에 바로 (키스톤이 없으면 함께)
+      const hadKey = pl.keyStone; pl.keyStone = true;
+      const line = pl.gainStone();
+      this.events.emit('banner', line ? `${stoneName(line)} 획득!${hadKey ? '' : ' · 키스톤'}` : '메가스톤의 기운만 남았다', line ? `${SPECIES[line].name} 계열 메가스톤 칸에 끼웠다 · 3단 진화 후 V 로 메가진화` : '파티 모두 이미 메가스톤이 있다 (보관함 포켓몬에게 줄 돌이 있으면 다음에)');
       Sfx.play('unlock'); this.fx.ring(pl.x, pl.y, 50, 0xff8ad0, 400);
     }
   }
@@ -1667,7 +1785,7 @@ export default class GameScene extends Phaser.Scene {
     c.opened = c.data.opened = true; c.img.setTexture('chest-open'); c.glow.setAlpha(.2);
     Sfx.play('item'); this.fx.burst(c.img.x, c.img.y, [0xffd25a, 0xffffff, 0xff7a6a], 20, 140, { glow: true });
     // 상자는 대개 오렌열매, 아주 가끔 강화 아이템 (보물 상자는 조금 더 자주 + 오렌열매 하나 더)
-    if (Math.random() < (c.treasure ? ITEM_DROP.treasure : ITEM_DROP.chest)) this.spawnPickup('item', c.img.x, c.img.y - 6, pick(ITEM_KEYS));
+    if (Math.random() < (c.treasure ? ITEM_DROP.treasure : ITEM_DROP.chest)) this.spawnPickup('item', c.img.x, c.img.y - 6, pick(RANDOM_ITEM_KEYS));
     else this.spawnPickup('oran', c.img.x, c.img.y - 6);
     if (c.treasure) this.spawnPickup('oran', c.img.x - 4, c.img.y - 6);
   }
@@ -1722,7 +1840,7 @@ export default class GameScene extends Phaser.Scene {
   // 시작: Z크리스탈 · 메가스톤 · 폼체인지 아이템을 모두 쥐고 패널을 연다
   testBegin() {
     const p = this.player;
-    p.z.has = true; p.mega.stones = 9;
+    p.grantAll();   // 테스트룸: 키스톤 · Z링 · 파티 모두의 메가스톤 · Z크리스탈
     for (const id of Object.keys(FORM_ITEMS)) p.formItems.add(id);
     this.time.delayedCall(450, () => { if (!this.overlay && !this.over) this.toggleOverlay('test'); });
   }
@@ -1751,6 +1869,7 @@ export default class GameScene extends Phaser.Scene {
     if (j < 0) { p.replaceMember(Math.min(i, p.members.length), key); j = p.members.findIndex(m => m.key === key); }
     const m = p.members[j];
     p.setForm(m, tier, mega);
+    p.grantAll();
     if (j !== p.idx) p.swapTo(j, true);
     p.flash(300); p.squash(.6, 1.5);   // 진화처럼 하얗게 빛나며 새 모습으로
     this.fx.ring(p.x, p.y, 34, 0xffffff, 380);

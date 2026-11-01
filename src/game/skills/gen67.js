@@ -236,23 +236,31 @@ export const SKILL_IMPL = {
   },
 
   // ===== 개구마르 =====
-  // 누를 때마다 물수리검을 던진다: 1타 한 장 · 2타 두 장 · 3타 부채꼴 세 장 (진화할수록 크고 빠르며, 3단은 한 장씩 더)
-  //  꾹 눌렀다 떼면 거대 물수리검 (game/Signature.js)
+  // 단계별 성장: 1단 개구마르는 작은 거품 한 발(아직 수리검을 못 만든다) → 2단 개굴반장부터 물수리검 2갈래
+  //  → 3단 개굴닌자는 다연발 수리검(1타 2장 · 2타 3장 · 3타 부채꼴 4장) · 유대변화·메가는 등의 거대 수리검까지
+  //  꾹 눌렀다 떼면: 1단 큰 거품 · 2단부터 거대 물수리검 (game/Signature.js)
   water_shuriken(p, i) {
-    const m = p.mega.active, ev = p.tierIdx, r = 4 + ev * .8, sp = 400 + ev * 40, more = ev >= 2 ? 1 : 0;
-    const toss = (n, mul, spread, oy) => { shuriken(p, { count: n + more, mul, spread, r, speed: sp, oy, life: .65, pierce: ev >= 1 ? 2 : 1 }); Sfx.play('swing'); };
+    const m = p.mega.active, ev = p.tierIdx, sc = p.scene;
+    if (ev === 0) return {   // 1단: 손끝으로 뿜는 작은 거품
+      dur: .2, mm: .5, anim: 'Shoot', noTierFx: true, ev: [[.05, () => {
+        shoot(p, { speed: 260, r: i === 2 ? 4 : 3, mul: i === 2 ? 1.1 : .85, type: 'water', kind: 'bubble', life: .55, kb: 70, color: 0x8ad8ff, oy: -4 });
+        Sfx.play('water');
+      }]]
+    };
+    const r = 4 + ev * .8, sp = 400 + ev * 40, more = ev >= 2 ? 1 : 0;
+    const toss = (n, mul, spread, oy) => { shuriken(p, { count: n, mul, spread, r, speed: sp, oy, life: .65, pierce: ev >= 2 ? 2 : 1 }); Sfx.play('swing'); };
     if (i < 2) return {
       dur: .17, mm: .55, anim: 'Shoot', noTierFx: true, ev: [[.04, () => {
-        toss(i + 1, i ? .6 : 1, .1, i ? -7 : -4);
+        toss(ev >= 2 ? 2 + i : 2, ev >= 2 ? .6 : .55, .1, i ? -7 : -4);   // 2단: 언제나 2갈래 · 3단: 2장 → 3장
         if (m) shuriken(p, { mul: .4, r: r * .8, speed: sp * 1.2, angle: -.14, oy: -8, life: .5 });   // 유대변화·메가: 한 장 더
       }]]
     };
     return {
       dur: m ? .4 : .3, mm: .45, anim: 'Shoot', noTierFx: true, ev: [
-        ...[0, 1, 2].map(k => [.04 + k * .045, () => { shuriken(p, { count: 1 + (k === 1 ? more : 0), mul: .6, r, speed: sp, angle: (k - 1) * .07, oy: -6 + k * 2, pierce: ev >= 1 ? 2 : 1 }); Sfx.play('swing'); }]),
+        ...(ev >= 2 ? [0, 1, 2] : [0, 1]).map(k => [.04 + k * .045, () => { shuriken(p, { count: 1 + (k === 1 ? more : 0), mul: ev >= 2 ? .6 : .65, r, speed: sp, angle: (k - (ev >= 2 ? 1 : .5)) * .07, oy: -6 + k * 2, pierce: ev >= 2 ? 2 : 1 }); Sfx.play('swing'); }]),
         ...(m ? [[.2, () => {   // 유대변화: 등에 진 거대 물수리검
           shuriken(p, { r: 11, mul: 2, speed: 300, life: 1.6, pierce: 99, boomerang: .42, kb: 200, color: 0x2a8aff, light: true, oy: -8 });
-          p.scene.fx.ring(p.x, p.y - 8, 26, 0x4ac0ff, 240); p.scene.fx.shake(.006, 120); Sfx.play('water');
+          sc.fx.ring(p.x, p.y - 8, 26, 0x4ac0ff, 240); sc.fx.shake(.006, 120); Sfx.play('water');
         }]] : [])
       ]
     };

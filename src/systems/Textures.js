@@ -6,6 +6,7 @@ import { SKILLS } from '../data/pokemon.js';
 import { ITEMS } from '../data/items.js';
 import { typeColor } from '../data/types.js';
 import { drawDetailedPixelTree } from './TreeArt.js';
+import { skillArt } from './SkillArt.js';
 
 // 12x12 도트 아이콘. a=주색 b=밝은색 c=어두운색 k=외곽선 w=흰색
 const MAPS = {
@@ -212,29 +213,10 @@ function maskFromRows(rows) {
   }
   return out;
 }
-export function skillIcon(scene, id) {
-  const s = SKILLS[id], key = `sk:${id}`;
-  if (scene.textures.exists(key)) return key;
-  return buildPortrait(scene, key, maskFromRows(MAPS[s.icon] || MAPS.orb), s.type, null);
-}
-// game-icons.net 단색 SVG → 실루엣 → 스킬 초상화 (못 받은 스킬은 skillIcon 이 도트 맵으로)
-export async function composeSkillIcons(scene, svgs) {
-  await Promise.all(Object.entries(svgs).map(async ([id, svg]) => {
-    const key = `sk:${id}`, s = SKILLS[id];
-    if (!s || scene.textures.exists(key)) return;
-    try {
-      const clean = svg.replace(/<path d="M0 0h512v512H0z"\s*\/>/, '').replace(/fill="#000"/g, 'fill="#fff"');
-      const img = new Image();
-      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(clean);
-      await img.decode();
-      const c = document.createElement('canvas'); c.width = c.height = ICON_IN;
-      const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(img, 0, 0, ICON_IN, ICON_IN);
-      const a = x.getImageData(0, 0, ICON_IN, ICON_IN).data, mask = new Uint8Array(ICON_IN * ICON_IN);
-      for (let i = 0; i < mask.length; i++) mask[i] = a[i * 4 + 3] > 110 ? 1 : 0;
-      buildPortrait(scene, key, mask, s.type, MAPS[s.icon] || MAPS.orb);
-    } catch (e) { console.warn('[icon] 스킬 아이콘을 그리지 못함 (도트 아이콘으로 대신)', id, e); }
-  }));
-}
+// 스킬 초상화: 고해상도 일러스트 (systems/SkillArt.js · 96×96 · 처음 쓰일 때 그린다 — 부팅 때 수백 장을 미리 만들지 않는다)
+export function skillIcon(scene, id) { return skillArt(scene, id); }
+// (예전) game-icons.net 단색 SVG 실루엣 초상화 — 이제 일러스트 아이콘을 쓰므로 단일 HTML 빌드 호환을 위해 이름만 남긴다
+export async function composeSkillIcons() {}
 
 // 스킬 바 대시 칸 아이콘: 대시 화살표 실루엣 + 출전 포켓몬 속성 무늬
 export function dashIcon(scene, type) {
@@ -247,6 +229,22 @@ export function tagIcon(scene, type) { return pixelTexture(scene, `tag:${type}`,
 // 본가 가방 그림을 받지 않은 도구는 직접 그린다 (64×64 → itemArt 가 원하는 크기로 줄인다)
 //  이상한사탕: 양끝이 꼬인 파란 포장 + 하늘색 사탕 몸통에 흰 사선 줄무늬 · 피트렌즈: 은테 외알 안경 + 청록 렌즈 + 금 사슬
 const PROC_ITEM = {
+  // 뮤츠의 코어: 보랏빛 사이코 에너지가 소용돌이치는 결정 핵 + 감싸는 고리 두 개
+  mewtwo_core(c) {
+    const halo = c.createRadialGradient(32, 32, 4, 32, 32, 31);
+    halo.addColorStop(0, 'rgba(255,170,240,.85)'); halo.addColorStop(.45, 'rgba(170,80,255,.45)'); halo.addColorStop(1, 'rgba(60,10,120,0)');
+    c.fillStyle = halo; c.fillRect(0, 0, 64, 64);
+    c.save(); c.translate(32, 32);
+    for (const [rx, ry, rot, col] of [[27, 9, -.5, 'rgba(255,140,230,.9)'], [27, 9, .55, 'rgba(160,110,255,.9)']]) {
+      c.save(); c.rotate(rot); c.lineWidth = 2.5; c.strokeStyle = col; c.beginPath(); c.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2); c.stroke(); c.restore();
+    }
+    c.beginPath(); c.moveTo(0, -17); c.lineTo(12, -4); c.lineTo(8, 14); c.lineTo(-8, 14); c.lineTo(-12, -4); c.closePath();   // 결정 핵
+    const g = c.createLinearGradient(-12, -17, 12, 14); g.addColorStop(0, '#ffd8ff'); g.addColorStop(.45, '#c05aff'); g.addColorStop(1, '#3a0a78');
+    c.fillStyle = g; c.fill(); c.lineWidth = 2; c.strokeStyle = '#1a0434'; c.stroke();
+    c.beginPath(); c.moveTo(0, -17); c.lineTo(0, 14); c.moveTo(-12, -4); c.lineTo(12, -4); c.strokeStyle = 'rgba(255,220,255,.45)'; c.lineWidth = 1; c.stroke();
+    c.fillStyle = 'rgba(255,255,255,.9)'; c.beginPath(); c.moveTo(-3, -12); c.lineTo(3, -8); c.lineTo(-5, -4); c.closePath(); c.fill();   // 반사광
+    c.restore();
+  },
   rare_candy(c) {
     c.lineJoin = 'round'; c.lineWidth = 4; c.strokeStyle = '#13235a';
     for (const d of [-1, 1]) {   // 꼬인 포장 끝
@@ -328,7 +326,6 @@ export function generateBaseTextures(scene) {
   makePurifyTextures(scene);
   makeHudTextures(scene);
   makeCutsceneTextures(scene);
-  for (const id of Object.keys(SKILLS)) skillIcon(scene, id);
   for (const id of Object.keys(ITEMS)) itemIcon(scene, id);
   STAGES.forEach((st, i) => { makeTileset(scene, i, st.palette); makeBackgrounds(scene, i, st.palette); makeCaveBg(scene, i, st.palette); });
 }

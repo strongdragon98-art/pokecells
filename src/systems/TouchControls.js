@@ -11,6 +11,7 @@
 import { hkText, HK } from './ui.js';
 import { RES } from '../config.js';
 import { Settings } from './Settings.js';
+import { skillIcon } from './Textures.js';
 
 // 포인터 좌표(캔버스 픽셀)를 UI 논리 좌표(640x360)로
 const lx = p => p.x / RES, ly = p => p.y / RES;
@@ -216,7 +217,7 @@ export class TouchControls {
       let fillA = b.down ? .55 : .32, ring = 0xefeae0, ringA = b.down ? .95 : .5;
       if (b.slot) {
         const id = p.skillId(b.slot), cd = p.isCombo(b.slot) ? 0 : p.m.cd[b.slot] || 0, max = p.cdOf(id) || 1, s = b.r * 1.15;
-        b.icon.setVisible(true).setTexture(`sk:${id}`).setDisplaySize(s, s).setAlpha(cd > 0 ? .4 : 1);
+        b.icon.setVisible(true).setTexture(skillIcon(this.ui, id)).setDisplaySize(s, s).setAlpha(cd > 0 ? .4 : 1);
         this.orb(b.x, b.y, b.r, .45 + (b.down ? .2 : 0), p.mega.active ? 0xffb8e8 : ring, ringA, b.down);
         if (cd > 0) { g.fillStyle(0x000000, .55); g.slice(b.x, b.y, b.r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, cd / max), false); g.fillPath(); }
         continue;
