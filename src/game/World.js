@@ -441,9 +441,7 @@ export function buildChapter(ch, ci, retry = 0) {
       marks.push({ kind: 'tm', x: ax, y: g, room: r });
       setP(x0 + 3, r.F - 4, 4); setP(x1 - 7, r.F - 4, 4);
     } else if (r.type === 'treasure') {
-      const ax = (x0 + x1) >> 1, g = altar(ax, r.F);
-      chests.push({ x: ax * TILE + 8, y: g * TILE, treasure: true });
-      marks.push({ kind: 'chest', x: ax, y: g, room: r });
+      // 제단 · 상자는 문을 다 뚫은 뒤에 놓는다 (아래 '보물방 제단') — 철창 구멍 · 사다리 자리가 제단을 지워 상자가 떠 있지 않게
       stalactites(x0 + 3, x1 - 3, ri(0, 2));
     } else if (r.type === 'pocket') {
       // 막다른 굴: 상처약이 있거나 아무것도 없다(페이크). 들어가기 전엔 흙 덮개
@@ -507,6 +505,23 @@ export function buildChapter(ch, ci, retry = 0) {
     }
   }
 
+  // ---- 보물방 제단 · 상자: 철창 구멍 · 사다리 · 옆문 앞을 비켜 방 가운데에서 가장 가까운 자리 (난수를 쓰지 않는다) ----
+  for (const r of rooms) {
+    if (r.type !== 'treasure') continue;
+    const busy = new Set();
+    for (const d of r.doors) {
+      if (d.dir === 'v') for (let x = d.cap - 4; x <= d.cap + 7; x++) busy.add(x);
+      else for (let x = r.tx0; x <= r.tx0 + 7; x++) if (d.R === r) busy.add(x); else busy.add(r.tx1 - 1 - (x - r.tx0));
+    }
+    const mid = (r.tx0 + r.tx1) >> 1, fits = ax => ax - 2 > r.tx0 && ax + 2 < r.tx1 - 1 && [-2, -1, 0, 1, 2].every(o => !busy.has(ax + o));
+    let ax = mid;
+    for (let k = 0; k < r.tx1 - r.tx0; k++) { if (fits(mid + k)) { ax = mid + k; break; } if (fits(mid - k)) { ax = mid - k; break; } }
+    for (let x = ax - 2; x <= ax + 2; x++) { grid[r.F][x] = 'S'; for (let y = r.F - 6; y < r.F; y++) if (y > r.ty0) grid[y][x] = '.'; }   // 바닥을 단단히 · 위는 비운다 (종유석 · 발판)
+    const g = altar(ax, r.F);
+    chests.push({ x: ax * TILE + 8, y: g * TILE, treasure: true });
+    marks.push({ kind: 'chest', x: ax, y: g, room: r });
+  }
+
   // ---- 튜토리얼 기술머신으로 내려가는 철창 옆 표지 (입구) ----
   for (const d of doors) {
     if (d.dir !== 'v' || !d.D.tutorial) continue;
@@ -549,15 +564,23 @@ export function buildChapter(ch, ci, retry = 0) {
         for (const r of trail) { r.trail = true; r.peaceful = true; }
         const mainTrail = trail.filter(r => r.main);   // 탑 입구는 본 경로의 마지막 방 (곁가지 방이 아니라)
         for (const r of rooms) if (r.ai === ti) { r.tower = true; if (r.type === 'boss') r.rooftop = true; }
+        const hall1 = rooms.filter(r => r.ai === ti && r.main).sort((a, b) => a.id - b.id)[0];   // 탑 안 1층
         const gate = mainTrail[mainTrail.length - 1];
+        // 본 경로가 땅속(불탄탑 지하)을 거쳐 탑에 닿는 시드: 정문 방이 탑 1층과 맞닿아 있지 않다 → 벽 없는 가상의 출입문으로 잇는다
+        //  (출입문은 원래 포털이라 붙어 있을 필요가 없다 — 땅속 쪽 옆문은 아래에서 다른 샛길처럼 메운다)
+        if (gate && hall1 && !gate.doors.some(q => q.dir === 'h' && (q.a === hall1 || q.b === hall1))) {
+          const hd = hall1.doors.find(q => q.dir === 'h' && q.R === hall1);
+          const vd = { dir: 'h', a: gate, b: hall1, L: gate, R: hall1, cells: [], mx: hall1.tx0, my: hd ? hd.my : hall1.F - 2.5, virtual: true };
+          doors.push(vd); gate.doors.push(vd); hall1.doors.push(vd);
+        }
+        const isPortalDoor = q => q.dir === 'h' && hall1 && ((q.a === gate && q.b === hall1) || (q.b === gate && q.a === hall1));
         if (gate) {
           gate.trailEnd = true;
           gate.doorTx = gate.tx1 - 21;   // 거대한 정문 한가운데 칸 (Props bellGateArt 외관 640px 이 오른쪽 벽 안에 들도록)
           // 탑으로 들어가는 길은 정문 하나뿐: 정문 방 천장의 철창(위 방으로 오르는 샛길) · 탑 1층으로 바로 이어지는 다른 옆문은 벽으로 메운다
           //  (메워도 모든 방에 여전히 갈 수 있을 때만 — 정문 포털은 통로로 친다)
           {
-            const hall0 = rooms.filter(r => r.ai === ti && r.main).sort((a, b) => a.id - b.id)[0];
-            const isPortal = q => q.dir === 'h' && hall0 && ((q.a === gate && q.b === hall0) || (q.b === gate && q.a === hall0));
+            const isPortal = isPortalDoor;
             const sealed = new Set();
             const linked = () => {
               const seen = new Set([rooms[0]]), q = [rooms[0]];
@@ -576,8 +599,14 @@ export function buildChapter(ch, ci, retry = 0) {
           }
           // 정문 앞 성역 마당: 외관 너비만큼 언덕 · 떠 있는 바위 · 천장 덩어리를 걷어 평평한 돌바닥으로
           //  그 위에 놓였던 소품은 바닥으로 내려놓는다 (개수는 그대로 — 저장 서명 유지)
-          const fx0 = Math.max(gate.tx0 + 1, gate.doorTx - 21), fx1 = gate.tx1 - 1;
+          //  메우지 못한 문(다른 방으로 가는 유일한 길)의 철창 구멍 · 사다리 · 옆문 앞은 그대로 둔다
+          const fx0 = Math.max(gate.tx0 + 1, gate.doorTx - 21), fx1 = gate.tx1 - 1, keep = new Set();
+          for (const d of gate.doors) if (!d.sealed && !isPortalDoor(d)) {
+            if (d.dir === 'v') for (let x = d.cap - 3; x <= d.cap + 6; x++) keep.add(x);
+            else if (d.L === gate) for (let x = gate.tx1 - 8; x < gate.tx1; x++) keep.add(x);
+          }
           for (let x = fx0; x <= fx1; x++) {
+            if (keep.has(x)) continue;
             for (let y = gate.ty0; y < gate.F; y++) grid[y][x] = '.';
             grid[gate.F][x] = 'S'; grid[gate.F + 1][x] = 'S';
           }
@@ -726,6 +755,7 @@ export function buildChapter(ch, ci, retry = 0) {
     let sy = s0.ty0 + 1; while (sy < s0.F && !(grid[sy][sx] === '.' && grid[sy - 1][sx] === '.' && grid[sy + 1][sx] !== '.')) sy++;
     const oak = rooms.find(r => r.oak), starts = [[sx, sy]];
     if (oak) starts.push([oak.oakDoor, oak.F - 1]);   // 닫힌 연구소에서 문으로 나오는 자리 (마을의 연구소 건물 앞)
+    for (const d of doors) if (d.portalIn) starts.push([d.portalIn.x, d.portalIn.y - 1]);   // 방울탑 안 1층 출입문 (정문과 벽으로 막혀 걸어선 못 닿는다 — 빠뜨리면 탑 안 전체가 '못 닿는 칸'으로 메워진다)
     const win = { x0: 0, y0: 0, x1: cols, y1: rows };
     let R = reach(grid, starts, win);
     const standing = (x, y) => grid[y][x] === '.' && grid[y - 1][x] === '.' && grid[y + 1][x] !== '.';
