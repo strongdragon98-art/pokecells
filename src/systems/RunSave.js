@@ -4,6 +4,7 @@
 //  파티(진화 단계·경험치·메가·장착 아이템·기술머신 기술)와 가방·메가스톤·Z크리스탈·공중날기 정거장도 함께 저장한다
 //  도감 해금·정화 수는 원래대로 Save.js 가 따로 자동 저장한다
 import { computeMods, MAX_EQUIP } from '../data/items.js';
+import { boostTotals } from '../data/tm.js';
 
 const KEY = 'pokecells.run.v2';   // v2: 튜토리얼 기술머신·엘리트 굴·회복기 보장으로 지형 생성이 바뀌었다 (v1 저장은 다른 지형이 되어 쓰지 않는다)
 
@@ -97,7 +98,7 @@ function memberSnap(m) {
   return {
     key: m.key, hp: Math.round(m.hp), alive: m.alive, tier: m.tier, peakTier: Math.max(m.peakTier || 0, m.tier), exp: m.exp, mega: m.mega, megaPick: m.megaPick || 0,
     items: { ...m.items }, perks: { ...(m.perks || {}) }, skills: { ...m.skills }, ups: [...m.ups], atkBonus: m.atkBonus, cdBonus: m.cdBonus, learned: [...m.learned], chargeType: m.chargeType || null, cardGrade: { ...(m.cardGrade || {}) },
-    gear: { ...(m.gear || {}) }
+    gear: { ...(m.gear || {}) }, boostCards: (m.boostCards || []).map(e => ({ ...e }))
   };
 }
 // 저장해 둔 진행을 포켓몬 m 에 덮어쓴다
@@ -107,7 +108,8 @@ function applyMember(m, d) {
     tier, peakTier: tier, exp: d.exp, mega: !!d.mega, megaPick: d.megaPick || 0, alive: d.alive !== false,
     items: { ...d.items }, perks: { ...(d.perks || {}) }, mods: computeMods(d.items || {}, d.perks || {}), skills: { ...m.skills, ...d.skills }, ups: new Set(d.ups || []), cardGrade: { ...(d.cardGrade || {}) },
     atkBonus: d.atkBonus || 1, cdBonus: d.cdBonus || 1, learned: d.learned && d.learned.length ? [...d.learned] : m.learned, chargeType: d.chargeType || null,
-    gear: { stone: (d.gear && d.gear.stone) || null, crystal: (d.gear && d.gear.crystal) || null }
+    gear: { stone: (d.gear && d.gear.stone) || null, crystal: (d.gear && d.gear.crystal) || null },
+    boostCards: (d.boostCards || []).map(e => ({ ...e })), boost: boostTotals(d.boostCards)   // 스킬 강화 카드
   });
 }
 

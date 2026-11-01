@@ -1,9 +1,13 @@
 // 기술머신(TM): 맵 샛길 끝 제단에서 카드 3장을 뒤집어 보고 1장을 고른다 (UI 는 scenes/UIScene.showTM)
-//  카드 세 종류 — move: 새 액티브 기술 습득(X·C 자리에 장착/교체 · 연타 기술이 아니면 Z 도) · up: 지금 가진 기술 강화 · perk: 특성 카드(game/Perks.js, 40종 이상)
-//  3장 중 1~2장은 반드시 [기술 습득 카드] (2장일 확률 55% → 평균 절반 이상). 기술은 그 포켓몬이 원작·타입상 배울 수 있는 것만 (TM_LEARN)
-//  등급 4단계: 커먼 · 레어 · 유니크 · 전설 (특성·강화 카드가 뽑힐 확률 55 · 28 · 13 · 4%)
-//  카드는 '지금 출전 중인 포켓몬' 기준으로 뽑고, 받은 것은 그 포켓몬에게만 남는다 (Player.members[i].skills · ups)
+//  카드 종류 — move: 새 액티브 기술 습득(X·C 자리에 장착/교체 · 연타 기술이 아니면 Z 도) · up: 원작 개조(불꽃세례 → 푸른 연옥 …)
+//   · boost: 지금 Z·X·C 에 단 기술을 직접 키우는 스킬 강화(위력 · 가속 · 광역 · 분열탄 — 모든 기술 공용) · perk: 특성 카드(game/Perks.js) · mastery: 숙련
+//  카드는 '파티 전체' 기준으로 뽑는다: 출전 여부와 상관없이 파티의 누구든 쓸 수 있는 카드만 나오고(아무도 못 쓰는 카드는 풀에서 빠진다),
+//   카드마다 쓸 수 있는 포켓몬(who: 계열 키 목록)을 달아 둔다 → 고를 때 둘 이상이면 누구에게 적용할지 고른다 (UIScene.showTM)
+//  3장 중 2장(30% 확률로 3장 전부)은 [지금 가진 기술 강화] 카드 (boost · up) — 평균 75% 이상. 나머지 칸은 새 기술(60%) 또는 특성 카드
+//  기술은 그 포켓몬이 원작·타입상 배울 수 있는 것만 (TM_LEARN)
+//  등급 4단계: 커먼 · 레어 · 유니크 · 전설 (특성 카드 55 · 28 · 13 · 4% / 스킬 강화 카드는 레어 62 · 유니크 29 · 전설 9%)
 import { SKILLS } from './pokemon.js';
+import { typeName } from './types.js';
 import { PERKS } from '../game/Perks.js';
 import { LEARNSETS } from './MoveDatabase.js';
 
@@ -35,6 +39,33 @@ export const UPGRADES = {
   phantom_tongue: { skill: 'lick_shadow', name: '핥기 진화: 망령의 혀', grade: '유니크', desc: '3타 섀도볼이 커지고 적을 쫓아가며, 맞은 적을 저주한다.' },
   nightmare_orb: { skill: 'shadow_ball', name: '섀도볼 개조: 악몽의 구슬', grade: '전설', desc: '섀도볼 2개 추가, 폭발 반경 ×1.3.' }
 };
+
+// 지금 장착한 기술을 직접 키우는 스킬 강화 카드 (어떤 기술이든 · 같은 기술의 같은 갈래는 BOOST_MAX 장까지 겹친다)
+//  효과는 Player.applyBoost(시전할 때 피해 · 크기 · 분열탄) · Player.cdOf(쿨타임)에서 읽는다 (m.boost = boostTotals(m.boostCards))
+export const BOOST_MAX = 3;
+export const BOOSTS = {
+  power: { name: '위력 증폭', icon: '⚔', amt: { 레어: .25, 유니크: .4, 전설: .6 }, desc: (sk, a) => `${sk}의 피해 +${Math.round(a * 100)}%` },
+  haste: { name: '가속 회로', icon: '⏱', cdOnly: true, amt: { 레어: .15, 유니크: .22, 전설: .3 }, desc: (sk, a) => `${sk}의 쿨타임 -${Math.round(a * 100)}% (누적 최대 -60%)` },
+  wide: { name: '광역 확장', icon: '◎', amt: { 레어: .25, 유니크: .4, 전설: .6 }, desc: (sk, a) => `${sk}의 범위 · 투사체 크기 +${Math.round(a * 100)}%` },
+  split: { name: '분열탄', icon: '✺', amt: { 레어: 2, 유니크: 3, 전설: 4 }, desc: (sk, a, ty) => `${sk}를 쓸 때마다 ${typeName(ty)} 유도탄 ${a}갈래가 함께 뻗어 나간다 (피해 45%)` }
+};
+const BOOST_W = { 레어: 62, 유니크: 29, 전설: 9 };
+// 받은 스킬 강화 카드 목록 → 기술마다 누적 효과 { power, haste, wide, split, n: { 갈래: 장수 } }
+export function boostTotals(list) {
+  const out = {};
+  for (const e of list || []) {
+    if (!BOOSTS[e.bk]) continue;
+    const b = out[e.skill] || (out[e.skill] = { power: 0, haste: 0, wide: 0, split: 0, n: {} });
+    b[e.bk] += e.amt; b.n[e.bk] = (b.n[e.bk] || 0) + 1;
+  }
+  return out;
+}
+// 스킬 강화 카드 한 장의 모습 (기술머신 · 보유 카드 탭이 같은 카드 앞면으로 그린다)
+export function boostCard(e, slot) {
+  const sk = SKILLS[e.skill], B = BOOSTS[e.bk], where = slot ? `현재 ${slot.toUpperCase()}자리 ` : '';
+  return { kind: 'boost', id: `${e.owner || ''}:${e.skill}:${e.bk}`, bk: e.bk, skill: e.skill, slot, owner: e.owner, grade: e.grade, amt: e.amt, type: sk.type,
+    name: `${sk.name} 강화: ${B.name}`, desc: where + B.desc(sk.name, e.amt, sk.type), cat: '스킬 강화' };
+}
 
 // 기술머신으로 배우는 액티브 기술 45종 → 배울 수 있는 포켓몬 타입 ('*' 는 거의 모두 — 파괴광선·기가임팩트·지진·유턴)
 //  포켓몬의 타입(진화·메가로 바뀐 타입 포함) 중 하나라도 들어 있으면 그 기술 카드가 나온다 (원작 기술머신·가르침 습득 경향을 타입으로 묶었다)
@@ -115,7 +146,7 @@ const MOVE_GRADE = {
   drain_punch: '유니크', wild_charge: '유니크', body_press: '유니크', psyshock: '유니크', night_slash: '유니크'
 };
 // 특성 카드 분류 → 카드에 붙는 알약 글자 · 속성 부여 카드는 그 속성 색
-const PERK_TYPE = { u_charge: 'electric', r_burn: 'fire', r_freeze: 'ice', r_para: 'electric', r_poison: 'poison', u_curse: 'ghost', u_chain: 'electric', l_storm: 'electric', u_flame: 'fire', u_toxic: 'poison', l_hole: 'dark' };
+export const PERK_TYPE = { u_charge: 'electric', r_burn: 'fire', r_freeze: 'ice', r_para: 'electric', r_poison: 'poison', u_curse: 'ghost', u_chain: 'electric', l_storm: 'electric', u_flame: 'fire', u_toxic: 'poison', l_hole: 'dark' };
 
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 function rollGrade() {
@@ -124,29 +155,50 @@ function rollGrade() {
   return '커먼';
 }
 
-// 이 포켓몬(m)이 지금 받을 수 있는 모든 카드
-function candidates(m, types) {
-  const known = new Set([...Object.values(m.skills), ...(m.learned || [])]);   // 배웠다가 빼 둔 기술도 다시 나오지 않게
-  const own = new Set(types || m.sp.types || []);
-  const ids = learnableMoves([...own, ...(m.sp.types || [])], m.key).filter(id => !known.has(id));
-  const moves = ids.map(id => ({ kind: 'move', id, name: SKILLS[id].name, type: SKILLS[id].type, grade: moveGrade(id), desc: SKILLS[id].desc, cd: SKILLS[id].cd,
-    cat: own.has(SKILLS[id].type) ? '새 기술 · 자속성' : '새 기술 · 습득' }));
-  const ups = Object.entries(UPGRADES).filter(([id, u]) => known.has(u.skill) && !m.ups.has(id) && SKILLS[u.skill])
-    .map(([id, u]) => ({ kind: 'up', id, name: u.name, type: SKILLS[u.skill].type, grade: u.grade, desc: u.desc, skill: u.skill, cat: '기술 강화' }));
-  const perks = Object.entries(PERKS).filter(([id, pk]) => ((m.perks || {})[id] || 0) < pk.max)
-    .map(([id, pk]) => ({ kind: 'perk', id, name: pk.name, type: PERK_TYPE[id] || 'normal', grade: pk.grade, desc: pk.desc, cat: pk.cat }));
-  return { moves, ups, perks };
+// 파티 전체(p.members)가 지금 받을 수 있는 모든 카드 — 카드마다 쓸 수 있는 포켓몬 계열 키(who)를 단다
+function partyCandidates(p) {
+  const moveMap = new Map(), upMap = new Map(), boosts = [], perkWho = new Map();
+  for (const m of p.members) {
+    const types = p.typesOf(m), own = new Set(types), known = new Set([...Object.values(m.skills), ...(m.learned || [])]);   // 배웠다가 빼 둔 기술도 다시 나오지 않게
+    for (const id of learnableMoves([...own, ...(m.sp.types || [])], m.key)) {
+      if (known.has(id)) continue;
+      let c = moveMap.get(id);
+      if (!c) moveMap.set(id, c = { kind: 'move', id, name: SKILLS[id].name, type: SKILLS[id].type, grade: moveGrade(id), desc: SKILLS[id].desc, cd: SKILLS[id].cd, cat: '새 기술 · 습득', who: [] });
+      c.who.push(m.key);
+      if (own.has(SKILLS[id].type)) c.cat = '새 기술 · 자속성';
+    }
+    for (const [id, u] of Object.entries(UPGRADES)) {
+      if (!known.has(u.skill) || m.ups.has(id) || !SKILLS[u.skill]) continue;
+      let c = upMap.get(id);
+      if (!c) upMap.set(id, c = { kind: 'up', id, name: u.name, type: SKILLS[u.skill].type, grade: u.grade, desc: u.desc, skill: u.skill, cat: '기술 강화', who: [] });
+      c.who.push(m.key);
+    }
+    const have = boostTotals(m.boostCards);
+    for (const slot of ['z', 'x', 'c']) {
+      const sid = m.skills[slot], sk = SKILLS[sid];
+      if (!sk) continue;
+      for (const bk of Object.keys(BOOSTS)) {
+        if (BOOSTS[bk].cdOnly && !sk.cd) continue;   // 연타 기본기는 쿨타임이 없다
+        if (((have[sid] && have[sid].n[bk]) || 0) >= BOOST_MAX) continue;
+        boosts.push({ bk, skill: sid, slot, owner: m.key, who: [m.key], active: m === p.m });
+      }
+    }
+    for (const [id, pk] of Object.entries(PERKS)) if (((m.perks || {})[id] || 0) < pk.max) { if (!perkWho.has(id)) perkWho.set(id, []); perkWho.get(id).push(m.key); }
+  }
+  const perks = [...perkWho].map(([id, who]) => { const pk = PERKS[id]; return { kind: 'perk', id, name: pk.name, type: PERK_TYPE[id] || 'normal', grade: pk.grade, desc: pk.desc, cat: pk.cat, who }; });
+  return { moves: [...moveMap.values()], ups: [...upMap.values()], boosts, perks };
 }
 
-// 출전 중인 포켓몬 m 에게 맞는 서로 다른 카드 '반드시 3장'
-//  ① 신기술 카드 1~2장 (2장일 확률 55%) — 배울 수 있는 기술이 남아 있는 한 무조건. 등급은 대기술일수록 드물게(전설 1 : 유니크 3 : 레어 6)
-//  ② 남은 칸: 등급을 굴려 강화·특성 카드에서 하나 → 그 등급이 비면 가까운 등급부터 → 그래도 없으면 남은 기술 카드 → 숙련 카드
-//  o.floor: 이 등급보다 낮게 나오면 끌어올린다 · o.legend: 한 장은 반드시 전설 (히든 전설 정화 보상) · o.types: 지금 모습의 타입
-export function rollCards(m, o = {}) {
-  const { moves, ups, perks } = candidates(m, o.types), out = [], used = new Set(), floor = GRADES.indexOf(o.floor || '커먼');
+// 파티 p 에게 맞는 서로 다른 카드 '반드시 3장'
+//  ① 지금 가진 기술 강화 카드 2장(30% 확률로 3장) — 원작 개조(up)가 남아 있으면 30%로 그쪽, 아니면 스킬 강화(boost) · 출전 중인 포켓몬의 기술이 두 배로 잘 나온다
+//  ② 남은 칸: 60% 새 기술 카드(대기술일수록 드물게 — 전설 1 : 유니크 3 : 레어 6) · 40% 특성 카드(등급을 굴려 가까운 등급부터)
+//  ③ 그래도 모자라면 남은 아무 카드 → 숙련 카드
+//  o.floor: 이 등급보다 낮게 나오면 끌어올린다 · o.legend: 한 장은 반드시 전설 (히든 전설 정화 보상)
+export function rollCards(p, o = {}) {
+  const { moves, ups, boosts, perks } = partyCandidates(p), out = [], used = new Set(), floor = GRADES.indexOf(o.floor || '커먼');
+  const all = p.members.map(m => m.key);
   const key = c => c.kind + ':' + c.id;
   const take = list => { const c = shuffle(list.filter(q => !used.has(key(q))))[0]; if (c) { used.add(key(c)); out.push(c); } return c; };
-  const others = ups.concat(perks), all = moves.concat(others);
   const MOVE_W = { 레어: 6, 유니크: 3, 전설: 1, 커먼: 6 };
   const takeMove = () => {
     const pool = moves.filter(c => !used.has(key(c)) && GRADES.indexOf(c.grade) >= floor);
@@ -156,17 +208,40 @@ export function rollCards(m, o = {}) {
     for (const c of shuffle(list.slice())) { if ((r -= MOVE_W[c.grade]) < 0) { used.add(key(c)); out.push(c); return c; } }
     return take(list);
   };
-  if (o.legend) take(all.filter(c => c.grade === '전설'));
-  const wantMoves = Math.random() < .55 ? 2 : 1;
-  while (out.filter(c => c.kind === 'move').length < wantMoves && out.length < 3 && takeMove());
+  const boostGrade = () => {
+    let r = Math.random() * 100, g = '레어';
+    for (const gg of ['레어', '유니크', '전설']) { r -= BOOST_W[gg]; if (r < 0) { g = gg; break; } }
+    return GRADES[Math.max(GRADES.indexOf(g), floor)];
+  };
+  const takeBoost = (grade = null) => {
+    const list = boosts.filter(b => !used.has(`boost:${b.owner}:${b.skill}:${b.bk}`));
+    if (!list.length) return null;
+    let r = Math.random() * list.reduce((s, b) => s + (b.active ? 2 : 1), 0), pick = list[0];
+    for (const b of list) { if ((r -= b.active ? 2 : 1) < 0) { pick = b; break; } }
+    const g = grade || boostGrade(), c = Object.assign(boostCard({ owner: pick.owner, skill: pick.skill, bk: pick.bk, grade: g, amt: BOOSTS[pick.bk].amt[g] }, pick.slot), { who: pick.who });
+    used.add(key(c)); out.push(c);
+    return c;
+  };
+  const takeEnhance = () => {
+    const upList = ups.filter(c => !used.has(key(c)) && GRADES.indexOf(c.grade) >= floor);
+    if (upList.length && Math.random() < .3) return take(upList);
+    return takeBoost() || take(upList);
+  };
+  if (o.legend) {
+    const legendOthers = moves.concat(ups, perks).filter(c => c.grade === '전설');
+    if (!(Math.random() < .5 && takeBoost('전설'))) take(legendOthers) || takeBoost('전설');
+  }
+  const wantEnhance = Math.random() < .3 ? 3 : 2;
+  while (out.filter(c => c.kind === 'boost' || c.kind === 'up').length < wantEnhance && out.length < 3 && takeEnhance());
   while (out.length < 3) {
+    if (Math.random() < .6 && takeMove()) continue;
     const gi = Math.max(floor, GRADES.indexOf(rollGrade())), g = GRADES[gi];
     const order = [g, ...GRADES.slice(0, gi).reverse(), ...GRADES.slice(gi + 1)];   // 같은 등급 → 낮은 등급 → 높은 등급
     let got = null;
-    for (const gg of order) if ((got = take(others.filter(c => c.grade === gg)))) break;
-    if (!got && !takeMove()) break;
+    for (const gg of order) if ((got = take(perks.filter(c => c.grade === gg)))) break;
+    if (!got && !takeMove() && !takeEnhance()) break;
   }
-  for (const [id, c] of Object.entries(MASTERY)) if (out.length < 3) out.push({ kind: 'mastery', id, name: c.name, type: 'normal', grade: c.grade, desc: c.desc, cat: '숙련' });
+  for (const [id, c] of Object.entries(MASTERY)) if (out.length < 3) out.push({ kind: 'mastery', id, name: c.name, type: 'normal', grade: c.grade, desc: c.desc, cat: '숙련', who: all });
   return shuffle(out).slice(0, 3);
 }
 
@@ -180,6 +255,11 @@ export function applyCard(player, m, card, slot) {
     return `${old} → ${card.name} (${slot.toUpperCase()}) · 원래 기술은 가방 → 기술에서 다시 넣을 수 있다`;
   }
   if (card.kind === 'up') { m.ups.add(card.id); return card.name; }
+  if (card.kind === 'boost') {
+    (m.boostCards = m.boostCards || []).push({ skill: card.skill, bk: card.bk, grade: card.grade, amt: card.amt });
+    m.boost = boostTotals(m.boostCards);
+    return card.desc;
+  }
   if (card.kind === 'perk') {
     const pk = PERKS[card.id];
     m.perks = m.perks || {};

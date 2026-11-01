@@ -286,15 +286,7 @@ export class MapView {
       diamond(...P(0, 0), 3.2);
       diamond(...P(26, 4), 1.6, .6); diamond(...P(4, 26), 1.6, .6);
     }
-    const ty = 22, tx = 404;   // 제목 양옆: 가는 선 · 소용돌이 · 마름모 (제목은 왼쪽 위 탭을 피해 오른쪽에)
-    for (const s of [-1, 1]) {
-      const x0 = tx + s * 72;
-      g.lineStyle(1, 0xefeae0, .7); g.lineBetween(x0, ty, x0 + s * 34, ty);
-      curve([[x0 + s * 4, ty], [x0 + s * 12, ty - 7], [x0 + s * 22, ty - 4], [x0 + s * 26, ty]], .7);
-      curve([[x0 + s * 4, ty], [x0 + s * 12, ty + 7], [x0 + s * 22, ty + 4], [x0 + s * 26, ty]], .7);
-      spiral(x0 + s * 40, ty, 4, s > 0 ? Math.PI : 0, 1.3, s);
-      diamond(x0 + s * 2, ty, 2.4);
-    }
+    // (창 제목 장식은 없앴다 — 맨 위는 한 줄 통합 탭바 · scenes/GameMenu.js overlayChrome)
   }
 
   destroy() {

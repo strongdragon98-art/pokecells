@@ -1,14 +1,15 @@
-// 메뉴 (I · 화면 왼쪽 위 초상화): 4탭 풀스크린 — 🐾 포켓몬 · ⚔️ 기술 & 카드 · 🎒 가방 · 📖 정화 도감
-//  예전엔 가방 창 하나에 능력치·도구·기술이 엉켜 있었다 → 탭마다 한 가지 일만 (UIScene.showInv 가 이 모듈의 showInv)
+// 통합 메뉴: 화면 맨 위 한 줄 탭바 하나로 모든 창을 오간다 (예전의 [지도 / 가방 / 설정] 위 단추 + 가방 속 탭 2중 구조를 없앴다)
+//  🐾 포켓몬 · ⚔️ 스킬트리 · 🃏 보유 카드 · 🎒 가방 · 📖 도감 → 이 모듈(UIScene.showInv) / 🗺️ 지도 → UIScene.showMap / ⚙️ 설정 → UIScene.showSettings
+//  I · 왼쪽 위 초상화 → 마지막으로 본 메뉴 탭 · M → 지도 · O → 설정 · Esc 닫기 · 어느 창에서든 탭 한 번 누르면(또는 Q / E) 바로 옆 창으로
 //  꾸밈: 깊은 반투명 다크 글라스 · 금빛/청록 포인트 선 · 탭을 바꾸면 밑줄이 미끄러지고 내용이 옆에서 밀려 들어온다
-//  키보드: Q / E 탭 · 1~3 포켓몬 · ← → 고르기 · Enter 실행 · (기술 탭) Z · X · C 고른 기술을 그 자리에 · Esc 닫기
+//  키보드: Q / E 탭 · 1~3 포켓몬 · ← → 고르기 · Enter 실행 · (스킬트리) Z · X · C 고른 기술을 그 자리에 · Esc 닫기
 import Phaser from 'phaser';
 import { GAME_W, GAME_H, RES, txt } from '../config.js';
 import { SKILLS, SPECIES, TIERS, EVO_EXP, TAGS, DEX_ORDER, UNLOCKABLE, UNLOCK_KILLS } from '../data/pokemon.js';
 import { ITEMS, MAX_EQUIP } from '../data/items.js';
 import { STAGES } from '../data/stages.js';
 import { TYPES, typeName, typeColor, typeMultiplier, matchups } from '../data/types.js';
-import { UPGRADES, GRADE_STYLE } from '../data/tm.js';
+import { UPGRADES, GRADE_STYLE, GRADES, PERK_TYPE, BOOSTS, BOOST_MAX, boostCard } from '../data/tm.js';
 import { PERKS } from '../game/Perks.js';
 import { MOVE_DB } from '../data/MoveDatabase.js';
 import { usesStone, stoneName, zTypeOf, crystalName } from '../data/gear.js';
@@ -22,8 +23,13 @@ import { Settings, keyLabel, keyNameFromEvent } from '../systems/Settings.js';
 
 const ADD = Phaser.BlendModes.ADD;
 const CYAN = 0x48e5ff, PINK = 0xff6ac0;
-const TABS = [['mon', '🐾 포켓몬', 'STATUS & PARTY'], ['skill', '⚔️ 기술 & 카드', 'SKILLS & TM DECK'], ['bag', '🎒 가방', 'INVENTORY & RELICS'], ['dex', '📖 정화 도감', 'CODEX']];
-const TAB_W = 150, TAB_X = i => 16 + i * (TAB_W + 4), CY = 80, CH = 262;   // 내용 영역: y 80 ~ 342
+// 한 줄 통합 탭바 (모든 창 공통 · overlayChrome) — 앞의 다섯은 이 모듈의 메뉴 탭, 지도 · 설정은 UIScene 의 창
+export const UNI_TABS = [['mon', '🐾 포켓몬', 'PARTY'], ['skill', '⚔️ 스킬트리', 'SKILLS'], ['cards', '🃏 보유 카드', 'CARDS'], ['bag', '🎒 가방', 'BAG'], ['dex', '📖 도감', 'CODEX'], ['map', '🗺️ 지도', 'MAP'], ['settings', '⚙️ 설정', 'OPTIONS']];
+const INV_TABS = new Set(['mon', 'skill', 'cards', 'bag', 'dex']);
+const TAB_SUB = { mon: 'STATUS & PARTY', skill: 'SKILL TREE & DECK', cards: 'TM CARD COLLECTION', bag: 'INVENTORY & RELICS', dex: 'PURIFICATION CODEX' };
+const UW = 76, UX = i => 6 + i * (UW + 3);   // 탭 7개 + 닫기 (6 ~ 634)
+const CY = 80, CH = 262;   // 내용 영역: y 80 ~ 342
+const CARD_W = 150, CARD_H = 200;   // 기술머신 카드 원본 크기 (UIScene.tmFace) — 보유 카드 탭은 이걸 줄여서 그대로 그린다
 const BAG_FILTERS = [['all', '전체'], ['use', '소비'], ['tool', '도구'], ['stone', '메가스톤'], ['crystal', 'Z크리스탈']];
 
 // 육각 소켓 (장착 칸)
@@ -50,38 +56,70 @@ export const GameMenu = {
     if (sel !== undefined) this.menuSel = sel;
     this.menuChrome(L, g, tab, prev);
     const C = this.add.container(0, 0); L.add(C);
-    ({ mon: this.menuMon, skill: this.menuSkill, bag: this.menuBag, dex: this.menuDex })[tab].call(this, C, g, p);
+    ({ mon: this.menuMon, skill: this.menuSkill, cards: this.menuCards, bag: this.menuBag, dex: this.menuDex })[tab].call(this, C, g, p);
     if (prev && prev !== tab) {   // 탭 슬라이드: 내용이 옆에서 밀려 들어온다
-      const dir = TABS.findIndex(t => t[0] === tab) > TABS.findIndex(t => t[0] === prev) ? 1 : -1;
+      const ix = id => UNI_TABS.findIndex(t => t[0] === id), dir = ix(tab) > ix(prev) ? 1 : -1;
       C.x = dir * 22; C.alpha = 0;
       this.tweens.add({ targets: C, x: 0, alpha: 1, duration: 240, ease: 'Cubic.easeOut' });
     }
-    if (!this.touch.visible) L.add(hkText(this, 320, 353, `Q / E 탭  ·  1~3 포켓몬  ·  ← → 고르기  ·  Enter 실행${tab === 'skill' ? `  ·  ${keyLabel(Settings.key('z'))} · ${keyLabel(Settings.key('x'))} · ${keyLabel(Settings.key('c'))} 기술 자리` : ''}  ·  ${keyLabel(Settings.key('bag'))} · Esc 닫기`, 7.5, HK.faint, { origin: .5 }));
+    if (!this.touch.visible) L.add(hkText(this, 320, 353, `Q / E 탭  ·  1~3 포켓몬  ·  ← → 고르기  ·  Enter 실행${tab === 'cards' ? '  ·  카드에 마우스를 올리면 크게' : ''}${tab === 'skill' ? `  ·  ${keyLabel(Settings.key('z'))} · ${keyLabel(Settings.key('x'))} · ${keyLabel(Settings.key('c'))} 기술 자리` : ''}  ·  ${keyLabel(Settings.key('bag'))} · Esc 닫기`, 7.5, HK.faint, { origin: .5 }));
     this.input.keyboard.on('keydown', this.onOverlayKey, this);
     this.overlayMode = 'inv';
   },
 
-  // ---------------- 바탕 · 탭 ----------------
+  // ---------------- 통합 탭바 (모든 창 공통) ----------------
+  //  메뉴 · 지도 · 설정 어디서든 같은 모양의 한 줄 탭 7개 + 닫기. 누르면 그 창으로 바로 (지도 · 설정은 GameScene.toggleOverlay 로 창을 바꾼다)
+  overlayChrome(L, kind) {
+    const g = this.gOver, cur = kind === 'inv' ? (this.menuTab || 'mon') : kind, prev = this.uniPrev && UNI_TABS.some(t => t[0] === this.uniPrev) ? this.uniPrev : cur, keys = !this.touch.visible;
+    this.uniPrev = cur;
+    g.fillGradientStyle(0x0a0818, 0x0a0818, 0x04030a, 0x04030a, .85, .85, .3, .3); g.fillRect(0, 0, GAME_W, 40);
+    UNI_TABS.forEach(([id, label, en], i) => {
+      const x = UX(i), on = id === cur;
+      glassPanel(g, x, 5, UW, 30, { r: 7, fill: on ? 0x1e1a34 : 0x0c0b16, border: on ? HK.goldN : HK.ivoryN, borderAlpha: on ? .75 : .18, alpha: .95 });
+      L.add(fitText(hkText(this, x + UW / 2, 15, label, 9, on ? HK.ivory : HK.dim, { bold: on, origin: .5, glow: on, ls: 0 }), UW - 6));
+      const hot = keys && { map: 'map', settings: 'settings' }[id] ? `${en} · ${keyLabel(Settings.key(id))}` : keys && id === 'mon' ? `${en} · ${keyLabel(Settings.key('bag'))}` : en;
+      L.add(fitText(hkText(this, x + UW / 2, 28, hot, 5.5, on ? HK.gold : HK.faint, { origin: .5, ls: 1 }), UW - 8));
+      const z = this.add.zone(x, 5, UW, 30).setOrigin(0).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', () => this.menuJump(id));
+      L.add(z);
+    });
+    // 밑줄: 지난 탭 자리에서 미끄러져 온다
+    const ti = UNI_TABS.findIndex(t => t[0] === cur), pi = UNI_TABS.findIndex(t => t[0] === prev);
+    const ul = this.add.rectangle(UX(pi) + 10, 36, UW - 20, 2, HK.goldN).setOrigin(0, .5);
+    const ug = this.add.image(UX(pi) + UW / 2, 36, 'glow').setBlendMode(ADD).setTint(CYAN).setScale(1, .1).setAlpha(.8);
+    L.add([ug, ul]);
+    if (pi !== ti) { this.tweens.add({ targets: ul, x: UX(ti) + 10, duration: 260, ease: 'Cubic.easeOut' }); this.tweens.add({ targets: ug, x: UX(ti) + UW / 2, duration: 260, ease: 'Cubic.easeOut' }); }
+    glassButton(this, UX(7), 5, GAME_W - 6 - UX(7), 30, keys ? '✕  Esc' : '✕  닫기', () => this.gs.toggleOverlay(kind), { size: 9.5, bold: true, ls: 0, layer: L });
+  },
+  // 탭바에서 고른 창으로: 메뉴 탭끼리는 내용만 바꾸고, 지도 · 설정 ↔ 메뉴는 창을 바꾼다
+  menuJump(id) {
+    const gs = this.gs, cur = this.overlayMode === 'inv' ? (this.menuTab || 'mon') : this.overlayMode;
+    if (id === cur) return;
+    if (INV_TABS.has(id)) {
+      if (this.overlayMode === 'inv') { this.menuGo(id); return; }
+      this.menuTab = id; Sfx.play('select'); gs.toggleOverlay('inv');
+      return;
+    }
+    Sfx.play('select'); gs.toggleOverlay(id);
+  },
+  // Q / E: 탭바를 왼쪽 · 오른쪽으로 한 칸 (메뉴 · 지도 · 설정 모두)
+  menuCycle(dir) {
+    const ids = UNI_TABS.map(t => t[0]), cur = this.overlayMode === 'inv' ? (this.menuTab || 'mon') : this.overlayMode, i = ids.indexOf(cur);
+    if (i < 0) return;
+    this.menuJump(ids[(i + dir + ids.length) % ids.length]);
+  },
+
+  // ---------------- 메뉴 바탕 · 탭 제목 ----------------
   menuChrome(L, g, tab, prev) {
     g.fillStyle(0x04030a, .95); g.fillRect(0, 0, GAME_W, GAME_H);
     g.fillGradientStyle(0x1c1636, 0x0e1a2a, 0x04030a, 0x04030a, .7, .7, 0, 0); g.fillRect(0, 0, GAME_W, 96);   // 위에서 번지는 남보라 · 청록 빛
     g.fillGradientStyle(0x04030a, 0x04030a, 0x120e22, 0x0a1620, 0, 0, .6, .6); g.fillRect(0, GAME_H - 70, GAME_W, 70);
     this.overlayChrome(L, 'inv');
-    TABS.forEach(([id, label, en], i) => {
-      const x = TAB_X(i), on = id === tab;
-      glassPanel(g, x, 40, TAB_W, 32, { r: 8, fill: on ? 0x1e1a34 : 0x0c0b16, border: on ? HK.goldN : HK.ivoryN, borderAlpha: on ? .7 : .18, alpha: .95 });
-      L.add(hkText(this, x + TAB_W / 2, 50, label, 10.5, on ? HK.ivory : HK.dim, { bold: on, origin: .5, glow: on }));
-      L.add(hkText(this, x + TAB_W / 2, 64, en, 6.5, on ? HK.gold : HK.faint, { origin: .5, ls: 1.5 }));
-      const z = this.add.zone(x, 40, TAB_W, 32).setOrigin(0).setInteractive({ useHandCursor: true });
-      z.on('pointerdown', () => this.menuGo(id));
-      L.add(z);
-    });
-    // 밑줄: 지난 탭 자리에서 미끄러져 온다
-    const ti = TABS.findIndex(t => t[0] === tab), pi = prev ? TABS.findIndex(t => t[0] === prev) : ti;
-    const ul = this.add.rectangle(TAB_X(pi) + 14, 73, TAB_W - 28, 2, HK.goldN).setOrigin(0, .5);
-    const ug = this.add.image(TAB_X(pi) + TAB_W / 2, 73, 'glow').setBlendMode(ADD).setTint(CYAN).setScale(1.6, .12).setAlpha(.8);
-    L.add([ug, ul]);
-    if (pi !== ti) { this.tweens.add({ targets: ul, x: TAB_X(ti) + 14, duration: 260, ease: 'Cubic.easeOut' }); this.tweens.add({ targets: ug, x: TAB_X(ti) + TAB_W / 2, duration: 260, ease: 'Cubic.easeOut' }); }
+    // 탭 제목 (아이콘 + 이름 + 영문 부제) · 금빛 → 청록 포인트 선
+    const T = UNI_TABS.find(t => t[0] === tab), title = hkText(this, 18, 57, T[1], 13, HK.ivory, { bold: true, origin: [0, .5], glow: true, ls: 0 });
+    L.add(title);
+    L.add(hkText(this, 28 + title.width, 59, TAB_SUB[tab], 7, HK.gold, { origin: [0, .5], ls: 2.5 }));
+    accent(g, 16, 72, GAME_W - 32, .35);
   },
   menuGo(tab) {
     if (tab === this.menuTab) return;
@@ -289,29 +327,24 @@ export const GameMenu = {
       });
     } else C.add(hkText(this, RX + 12, by + 12, '왼쪽 Z · X · C 나 배운 기술을 누르면 자리를 바꿀 수 있어요', 7.5, HK.faint, { origin: [0, .5] }));
 
-    // ── 오른쪽 아래: 기술머신 카드 덱 (특성 카드 · 기술 강화 · 등급 카드로 배운 기술)
-    const cards = [
-      ...Object.keys(m.perks || {}).filter(k => PERKS[k]).map(k => ({ grade: PERKS[k].grade, name: PERKS[k].name, desc: PERKS[k].desc, n: m.perks[k] })),
-      ...[...m.ups].filter(u => UPGRADES[u]).map(u => ({ grade: UPGRADES[u].grade || '레어', name: UPGRADES[u].name, desc: UPGRADES[u].desc || '' })),
-      ...Object.entries(m.cardGrade || {}).filter(([id]) => SKILLS[id]).map(([id, gr]) => ({ grade: gr, name: `기술: ${SKILLS[id].name}`, desc: SKILLS[id].desc, skill: id }))];
-    const dy = CY + 174;
-    C.add(hkText(this, RX + 12, dy, `기술머신 카드 덱 ${cards.length}`, 9.5, HK.gold, { bold: true, ls: 1, origin: [0, .5] }));
-    accent(g, RX + 12, dy + 10, 160);
-    if (!cards.length) C.add(hkText(this, RX + RW / 2, dy + 46, '아직 카드가 없어요\n기술머신 캡슐에서 카드를 뽑아 보세요', 8, HK.faint, { origin: .5, style: { align: 'center', lineSpacing: 3 } }));
-    cards.slice(0, 8).forEach((c, k) => {
-      const x = RX + 10 + (k % 4) * 72, y = dy + 16 + Math.floor(k / 4) * 38, st = GRADE_STYLE[c.grade] || GRADE_STYLE['커먼'];
-      const b0 = parseInt(st.border[0].slice(1), 16), bg = parseInt(st.bg[0].slice(1), 16);
-      g.fillStyle(bg, 1); g.fillRoundedRect(x, y, 68, 34, 4);
-      g.fillGradientStyle(b0, parseInt(st.border[1].slice(1), 16), bg, bg, .35, .35, 0, 0); g.fillRect(x + 1, y + 1, 66, 12);
-      g.lineStyle(1.2, b0, .95); g.strokeRoundedRect(x, y, 68, 34, 4);
-      C.add(hkText(this, x + 4, y + 6, st.en, 5.5, st.border[0], { bold: true, ls: 1, origin: [0, .5] }));
-      C.add(hkText(this, x + 4, y + 21, c.name.split(': ').pop(), 7, HK.ivory, { bold: true, style: { wordWrap: { width: 60, useAdvancedWrap: true }, maxLines: 2 }, origin: [0, .5] }));
-      if (c.n > 1) C.add(hkText(this, x + 64, y + 6, `×${c.n}`, 6.5, HK.gold, { origin: [1, .5] }));
-      const z = this.add.zone(x, y, 68, 34).setOrigin(0).setInteractive({ useHandCursor: true });
-      this.tipOn(z, c.skill ? SKILLS[c.skill].type : 'normal', `${c.name} — ${c.desc}`.slice(0, 60), x + 34, y);
+    // ── 오른쪽 아래: 기술머신 카드 덱 — 뽑을 때 본 원본 카드 그대로 (작게) · 올리면 커지고 누르면 보유 카드 탭에서 자세히
+    const owned = this.ownedCards(p).filter(c => c.mi === this.invMember), dy = CY + 174;
+    C.add(hkText(this, RX + 12, dy, `카드 덱 ${owned.length}`, 9.5, HK.gold, { bold: true, ls: 1, origin: [0, .5] }));
+    accent(g, RX + 12, dy + 10, 120);
+    glassButton(this, RX + RW - 104, dy - 8, 94, 16, '🃏 전체 보기  →', () => { this.cardFilter = this.invMember; this.cardSel = 0; this.cardPage = 0; this.menuGo('cards'); }, { size: 7.5, bold: true, ls: 0, layer: C, primary: owned.length > 0 });
+    if (!owned.length) C.add(hkText(this, RX + RW / 2, dy + 46, '아직 카드가 없어요\n기술머신 캡슐에서 카드를 뽑아 보세요', 8, HK.faint, { origin: .5, style: { align: 'center', lineSpacing: 3 } }));
+    this.tmTextures(CARD_W, CARD_H);
+    const SC = .34;
+    owned.slice(0, 5).forEach((c, k) => {
+      const x = RX + 12 + CARD_W * SC / 2 + k * 57, y = dy + 14 + CARD_H * SC / 2;
+      const card = this.cardView(C, c, x, y, SC);
+      const z = this.add.zone(x, y, CARD_W * SC, CARD_H * SC).setInteractive({ useHandCursor: true });
+      z.on('pointerover', () => { C.bringToTop(card); this.tweens.add({ targets: card, scale: SC * 1.35, y: y - 14, duration: 140, ease: 'Quad.easeOut' }); });
+      z.on('pointerout', () => this.tweens.add({ targets: card, scale: SC, y, duration: 140 }));
+      z.on('pointerdown', () => { this.cardFilter = this.invMember; this.cardSel = k; this.cardPage = 0; this.menuGo('cards'); });
       C.add(z);
     });
-    if (cards.length > 8) C.add(hkText(this, RX + RW - 10, dy, `+${cards.length - 8}`, 8, HK.dim, { origin: [1, .5] }));
+    if (owned.length > 5) C.add(hkText(this, RX + RW - 12, dy + 50, `+${owned.length - 5}`, 9, HK.dim, { origin: [1, .5], bold: true }));
   },
   menuSetSkill(slot) {
     const sel = this.menuSel || {}, p = this.gs.player, m = p.members[this.invMember];
@@ -319,6 +352,107 @@ export const GameMenu = {
     if (!p.setSkill(m, sel.skill, slot)) { Sfx.play('deny'); if (!SKILLS[sel.skill].cd && slot !== 'z') this.toast('연타 기술은 Z 자리 전용이에요'); return; }
     Sfx.play('item');
     this.showInv({ skill: sel.skill });
+  },
+
+  // ================= 🃏 보유 카드: 기술머신에서 뽑은 카드를 원본 카드 모습 그대로 =================
+  //  등급별 테두리 · 광택 · 아이콘 · 이름 · 효과 · 중첩(×n) · 누가 쓰는지(초상화) — 5 × 2 격자(쪽 넘김) + 오른쪽 상세(크게 · 누적 수치)
+  //  마우스를 올리면 카드가 살짝 커지며 상세가 바뀌고, 누르면(터치) 그 카드를 고정해 본다
+  ownedCards(p) {
+    const out = [], rank = g => GRADES.indexOf(g);
+    p.members.forEach((m, mi) => {
+      for (const [k, n] of Object.entries(m.perks || {})) if (PERKS[k] && n > 0) { const pk = PERKS[k]; out.push({ mi, m, n, card: { kind: 'perk', id: k, name: pk.name, grade: pk.grade, desc: pk.desc, cat: pk.cat, type: PERK_TYPE[k] || 'normal' } }); }
+      for (const u of m.ups || []) if (UPGRADES[u] && SKILLS[UPGRADES[u].skill]) { const U = UPGRADES[u]; out.push({ mi, m, n: 1, card: { kind: 'up', id: u, name: U.name, grade: U.grade || '레어', desc: U.desc, skill: U.skill, type: SKILLS[U.skill].type, cat: '기술 강화' } }); }
+      for (const [id, gr] of Object.entries(m.cardGrade || {})) if (SKILLS[id]) out.push({ mi, m, n: 1, card: { kind: 'move', id, name: SKILLS[id].name, grade: gr, desc: SKILLS[id].desc, type: SKILLS[id].type, cd: SKILLS[id].cd, cat: '기술 카드' } });
+      const groups = new Map();   // 스킬 강화 카드: 같은 기술 · 같은 갈래는 한 장으로 겹쳐 (등급은 가장 높은 것)
+      for (const e of m.boostCards || []) {
+        if (!BOOSTS[e.bk] || !SKILLS[e.skill]) continue;
+        const k = e.skill + ':' + e.bk, q = groups.get(k) || { skill: e.skill, bk: e.bk, grade: e.grade, amt: 0, n: 0 };
+        q.amt += e.amt; q.n++; if (rank(e.grade) > rank(q.grade)) q.grade = e.grade;
+        groups.set(k, q);
+      }
+      for (const q of groups.values()) {
+        const slot = ['z', 'x', 'c'].find(s => m.skills[s] === q.skill);
+        out.push({ mi, m, n: q.n, boost: q, card: boostCard({ owner: m.key, skill: q.skill, bk: q.bk, grade: q.grade, amt: q.bk === 'haste' ? Math.min(.6, q.amt) : q.amt }, slot) });
+      }
+    });
+    return out.sort((a, b) => rank(b.card.grade) - rank(a.card.grade) || a.mi - b.mi);
+  },
+  // 원본 카드 한 장 (기술머신 앞면 그대로) + 중첩 배지 + 주인 초상화 — 컨테이너를 돌려준다 (scale 로 크기)
+  cardView(C, c, x, y, sc) {
+    const p = this.gs.player, ct = this.add.container(x, y).setScale(sc), face = this.add.container(0, 0);
+    ct.add(face);
+    this.tmFace(face, c.card, c.m, CARD_W, CARD_H, false, { foot: `적용 중: ${p.formName(c.m)}` });
+    if (c.n > 1) {
+      ct.add(this.add.circle(CARD_W / 2 - 16, -CARD_H / 2 + 26, 13, 0x1a1008, .95).setStrokeStyle(1.6, HK.goldN, 1));
+      ct.add(hkText(this, CARD_W / 2 - 16, -CARD_H / 2 + 26, `×${c.n}`, 11, HK.gold, { bold: true, origin: .5 }));
+    }
+    ct.add(this.add.image(-CARD_W / 2 + 18, -CARD_H / 2 + 48, roundPortrait(this, p.portraitKey(c.m))).setScale(.5));
+    C.add(ct);
+    return ct;
+  },
+  // 카드 상세 수치 (오른쪽 패널 글)
+  cardDetail(c) {
+    const p = this.gs.player, card = c.card, lines = [];
+    if (card.kind === 'boost') {
+      const B = BOOSTS[card.bk], q = c.boost, tot = q.bk === 'power' || q.bk === 'wide' ? `+${Math.round(q.amt * 100)}%` : q.bk === 'haste' ? `-${Math.round(Math.min(.6, q.amt) * 100)}%` : `${Math.round(q.amt)}갈래`;
+      lines.push(`${B.icon} ${B.name}  ${c.n} / ${BOOST_MAX}장`, `누적 효과: ${SKILLS[card.skill].name} ${tot}`, card.slot ? `지금 ${card.slot.toUpperCase()} 자리에 장착 중` : '지금은 Z·X·C 에 없다 (다시 달면 효과가 살아난다)');
+    } else if (card.kind === 'perk') lines.push(`특성 카드 · ${card.cat}`, `중첩 ${c.n} / 최대 ${PERKS[card.id].max}`);
+    else if (card.kind === 'up') lines.push('원작 개조 · 기술 강화', `대상 기술: ${SKILLS[card.skill].name}`);
+    else {
+      const power = MOVE_DB[card.id] && MOVE_DB[card.id].power, slot = ['z', 'x', 'c'].find(s => c.m.skills[s] === card.id);
+      lines.push(`${card.grade} 기술 카드로 배운 기술`, `${power ? `위력 ${power} · ` : ''}재사용 ${card.cd ? `${Math.round(p.cdOf(card.id, c.m) * 10) / 10}초` : '없음(연타)'}`, slot ? `지금 ${slot.toUpperCase()} 자리에 장착 중` : '배운 기술 목록에 있다 (스킬트리에서 장착)');
+      if (card.grade === '유니크' || card.grade === '전설') lines.push(card.grade === '전설' ? '전설 시전 연출: 컷인 + 초대형 마무리' : '유니크 시전 연출: 마법진 · 크기 ×2');
+    }
+    return lines;
+  },
+  menuCards(C, g, p) {
+    this.tmTextures(CARD_W, CARD_H);
+    const all = this.ownedCards(p), filter = this.cardFilter != null && this.cardFilter < p.members.length ? this.cardFilter : -1;
+    const list = all.filter(c => filter < 0 || c.mi === filter), PER = 10, pages = Math.max(1, Math.ceil(list.length / PER));
+    this.menuList = list;
+    this.cardSel = Phaser.Math.Clamp(this.cardSel || 0, 0, Math.max(0, list.length - 1));
+    this.cardPage = Phaser.Math.Clamp(Math.floor(this.cardSel / PER), 0, pages - 1);
+    // 주인 고르기: 전체 · 1 · 2 · 3
+    [[-1, `전체 ${all.length}`], ...p.members.map((m, i) => [i, `${i + 1} ${p.formName(m)} ${all.filter(c => c.mi === i).length}`])].forEach(([v, label], k) => {
+      glassButton(this, 16 + k * 106, CY, 102, 20, label, () => { if (this.cardFilter !== v) { this.cardFilter = v; this.cardSel = 0; Sfx.play('select'); this.showInv(null); } }, { size: 8, bold: true, ls: 0, layer: C, primary: filter === v });
+    });
+    // 오른쪽 상세 패널
+    const DX = 452, DW = 172;
+    glassPanel(g, DX, CY, DW, CH, { alpha: .92, border: CYAN, borderAlpha: .2 });
+    const D = this.add.container(0, 0); C.add(D);
+    const detail = i => {
+      D.removeAll(true);
+      const c = list[i];
+      if (!c) { D.add(hkText(this, DX + DW / 2, CY + CH / 2, '기술머신 캡슐에서\n카드를 뽑으면\n여기에 모여요', 9, HK.faint, { origin: .5, style: { align: 'center', lineSpacing: 5 } })); return; }
+      const st = GRADE_STYLE[c.card.grade] || GRADE_STYLE['커먼'];
+      D.add(this.add.image(DX + DW / 2, CY + 74, 'glow').setBlendMode(ADD).setTint(st.glow).setScale(1.6, 2).setAlpha(.3));
+      this.cardView(D, c, DX + DW / 2, CY + 74, .66);
+      D.add(fitText(hkText(this, DX + DW / 2, CY + 150, `${p.formName(c.m)} · ${c.card.grade}`, 9, st.border[0], { bold: true, origin: .5 }), DW - 16));
+      D.add(hkText(this, DX + 10, CY + 162, this.cardDetail(c).join('\n'), 7.5, HK.ivory, { style: { wordWrap: { width: DW - 20, useAdvancedWrap: true }, lineSpacing: 3, maxLines: 6 } }));
+      D.add(hkText(this, DX + 10, CY + 222, c.card.desc, 7, HK.dim, { style: { wordWrap: { width: DW - 20, useAdvancedWrap: true }, lineSpacing: 1, maxLines: 4 } }));
+    };
+    // 카드 격자 5 × 2
+    const SC = .5, cw = CARD_W * SC, ch = CARD_H * SC, GX = 16, GY = CY + 26;
+    if (!list.length) C.add(hkText(this, 226, CY + 130, '아직 모은 카드가 없어요\n맵 샛길 끝의 기술머신 캡슐에서 카드를 뽑아 보세요', 9, HK.faint, { origin: .5, style: { align: 'center', lineSpacing: 5 } }));
+    list.slice(this.cardPage * PER, this.cardPage * PER + PER).forEach((c, k) => {
+      const idx = this.cardPage * PER + k, x = GX + cw / 2 + (k % 5) * (cw + 11), y = GY + ch / 2 + Math.floor(k / 5) * (ch + 8);
+      if (idx === this.cardSel) { const st = GRADE_STYLE[c.card.grade] || GRADE_STYLE['커먼']; C.add(this.add.image(x, y, 'glow').setBlendMode(ADD).setTint(st.glow).setScale(1.1, 1.4).setAlpha(.45)); }
+      const card = this.cardView(C, c, x, y, SC);
+      if (idx === this.cardSel) { const fr = this.add.graphics(); fr.lineStyle(1.5, HK.goldN, .95); fr.strokeRoundedRect(x - cw / 2 - 3, y - ch / 2 - 3, cw + 6, ch + 6, 7); C.add(fr); }
+      const z = this.add.zone(x, y, cw, ch).setInteractive({ useHandCursor: true });
+      z.on('pointerover', () => { C.bringToTop(card); this.tweens.add({ targets: card, scale: SC * 1.18, duration: 130, ease: 'Quad.easeOut' }); detail(idx); });
+      z.on('pointerout', () => { this.tweens.add({ targets: card, scale: SC, duration: 130 }); detail(this.cardSel); });
+      z.on('pointerdown', () => { if (this.cardSel !== idx) { this.cardSel = idx; Sfx.play('select'); this.showInv(null); } });
+      C.add(z);
+    });
+    // 쪽 넘김
+    if (pages > 1) {
+      const py = CY + CH - 10;
+      glassButton(this, GX, py - 9, 40, 18, '◀', () => { this.cardSel = Math.max(0, (this.cardPage - 1) * PER); Sfx.play('select'); this.showInv(null); }, { size: 9, layer: C, ls: 0 }).setEnabled(this.cardPage > 0);
+      glassButton(this, GX + 5 * (cw + 11) - 51, py - 9, 40, 18, '▶', () => { this.cardSel = Math.min(list.length - 1, (this.cardPage + 1) * PER); Sfx.play('select'); this.showInv(null); }, { size: 9, layer: C, ls: 0 }).setEnabled(this.cardPage < pages - 1);
+      C.add(hkText(this, GX + (5 * (cw + 11) - 11) / 2, py, `${this.cardPage + 1} / ${pages}`, 8, HK.dim, { origin: .5 }));
+    }
+    detail(this.cardSel);
   },
 
   // ================= 🎒 가방: 필터 · 격자 · 상세 =================
@@ -470,10 +604,21 @@ export const GameMenu = {
 
   // ---------------- 키보드 ----------------
   menuKey(e) {
-    const p = this.gs.player, n = p.members.length, tab = this.menuTab || 'mon', ti = TABS.findIndex(t => t[0] === tab);
-    if (e.code === 'KeyQ' || e.code === 'KeyE') { this.menuGo(TABS[(ti + (e.code === 'KeyE' ? 1 : TABS.length - 1)) % TABS.length][0]); return; }
-    if (/^(Digit|Numpad)[1-3]$/.test(e.code) && tab !== 'dex') { const k = +e.code.slice(-1) - 1; if (k < n && k !== this.invMember) { Sfx.play('select'); this.invMember = k; this.showInv(null); } return; }
+    const p = this.gs.player, n = p.members.length, tab = this.menuTab || 'mon';
+    if (e.code === 'KeyQ' || e.code === 'KeyE') { this.menuCycle(e.code === 'KeyE' ? 1 : -1); return; }
+    if (/^(Digit|Numpad)[1-3]$/.test(e.code) && tab !== 'dex') {
+      const k = +e.code.slice(-1) - 1;
+      if (tab === 'cards') { if (k < n && this.cardFilter !== k) { Sfx.play('select'); this.cardFilter = k; this.cardSel = 0; this.showInv(null); } return; }
+      if (k < n && k !== this.invMember) { Sfx.play('select'); this.invMember = k; this.showInv(null); }
+      return;
+    }
     const step = e.code === 'ArrowRight' || e.code === 'ArrowDown' ? 1 : e.code === 'ArrowLeft' || e.code === 'ArrowUp' ? -1 : 0;
+    if (tab === 'cards') {
+      const len = (this.menuList || []).length;
+      if (e.code === 'Digit0' || e.code === 'Backquote') { this.cardFilter = -1; this.cardSel = 0; Sfx.play('select'); this.showInv(null); return; }
+      if (step && len) { this.cardSel = ((this.cardSel || 0) + (e.code === 'ArrowDown' || e.code === 'ArrowUp' ? step * 5 : step) + len) % len; Sfx.play('select'); this.showInv(null); }
+      return;
+    }
     if (tab === 'mon') {
       const ids = ['g0', 'g1', 'stone', 'crystal'], i = ids.indexOf((this.menuSel || {}).socket);
       if (step) { Sfx.play('select'); this.showInv({ socket: ids[(i + step + ids.length) % ids.length] }); }

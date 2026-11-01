@@ -36,7 +36,7 @@ import { Music } from '../systems/Music.js';
 import { Settings, keyLabel } from '../systems/Settings.js';
 import { Save } from '../systems/Save.js';
 import { RunSave, seeded, newSeed, snapshotWorld, applyWorld, snapshotPlayer, restorePlayer } from '../systems/RunSave.js';
-import { itemArt, shade } from '../systems/Textures.js';
+import { itemArt, shade, TILE_MARGIN, TILE_SPACING } from '../systems/Textures.js';
 import { rollCards, applyCard } from '../data/tm.js';
 import { onKill as perkKill } from '../game/Perks.js';
 
@@ -240,7 +240,7 @@ export default class GameScene extends Phaser.Scene {
     this.layers = [];
     for (const r of level.rooms) {
       const map = this.make.tilemap({ data: level.data.slice(r.Y0, r.Y1).map(row => row.slice(r.X0, r.X1)), tileWidth: TILE, tileHeight: TILE });
-      const ts = map.addTilesetImage(tsKey, tsKey, TILE, TILE, 0, 0);
+      const ts = map.addTilesetImage(tsKey, tsKey, TILE, TILE, TILE_MARGIN, TILE_SPACING);   // 테두리를 복제해 둔 타일셋 (하얀 실선 방지 — systems/Textures.js)
       const layer = map.createLayer(0, ts, r.X0 * TILE, r.Y0 * TILE).setDepth(10);
       layer.forEachTile(t => {
         if (PLAT_SET.has(t.index)) t.setCollision(false, false, true, false);   // 통과 발판: 위에서만 밟힌다
@@ -999,7 +999,7 @@ export default class GameScene extends Phaser.Scene {
   //  처음 가동하면 캡슐이 증기와 빛을 뿜으며 열린 뒤(Props.openTM) 카드 화면으로
   openTM(it) {
     if (this.tmOpening) return;
-    if (!it.cards) { it.member = this.player.m; it.cards = rollCards(it.member, { types: this.player.typesOf(it.member) }); it.flipped = [false, false, false]; it.sel = -1; }
+    if (!it.cards) { it.member = this.player.m; it.cards = rollCards(this.player); it.flipped = [false, false, false]; it.sel = -1; }   // 파티 전체에게 맞춘 카드 (data/tm.js)
     this.tmOpening = true;
     this.player.b.setVelocityX(0);
     this.props.openTM(it, () => {
@@ -1010,11 +1010,11 @@ export default class GameScene extends Phaser.Scene {
       Sfx.play('mega');
     });
   }
-  // 카드 i 확정 (기술 습득 카드는 바꿀 슬롯 z·x·c 와 함께)
-  finishTM(i, slot) {
+  // 카드 i 확정 (기술 습득 카드는 바꿀 슬롯 z·x·c 와 함께) · target: 적용할 파티 포켓몬의 계열 키 (출전 여부 무관)
+  finishTM(i, slot, target) {
     const it = this.tmActive, p = this.player;
     if (!it || it.used) return;
-    const card = it.cards[i], m = it.member, msg = applyCard(p, m, card, slot);
+    const card = it.cards[i], m = p.members.find(q => q.key === target) || it.member || p.m, msg = applyCard(p, m, card, slot);
     if (it.legend) it.used = true; else this.props.markUsed(it);   // 히든 전설 보상 카드는 제단이 없다
     this.tmActive = null;
     this.toggleOverlay('tm');
@@ -2110,7 +2110,7 @@ export default class GameScene extends Phaser.Scene {
   openLegendCards() {
     if (this.over || this.transitioning || this.overlay) { this.time.delayedCall(800, () => this.openLegendCards()); return; }
     const m = this.player.m;   // 히든 전설 보상: 유니크 이상 · 한 장은 반드시 전설
-    const it = { kind: 'tm', legend: true, used: false, member: m, cards: rollCards(m, { floor: '유니크', legend: true, types: this.player.typesOf(m) }), flipped: [false, false, false], sel: -1 };
+    const it = { kind: 'tm', legend: true, used: false, member: m, cards: rollCards(this.player, { floor: '유니크', legend: true }), flipped: [false, false, false], sel: -1 };
     this.tmActive = it;
     this.toggleOverlay('tm');
     Sfx.play('mega');

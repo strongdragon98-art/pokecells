@@ -101,7 +101,7 @@ export class Player extends Actor {
     const sp = SPECIES[k];
     return {
       key: k, sp, maxhp: sp.hp, hp: sp.hp, cd: { z: 0, x: 0, c: 0, r: 0 }, alive: true, cardGrade: {},   // r: 메가 필살기 쿨타임 · cardGrade: 기술 카드로 배운 기술의 등급
-      tier: 0, exp: 0, mega: false, megaPick: 0, items: {}, perks: {}, mods: computeMods({}, {}),   // perks: 기술머신 특성 카드 (game/Perks.js)
+      tier: 0, exp: 0, mega: false, megaPick: 0, items: {}, perks: {}, mods: computeMods({}, {}), boostCards: [], boost: {},   // boostCards: 스킬 강화 카드 (data/tm.js BOOSTS)   // perks: 기술머신 특성 카드 (game/Perks.js)
       skills: { ...(sp.evo[0].skills || sp.skills) }, ups: new Set(), atkBonus: 1, cdBonus: 1,   // 기술머신: 바꿔 단 기술 · 받은 강화 카드 · 숙련 보너스
       learned: Object.values(sp.evo[0].skills || sp.skills),   // 배운 기술 전부 (가방 → 기술에서 Z·X·C 자리에 골라 넣는다)
       chargeType: null,   // 차징 샷·내려찍기 속성 (듀얼 타입은 가방에서 두 속성 중 고른다 · null 이면 첫 속성)
@@ -125,7 +125,7 @@ export class Player extends Actor {
   get atk() {
     const md = this.mods, sl = this.action && this.action.slot, m = this.m;
     const slotMul = sl === 'z' ? md.bandMul : sl === 'x' || sl === 'c' ? md.specsMul : 1, rage = md.berserk && m.hp <= m.maxhp * .5 ? 1 + md.berserk : 1;
-    return this.sp.atk * this.T.atk * (m.atkBonus || 1) * this.statOf('atk') * this.buffMul('atk') * md.atkMul * slotMul * rage;
+    return this.sp.atk * this.T.atk * (m.atkBonus || 1) * this.statOf('atk') * this.buffMul('atk') * md.atkMul * slotMul * rage * ((this.action && this.action.boostDmg) || 1);   // 스킬 강화 카드: 위력 증폭
   }
   // 고른 메가(리자몽·뮤츠 X/Y) · 모습별 타입 · 모습별 능력치 배율(잉어킹 → 갸라도스 10배)
   megaOf(m = this.m) { return m.sp.megas[m.megaPick || 0] || m.sp.mega; }
@@ -144,7 +144,7 @@ export class Player extends Actor {
   skillId(slot, m = this.m) { return m.skills[slot]; }
   hasUp(id, m = this.m) { return m.ups.has(id); }
   // 기술 쿨타임(초): 아이템 · 숙련 카드 · 메가진화 반영
-  cdOf(id, m = this.m) { return SKILLS[id].cd * m.mods.cdMul * (m.cdBonus || 1) * (m.mega ? .8 : 1) * (m === this.m ? Cores.cdMul(this) : 1); }
+  cdOf(id, m = this.m) { const b = m.boost && m.boost[id]; return SKILLS[id].cd * m.mods.cdMul * (m.cdBonus || 1) * (m.mega ? .8 : 1) * (m === this.m ? Cores.cdMul(this) : 1) * (b ? 1 - Math.min(.6, b.haste) : 1); }   // 스킬 강화 카드: 가속 회로
   // 쿨타임 0 인 기본 공격만 3단 콤보 (Z 자리에 기술머신 기술을 달면 쿨타임 기술로 쓴다)
   isCombo(slot, m = this.m) { return slot === 'z' && !SKILLS[m.skills[slot]].cd; }
   // 배운 기술 id 를 slot(z·x·c)에 넣는다. 이미 다른 자리에 있으면 두 자리를 맞바꾼다.
@@ -638,6 +638,7 @@ export class Player extends Actor {
       const step = this.combo % 3;
       action = SKILL_IMPL[id](this, step);
       action.comboStep = true;
+      this.applyBoost(action, id, step === 2);
       // 진화 단계별 평타 강화 (2단 이중 검기 · 3단 거대 검기·균열·전방 웨이브) — 첫 타격 순간에 덧붙인다
       if (this.tierIdx >= 1 && !action.noTierFx) { const t0 = action.ev && action.ev.length ? Math.min(...action.ev.map(e => e[0])) : .05; (action.ev = action.ev || []).push([t0 + .005, () => tierComboFx(this, step)]); }
     } else {
@@ -649,9 +650,33 @@ export class Player extends Actor {
       sc.fx.embers(this.x, this.bottom - 4, [col, 0xffffff], 6, { speed: 50 });
       if (this.mods.orbCost && slot !== 'z') this.selfDamage(m.maxhp * .03);
       this.gradeCast(action, id, (m.cardGrade || {})[id]);
+      this.applyBoost(action, id, true);
       Cores.cast(this, id);   // 보스의 코어: 분화 용암 · 델타스트림 · 모래폭풍 검기
     }
     this.startAction(action, slot);
+  }
+
+  // 스킬 강화 카드(data/tm.js BOOSTS): 이 기술을 쓰는 동안 피해 ×(1+위력) · 판정 · 투사체 크기 ×(1+광역) · 분열탄 n갈래 (연타 기본기는 3타째에만)
+  applyBoost(action, id, volley) {
+    const m = this.m, b = m.boost && m.boost[id];
+    if (!b) return;
+    if (b.power) action.boostDmg = 1 + b.power;
+    if (b.wide) {
+      const s0 = m.mods.sizeMul, end0 = action.end;
+      m.mods.sizeMul = s0 * (1 + b.wide);   // 기술이 끝나면(끊겨도) 되돌린다
+      action.end = (p, a) => { m.mods.sizeMul = s0; if (end0) end0(p, a); };
+    }
+    if (b.split && volley) {
+      const t0 = action.ev && action.ev.length ? Math.min(...action.ev.map(e => e[0])) : .05;
+      (action.ev = action.ev || []).push([t0 + .03, () => {
+        const sc = this.scene, sk = SKILLS[id], col = typeColor(sk.type), f = this.face, n = Math.round(b.split);
+        for (let k = 0; k < n; k++) {
+          const a = (k - (n - 1) / 2) * .34;
+          sc.combat.spawnProjectile({ owner: 'player', bonus: true, x: this.x + f * 8, y: this.y - 4, vx: Math.cos(a) * f * 300, vy: Math.sin(a) * 300, r: 4 * (1 + (b.wide || 0) * .5), mul: .45 * (1 + (b.power || 0)), type: sk.type, color: col, life: .9, homing: 1.2, pierce: 1 });
+        }
+        sc.fx.burst(this.x + f * 8, this.y - 4, [col, 0xffffff], 8, 90, { glow: true, life: .3 });
+      }]);
+    }
   }
 
   // 기술 카드로 배운 유니크·전설 기술: 시전 연출을 덧씌운다

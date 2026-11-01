@@ -535,12 +535,18 @@ function makeCutsceneTextures(scene) {
 }
 
 // 타일셋 (Level.T 번호와 같은 순서, 16px 칸 24개)
+//  텍스처에는 칸마다 바깥으로 1px 씩 가장자리 픽셀을 복제해 둔다(Extrude: 여백 1 · 간격 2 — GameScene 의 addTilesetImage 와 짝).
+//  줌 배율이 소수(×3.75 등)라 카메라가 움직일 때 GPU 가 칸 경계 바로 바깥 텍셀(옆 칸 · 투명한 둥근 모서리)을 섞어 집으면
+//  바닥 · 벽 벽돌 사이에 하얀/검은 실선이 깜빡인다 — 복제한 테두리가 그 텍셀을 같은 색으로 채워 틈이 보이지 않게 한다
+export const TILE_MARGIN = 1, TILE_SPACING = 2;
 //  3 통과 발판: 나무다리(널빤지 + 아래 받침) 또는 철제 격자 · 5 보이지 않는 통과 발판(집 지붕·발코니)
 //  8+mask 벽: 돌벽돌 몸통 + 트인 방향마다 — 위: 네온 이끼 테두리와 늘어진 이끼 / 아래: 짙은 그림자 / 옆: 외곽선과 반사광, 트인 모서리는 둥글게
 function makeTileset(scene, si, p) {
   const key = `tiles:${si}`;
   if (scene.textures.exists(key)) return;
-  const st = STAGES[si], t = scene.textures.createCanvas(key, 24 * 16, 16), c = t.getContext();
+  const st = STAGES[si], src = document.createElement('canvas');   // 먼저 붙여서 그린 뒤 → 칸마다 테두리를 복제해 옮겨 담는다
+  src.width = 24 * 16; src.height = 16;
+  const c = src.getContext('2d');
   const fill = (x, y, w, h, col, a = 1) => { c.globalAlpha = a; c.fillStyle = css(col); c.fillRect(x, y, w, h); c.globalAlpha = 1; };
   const moss = p.moss || shade(p.edge, .5);
 
@@ -598,6 +604,19 @@ function makeTileset(scene, si, p) {
     if (top && right) { cut(15, 0); cut(14, 0); cut(15, 1); }
     if (bot && left) { cut(0, 15); cut(1, 15); cut(0, 14); }
     if (bot && right) { cut(15, 15); cut(14, 15); cut(15, 14); }
+  }
+  // 칸마다 1px 테두리 복제 (Extrude): 칸 i 는 (1 + 18i, 1) 에 놓이고, 위아래 · 좌우 · 네 모서리를 가장자리 픽셀로 늘려 채운다
+  const S = 16 + TILE_SPACING, t = scene.textures.createCanvas(key, 24 * S, 16 + TILE_MARGIN * 2), o = t.getContext();
+  o.imageSmoothingEnabled = false;
+  for (let i = 0; i < 24; i++) {
+    const sx = i * 16, dx = TILE_MARGIN + i * S, dy = TILE_MARGIN;
+    o.drawImage(src, sx, 0, 16, 16, dx, dy, 16, 16);
+    o.drawImage(src, sx, 0, 16, 1, dx, dy - 1, 16, 1);          // 위
+    o.drawImage(src, sx, 15, 16, 1, dx, dy + 16, 16, 1);        // 아래
+    o.drawImage(src, sx, 0, 1, 16, dx - 1, dy, 1, 16);          // 왼쪽
+    o.drawImage(src, sx + 15, 0, 1, 16, dx + 16, dy, 1, 16);    // 오른쪽
+    o.drawImage(src, sx, 0, 1, 1, dx - 1, dy - 1, 1, 1); o.drawImage(src, sx + 15, 0, 1, 1, dx + 16, dy - 1, 1, 1);
+    o.drawImage(src, sx, 15, 1, 1, dx - 1, dy + 16, 1, 1); o.drawImage(src, sx + 15, 15, 1, 1, dx + 16, dy + 16, 1, 1);
   }
   t.refresh();
 }

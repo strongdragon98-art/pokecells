@@ -9,10 +9,12 @@ import { SKILLS, SPECIES, UNLOCKABLE, UNLOCK_KILLS, TIERS, ZMOVES, Z_CD, TAGS, E
 import { ITEMS, MAX_EQUIP } from '../data/items.js';
 import { STAGES, areaLabel } from '../data/stages.js';
 import { typeName, typeColor, hex, matchups } from '../data/types.js';
-import { GRADE_STYLE, UPGRADES, rollCards } from '../data/tm.js';
+import { GRADE_STYLE, UPGRADES, BOOSTS, rollCards } from '../data/tm.js';
 
 // 특성 카드 분류 → 카드 가운데 아이콘 글자 (기술 아이콘이 없는 카드)
 const PERK_ICON = { 능력치: '⚔', 기동: '➶', 유틸: '✚', '속성 부여': '✺', '스킬 변이': '✷', 유물: '❂', 숙련: '✦', '대시 진화': '⚡' };
+// 한 줄 글자가 넘치면 가로로 줄인다
+const fitText = (t, w) => { if (t.width > w) t.setScale(w / t.width, 1); return t; };
 import { HK, hkText, darkBand, hkMenu, hiImage, fadeLine, bar3d, glassPanel, glassButton, typePill } from '../systems/ui.js';
 import { MapView, VP } from '../systems/MapView.js';
 import { TouchControls } from '../systems/TouchControls.js';
@@ -237,7 +239,7 @@ export default class UIScene extends Phaser.Scene {
       banner: (a, b) => this.banner(a, b),
       area: a => this.areaTitle(a),
       overlay: kind => kind === 'map' ? this.showMap() : kind === 'inv' ? (this.invMember = null, this.showInv()) :   // 가방은 열 때마다 출전 중인 포켓몬부터
-         kind === 'tm' ? (this.tmSlot = false, this.showTM())
+         kind === 'tm' ? (this.tmSlot = false, this.tmPick = false, this.tmTarget = null, this.showTM())
         : kind === 'taxi' ? this.showTaxi() : kind === 'talk' ? this.showTalk() : kind === 'debug' ? this.showDebug() : kind === 'test' ? this.showTest() : kind === 'settings' ? this.showSettings(0) : kind === 'box' ? this.showBox() : kind === 'join' ? this.showJoin() : this.clearOverlay(),
       lore: s => this.showLore(s),
       hurt: k => { this.hurtK = Math.max(this.hurtK, k); },
@@ -597,7 +599,7 @@ export default class UIScene extends Phaser.Scene {
     const gs = this.gs, it = gs.tmActive;
     if (!it) return;
     // 카드가 3장이 아니거나 빈 칸이 섞였으면(예전 저장·오류) 그 포켓몬 기준으로 다시 뽑는다 — 어떤 경우에도 3장
-    if (!Array.isArray(it.cards) || it.cards.length !== 3 || it.cards.some(c => !c || !c.name)) { it.cards = rollCards(it.member, { types: this.gs.player.typesOf(it.member) }); it.flipped = [false, false, false]; it.sel = -1; }
+    if (!Array.isArray(it.cards) || it.cards.length !== 3 || it.cards.some(c => !c || !c.name)) { it.cards = rollCards(this.gs.player); it.flipped = [false, false, false]; it.sel = -1; }
     if (!Array.isArray(it.flipped) || it.flipped.length !== 3) it.flipped = [false, false, false];
     this.clearOverlay();
     this.toastT = 0;
@@ -609,7 +611,7 @@ export default class UIScene extends Phaser.Scene {
     L.add(this.add.image(320, CY, 'glow').setBlendMode(ADD).setTint(0x4a7aff).setScale(9, 5).setAlpha(.16));
     L.add(hkText(this, 320, 20, it.legend ? '전설의 기술 카드' : '기술머신', 18, it.legend ? HK.gold : HK.ivory, { bold: true, ls: it.legend ? 5 : 8, origin: .5, glow: true }));
     L.add(fadeLine(this, 320, 38, 320, .8));
-    L.add(hkText(this, 320, 50, `${p.formName(m)}에게 맞춰진 고대 석판 · ${allOpen ? '마음에 드는 카드 1장을 고르세요' : `카드를 눌러 하나씩 뒤집으세요 (남은 ${it.flipped.filter(f => !f).length}장)`}`, 9.5, HK.dim, { origin: .5 }));
+    L.add(hkText(this, 320, 50, `파티 전체(${p.members.map(q => p.formName(q)).join(' · ')})에게 맞춰진 고대 석판 · ${allOpen ? '마음에 드는 카드 1장을 고르세요' : `카드를 눌러 하나씩 뒤집으세요 (남은 ${it.flipped.filter(f => !f).length}장)`}`, 9.5, HK.dim, { origin: .5 }));
     this.tmTextures(W, H);
     it.cards.forEach((card, i) => {
       const x = 320 + (i - 1) * 172, chosen = allOpen && it.sel === i, focus = !allOpen && it.sel === i && !it.flipped[i], open = it.flipped[i] && i !== flip;
@@ -630,17 +632,27 @@ export default class UIScene extends Phaser.Scene {
       // 누르기 영역 (뒤집기 / 고르기) — 마우스 클릭 · 모바일 터치 모두 pointerdown
       const z = this.add.zone(x, CY, W, H).setInteractive({ useHandCursor: true }); L.add(z);
       z.on('pointerdown', () => this.tmPress(i));
-      L.add(hkText(this, x, CY + H / 2 + 6, String(i + 1), 9, chosen || focus ? HK.gold : HK.faint, { origin: [.5, 0] }));
+      if (!this.tmPick && !this.tmSlot) L.add(hkText(this, x, CY + H / 2 + 6, String(i + 1), 9, chosen || focus ? HK.gold : HK.faint, { origin: [.5, 0] }));   // 대상 · 자리 고르기 중엔 안내문과 겹치지 않게
     });
     // 아래: 단계별 안내 · 결정 · 슬롯 고르기
     const BY = 300;
-    if (this.tmSlot && it.sel >= 0) {
-      L.add(hkText(this, 320, BY - 12, '어느 기술 자리에 배울까요?  (Z · X · C 또는 1 · 2 · 3)', 10, HK.gold, { origin: .5, bold: true }));
+    if (this.tmPick && it.sel >= 0) {   // 여러 포켓몬이 쓸 수 있는 카드: 누구에게 적용할지 (출전 여부 무관)
+      const who = this.tmWho(it.cards[it.sel]);
+      L.add(hkText(this, 320, BY - 12, '누구에게 적용할까요?  (1 · 2 · 3)', 10, HK.gold, { origin: .5, bold: true }));
+      who.forEach((k, j) => {
+        const q = p.members.find(mm => mm.key === k), bx = 320 + (j - (who.length - 1) / 2) * 156 - 72;
+        glassButton(this, bx, BY, 144, 26, `${j + 1}   ${p.formName(q)}${q === p.m ? ' (출전)' : ''}`, () => this.tmChooseWho(k), { size: 9.5, layer: L, primary: true });
+        L.add(this.add.image(bx + 14, BY + 13, roundPortrait(this, p.portraitKey(q))).setScale(.4));
+      });
+      glassButton(this, 18, BY + 34, 92, 20, '←  다른 카드', () => { this.tmPick = false; this.tmTarget = null; Sfx.play('select'); this.showTM(); }, { size: 8.5, layer: L });
+    } else if (this.tmSlot && it.sel >= 0) {
+      const tm = p.members.find(q => q.key === this.tmTarget) || m;
+      L.add(hkText(this, 320, BY - 12, `${p.formName(tm)}의 어느 기술 자리에 배울까요?  (Z · X · C 또는 1 · 2 · 3)`, 10, HK.gold, { origin: .5, bold: true }));
       ['z', 'x', 'c'].forEach((sl, k) => {
-        const id = m.skills[sl], name = SKILLS[id] ? SKILLS[id].name : id;
+        const id = tm.skills[sl], name = SKILLS[id] ? SKILLS[id].name : id;
         glassButton(this, 320 + (k - 1) * 156 - 72, BY, 144, 26, `${sl.toUpperCase()}   ${name}`, () => this.tmChooseSlot(sl), { size: 9.5, layer: L, primary: true });
       });
-      glassButton(this, 18, BY + 34, 92, 20, '←  다른 카드', () => { this.tmSlot = false; Sfx.play('select'); this.showTM(); }, { size: 8.5, layer: L });
+      glassButton(this, 18, BY + 34, 92, 20, '←  다른 카드', () => { this.tmSlot = false; this.tmTarget = null; Sfx.play('select'); this.showTM(); }, { size: 8.5, layer: L });
     } else if (allOpen) {
       const card = it.cards[it.sel];
       glassButton(this, 320 - 100, BY, 200, 28, card.kind === 'move' ? '이 기술 배우기  (Enter · Z)' : '이 카드로 결정  (Enter · Z)', () => this.tmConfirm(), { size: 10.5, layer: L, primary: true });
@@ -770,15 +782,25 @@ export default class UIScene extends Phaser.Scene {
   }
 
   // 카드 앞면 내용: 등급 · 종류 · 아이콘 · 이름 · 타입/분류 · 효과
-  tmFace(face, card, m, W, H, chosen) {
+  // 이 카드를 쓸 수 있는 파티 포켓몬 계열 키 (예전 저장의 카드는 그 제단을 연 포켓몬)
+  tmWho(card) {
+    const p = this.gs.player, it = this.gs.tmActive, keys = (card.who || []).filter(k => p.members.some(q => q.key === k));
+    return keys.length ? keys : [((it && it.member) || p.m).key];
+  }
+  // opt.foot: 바닥 글귀를 직접 (보유 카드 탭: '적용 중: …') — 없으면 기술머신 카드의 '📌 적용 가능: …' + 미니 초상화
+  tmFace(face, card, m, W, H, chosen, opt = {}) {
     const st = GRADE_STYLE[card.grade] || GRADE_STYLE.커먼, gcss = st.border[0], top = -H / 2;
     face.add(hiImage(this, 0, 0, `tm-face2-${card.grade}`));
     const pad = card.grade === '전설' ? 16 : 10;   // 전설 카드는 모서리 장식을 비켜서
     face.add(hkText(this, -W / 2 + pad, top + 8, `${card.grade} · ${st.en}`, 7.5, gcss, { bold: true }));
     face.add(hkText(this, W / 2 - pad, top + 8, card.cat || (card.kind === 'move' ? '새 기술 · 타 속성' : card.kind === 'up' ? '기술 강화' : '숙련'), 7.5, HK.dim, { origin: [1, 0] }));
-    const iconId = card.kind === 'move' ? card.id : card.kind === 'up' ? card.skill : null, tcol = card.kind === 'perk' || card.kind === 'mastery' ? st.glow : typeColor(card.type);
+    const iconId = card.kind === 'move' ? card.id : card.kind === 'up' || card.kind === 'boost' ? card.skill : null, tcol = card.kind === 'perk' || card.kind === 'mastery' ? st.glow : typeColor(card.type);
     face.add(this.add.image(0, top + 50, 'glow').setBlendMode(ADD).setTint(tcol).setScale(.9).setAlpha(.5));
     if (iconId && SKILLS[iconId]) face.add(this.add.image(0, top + 50, skillIcon(this, iconId)).setDisplaySize(42, 42));
+    if (card.kind === 'boost' && BOOSTS[card.bk]) {   // 스킬 강화 갈래 배지 (위력 · 가속 · 광역 · 분열)
+      face.add(this.add.circle(20, top + 66, 9, 0x0a0814, .92).setStrokeStyle(1.2, st.glow, 1));
+      face.add(hkText(this, 20, top + 66, BOOSTS[card.bk].icon, 10, gcss, { origin: .5, bold: true }));
+    }
     else face.add(hkText(this, 0, top + 50, PERK_ICON[card.cat] || '✦', 24, gcss, { origin: .5, glow: true }));
     // 이름: '불꽃세례 개조: 푸른 연옥' 은 두 줄 (작은 머리글 + 큰 이름)
     const [head, main] = card.name.includes(': ') ? card.name.split(': ') : [null, card.name];
@@ -787,15 +809,19 @@ export default class UIScene extends Phaser.Scene {
     const nm = hkText(this, 0, y, main, main.length > 8 ? 11 : 12.5, chosen ? HK.gold : HK.ivory, { bold: true, origin: [.5, 0] });
     if (nm.width > W - 18) nm.setScale((W - 18) / nm.width);
     face.add(nm); y += 18;
-    if (card.kind === 'move' || card.kind === 'up' || card.type !== 'normal') {
+    if (card.kind === 'move' || card.kind === 'up' || card.kind === 'boost' || card.type !== 'normal') {
       const probe = hkText(this, 0, 0, typeName(card.type), 7.5, '#ffffff', { bold: true }), pw = Math.round(probe.width) + 14;   // 타입 알약 폭 재기 (가운데 맞춤)
       probe.destroy();
       typePill(this, face, -pw / 2, y, card.type, 7.5); y += 16;
     } else y += 4;
-    face.add(hkText(this, -W / 2 + 11, y, card.desc, 8.5, HK.ivory, { style: { wordWrap: { width: W - 22, useAdvancedWrap: true }, lineSpacing: 2 } }));
-    const have = card.kind === 'perk' ? ((m.perks || {})[card.id] || 0) : 0;
-    const foot = card.kind === 'move' ? `재사용 ${card.cd}초 · Z·X·C 중 하나와 교체` : card.kind === 'up' ? `대상: ${SKILLS[card.skill].name}` : have ? `${this.gs.player.formName(m)}에게만 · 지금 ${have}장 → ${have + 1}장` : `${this.gs.player.formName(m)}에게만`;
-    face.add(hkText(this, 0, H / 2 - 16, foot, 7.5, HK.dim, { origin: [.5, 0] }));
+    face.add(hkText(this, -W / 2 + 11, y, card.desc, 8.5, HK.ivory, { style: { wordWrap: { width: W - 22, useAdvancedWrap: true }, lineSpacing: 2, maxLines: opt.foot ? 5 : 3 } }));
+    if (opt.foot) { face.add(fitText(hkText(this, 0, H / 2 - 16, opt.foot, 7.5, HK.gold, { origin: [.5, 0], bold: true }), W - 16)); return; }
+    // 📌 적용 가능: 파티에서 이 카드를 쓸 수 있는 포켓몬 (미니 초상화 + 이름)
+    const p = this.gs.player, who = this.tmWho(card), qs = who.map(k => p.members.find(q => q.key === k)).filter(Boolean);
+    const everyone = qs.length === p.members.length && p.members.length > 1 && (card.kind === 'perk' || card.kind === 'mastery');
+    const label = everyone ? '📌 적용 가능: 모든 포켓몬 공용' : qs.length === 1 ? `📌 적용 가능: ${p.formName(qs[0])} 전용` : `📌 적용 가능: ${qs.map(q => p.formName(q)).join(', ')}`;
+    qs.forEach((q, k) => face.add(this.add.image((k - (qs.length - 1) / 2) * 20, H / 2 - 27, roundPortrait(this, p.portraitKey(q))).setScale(.32)));
+    face.add(fitText(hkText(this, 0, H / 2 - 16, label, 7.5, HK.gold, { origin: [.5, 0], bold: true }), W - 14));
   }
 
   // 카드 누르기: 뒷면이면 뒤집고, 3장을 다 열었으면 고른다 (이미 고른 카드를 한 번 더 누르면 결정)
@@ -814,17 +840,31 @@ export default class UIScene extends Phaser.Scene {
     if (!it.flipped.every(Boolean)) { const i = it.flipped[it.sel] ? it.flipped.indexOf(false) : it.sel; this.tmPress(i); return; }
     this.tmConfirm();
   }
+  // 결정: 쓸 수 있는 포켓몬이 둘 이상이면 먼저 누구에게 (tmPick) → 기술 습득 카드면 바꿀 자리 (tmSlot) → 적용
   tmConfirm() {
     const it = this.gs.tmActive;
     if (!it || it.sel < 0 || !it.flipped.every(Boolean) || this.tmBusy) return;
-    if (it.cards[it.sel].kind === 'move') { this.tmSlot = true; Sfx.play('select'); this.showTM(); return; }
-    this.gs.finishTM(it.sel);
+    const card = it.cards[it.sel], who = this.tmWho(card);
+    if (!this.tmTarget) {
+      if (who.length > 1) { this.tmPick = true; Sfx.play('select'); this.showTM(); return; }
+      this.tmTarget = who[0];
+    }
+    if (card.kind === 'move') { this.tmSlot = true; Sfx.play('select'); this.showTM(); return; }
+    const target = this.tmTarget; this.tmTarget = null;
+    this.gs.finishTM(it.sel, null, target);
+  }
+  tmChooseWho(key) {
+    if (!this.tmPick) return;
+    this.tmPick = false; this.tmTarget = key;
+    Sfx.play('select');
+    this.tmConfirm();
   }
   tmChooseSlot(slot) {
     const it = this.gs.tmActive;
     if (!it || it.sel < 0) return;
     this.tmSlot = false;
-    this.gs.finishTM(it.sel, slot);
+    const target = this.tmTarget; this.tmTarget = null;
+    this.gs.finishTM(it.sel, slot, target);
   }
 
   // 진행 저장 결과: 자동 저장은 작은 알림, 일시정지 메뉴에서 저장하면 메뉴 아래 글귀로
@@ -885,7 +925,6 @@ export default class UIScene extends Phaser.Scene {
     this.mapCi = ci; this.mapLeft = gs.stageIdx;
     const st = STAGES[ci];
     g.fillStyle(0x05040a, .97); g.fillRect(0, 0, GAME_W, GAME_H);
-    L.add(hkText(this, 404, 22, `${st.region} 지도`, 14, HK.ivory, { ls: 5, bold: true, origin: .5, glow: true }));   // 왼쪽 위 지도·가방·설정 탭을 피해 오른쪽으로
     // 지방 탭: [ 1.관동지방 | 2.성도지방 | … ] — 안 가 본 지방은 흐리게 잠겨 있다
     const tabs = STAGES.map((s2, i) => hkText(this, 0, 42, `${i + 1}.${s2.region}`, 9.5, i === ci ? HK.ivory : this.mapOpen(i) ? HK.dim : HK.faint, { bold: i === ci, ls: 1, origin: [0, .5] }));
     const sepW = 18, total = tabs.reduce((s2, t) => s2 + t.width, 0) + sepW * (tabs.length - 1) + 24;
@@ -1472,8 +1511,7 @@ export default class UIScene extends Phaser.Scene {
     this.toastT = 0;
     const g = this.gOver, L = this.overlay.setVisible(true), page = this.setPage || 'general', keys = page === 'keys';
     g.fillStyle(0x05040a, .78); g.fillRect(0, 0, GAME_W, GAME_H);
-    L.add(hkText(this, 320, 21, '설정', 14, HK.ivory, { ls: 8, bold: true, origin: .5, glow: true }));
-    this.overlayChrome(L, 'settings');
+    this.overlayChrome(L, 'settings');   // 한 줄 통합 탭바 (⚙️ 설정 탭이 켜져 있다)
     const PX = 84, PW = 472, PY = 44, PH = 284;
     glassPanel(g, PX, PY, PW, PH, { alpha: .92 });
     [['general', '일반'], ['keys', '키 설정 (PC)']].forEach(([id, label], i) => {
@@ -1638,15 +1676,7 @@ export default class UIScene extends Phaser.Scene {
     return fx.join(' · ');
   }
 
-  // 지도·가방·설정 공통 머리: 왼쪽 위 큼직한 탭(누르면 바로 전환) + 오른쪽 위 닫기 — 손가락으로도 누르기 쉽게
-  overlayChrome(L, kind) {
-    const keys = !this.touch.visible;   // 키보드로 하면 단축키도 같이
-    [['지도', keyLabel(Settings.key('map')), 'map'], ['가방', keyLabel(Settings.key('bag')), 'inv'], ['설정', keyLabel(Settings.key('settings')), 'settings']].forEach(([label, key, k], i) => {
-      const on = k === kind;
-      glassButton(this, 14 + i * 86, 6, 80, 30, keys ? `${label}  ${key}` : label, () => { if (!on) this.gs.toggleOverlay(k); }, { size: 11.5, bold: true, ls: 2, layer: L, primary: on });
-    });
-    glassButton(this, 548, 6, 80, 30, keys ? '✕  닫기  Esc' : '✕  닫기', () => this.gs.toggleOverlay(kind), { size: keys ? 9.5 : 11, bold: true, layer: L });
-  }
+  // 지도 · 메뉴 · 설정 공통 머리(한 줄 통합 탭바)는 scenes/GameMenu.js 의 overlayChrome
 
   showResult(r) {
     this.clearOverlay();
@@ -1865,6 +1895,7 @@ export default class UIScene extends Phaser.Scene {
       return;
     }
     const digit = /^(Digit|Numpad)[1-5]$/.test(e.code) ? +e.code.slice(-1) - 1 : -1;
+    if ((this.overlayMode === 'map' || (this.overlayMode === 'settings' && !this.keyWait)) && (e.code === 'KeyQ' || e.code === 'KeyE')) { this.menuCycle(e.code === 'KeyE' ? 1 : -1); return; }   // 통합 탭바 한 칸 옆으로
     if (this.overlayMode === 'map' && this.mapView) {
       if (digit >= 0) { if (this.mapOpen(digit) && digit !== this.mapCi) { Sfx.play('select'); this.showMap(digit); } return; }
       this.mapView.key(e); return;
@@ -1903,14 +1934,20 @@ export default class UIScene extends Phaser.Scene {
       else if (e.code === 'KeyR') { const r = this.dbgRooms[i]; if (r) { this.gs.debugRefight(this.dbgCi, r.id); Sfx.play('select'); this.showDebug(this.dbgCi, i); } }
       return;
     }
-    if (this.overlayMode === 'inv') { this.menuKey(e); return; }   // 4탭 메뉴 (scenes/GameMenu.js)
+    if (this.overlayMode === 'inv') { this.menuKey(e); return; }   // 통합 메뉴 (scenes/GameMenu.js)
     if (this.overlayMode === 'tm') {
       const it = this.gs.tmActive, n = /^(Digit|Numpad)[1-3]$/.test(e.code) ? +e.code.slice(-1) : 0;
       if (!it) return;
+      if (this.tmPick) {   // 누구에게: 1 · 2 · 3
+        const who = this.tmWho(it.cards[it.sel]);
+        if (n && who[n - 1]) this.tmChooseWho(who[n - 1]);
+        else if (e.code === 'Backspace') { this.tmPick = false; this.tmTarget = null; this.showTM(); }
+        return;
+      }
       if (this.tmSlot) {
         const sl = n ? ['z', 'x', 'c'][n - 1] : ['z', 'x', 'c'].find(s2 => keyNameFromEvent(e) === Settings.key(s2)) || null;
         if (sl) this.tmChooseSlot(sl);
-        else if (e.code === 'Backspace') { this.tmSlot = false; this.showTM(); }
+        else if (e.code === 'Backspace') { this.tmSlot = false; this.tmTarget = null; this.showTM(); }
         return;
       }
       if (n) this.tmPress(n - 1);
@@ -1930,5 +1967,5 @@ export default class UIScene extends Phaser.Scene {
   }
 }
 
-// 4탭 메뉴 (🐾 포켓몬 · ⚔️ 기술 & 카드 · 🎒 가방 · 📖 정화 도감) — scenes/GameMenu.js
+// 통합 메뉴 (🐾 포켓몬 · ⚔️ 스킬트리 · 🃏 보유 카드 · 🎒 가방 · 📖 도감 + 탭바의 🗺️ 지도 · ⚙️ 설정) — scenes/GameMenu.js
 installGameMenu(UIScene);

@@ -195,7 +195,7 @@ export class Combat {
     // 진화 단계별 투사체 수 (한 번에 = 0.14초 안): 1단(유년기)은 단발 1발 · 2단은 2발 + 기술머신 카드로 얻은 추가 투사체 · 3단·메가는 제한 없음
     //  → 진화와 카드 파밍으로 화면을 뒤덮는 다중 투사체를 얻는다. 차징 샷 · Z기술은 예외. 걸러진 탄은 빈 껍데기를 돌려줘 부르는 쪽이 그대로 굴러가게 한다
     const pl = this.p;
-    if ((c.owner ?? 'player') === 'player' && !this.chargeSpawn && pl && pl.tierIdx <= 1 && !(pl.action && pl.action.slot === 'zmove')) {
+    if ((c.owner ?? 'player') === 'player' && !this.chargeSpawn && !c.bonus && pl && pl.tierIdx <= 1 && !(pl.action && pl.action.slot === 'zmove')) {   // bonus: 스킬 강화 카드의 분열탄은 제한 밖
       const now = s.time.now, cap = pl.tierIdx === 0 ? 1 : 2 + (pl.mods.extraProj || 0);
       if (now - (this.volleyAt ?? -999) >= 140) { this.volleyAt = now; this.volleyN = 0; }
       if (++this.volleyN > cap) return { dead: true, x: c.x, y: c.y, vx: 0, vy: 0, r: c.r || 4, hit: new Set(), status: {}, life: 0 };
