@@ -1617,7 +1617,7 @@ export default class UIScene extends Phaser.Scene {
         this.tPotion.setVisible(!this.touchLayout).setPosition(s.x, SLOT_Y + 23).setText(`🧪 ${n}/${POTION_MAX}`).setColor(n ? '#9affb8' : HK.red);
         if (!n) cd = Math.max(cd, .001);   // 없으면 어둡게
       }
-      else { const id = p.skillId(s.id), sk = SKILLS[id]; type = sk.type; tex = skillIcon(this, id); cd = m.cd[s.id]; max = p.cdOf(id) || 1; name = sk.name; }
+      else { const id = p.skillId(s.id), sk = SKILLS[id], lock = s.id === 'z' && p.isCombo('z'); type = sk.type; tex = skillIcon(this, id); cd = lock ? p.zLock || 0 : m.cd[s.id]; max = lock ? .42 : p.cdOf(id) || 1; name = sk.name; }   // 연타 Z칸: 3타 뒤 숨 고르기
       for (const v of [s.icon, s.cd, s.key, s.badge]) v.setVisible(on);
       if (on) s.zone.setInteractive(); else s.zone.disableInteractive();
       s.tipType = on && s.id !== 'dash' && s.id !== 'zmove' && s.id !== 'potion' ? type : null; s.tipName = name;

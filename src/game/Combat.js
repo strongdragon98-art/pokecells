@@ -51,7 +51,8 @@ export class Combat {
       this.fx.damage(e.x, e.top - 2, d, eff, crit);
       this.stackDamage(e, d);   // 다단히트: 0.45초 안에 이어 맞으면 머리 위에 합계를 쌓아 보여 준다
       e.flash(e.boss ? 50 : 90);   // 큰 보스는 짧게 번쩍여 화면을 덮지 않게
-      this.fx.hitStop(o.hs ?? (eff === 'super' ? 70 : crit ? 60 : 50));
+      const fin = p.action && p.action.finisher && p.action.comboStep;   // 평타 3타 피니시: 강한 넉백 · 묵직한 역경직
+      this.fx.hitStop(Math.max(o.hs ?? (eff === 'super' ? 70 : crit ? 60 : 50), fin ? 85 : 0));
       if (eff === 'super') this.fx.shake(.009, 170, 'hit'); else if (eff === 'normal') this.fx.shake(.004, 90, 'hit'); else this.fx.shake(.002, 60, 'hit');
       const hx = o.hx ?? e.x, hy = o.hy ?? e.y;
       this.fx.burst(hx, hy, [typeColor(type), 0xffffff], eff === 'super' ? 18 : eff === 'weak' ? 4 : 10, eff === 'super' ? 170 : 110, { up: 60 });
@@ -60,7 +61,7 @@ export class Combat {
       this.fx.burst(hx, hy, [typeColor(type), 0xffffff, 0x2a2438], eff === 'weak' ? 2 : o.heavy ? 9 : 5, o.heavy ? 200 : 140, { up: 90, size: 2, life: .45 });
       Sfx.play(o.heavy ? 'hit_heavy' : eff === 'super' ? 'hit_super' : eff === 'weak' ? 'hit_weak' : 'hit_normal');   // heavy: 차징 샷 · 내려찍기 (저음 폭발)
       if (crit) Sfx.play('crit');
-      if (!e.boss && (o.kb || o.kby)) e.knock(o.kb || 0, o.kby || 0);
+      if (!e.boss && (o.kb || o.kby || fin)) e.knock((o.kb || 0) * (fin ? 2 : 1) || (fin ? Math.sign(e.x - p.x || 1) * 220 : 0), (o.kby || 0) * (fin ? 1.5 : 1) || (fin ? -160 : 0));
       if (mods.psyCore && type === 'psychic' && !o.proc) this.psyField(e);   // 뮤츠의 코어: 사이코 중력장
       Cores.hit(this, e, d, type, o);   // 보스의 코어 (game/Cores.js)
       const steal = (mods.lifesteal || 0) + (o.lifesteal || 0);
@@ -204,6 +205,11 @@ export class Combat {
     q.color = color;
     Cores.projectile(this, q);   // 보스의 코어: 무지갯빛 불꽃 · 백옥 사거리 · 델타스트림 (game/Cores.js)
     if (q.owner === 'player') {
+      const pa = this.p.action;
+      if (pa && pa.comboStep && !this.chargeSpawn && !q.bonus) {   // 평타가 쏜 탄: 원거리형 패링 충격파 · 3타 피니시는 1.5배 강화 관통탄
+        this.p.comboPulse();
+        if (pa.finisher) { q.r *= 1.5; q.pierce = Math.max(q.pierce, 3); q.pow = (q.pow || 1) * 1.3; }
+      }
       if (this.chargeSpawn) {   // Player.fireCharge 가 쏜 차징 탄 (계열 고유 차징 포함)
         q.charge = true;
         const cx = this.chargeCtx;   // 퍼펙트 차징: 확정 치명타 · 임팩트 웨이브: 그로기 2배 + 맞힌 자리에 2차 폭발 장판 (기본 차징 탄은 직접 터뜨린다)
@@ -272,11 +278,17 @@ export class Combat {
           this.pr.impact(q, 'hit');                       // 관통하는 잎날도 맞힐 때마다 베기 연출
           if (--q.pierce <= 0) { dead = true; why = 'done'; break; }
         }
+      } else if (!dead && q.owner === 'enemy' && p.parryZone() && p.inParry(p.parryZone(), q.x, q.y, q.r)) {
+        // 평타 패링 → 반사: 아군 황금빛 탄이 되어 2배 속도 · 200% 피해로 되돌아간다
+        q.owner = 'player'; q.vx = -q.vx * 2; q.vy = -q.vy * 2; q.grav = 0; q.dmg = Math.max(q.dmg * 2, p.atk * 2); q.hit = new Set(); q.life = 1.5; q.homing = 0; q.tier = 3; q.ghost = false;
+        q.color = 0xffe36a; q.status = { kb: 0 };
+        p.doParry(q.x, q.y, 'proj');
+        continue;
       } else if (!dead && q.owner === 'enemy' && circRect(q.x, q.y, q.r, p.bounds())) {
         const r = p.blockProjectile(q);
         if (r === 'reflect') { q.owner = 'player'; q.vx = -q.vx * 1.2; q.vy *= -.3; q.dmg = p.atk * 2; q.hit = new Set(); q.life = 1.2; q.homing = 0; q.type = p.sp.types[0]; q.tier = p.tierIdx; this.fx.ring(q.x, q.y, 14, 0xbfe6ff, 200); continue; }
         if (r === 'block') { dead = true; why = 'wall'; }
-        else if (p.takeHit(q.dmg, q.type, q.x - q.vx * .1, q.status || {})) { dead = true; why = 'hit'; }
+        else if (p.takeHit(q.dmg, q.type, q.x - q.vx * .1, Object.assign({ noParry: true }, q.status))) { dead = true; why = 'hit'; }
       }
       if (dead) {
         if (q.boom) { this.explode(q); this.pr.impact(q, 'hit'); }

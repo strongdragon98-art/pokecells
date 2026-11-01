@@ -215,7 +215,7 @@ export class TouchControls {
       b.text.setVisible(true).setAlpha(1);
       let fillA = b.down ? .55 : .32, ring = 0xefeae0, ringA = b.down ? .95 : .5;
       if (b.slot) {
-        const id = p.skillId(b.slot), cd = p.isCombo(b.slot) ? 0 : p.m.cd[b.slot] || 0, max = p.cdOf(id) || 1, s = b.r * 1.15;
+        const id = p.skillId(b.slot), cd = p.isCombo(b.slot) ? p.zLock || 0 : p.m.cd[b.slot] || 0, max = p.isCombo(b.slot) ? .42 : p.cdOf(id) || 1, s = b.r * 1.15;
         b.icon.setVisible(true).setTexture(skillIcon(this.ui, id)).setDisplaySize(s, s).setAlpha(cd > 0 ? .4 : 1);
         this.orb(b.x, b.y, b.r, .45 + (b.down ? .2 : 0), p.mega.active ? 0xffb8e8 : ring, ringA, b.down);
         if (cd > 0) { g.fillStyle(0x000000, .55); g.slice(b.x, b.y, b.r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, cd / max), false); g.fillPath(); }

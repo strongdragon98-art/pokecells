@@ -181,6 +181,13 @@ export class Boss extends Enemy {
     }
     if (this.stagger >= 100) this.startGroggy();
   }
+  // 평타 패링 카운터: 상성과 상관없이 그로기 게이지를 바로 n 만큼
+  addStaggerRaw(n) {
+    if (this.groggyT > 0 || this.state === 'intro' || !this.alive || this.gone) return;
+    this.stagger = Math.min(100, (this.stagger || 0) + n);
+    this.staggerAt = this.scene.time.now; this.staggerFlash = .35;
+    if (this.stagger >= 100) this.startGroggy();
+  }
   startGroggy() {
     const sc = this.scene;
     this.groggyT = GROGGY_T; this.stagger = 100; this.groggyN = (this.groggyN || 0) + 1;
