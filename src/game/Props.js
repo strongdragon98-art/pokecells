@@ -568,6 +568,18 @@ function crateArt(scene) {
   });
 }
 
+// 금이 간 바위 (연습용 과녁 — 공중 내려찍기로만 부서진다)
+function crackedRockArt(scene) {
+  const r = 0x6a6878;
+  return canvasTex(scene, 'prop:crackrock', 16, 13, F => {
+    F(2, 3, 12, 10, shade(r, .5)); F(1, 5, 14, 8, shade(r, .5)); F(3, 2, 10, 1, shade(r, .5));
+    F(3, 3, 10, 9, r); F(2, 5, 12, 7, r); F(3, 3, 9, 2, shade(r, 1.35)); F(2, 5, 3, 2, shade(r, 1.2));
+    F(2, 11, 12, 1, shade(r, .7));
+    for (const [x, y] of [[8, 3], [7, 4], [7, 5], [8, 6], [9, 7], [8, 8], [6, 7], [5, 8], [10, 9], [11, 10]]) F(x, y, 1, 1, 0x1a1622);   // 금
+    F(9, 4, 1, 1, 0xffd166); F(6, 8, 1, 1, 0xffd166);   // 갈라진 틈의 빛
+  });
+}
+
 // 땅 위 작은 것들: 수풀 3종 · 돌멩이 2종 · 버섯(갓은 발광) · 꽃(마을)
 function decorArt(scene, si, p) {
   const moss = p.moss || 0x3a8a5a;
@@ -1045,19 +1057,60 @@ export class Props {
   }
 
   // ---------------- 부서지는 상자 ----------------
-  hitRect(rect) {
+  //  src: 무엇으로 쳤나 ('charge' 차징 샷 · 'dive' 공중 내려찍기) — 안 주면 지금 출전 포켓몬의 동작으로 가늠한다
+  hitRect(rect, src) {
+    const a = this.s.player && this.s.player.action;
+    src = src || (a && a.dive ? 'dive' : a && a.slot === 'charge' ? 'charge' : null);
     let n = 0;
     for (const c of this.crates) {
       if (!c.alive || c.x + 7 < rect.x || c.x - 7 > rect.x + rect.w || c.y + 7 < rect.y || c.y - 7 > rect.y + rect.h) continue;
+      if (c.need && c.need !== src) { this.nudge(c); continue; }   // 연습용 과녁: 그 기술로만
       this.breakCrate(c); n++;
     }
     return n;
   }
-  hitCircle(cx, cy, r) { return this.hitRect({ x: cx - r, y: cy - r, w: r * 2, h: r * 2 }); }
+  hitCircle(cx, cy, r, src) { return this.hitRect({ x: cx - r, y: cy - r, w: r * 2, h: r * 2 }, src); }
+
+  // 연습용 과녁 (관동 초입 조작 힌트 NPC 옆 · game/Npc.js): need 'charge' 낡은 나무 상자 · 'dive' 금이 간 바위
+  //  그 기술로만 부서지고(평타엔 꿈쩍도 않으며 힌트를 띄운다) 3.5초 뒤 다시 놓인다. 월드 데이터(level.props)가 아니라 저장 서명과 상관없다
+  practice(x, y, need) {
+    const s = this.s, img = this.lit(s.add.image(x, y, need === 'dive' ? crackedRockArt(s) : crateArt(s)).setOrigin(.5, 1).setDepth(15));
+    if (need === 'charge') img.setTint(0xd8c0a0);   // 오래돼 바랜 나무
+    this.crates.push({ img, x, y: y - 7, alive: true, need, practice: true });
+  }
+  // 맞았지만 그 기술이 아닐 때: 살짝 흔들리고 힌트 (자주 띄우지 않는다)
+  nudge(c) {
+    const s = this.s;
+    if (s.time.now - (c.nudgeAt || 0) < 700) return;
+    c.nudgeAt = s.time.now;
+    s.tweens.add({ targets: c.img, x: { from: c.x - 1.5, to: c.x }, duration: 60, repeat: 2 });
+    s.fx.burst(c.x, c.y, [0xd8d0c0, 0x8a8898], 3, 50, { up: 40, size: 1 });
+    if (s.time.now - (this.nudgeTip || 0) > 2200) {
+      this.nudgeTip = s.time.now;
+      const touch = s.touchInput && s.touchInput.on;
+      s.fx.floatText(c.x, c.y - 12, c.need === 'dive' ? (touch ? '꿈쩍도 않는다… 공중에서 ↓ + 평타!' : '꿈쩍도 않는다… 공중에서 ↓ + Z!') : (touch ? '꿈쩍도 않는다… 평타 버튼을 꾹 눌렀다 떼 보자!' : '꿈쩍도 않는다… Z 를 꾹 눌렀다 떼 보자!'), '#ffd166', 9);
+    }
+  }
 
   breakCrate(c) {
     c.alive = false;
     const s = this.s;
+    if (c.practice) {   // 연습용 과녁: 시원하게 터지고 3.5초 뒤 다시 놓인다
+      const rock = c.need === 'dive';
+      s.fx.burst(c.x, c.y, rock ? [0x6a6878, 0x9a98a8, 0x3a3848] : [0x8a5e34, 0xb88a54, 0x4a2e1a], 26, 190, { up: 150 });
+      s.fx.burst(c.x, c.y, [0xffd166, 0xffffff], 10, 120, { up: 90, glow: true });
+      s.fx.ring(c.x, c.y, 22, 0xffd166, 260); s.fx.shake(.008, 140, 'hit');
+      s.fx.floatText(c.x, c.y - 14, rock ? '내려찍기 성공!' : '차징 샷 명중!', '#ffd166', 10);
+      Sfx.play(rock ? 'shatter' : 'crate');
+      s.tweens.add({ targets: c.img, scaleX: 1.4, scaleY: .4, alpha: 0, duration: 140, onComplete: () => c.img.setVisible(false) });
+      s.time.delayedCall(3500, () => {
+        if (!c.img.scene) return;
+        c.alive = true;
+        c.img.setVisible(true).setScale(1).setAlpha(0);
+        s.tweens.add({ targets: c.img, alpha: 1, duration: 300 });
+      });
+      return;
+    }
     s.fx.burst(c.x, c.y, [0x8a5e34, 0xb88a54, 0x4a2e1a], 14, 130, { up: 110 });
     s.fx.burst(c.x, c.y, [0xd8c8a0], 4, 60, { up: 60, size: 1 });
     Sfx.play('crate');

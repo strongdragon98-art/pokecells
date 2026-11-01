@@ -537,6 +537,16 @@ export function buildChapter(ch, ci, retry = 0) {
       if (r.lab) placeNpcs(r, LAB, [r.tx0 + 12, r.tx0 + 26, r.tx0 + 40]);
       else if (r.type === 'village' && TOWNS[r.city]) { const b = r.tx0 + 1; placeNpcs(r, TOWNS[r.city], [b + 13, b + 52, b + 18, b + 33]); }
     }
+    // 조작 힌트 (관동 초입): 태초마을을 나서 처음 만나는 전투 구역 입구엔 부상당한 베테랑(차징 샷),
+    //  통과 발판이 처음 나오는 구역 앞엔 실프 연구원(공중 내려찍기). 난수를 쓰지 않으므로 같은 시드의 지형·저장 서명은 그대로다
+    if (ci === 0) {
+      const route = rooms.filter(r => r.type === 'combat' && !r.under).sort((a, b) => a.id - b.id);   // 방 번호 = 본 경로 순서 (위아래 곁방은 뒤 번호)
+      const plat = r => { for (let y = r.F - 12; y < r.F; y++) for (let x = r.tx0; x < r.tx1; x++) if (grid[y] && grid[y][x] === 'P') return true; return false; };
+      const first = route[0], high = route.slice(1, 4).find(plat) || route[1];
+      const at = (r, id) => { if (r) placeNpcs(r, [id], [r.tx0 + 5]); const n = npcs[npcs.length - 1]; if (n && n.id === id) { n.face = -1; n.guide = true; } };   // 들어오는 쪽(왼쪽)을 보고 선다 · guide: 둘레에 적이 생기지 않는 연습 자리
+      at(first, 'veteran');
+      if (high !== first) at(high, 'silph_lab');
+    }
   }
 
   // ---- 흙 덮개 (상처약·엘리트 굴: 방 안 + 들어오는 문 칸) ----

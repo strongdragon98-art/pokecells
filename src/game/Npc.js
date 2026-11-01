@@ -91,6 +91,7 @@ const LOOKS = {
   girl: t => ({ body: 'kid', hair: 0x5a2a1a, hairStyle: 'long', longHair: true, shirt: t || 0xd85a8a, skirt: shade(t || 0xd85a8a, .8), shoes: 0x8a2a3a }),
   granny: t => ({ body: 'old', hair: 0xd0ccc8, hairStyle: 'bun', old: true, shawl: t || 0x7a5a8a, shirt: 0x6a5a4a, skirt: 0x4a3a3a, shoes: 0x3a2a2a, cane: true }),
   man: t => ({ hair: 0x3a2a1a, hairStyle: 'short', shirt: t || 0x4a5a3a, pants: 0x3a3a48, shoes: 0x2a2020 }),
+  veteran: t => ({ hair: 0x3a2a1a, hairStyle: 'short', cap: t || 0x2a4a8a, beard: 0x4a3424, shirt: 0x5a6a3a, sleeve: 0xe8e0d0, pants: 0x3a3a48, shoes: 0x2a2020, pack: 0x5a4a2a, cane: true }),   // 붕대 감은 팔 · 지팡이
   hiker: t => ({ hair: 0x4a2a1a, hairStyle: 'short', beard: 0x5a3a24, beanie: t || 0xa83a2a, shirt: 0x8a5a2a, pants: 0x4a4a38, shoes: 0x3a2a1a, pack: 0x6a4a2a }),
   nurse: t => ({ hair: 0xf08aa8, hairStyle: 'nurse', shirt: 0xf8b8c8, skirt: 0xf8b8c8, apron: 0xfaf8f4, shoes: 0xf4f0ec, legs: 0xf8e8e0 }),
   kimono: t => ({ hair: 0x1a1418, hairStyle: 'bun', pin: 0xe8c060, shirt: t || 0xc83a5a, skirt: t || 0xc83a5a, obi: 0xe8c060, shoes: 0x8a2a2a, legs: 0xf4f0e8 })
@@ -147,7 +148,13 @@ export class Npcs {
       const spr = scene.add.image(X, Y + 1, key + ':open').setOrigin(.5, 1).setDepth(7.8).setFlipX(n.face > 0);
       const bubble = scene.add.image(X + 6, Y - NH - 4, bub).setOrigin(.5, 1).setDepth(7.85).setAlpha(0);
       const it = { kind: 'npc', npc: def, id: n.id, x: X, y: Y, range: 26, used: false, repeat: true, prompt: '[F 또는 ↑ : 대화]', promptY: Y - NH - 14 };
-      const o = { def, key, X, Y, spr, shadow, bubble, it, face: n.face, blinkT: 1 + Math.random() * 3, blinkOn: 0, ph: Math.random() * 6, hop: 0 };
+      // 조작 힌트 NPC: 가까이(120px) 오면 머리 위에 말풍선 힌트 · 옆엔 그 기술로만 부서지는 연습용 과녁 (data/npcs.js 의 hint · practice)
+      const hint = def.hint ? scene.add.text(X, Y - NH - 6, def.hint, { fontFamily: 'Galmuri9', fontSize: '8px', color: '#ffe9a8', backgroundColor: 'rgba(16,12,26,0.88)', padding: { x: 4, y: 2 }, resolution: 2 }).setOrigin(.5, 1).setDepth(7.9).setAlpha(0) : null;
+      if (def.practice && props.practice) {
+        const spots = [40, 58, 76, 94, 112].map(d => X + d).filter(x => scene.isSolidAt(x, Y + 3) && !scene.isSolidAt(x, Y - 6) && !scene.isSolidAt(x, Y - 14));
+        spots.slice(0, def.practice === 'dive' ? 2 : 3).forEach(x => props.practice(x, Y, def.practice));
+      }
+      const o = { def, key, X, Y, spr, shadow, bubble, hint, it, face: n.face, blinkT: 1 + Math.random() * 3, blinkOn: 0, ph: Math.random() * 6, hop: 0 };
       it.ref = o;
       props.interacts.push(it);
       this.list.push(o);
@@ -158,7 +165,7 @@ export class Npcs {
   greet(it, px) {
     const o = it.ref;
     if (!o) return;
-    o.spr.setFlipX(px > o.X); o.hop = .25;
+    o.spr.setFlipX(px > o.X); o.hop = .25; o.read = true;   // 한 번 들은 힌트 말풍선은 옅게
   }
 
   update(dt, p) {
@@ -175,12 +182,16 @@ export class Npcs {
       const breathe = Math.sin(t * 2.1 + o.ph) > .55 ? -1 : 0, hop = o.hop > 0 ? -Math.round(Math.sin((1 - o.hop / .25) * Math.PI) * 3) : 0;
       o.spr.y = o.Y + 1 + breathe + hop;
       const close = Math.abs(dx) < 46 && Math.abs(p.bottom - o.Y) < 40;
+      if (o.hint) {   // 120px 안: 힌트 말풍선 (바로 앞에서는 점 세 개 말풍선 · 대화 안내에 자리를 내준다)
+        const want = Math.abs(dx) < 120 && Math.abs(p.bottom - o.Y) < 60 && !close ? (o.read ? .5 : 1) : 0;
+        o.hint.setAlpha(o.hint.alpha + (want - o.hint.alpha) * Math.min(1, dt * 6)).setY(o.Y - NH - 6 + Math.sin(t * 2.4 + o.ph) * 1.5);
+      }
       o.bubble.setAlpha(Math.max(0, Math.min(1, o.bubble.alpha + (close ? dt * 4 : -dt * 4)))).setY(o.Y - NH - 3 + Math.sin(t * 3 + o.ph) * 1.2).setX(o.spr.flipX ? o.X - 6 : o.X + 6);
     }
   }
 
   destroy() {
-    for (const o of this.list) { o.spr.destroy(); o.shadow.destroy(); o.bubble.destroy(); }
+    for (const o of this.list) { o.spr.destroy(); o.shadow.destroy(); o.bubble.destroy(); if (o.hint) o.hint.destroy(); }
     this.list = [];
   }
 }

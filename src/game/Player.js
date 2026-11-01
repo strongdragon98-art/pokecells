@@ -762,6 +762,7 @@ export class Player extends Actor {
     this.startAction({
       dur: lvl >= 3 ? .5 : .3, mm: lvl >= 3 ? 0 : .25, anim: 'Shoot', inv: lvl >= 3 ? .3 : 0, ev: [[.03, () => {
         const f = this.face, x = this.x + f * 12, y = this.y - 3;
+        sc.combat.chargeSpawn = true;   // 이 순간 만든 탄은 차징 탄 (연습용 나무 상자 · Combat.spawnProjectile)
         if (sig) {
           sig.fire(this, lvl, s, f);
           if (lvl >= 2) sc.fx.floatText(this.x, this.b.y - 16, sig.name[lvl - 1] + '!', lvl >= 3 ? '#ffe36a' : '#ffffff', lvl >= 3 ? 12 : 10);
@@ -782,6 +783,7 @@ export class Player extends Actor {
           });
           if (lvl >= 3) { q.x0 = x; q.beam = sc.add.graphics().setDepth(28).setBlendMode(Phaser.BlendModes.ADD); sc.cameras.main.flash(180, 255, 255, 255, true); sc.fx.hitStop(60); }
         }
+        sc.combat.chargeSpawn = false;
         // 발사 반동 · 섬광
         sc.fx.glow(x, y, (14 + lvl * 10) * s, col, 220, 1); sc.fx.ring(x, y, (12 + lvl * 10) * s, 0xffffff, 220);
         sc.fx.burst(x, y, [col, 0xffffff], 8 + lvl * 6, 140, { angle: f > 0 ? 0 : Math.PI, spread: .9, up: 10, glow: true, life: .3 });

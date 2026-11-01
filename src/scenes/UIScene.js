@@ -922,10 +922,10 @@ export default class UIScene extends Phaser.Scene {
     L.add(name);
     // 대사 (한 글자씩)
     const line = T.lines[T.page] || '';
-    this.talkText = hkText(this, X + 84, Y + 16, '', 11, '#efe6d0', { style: { wordWrap: { width: W - 108, useAdvancedWrap: true }, lineSpacing: 5 } });
-    L.add(this.talkText);
-    this.talkFull = line; this.talkShown = T.instant ? line.length : 0; this.talkAcc = 0; T.instant = false;
-    this.talkText.setText(line.slice(0, this.talkShown));
+    const touchNow = this.gs.touchInput && this.gs.touchInput.on;
+    this.talkText = this.talkLayout(L, X + 84, Y + 16, W - 108, line, touchNow);   // {y:…}·{b:…} 강조색 · <PC|터치> 표기 (data/npcs.js)
+    this.talkShown = T.instant ? this.talkFull.length : 0; this.talkAcc = 0; T.instant = false;
+    this.talkReveal(this.talkShown);
     L.add(hkText(this, X + W - 14, Y + H - 9, `${T.page + 1} / ${T.lines.length}`, 8, HK.faint, { origin: [1, .5] }));
     this.talkArrow = hkText(this, X + W - 50, Y + H - 10, '▼', 9, HK.gold, { origin: .5 }).setAlpha(0);
     L.add(this.talkArrow);
@@ -936,6 +936,59 @@ export default class UIScene extends Phaser.Scene {
     this.input.keyboard.on('keydown', this.onOverlayKey, this);
     this.overlayMode = 'talk';
   }
+  // 대사 한 쪽을 색 구간별 글자로 배치한다 (Phaser 글자는 한 덩어리에 한 색뿐이라, 직접 줄을 나누고 색이 바뀌는 곳마다 따로 놓는다)
+  //  {y:…} 노란 강조(#ffd166) · {b:…} 하늘색 강조(#00b4d8) · <PC 문구|터치 문구> 는 지금 조작 방식에 맞는 쪽만 · %z% 는 지금 설정한 키 이름
+  //  반환: 보이지 않는 기준 글자 (talkText) · this.talkFull 은 꾸밈을 뺀 글 (한 글자씩 찍을 때 길이)
+  talkLayout(L, x0, y0, wrapW, line, touch) {
+    line = line.replace(/<([^|>]*)\|([^>]*)>/g, (_, pc, tc) => (touch ? tc : pc)).replace(/%(\w+)%/g, (_, a) => keyLabel(Settings.key(a)));
+    const chars = [], re = /\{(y|b):([^}]*)\}/g;
+    let i = 0, m;
+    const push = (s, c) => { for (const ch of s) chars.push({ ch, c }); };
+    while ((m = re.exec(line))) { push(line.slice(i, m.index), null); push(m[2], m[1] === 'y' ? '#ffd166' : '#00b4d8'); i = re.lastIndex; }
+    push(line.slice(i), null);
+    this.talkFull = chars.map(c => c.ch).join('');
+    const probe = hkText(this, x0, y0, '가', 11, '#efe6d0').setAlpha(0); L.add(probe);
+    const probeB = hkText(this, x0, y0, '가', 11, '#efe6d0', { bold: true }).setAlpha(0); L.add(probeB);
+    const ctx = probe.context, cache = {}, lineH = probe.height + 5, fonts = [probe.style._font, probeB.style._font];
+    ctx.save();
+    const wOf = (ch, bold) => { const k = (bold ? 'b' : 'n') + ch; if (cache[k] === undefined) { ctx.font = fonts[bold ? 1 : 0]; cache[k] = ctx.measureText(ch).width; } return cache[k]; };   // 강조(굵은 글씨)는 굵은 글꼴로 잰다
+    // 줄 나누기: 넘치면 마지막 띄어쓰기에서 (없으면 그 글자 앞에서)
+    const lines = [[]];
+    let w = 0, lastSp = -1;
+    chars.forEach((c, gi) => {
+      let cur = lines[lines.length - 1];
+      if (c.ch === '\n') { lines.push([]); w = 0; lastSp = -1; return; }
+      if (w + wOf(c.ch, !!c.c) > wrapW && cur.length) {
+        if (lastSp >= 0) { const rest = cur.splice(lastSp); rest.shift(); lines.push(rest); w = rest.reduce((s, q) => s + wOf(q.ch, !!q.c), 0); }
+        else { lines.push([]); w = 0; }
+        cur = lines[lines.length - 1]; lastSp = -1;
+      }
+      if (c.ch === ' ' && !cur.length) return;   // 줄 첫머리 띄어쓰기는 버린다
+      if (c.ch === ' ') lastSp = cur.length;
+      cur.push(Object.assign({ gi }, c)); w += wOf(c.ch, !!c.c);
+    });
+    // 색이 같은 구간마다 글자 하나씩 (gi: 꾸밈을 뺀 글에서의 위치 → 한 글자씩 찍을 때 쓴다)
+    this.talkRuns = [];
+    lines.forEach((ln, li) => {
+      let x = x0, k = 0;
+      while (k < ln.length) {
+        let e = k; while (e < ln.length && ln[e].c === ln[k].c && ln[e].gi === ln[k].gi + (e - k)) e++;
+        const seg = ln.slice(k, e), str = seg.map(q => q.ch).join('');
+        const tx = hkText(this, x, y0 + li * lineH, '', 11, seg[0].c || '#efe6d0', { bold: !!seg[0].c, glow: !!seg[0].c, glowColor: seg[0].c === '#ffd166' ? 'rgba(255,209,102,0.55)' : 'rgba(0,180,216,0.55)' });
+        L.add(tx);
+        this.talkRuns.push({ tx, str, start: seg[0].gi });
+        x += seg.reduce((s, q) => s + wOf(q.ch, !!q.c), 0);
+        k = e;
+      }
+    });
+    ctx.restore();
+    return probe;
+  }
+  // 한 글자씩 찍기: 꾸밈을 뺀 글의 앞 n 글자만 보이게
+  talkReveal(n) {
+    for (const r of this.talkRuns || []) if (r.tx.scene) r.tx.setText(r.str.slice(0, Math.max(0, Math.min(r.str.length, n - r.start))));
+  }
+
   talkTick(dt) {
     if (!this.talkText || !this.talkText.scene) return;
     const full = this.talkFull || '';
@@ -945,7 +998,7 @@ export default class UIScene extends Phaser.Scene {
       if (n > this.talkShown) {
         this.talkAcc -= n - this.talkShown;
         if (Math.floor(n / 2) !== Math.floor(this.talkShown / 2) && full[n - 1] !== ' ') Sfx.play('talk');
-        this.talkShown = n; this.talkText.setText(full.slice(0, n));
+        this.talkShown = n; this.talkReveal(n);
       }
     }
     const done = this.talkShown >= full.length;
@@ -961,7 +1014,7 @@ export default class UIScene extends Phaser.Scene {
   talkNext() {
     const T = this.gs.talk;
     if (!T) return;
-    if (this.talkShown < (this.talkFull || '').length) { this.talkShown = this.talkFull.length; this.talkText.setText(this.talkFull); return; }
+    if (this.talkShown < (this.talkFull || '').length) { this.talkShown = this.talkFull.length; this.talkReveal(this.talkShown); return; }
     Sfx.play('select');
     T.page++;
     if (T.page >= T.lines.length) { this.gs.toggleOverlay('talk'); return; }

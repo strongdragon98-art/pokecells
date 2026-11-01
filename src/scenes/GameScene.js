@@ -1189,6 +1189,7 @@ export default class GameScene extends Phaser.Scene {
       if (this.level.purified) { if (!s.elite && Math.random() < .5) this.spawnWanderer(s); continue; }   // 정화한 지방: 세뇌된 적 대신 평화로운 야생 포켓몬
       if (s.elite && s.room && s.room.hidden && !(this.level.sides || []).some(sd => sd.room === s.room && sd.revealed)) { s.spawned = false; continue; }   // 숨은 굴의 수문장은 흙이 걷힌 뒤에
       if (!s.elite && (this.level.terminals || []).some(t => Math.abs(t.x * TILE - s.x) < 150 && Math.abs(t.g * TILE - s.y) < 90)) continue;   // 간이 회복기 둘레는 안전 구역
+      if (!s.elite && (this.level.npcs || []).some(n => n.guide && s.x - n.x * TILE > -60 && s.x - n.x * TILE < 220 && Math.abs(n.g * TILE - s.y) < 90)) continue;   // 조작 힌트 NPC 와 연습용 과녁 자리도
       this.spawnAt(s);
     }
   }

@@ -127,7 +127,7 @@ export class Combat {
       if (o.onHit) o.onHit(e);   // 맞은 자리 연출 (톱니 타격 섬광 등)
       n++;
     }
-    if (this.s.props) this.s.props.hitRect(rect);   // 나무 상자도 부서진다
+    if (this.s.props) this.s.props.hitRect(rect, o.src);   // 나무 상자도 부서진다 (o.src: 차징 샷 · 내려찍기 — 연습용 과녁)
     if (this.s.hitBreakables) this.s.hitBreakables(rect);   // 금 간 벽도 (세 번 치면 무너진다)
     return n;
   }
@@ -141,7 +141,7 @@ export class Combat {
       if (o.onHit) o.onHit(e);
       n++;
     }
-    if (this.s.props) this.s.props.hitCircle(cx, cy, r);
+    if (this.s.props) this.s.props.hitCircle(cx, cy, r, o.src);
     if (this.s.hitBreakables) this.s.hitBreakables({ x: cx - r, y: cy - r, w: r * 2, h: r * 2 });
     return n;
   }
@@ -171,6 +171,7 @@ export class Combat {
     const q = Object.assign({ owner: 'player', vx: 0, vy: 0, r: 4, life: 1, pierce: 1, grav: 0, t: 0, hit: new Set(), status: {} }, c);
     q.color = color;
     if (q.owner === 'player') {
+      if (this.chargeSpawn) q.charge = true;   // Player.fireCharge 가 쏜 차징 탄 (계열 고유 차징 포함)
       q.dmg = this.p.atk * (q.mul ?? 1);
       if (this.p.mods.homing && !q.homing && !q.update && !q.boomerang && Math.hypot(q.vx, q.vy) > 40) q.homing = 1.4;   // 특성 카드: 유도 탄두
     }
@@ -221,7 +222,7 @@ export class Combat {
         if (q.owner === 'player' && s.hitBreakables) s.hitBreakables({ x: q.x - q.r - 2, y: q.y - q.r - 2, w: q.r * 2 + 4, h: q.r * 2 + 4 });   // 투사체로도 금 간 벽을 깬다
       }
       if (!dead && q.owner === 'player') {
-        if (s.props) s.props.hitCircle(q.x, q.y, q.r);
+        if (s.props) s.props.hitCircle(q.x, q.y, q.r, q.charge ? 'charge' : null);   // 차징 샷 탄은 연습용 나무 상자도 부순다
         for (const e of s.enemies) {
           if (!e.alive || q.hit.has(e) || !circRect(q.x, q.y, q.r, e.bounds())) continue;
           q.hit.add(e);
@@ -304,7 +305,7 @@ export class Combat {
 
   explode(q) {
     const b = q.boom;
-    if (q.owner === 'player') this.hitCircle(q.x, q.y, b.r, b.mul, q.type, Object.assign({ kbx: b.kb ?? 200, kby: -200 }, q.status));
+    if (q.owner === 'player') this.hitCircle(q.x, q.y, b.r, b.mul, q.type, Object.assign({ kbx: b.kb ?? 200, kby: -200, src: q.charge ? 'charge' : undefined }, q.status));
     else if (Phaser.Math.Distance.Between(q.x, q.y, this.p.x, this.p.y) < b.r) this.p.takeHit(q.dmg, q.type, q.x, {});
     this.fx.ring(q.x, q.y, b.r, q.color, 280); this.fx.glow(q.x, q.y, b.r, q.color, 260, .9);
     this.fx.burst(q.x, q.y, [q.color, 0xffffff], 22, b.r * 3, { up: 80, glow: true });
