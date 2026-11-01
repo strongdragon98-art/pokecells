@@ -46,17 +46,20 @@ const TAG_IMPL = Object.assign({}, typeMoves.TAG_IMPL, base.TAG_IMPL);
 const ZMOVE_IMPL = Object.assign({}, typeMoves.ZMOVE_IMPL, base.ZMOVE_IMPL);
 const LEGEND_BODY = { w: 22, h: 32 };   // 전설 플레이어블 히트박스 = 일반 최종진화(약 18×26)의 1.25배
 const TELEPORT = 78;                    // 순간이동 거리
-// Z 홀드 차징 샷: CHG_SHOW 초부터 기운이 모이고, 단계별 시각(초)에 1·2·3단 (2·3단은 '초고압 차징 코어' 특성 카드가 있어야)
+// Z 홀드 차징 샷: CHG_SHOW 초부터 기운이 모이고, 단계별 시각(초)에 1·2·3단 (2단은 '초고압 차징 코어' 1장 · 3단은 2장 — 고속 축전 코일이면 더 빨리)
 const CHG_SHOW = .22, CHG_AT = [.72, 1.45, 2.25];
 export { CHG_SHOW, CHG_AT };   // UIScene 스킬 바: Z 칸의 차징 게이지
 // 속성 → 차징 탄 그림 (systems/ProjectileRenderer.js 의 kind)
 const CHARGE_KIND = { fire: 'fire', water: 'water', ice: 'bubble', grass: 'leaf', bug: 'leaf', electric: 'bolt', ghost: 'shadow', dark: 'shadow', poison: 'bubble', psychic: 'wave',
   rock: 'rock', ground: 'rock', steel: 'steel', fighting: 'wave', normal: 'wave', flying: 'wave', dragon: 'wave', fairy: 'wave' };
-// 단계별 차징 탄: 1단 기본 탄 · 2단 중형 관통탄 · 3단 화면을 가르는 초대형 폭발 속성포 (피해 1단의 300%)
+// 단계별 차징 탄 (평타 공격력 배율): mul 직격 + boom.mul 대폭발 = 총합 — 1단 350+150 = 500% · 2단 400+250 = 650% · 3단 650+450 = 1,100%
+//  모두 잡몹은 무한 관통 · 보스/엘리트는 파고들어 hits 연타 뒤 대폭발 · 투사체 크기 2단 1.8배 · 3단 약 3배
 const CHARGE_SHOT = [null,
-  { r: 7, mul: 3.2, speed: 330, pierce: 1, life: .9, boom: { r: 30, mul: 1.1 }, sfx: 'cshot1', shake: .006 },
-  { r: 9, mul: 4.6, speed: 440, pierce: 6, life: 1, sfx: 'cshot2', shake: .01 },
-  { r: 17, mul: 9.6, speed: 560, pierce: 99, life: 1.25, ghost: true, boom: { r: 92, mul: 4 }, sfx: 'cshot3', shake: .022 }];
+  { r: 7, mul: 3.5, speed: 360, life: .9, hits: 3, boom: { r: 36, mul: 1.5 }, sfx: 'cshot1', shake: .008 },
+  { r: 12.6, mul: 4, speed: 460, life: 1, hits: 4, boom: { r: 58, mul: 2.5 }, sfx: 'cshot2', shake: .013 },
+  { r: 21, mul: 6.5, speed: 560, life: 1.25, hits: 5, ghost: true, boom: { r: 104, mul: 4.5 }, sfx: 'cshot3', shake: .024 }];
+const CHG_FAST = [1, .65, .52, .4];   // 고속 축전 코일 장 수 → 차징 시간 배율 (-35% · -48% · -60%)
+const PERFECT_WIN = .25, CHARGE_CRIT = 1.5, MULTI_T = .3;   // 퍼펙트 차징 창(초) · 그때 떼면 피해 ×1.5 (+ 확정 치명타) · 보스/엘리트 다단히트 시간
 
 export class Player extends Actor {
   constructor(scene, partyKeys, x, y) {
@@ -794,7 +797,7 @@ export class Player extends Actor {
     const side = Math.abs(aim.x) < .08 ? 0 : Math.sign(aim.x), th = Math.max(Math.PI / 6, Math.atan2(Math.max(aim.y, .01), Math.abs(aim.x)));
     const vx = side ? Math.cos(th) * 760 * side : 0, vy = side ? Math.sin(th) * 760 : 720, dir = side;   // 수직이면 예전처럼 초속 720 으로 곧장
     if (this.action) this.endAction(true);
-    this.chg.t = 0; this.chg.lvl = 0;
+    this.chg.t = 0; this.chg.lvl = 0; this.chg.fullAt = null;
     this.diveCd = .45;
     if (side) { this.face = side; this.refacing(); }
     Sfx.play('dive');
@@ -851,78 +854,176 @@ export class Player extends Actor {
   }
 
   // ---------------- Z 홀드 차징 샷 ----------------
-  //  Z 를 짧게 누르면 평소 평타. 꾹 누르고 있으면 몸 둘레에 속성 기운이 모이고(소리도 단계마다 높아진다), 떼는 순간 앞으로 차징 탄을 쏜다
-  //  1단 기본 탄 · 2단 중형 관통탄 · 3단 화면을 가르는 초대형 폭발 속성포 (2·3단은 '초고압 차징 코어' 특성 카드)
+  //  Z 를 짧게 누르면 평소 평타. 꾹 누르고 있으면 몸 둘레로 속성 기운이 빨려 들고(소리도 단계마다 높아진다), 떼는 순간 앞으로 차징 탄을 쏜다
+  //  기본은 1단까지 (총합 500%) · 기술머신 '초고압 차징 코어' 1장 → 2단 (650%) · 2장(+1강) → 3단 풀차징 (1,100%)
+  //  해금된 마지막 단계가 차는 찰나(PERFECT_WIN 초)에 십자 섬광이 번쩍 — 그때 떼면 퍼펙트 차징 (확정 치명타 + 피해 ×1.5)
+  chargeMax(m = this.m) { return 1 + Math.min(2, (m.perks || {}).u_charge || 0); }
+  // k 단계(0부터)가 차는 시각 — 고속 축전 코일: -35% · -48% · -60%
+  chargeAt(k, m = this.m) { return CHG_AT[k] * CHG_FAST[Math.min(3, (m.perks || {}).u_rapid || 0)]; }
+  chargePerfect() { const c = this.chg; return c.fullAt != null && c.t - c.fullAt <= PERFECT_WIN; }
   updateCharge(dt, inp) {
     const c = this.chg, a = this.action, sc = this.scene;
     const blocked = this.dash || (a && (a.dive || a.slot === 'zmove' || a.slot === 'charge'));
     if (inp.zH && !blocked) {
       c.t += dt;
-      const max = this.mods.chargeCore ? 3 : 1;
-      let lvl = 0; for (let k = 0; k < max; k++) if (c.t >= CHG_AT[k]) lvl = k + 1;
+      const max = this.chargeMax();
+      let lvl = 0; for (let k = 0; k < max; k++) if (c.t >= this.chargeAt(k)) lvl = k + 1;
       const col = typeColor(this.chargeType());
-      if (lvl > c.lvl) {   // 한 단계 찼다: 칭! + 고리
+      if (lvl > c.lvl) {   // 한 단계 찼다: 칭! + 응축 고리 (2단: 두 번째 고리 · 3단: 거대한 스파크와 바닥 균열)
         c.lvl = lvl;
         Sfx.play('charged');
         sc.fx.ring(this.x, this.y, 18 + lvl * 8, lvl >= 3 ? 0xffffff : col, 260);
         sc.fx.burst(this.x, this.y, [col, 0xffffff], 8 + lvl * 4, 70 + lvl * 20, { glow: true, grav: 0, bounce: false, life: .35 });
+        if (lvl >= 2) sc.time.delayedCall(90, () => sc.fx.ring(this.x, this.y, 34 + lvl * 10, col, 380));
+        if (lvl >= 3) { this.chargeCrack(col); sc.fx.shake(.006, 220, 'hit'); }
+        if (lvl === max) {   // 퍼펙트 차징 창이 열린다: 하얀 · 황금 십자 섬광 (팅-!)
+          c.fullAt = c.t;
+          sc.fx.starburst(this.x, this.y - 4, 0xffe36a, 1 + lvl * .25, { debris: false });
+          sc.fx.ring(this.x, this.y, 26 + lvl * 8, 0xffffff, 200);
+          this.flash(90);
+          Sfx.play('ting');
+        }
       }
       if (c.t >= CHG_SHOW) {
-        // 기운이 몸 쪽으로 빨려 든다 (단계가 오를수록 많이 · 크게)
-        const n = 1 + (c.lvl >= 2 ? 1 : 0) + (c.lvl >= 3 ? 1 : 0), R = 30 + c.lvl * 6;
+        // 기운이 몸 쪽으로 강하게 빨려 든다 (단계가 오를수록 많이 · 크게 · 빠르게)
+        const n = 1 + c.lvl, R = 34 + c.lvl * 8;
         for (let k = 0; k < n; k++) {
           const ang = Math.random() * Math.PI * 2, px = this.x + Math.cos(ang) * R, py = this.y + Math.sin(ang) * R * .8;
-          sc.fx.burst(px, py, [col, 0xffffff], 1, R * 3.4, { angle: ang + Math.PI, spread: .15, up: 0, grav: 0, bounce: false, glow: true, life: .26, size: c.lvl >= 2 ? 2 : 1 });
+          sc.fx.burst(px, py, [col, 0xffffff], 1, R * (3.6 + c.lvl * .6), { angle: ang + Math.PI, spread: .12, up: 0, grav: 0, bounce: false, glow: true, life: .24, size: c.lvl >= 2 ? 2 : 1 });
         }
-        const pulse = 1 + Math.sin(sc.time.now / (c.lvl >= 3 ? 40 : 70)) * .12, full = c.lvl >= max;
-        this.chgAura.setVisible(true).setPosition(this.x, this.y).setTint(c.lvl >= 3 ? 0xffffff : col)
-          .setScale((.5 + Math.min(1, c.t / CHG_AT[max - 1]) * .55 + c.lvl * .18) * pulse).setAlpha(full ? .75 : .45);
+        const pulse = 1 + Math.sin(sc.time.now / (c.lvl >= 3 ? 40 : 70)) * .12, full = c.lvl >= max, perfect = this.chargePerfect();
+        this.chgAura.setVisible(true).setPosition(this.x, this.y).setTint(perfect ? 0xffe36a : c.lvl >= 3 ? 0xffffff : col)
+          .setScale((.5 + Math.min(1, c.t / this.chargeAt(max - 1)) * .55 + c.lvl * .22) * pulse * (perfect ? 1.25 : 1)).setAlpha(perfect ? .95 : full ? .75 : .45);
         c.st -= dt;
-        if (c.st <= 0 && c.lvl < max) { c.st = .3; Sfx.play('charge' + Math.min(3, c.lvl + 1)); }   // 모이는 소리 (단계마다 높아진다)
+        if (c.st <= 0 && c.lvl < max) { c.st = .3 * CHG_FAST[Math.min(3, (this.m.perks || {}).u_rapid || 0)]; Sfx.play('charge' + Math.min(3, c.lvl + 1)); }   // 모이는 소리 (단계마다 높아진다)
         if (full && Math.floor(sc.time.now / 70) % 3 === 0) this.flash(40);   // 다 찼으면 몸이 하얗게 깜빡인다
+        if (c.lvl >= 3 && Math.random() < dt * 14) {   // 3단: 몸 둘레로 튀는 스파크 · 발밑 균열 먼지
+          const ang = Math.random() * Math.PI * 2;
+          sc.fx.burst(this.x + Math.cos(ang) * 16, this.y + Math.sin(ang) * 16, [0xffffff, col], 2, 160, { angle: ang, spread: .3, grav: 0, bounce: false, glow: true, life: .18, size: 1 });
+          if (this.onGround) sc.fx.burst(this.x + (Math.random() - .5) * 30, this.bottom - 1, [0x8a7a68, col], 1, 60, { up: 60, life: .4, size: 1 });
+        }
       }
       return;
     }
-    if (!inp.zH && c.lvl > 0 && !blocked) this.fireCharge(c.lvl);
-    c.t = 0; c.lvl = 0; c.st = 0;
+    if (!inp.zH && c.lvl > 0 && !blocked) this.fireCharge(c.lvl, c.lvl === this.chargeMax() && this.chargePerfect());
+    c.t = 0; c.lvl = 0; c.st = 0; c.fullAt = null;
     this.chgAura.setVisible(false);
   }
+  // 3단 응축: 발밑에서 양옆으로 갈라지는 바닥 균열
+  chargeCrack(col) {
+    const sc = this.scene, by = this.bottom;
+    if (!this.onGround) return;
+    for (const d of [-1, 1]) for (let k = 1; k <= 5; k++) sc.time.delayedCall(k * 26, () => sc.fx.burst(this.x + d * k * 9, by - 1, [0x6a5a48, col, 0xffffff], 2, 70, { angle: -Math.PI / 2 + d * .4, spread: .6, up: 50, life: .4, size: k < 3 ? 2 : 1 }));
+  }
 
-  fireCharge(lvl) {
+  // 차징 임팩트 웨이브 (특성 카드): 맞힌 자리에 2차 연쇄 속성 폭발 장판 — 0.3초마다 5번 터진다 (합성하면 더 크고 세게)
+  chargeShockField(x, y, lvl, type, n) {
+    const sc = this.scene, col = typeColor(type), R = (46 + lvl * 16) * (1 + .3 * (n - 1)), mul = .28 * lvl * (1 + .5 * (n - 1));
+    let k = 0;
+    const tick = () => {
+      if (!sc.combat || this.dead) return;
+      if (!sc.paused) {
+        sc.combat.hitCircle(x, y, R, mul, type, { kbx: 60, kby: -120, hs: 20, stagMul: 2, src: 'charge' });
+        sc.fx.ring(x, y, R, col, 260); sc.fx.glow(x, y, R * .8, col, 240, .6);
+        sc.fx.burst(x + (Math.random() - .5) * R, y + (Math.random() - .5) * R * .4, [col, 0xffffff], 8, 120, { up: 90, glow: true, life: .35 });
+        Sfx.play('boom');
+      }
+      if (++k < 5) sc.time.delayedCall(300, tick);
+    };
+    sc.fx.ring(x, y, R * 1.2, 0xffffff, 300);
+    sc.time.delayedCall(120, tick);
+  }
+
+  fireCharge(lvl, crit = false) {
     const sig = chargeSigOf(this);   // 계열 고유 차징 (game/Signature.js): 개굴닌자 거대 수리검 · 울머기 저격탄 …
     const sc = this.scene, type = sig ? sig.type : this.chargeType(), col = typeColor(type), spec = CHARGE_SHOT[lvl], evo = this.tierIdx, s = this.mods.sizeMul * this.T.proj * (evo >= 2 ? 1.2 : 1) * (this.mods.psyCore ? 1.3 : 1);   // 3단·메가는 탄이 더 크다 · 뮤츠의 코어 +30%
+    const perks = this.m.perks || {}, full = lvl === this.chargeMax(), shockN = full ? perks.u_shock || 0 : 0, rapid = (perks.u_rapid || 0) > 0;
+    const critMul = crit ? CHARGE_CRIT : 1;
     if (this.action) this.endAction(true);
     this.chgAura.setVisible(false);
+    if (crit) {   // ⚡ 퍼펙트 차징: 확정 치명타 + 피해 ×1.5
+      sc.fx.floatText(this.x, this.b.y - 26, '⚡ OVERCHARGE CRITICAL!', '#ffe36a', 13);
+      sc.fx.starburst(this.x, this.y, 0xffffff, 1.6, { debris: false });
+      sc.cameras.main.flash(120, 255, 240, 170, true);
+      Sfx.play('ocrit');
+    }
     this.startAction({
-      dur: lvl >= 3 ? .5 : .3, mm: lvl >= 3 ? 0 : .25, anim: 'Shoot', inv: lvl >= 3 ? .3 : 0, ev: [[.03, () => {
+      dur: lvl >= 3 ? .5 : .3, mm: rapid ? 1 : lvl >= 3 ? 0 : .25, anim: 'Shoot', inv: lvl >= 3 ? .3 : 0, boostDmg: critMul, ev: [[.03, () => {
         const f = this.face, x = this.x + f * 12, y = this.y - 3;
         sc.combat.chargeSpawn = true;   // 이 순간 만든 탄은 차징 탄 (연습용 나무 상자 · Combat.spawnProjectile)
+        sc.combat.chargeCtx = { crit, shock: shockN ? (hx, hy) => this.chargeShockField(hx, hy, lvl, type, shockN) : null };
         if (sig) {
           sig.fire(this, lvl, s, f);
           if (lvl >= 2) sc.fx.floatText(this.x, this.b.y - 16, (sig.nameOf ? sig.nameOf(this, lvl) : sig.name[lvl - 1]) + '!', lvl >= 3 ? '#ffe36a' : '#ffffff', lvl >= 3 ? 12 : 10);
           if (lvl >= 3) sc.fx.hitStop(60);
         } else {
+          const boom = { r: spec.boom.r * (1 + (s - 1) * .6), mul: spec.boom.mul * critMul };
+          const status = Object.assign({ heavy: true, hs: 30 + lvl * 15 }, lvl >= 2 ? { stun: .4 } : {}, crit ? { crit: 1 } : {}, shockN ? { stagMul: 2 } : {});
+          // 대폭발: 속성 충격파 고리 + 역경직 (보스 · 엘리트를 파고든 뒤 · 벽에 부딪히거나 사거리 끝)
+          const blast = (q, heavy) => {
+            if (q.boomed) return;
+            q.boomed = true;
+            sc.combat.hitCircle(q.x, q.y, boom.r, boom.mul, type, Object.assign({}, status, { kbx: 220 + lvl * 60, kby: -220, hs: heavy ? 90 : 40, src: 'charge' }));
+            sc.fx.ring(q.x, q.y, boom.r, col, 320); sc.fx.ring(q.x, q.y, boom.r * 1.35, 0xffffff, 420);
+            sc.fx.glow(q.x, q.y, boom.r, col, 300, 1);
+            sc.fx.burst(q.x, q.y, [col, 0xffffff], 18 + lvl * 8, boom.r * 3, { up: 90, glow: true });
+            sc.fx.starburst(q.x, q.y, col, .8 + lvl * .35);
+            if (heavy) { sc.fx.hitStop(90 + lvl * 5); shockwave(sc, q.x, q.y, .02 + lvl * .008, 420); }
+            sc.fx.shake(heavy ? .014 + lvl * .006 : .008 + lvl * .003, heavy ? 320 : 220, 'hit');
+            Sfx.play('cboom'); if (lvl >= 2) Sfx.play('slam');
+            if (shockN) this.chargeShockField(q.x, q.y, lvl, type, shockN);
+          };
+          const hits = spec.hits;
           const q = sc.combat.spawnProjectile({
             owner: 'player', x, y, vx: f * spec.speed, vy: 0, r: spec.r * s, mul: spec.mul, type, kind: CHARGE_KIND[type] || 'wave', color: col,
-            life: spec.life, pierce: spec.pierce, ghost: !!spec.ghost, light: true, tier: Math.max(this.tierIdx, lvl), pow: s * (1 + lvl * .25), stream: false,
-            boom: spec.boom && { r: spec.boom.r * (1 + (s - 1) * .6), mul: spec.boom.mul }, kb: 200 + lvl * 80,
-            status: Object.assign({ heavy: true, hs: 50 + lvl * 25 }, lvl >= 2 ? { stun: .4 } : {}),
-            update: (q, dt) => {   // 꼬리: 속성 파편 · 3단은 굵은 빛줄기가 남는다
+            life: spec.life, pierce: 999, ghost: !!spec.ghost, light: true, tier: Math.max(this.tierIdx, lvl), pow: s * (1 + lvl * .3), stream: false, ownShock: true,
+            kb: 200 + lvl * 80, status,
+            // 잡몹은 그대로 뚫고 지나가며 줄줄이 피해 · 넉백 / 보스 · 엘리트는 파고들어 0.3초간 다단히트(지지직!) 뒤 대폭발(콰앙!)
+            onHit: (e, q) => {
+              if (q.latch) return;
+              if (e.boss || e.elite) { q.latch = e; q.lt = 0; q.n = 0; q.life = Math.max(q.life, 1); Sfx.play('crit'); return; }
+              sc.combat.damageEnemy(e, q.dmg, type, Object.assign({}, status, { kb: f * (200 + lvl * 80), kby: -160, hx: q.x, hy: q.y, hs: 25 + lvl * 8 }));
+              sc.fx.burst(e.x, e.y, [col, 0xffffff], 6 + lvl * 2, 120, { glow: true, life: .25 });
+            },
+            update: (q, dt) => {
+              if (q.latch) {   // 적의 몸을 파고든 채로 지지직
+                const e = q.latch;
+                q.vx = 0; q.vy = 0;
+                if (e.alive) { q.x = e.x; q.y = e.y; }
+                q.lt += dt;
+                while (q.n < hits && q.lt >= q.n * (MULTI_T / hits)) {
+                  q.n++;
+                  if (e.alive) sc.combat.damageEnemy(e, q.dmg / hits, type, Object.assign({}, status, { kb: 0, kby: 0, hx: q.x, hy: q.y, hs: 18 }));
+                  sc.fx.burst(q.x + (Math.random() - .5) * 14, q.y + (Math.random() - .5) * 14, [col, 0xffffff], 5 + lvl * 2, 110, { glow: true, grav: 0, bounce: false, life: .2 });
+                  sc.fx.ring(q.x, q.y, 10 + q.n * 4 * lvl, col, 140);
+                  Sfx.play('zap');
+                }
+                if (q.lt >= MULTI_T) { blast(q, true); q.kill = 'done'; }
+                if (q.beam) { const L = Math.min(q.x0, q.x), W = Math.abs(q.x - q.x0); q.beam.clear().fillStyle(col, .35).fillRect(L, q.y - q.r * .9, W, q.r * 1.8).fillStyle(0xffffff, .55).fillRect(L, q.y - q.r * .3, W, q.r * .6); }
+                return;
+              }
+              // 꼬리: 속성 파편 · 3단은 굵은 빛줄기가 남는다
               q.tt = (q.tt || 0) - dt;
-              if (q.tt <= 0) { q.tt = lvl >= 3 ? .012 : .03; sc.fx.burst(q.x - f * q.r, q.y + (Math.random() - .5) * q.r, [col, 0xffffff], lvl, 40, { grav: 0, bounce: false, glow: true, life: .3, size: lvl >= 2 ? 2 : 1 }); }
-              if (evo >= 1) { q.sp = (q.sp || 0) + dt * 22; for (const ph of [0, Math.PI]) sc.fx.burst(q.x - f * q.r * .6, q.y + Math.sin(q.sp + ph) * q.r * 1.3, [col, 0xffffff], 1, 10, { grav: 0, bounce: false, glow: true, life: .32, size: 2 }); }   // 2단부터: 탄 뒤로 회전 소용돌이 꼬리
+              if (q.tt <= 0) { q.tt = lvl >= 3 ? .012 : .03; sc.fx.burst(q.x - f * q.r, q.y + (Math.random() - .5) * q.r, [col, 0xffffff], lvl + 1, 40, { grav: 0, bounce: false, glow: true, life: .3, size: lvl >= 2 ? 2 : 1 }); }
+              if (evo >= 1 || lvl >= 2) { q.sp = (q.sp || 0) + dt * 22; for (const ph of [0, Math.PI]) sc.fx.burst(q.x - f * q.r * .6, q.y + Math.sin(q.sp + ph) * q.r * 1.3, [col, 0xffffff], 1, 10, { grav: 0, bounce: false, glow: true, life: .32, size: 2 }); }   // 회전 소용돌이 꼬리
               if (q.beam) { const L = Math.min(q.x0, q.x), W = Math.abs(q.x - q.x0); q.beam.clear().fillStyle(col, .35).fillRect(L, q.y - q.r * .9, W, q.r * 1.8).fillStyle(0xffffff, .55).fillRect(L, q.y - q.r * .3, W, q.r * .6); }
             },
-            onExpire: q => { if (evo >= 2) { sc.fx.ring(q.x, q.y, 30 * s, col, 300); sc.combat.hitCircle(q.x, q.y, 26 * s, .6 + lvl * .3, type, { kbx: 160, kby: -160, hs: 30, proc: true }); } if (q.beam) { const bm = q.beam; q.beam = null; sc.tweens.add({ targets: bm, alpha: 0, duration: 420, onComplete: () => bm.destroy() }); } }
+            onExpire: q => {
+              blast(q, false);   // 벽 · 사거리 끝에서도 터진다 (보스에 꽂혀 이미 터졌으면 건너뛴다)
+              if (q.beam) { const bm = q.beam; q.beam = null; sc.tweens.add({ targets: bm, alpha: 0, duration: 420, onComplete: () => bm.destroy() }); }
+            }
           });
-          if ((this.mods.coreProj || {})[type]) sc.combat.spawnProjectile({ owner: 'player', x, y: y - 8, vx: f * spec.speed * .92, vy: -spec.speed * .08, r: spec.r * s * .7, mul: spec.mul * .6, type, kind: CHARGE_KIND[type] || 'wave', color: col, life: spec.life, pierce: spec.pierce, light: true, tier: Math.max(this.tierIdx, lvl), pow: s, kb: 160, stream: false, status: { heavy: true } });   // 보스의 코어: 그 속성 차징 탄 +1
+          if ((this.mods.coreProj || {})[type]) sc.combat.spawnProjectile({ owner: 'player', x, y: y - 8, vx: f * spec.speed * .92, vy: -spec.speed * .08, r: spec.r * s * .7, mul: spec.mul * .6, type, kind: CHARGE_KIND[type] || 'wave', color: col, life: spec.life, pierce: 99, light: true, tier: Math.max(this.tierIdx, lvl), pow: s, kb: 160, stream: false, status });   // 보스의 코어: 그 속성 차징 탄 +1
           if (lvl >= 3) { q.x0 = x; q.beam = sc.add.graphics().setDepth(28).setBlendMode(Phaser.BlendModes.ADD); sc.cameras.main.flash(180, 255, 255, 255, true); sc.fx.hitStop(60); }
         }
-        sc.combat.chargeSpawn = false;
-        // 발사 반동 · 섬광
-        sc.fx.glow(x, y, (14 + lvl * 10) * s, col, 220, 1); sc.fx.ring(x, y, (12 + lvl * 10) * s, 0xffffff, 220);
-        sc.fx.burst(x, y, [col, 0xffffff], 8 + lvl * 6, 140, { angle: f > 0 ? 0 : Math.PI, spread: .9, up: 10, glow: true, life: .3 });
-        this.b.setVelocityX(-f * (60 + lvl * 50));
+        sc.combat.chargeSpawn = false; sc.combat.chargeCtx = null;
+        // 발사: 포구 화염 · 반동으로 뒤로 밀림 · 카메라 줌 펀치
+        sc.fx.glow(x, y, (16 + lvl * 12) * s, col, 240, 1); sc.fx.ring(x, y, (14 + lvl * 12) * s, 0xffffff, 220);
+        sc.fx.starburst(x + f * 6, y, col, .6 + lvl * .3, { debris: false });
+        sc.fx.burst(x, y, [col, 0xffffff, 0xffe36a], 10 + lvl * 8, 160 + lvl * 30, { angle: f > 0 ? 0 : Math.PI, spread: .7, up: 10, glow: true, life: .3 });
+        this.b.setVelocityX(-f * (90 + lvl * 70));
+        const cam = sc.cameras.main;
+        if (!cam.zoomEffect.isRunning) { const z0 = cam.zoom; cam.zoomTo(z0 * (1.03 + lvl * .012), 70, 'Quad.easeOut', true); sc.time.delayedCall(90, () => cam.zoomTo(z0, 220, 'Sine.easeOut', true)); }
         sc.fx.shake(spec.shake, 160 + lvl * 60, 'hit');
         Sfx.play(spec.sfx);
         this.squash(.8, 1.2);

@@ -13,14 +13,14 @@ import { typeName, typeColor, hex, matchups } from '../data/types.js';
 import { GRADE_STYLE, UPGRADES, BOOSTS, rollCards, heldLv, mergePreview, lvTag, CARD_MAX_LV, MAX_BONUS } from '../data/tm.js';
 
 // 특성 카드 분류 → 카드 가운데 아이콘 글자 (기술 아이콘이 없는 카드)
-const PERK_ICON = { 능력치: '⚔', 기동: '➶', 유틸: '✚', '속성 부여': '✺', '스킬 변이': '✷', 유물: '❂', 숙련: '✦', '대시 진화': '⚡' };
+const PERK_ICON = { 차징: '⚡', 능력치: '⚔', 기동: '➶', 유틸: '✚', '속성 부여': '✺', '스킬 변이': '✷', 유물: '❂', 숙련: '✦', '대시 진화': '⚡' };
 // 한 줄 글자가 넘치면 가로로 줄인다
 const fitText = (t, w) => { if (t.width > w) t.setScale(w / t.width, 1); return t; };
 import { HK, hkText, darkBand, hkMenu, hiImage, fadeLine, bar3d, glassPanel, glassButton, typePill } from '../systems/ui.js';
 import { MapView, VP } from '../systems/MapView.js';
 import { TouchControls } from '../systems/TouchControls.js';
 import { tagIcon, roundPortrait, itemArt, hiTex, dashIcon, skillIcon } from '../systems/Textures.js';
-import { CHG_SHOW, CHG_AT } from '../game/Player.js';
+import { CHG_SHOW } from '../game/Player.js';
 import { megaUltOf, megaSymbol, MEGA_ULT_CD, MEGA_ULT } from '../game/Spectacle.js';
 import { CHARGE_SIG } from '../game/Signature.js';
 import { installGameMenu } from './GameMenu.js';
@@ -1598,7 +1598,9 @@ export default class UIScene extends Phaser.Scene {
   updateSkillBar(p, time) {
     const st = Settings.get('hudStyle') || 'A', g = this.gSlot, gt = this.gSlotTop, m = p.m;
     g.clear(); gt.clear();
-    const chgMax = p.mods.chargeCore ? 3 : 1, chg = p.chg && p.chg.t > CHG_SHOW ? Math.min(1, p.chg.t / CHG_AT[chgMax - 1]) : 0;
+    // 차징 게이지: 해금된 단계 수(1 · 2 · 3칸)로 나눈 테두리 + 칸 경계 눈금 · 퍼펙트 차징 창이 열려 있으면 금빛으로 번쩍
+    const chgMax = p.chargeMax(), chgEnd = p.chargeAt(chgMax - 1), chg = p.chg && p.chg.t > CHG_SHOW ? Math.min(1, p.chg.t / chgEnd) : 0;
+    const chgTicks = Array.from({ length: chgMax - 1 }, (_, k) => p.chargeAt(k) / chgEnd), chgPerfect = chg > 0 && p.chargePerfect();
     for (const s of this.slots) {
       let on = true, tex, type, cd = 0, max = 1, name = null;
       if (s.id === 'dash') { type = p.types[0]; tex = dashIcon(this, type); cd = Math.max(0, p.dashCd); max = .55 * p.mods.dashCdMul; name = '대시 회피'; }
@@ -1624,7 +1626,7 @@ export default class UIScene extends Phaser.Scene {
       s.cd.setText(cd >= .05 ? (cd >= 1 ? cd.toFixed(0) : cd.toFixed(1)) : '');
       s.badge.setText(st === 'B' ? (s.id === 'zmove' ? 'Z' : s.id === 'ult' ? 'M' : typeName(type).slice(0, 1)) : '');
       if (s.id === 'ult') s.icon.setTint(tc);
-      this.drawSlot(g, gt, s.x, SLOT_Y, st, { tc: s.id === 'potion' ? 0x5ad08a : tc, k, flash: s.flash, charge: s.id === 'z' ? chg : 0, lvl: s.id === 'z' && p.chg ? p.chg.lvl : 0, maxLvl: chgMax, key: s.key, badge: s.badge, gold: s.id === 'zmove' || s.id === 'ult' });
+      this.drawSlot(g, gt, s.x, SLOT_Y, st, { tc: s.id === 'potion' ? 0x5ad08a : tc, k, flash: s.flash, charge: s.id === 'z' ? chg : 0, ticks: chgTicks, perfect: chgPerfect, lvl: s.id === 'z' && p.chg ? p.chg.lvl : 0, maxLvl: chgMax, key: s.key, badge: s.badge, gold: s.id === 'zmove' || s.id === 'ult' });
       if (s.id === 'potion') s.badge.setText(st === 'B' ? '🧪' : '');
     }
     this.zGlow.setAlpha(p.z.has && p.z.cd <= 0 ? .3 + Math.sin(time / 160) * .12 : 0);
@@ -1684,14 +1686,19 @@ export default class UIScene extends Phaser.Scene {
       o.key.setPosition(x - h - 1 + kw / 2, y - h + 4);
       o.badge.setText('');
     }
-    // Z 칸 차징 게이지 (속성색으로 아래에서 차오르는 테두리 + 단계 점)
+    // Z 칸 차징 게이지 (속성색으로 아래에서 차오르는 테두리 + 해금 단계만큼 나눈 눈금 + 단계 칸)
     if (o.charge > 0) {
-      gt.lineStyle(2, tc, .9); gt.beginPath();
-      const L = S * 4 * o.charge; let rem = L;
       const seg = [[x - h, y + h, x + h, y + h], [x + h, y + h, x + h, y - h], [x + h, y - h, x - h, y - h], [x - h, y - h, x - h, y + h]];
+      const at = f => { let d = S * 4 * f; for (const [x1, y1, x2, y2] of seg) { if (d <= S) return [x1 + (x2 - x1) * d / S, y1 + (y2 - y1) * d / S]; d -= S; } return [x - h, y + h]; };
+      const gold = o.perfect && Math.floor(this.time.now / 50) % 2 === 0;
+      gt.lineStyle(o.perfect ? 3 : 2, gold ? 0xffe36a : tc, .95); gt.beginPath();
+      let rem = S * 4 * o.charge;
       for (const [x1, y1, x2, y2] of seg) { if (rem <= 0) break; const len = Math.min(S, rem), t = len / S; gt.moveTo(x1, y1); gt.lineTo(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t); rem -= len; }
       gt.strokePath();
-      for (let i = 0; i < o.maxLvl; i++) { gt.fillStyle(i < o.lvl ? 0xffffff : 0x3a3448, 1); gt.fillRect(x - (o.maxLvl * 6) / 2 + i * 6 + 1, y + h + 3, 4, 3); }
+      for (const f of o.ticks || []) { const [tx, ty] = at(f); gt.fillStyle(0xffffff, 1); gt.fillRect(tx - 1.5, ty - 1.5, 3, 3); }   // 칸 경계
+      const cw = o.maxLvl === 1 ? 14 : o.maxLvl === 2 ? 10 : 7;   // 아래 단계 칸: 1칸 · 2칸 · 3칸 분할 막대
+      for (let i = 0; i < o.maxLvl; i++) { gt.fillStyle(i < o.lvl ? (gold ? 0xffe36a : 0xffffff) : 0x3a3448, 1); gt.fillRect(x - (o.maxLvl * (cw + 2)) / 2 + i * (cw + 2) + 1, y + h + 3, cw, 3); }
+      if (o.perfect) { gt.lineStyle(1.5, 0xffe36a, gold ? 1 : .5); gt.strokeRect(x - h - 3, y - h - 3, S + 6, S + 6); }
     }
     if (o.flash > 0) { gt.lineStyle(2, 0xffffff, o.flash); gt.strokeRect(x - h - 1, y - h - 1, S + 2, S + 2); }
   }

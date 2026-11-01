@@ -66,7 +66,7 @@ export class Combat {
       const steal = (mods.lifesteal || 0) + (o.lifesteal || 0);
       if (steal > 0) p.heal(d * steal, true);
     }
-    if (e.boss && e.addStagger && !o.dot) e.addStagger(m === 0 ? 'immune' : eff, d);   // 보스 그로기 게이지 (약점 속성 공격만 · 준 피해에 비례 — Boss.addStagger)
+    if (e.boss && e.addStagger && !o.dot) e.addStagger(m === 0 ? 'immune' : eff, d * (o.stagMul || 1));   // 보스 그로기 게이지 (약점 속성 공격만 · 준 피해에 비례 — Boss.addStagger) · stagMul: 차징 임팩트 웨이브 2배
     if (e.hp > 0) perkHit(this, e, d, type, o);
     if (p.castGrade && !o.proc && !o.dot && e.alive) this.gradeBurst(e, type, p.castGrade === '전설');   // 유니크·전설 기술 카드: 맞힌 자리마다 연쇄 폭발   // 특성 카드: 화상·빙결·마비·독·저주 부여 · 연쇄 번개 · 장판 · 블랙홀
     if (e.hp <= 0 && !(e.cheatDeath && e.cheatDeath())) this.s.killEnemy(e);   // 칠색조 부활처럼 한 번 버티는 보스
@@ -204,7 +204,14 @@ export class Combat {
     q.color = color;
     Cores.projectile(this, q);   // 보스의 코어: 무지갯빛 불꽃 · 백옥 사거리 · 델타스트림 (game/Cores.js)
     if (q.owner === 'player') {
-      if (this.chargeSpawn) q.charge = true;   // Player.fireCharge 가 쏜 차징 탄 (계열 고유 차징 포함)
+      if (this.chargeSpawn) {   // Player.fireCharge 가 쏜 차징 탄 (계열 고유 차징 포함)
+        q.charge = true;
+        const cx = this.chargeCtx;   // 퍼펙트 차징: 확정 치명타 · 임팩트 웨이브: 그로기 2배 + 맞힌 자리에 2차 폭발 장판 (기본 차징 탄은 직접 터뜨린다)
+        if (cx) {
+          q.status = Object.assign({}, q.status, cx.crit ? { crit: 1 } : {}, cx.shock ? { stagMul: 2 } : {});
+          if (cx.shock && !q.ownShock) { const end = q.onExpire; q.onExpire = qq => { if (end) end(qq); if (qq.hit.size) cx.shock(qq.x, qq.y); }; }
+        }
+      }
       q.dmg = this.p.atk * (q.mul ?? 1);
       if (this.p.mods.homing && !q.homing && !q.update && !q.boomerang && Math.hypot(q.vx, q.vy) > 40) q.homing = 1.4;   // 특성 카드: 유도 탄두
     }
@@ -295,7 +302,7 @@ export class Combat {
         if (dx * dx + dy * dy > rr * rr) continue;
         const duel = a.stream && b.stream, w = duel ? this.clashWinner(a, b) : { win: 0 };
         if (w.win >= 0) gone.add(b);
-        if (w.win <= 0) gone.add(a);
+        if (w.win <= 0 && !a.charge) gone.add(a);   // 차징 탄은 적 탄을 부수고 그대로 날아간다
         this.clashFx((a.x + b.x) / 2, (a.y + b.y) / 2, a, b, duel, w);
         if (gone.has(a)) break;
       }

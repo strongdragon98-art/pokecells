@@ -210,7 +210,7 @@ const MOVE_GRADE = {
   drain_punch: '유니크', wild_charge: '유니크', body_press: '유니크', psyshock: '유니크', night_slash: '유니크'
 };
 // 특성 카드 분류 → 카드에 붙는 알약 글자 · 속성 부여 카드는 그 속성 색
-export const PERK_TYPE = { u_charge: 'electric', r_burn: 'fire', r_freeze: 'ice', r_para: 'electric', r_poison: 'poison', u_curse: 'ghost', u_chain: 'electric', l_storm: 'electric', u_flame: 'fire', u_toxic: 'poison', l_hole: 'dark' };
+export const PERK_TYPE = { u_rapid: 'electric', u_shock: 'fire', u_charge: 'electric', r_burn: 'fire', r_freeze: 'ice', r_para: 'electric', r_poison: 'poison', u_curse: 'ghost', u_chain: 'electric', l_storm: 'electric', u_flame: 'fire', u_toxic: 'poison', l_hole: 'dark' };
 
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 function rollGrade() {
@@ -259,6 +259,10 @@ function partyCandidates(p) {
   for (const [id, c] of dupMap) if (moveMap.has(id)) moveMap.get(id).who.push(...c.who); else moveMap.set(id, c);   // 누구에겐 새 기술 · 누구에겐 합성인 카드는 한 장으로 (고를 때 포켓몬마다 갈린다)
   return { moves: [...moveMap.values()], ups: [...upMap.values()], boosts, perks };
 }
+
+// 차징 카드 (game/Perks.js · 모든 포켓몬 공용): 3장 중 하나도 없으면 이 확률로 한 장을 끼워 넣는다 (자연 등장과 합쳐 30% 이상)
+export const CHARGE_PERKS = ['u_charge', 'u_rapid', 'u_shock'];
+const CHARGE_CARD_P = .3;
 
 // 파티 p 에게 맞는 서로 다른 카드 '반드시 3장'
 //  ① 지금 가진 기술 강화 카드 2장(30% 확률로 3장) — 원작 개조(up)가 남아 있으면 30%로 그쪽, 아니면 스킬 강화(boost) · 출전 중인 포켓몬의 기술이 두 배로 잘 나온다
@@ -312,6 +316,16 @@ export function rollCards(p, o = {}) {
     let got = null;
     for (const gg of order) if ((got = take(perks.filter(c => c.grade === gg)))) break;
     if (!got && !takeMove() && !takeEnhance()) break;
+  }
+  // 차징 카드 등장 보장: 3장 중 차징 카드가 없으면 CHARGE_CARD_P 확률로 한 장을 차징 카드로 바꾼다 (전설 연출 카드는 그대로)
+  //  초고압 차징 코어(단계 해금)를 가장 자주 · 다 익힌 카드는 partyCandidates 가 이미 뺐다
+  const isChg = c => c.kind === 'perk' && CHARGE_PERKS.includes(c.id), chg = perks.filter(c => isChg(c) && !used.has(key(c)));
+  if (chg.length && !out.some(isChg) && Math.random() < CHARGE_CARD_P) {
+    let r = Math.random() * chg.reduce((s, c) => s + (c.id === 'u_charge' ? 3 : 1), 0), pick = chg[0];
+    for (const c of chg) if ((r -= c.id === 'u_charge' ? 3 : 1) < 0) { pick = c; break; }
+    used.add(key(pick));
+    const i = out.length < 3 ? out.length : out.map((c, k) => (o.legend && c.grade === '전설' ? -1 : k)).filter(k => k >= 0).pop();
+    out[i ?? out.length] = pick;
   }
   for (const [id, c] of Object.entries(MASTERY)) if (out.length < 3) out.push({ kind: 'mastery', id, name: c.name, type: 'normal', grade: c.grade, desc: c.desc, cat: '숙련', who: all });
   return shuffle(out).slice(0, 3).map(c => dressCard(p, c));

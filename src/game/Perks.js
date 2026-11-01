@@ -45,7 +45,10 @@ export const PERKS = {
   u_clone: { grade: '유니크', cat: '대시 진화', name: '⚡ 대시 진화: 분신 베기', desc: '대시한 길에 분신이 남아 지나간 적을 벤다.', max: 1, mods: { dashClone: 1 } },
   u_berserk: { grade: '유니크', cat: '능력치', name: '역린의 비늘', desc: '체력 50% 이하일 때 공격력 +35%.', max: 1, mods: { berserk: .35 } },
   u_execute: { grade: '유니크', cat: '능력치', name: '마무리 일격', desc: '체력 25% 이하인 적에게 주는 피해 +50%.', max: 1, mods: { execute: .5 } },
-  u_charge: { grade: '유니크', cat: '스킬 변이', name: '⚡ 초고압 차징 코어', desc: 'Z 홀드 차징이 3단까지 찬다 — 2단 중형 관통탄 · 3단 화면을 가르는 초대형 폭발 속성포 (피해 300%).', max: 1, mods: { chargeCore: true } },
+  // ===== 차징 카드 (모든 포켓몬 공용 · 등장 보장 — data/tm.js CHARGE_PERKS) — 효과는 Player.chargeMax · chargeAt · fireCharge 가 장 수를 직접 센다 =====
+  u_charge: { grade: '유니크', cat: '차징', name: '⚡ 초고압 차징 코어', desc: 'Z 홀드 차징 2단 해금 — 총합 650% 중형 기탄 (투사체 1.8배 · 다단히트↑). 한 장 더 합성(+1강)하면 3단 풀차징 해금 — 총합 1,100% 초대형 속성포!', max: 2, mods: {} },
+  u_rapid: { grade: '레어', cat: '차징', name: '🔋 고속 축전 코일', desc: '차징에 걸리는 시간 -35% · 발사 반동으로 멈칫하지 않는다 (합성하면 -48% → -60%).', max: 3, mods: {} },
+  u_shock: { grade: '유니크', cat: '차징', name: '💥 차징 임팩트 웨이브', desc: '완충한 차징 샷이 맞으면 그 자리에 2차 연쇄 속성 폭발 장판이 생기고, 보스 그로기 게이지를 2배로 깎는다 (합성하면 장판이 더 크고 세게).', max: 2, mods: {} },
   u_thorns: { grade: '유니크', cat: '유틸', name: '가시 갑옷', desc: '맞으면 주변 적에게 공격력 ×1.2 피해를 되돌려 준다.', max: 1, mods: { thorns: 1.2 } },
 
   // ================= ⚡ 대시 진화 (예전 단순 돌진 기술들의 기믹 → Shift 대시 자체가 공격기로) =================
