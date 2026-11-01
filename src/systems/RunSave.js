@@ -5,6 +5,7 @@
 //  도감 해금·정화 수는 원래대로 Save.js 가 따로 자동 저장한다
 import { computeMods, MAX_EQUIP } from '../data/items.js';
 import { boostTotals } from '../data/tm.js';
+import { START_MONEY } from '../data/shop.js';
 
 const KEY = 'pokecells.run.v2';   // v2: 튜토리얼 기술머신·엘리트 굴·회복기 보장으로 지형 생성이 바뀌었다 (v1 저장은 다른 지형이 되어 쓰지 않는다)
 
@@ -88,6 +89,7 @@ export function applyWorld(W, s) {
 export function snapshotPlayer(p) {
   return {
     idx: p.idx, stageBonus: p.stageBonus, bag: { ...p.bag }, formItems: [...p.formItems], candy: p.candy || 0,
+    money: p.money, nuggets: { ...p.nuggets }, uses: { ...p.uses }, shopLog: JSON.parse(JSON.stringify(p.shopLog || {})), shopStats: { ...p.shopStats },   // 포켓샵 경제 (data/shop.js)
     keyStone: !!p.keyStone, zRing: !!p.zRing, megaStones: [...p.stones], crystals: { ...p.crystals }, quests: { ...(p.quests || {}) },   // 메가스톤 · Z크리스탈 (data/gear.js) · 이야기 진행
     members: p.members.map(memberSnap),
     stored: Object.values(p.stored || {}).map(memberSnap)   // 포켓몬센터 보관함에 맡긴 포켓몬 (진화 · 아이템 · 기술 그대로)
@@ -98,7 +100,7 @@ function memberSnap(m) {
   return {
     key: m.key, hp: Math.round(m.hp), alive: m.alive, tier: m.tier, peakTier: Math.max(m.peakTier || 0, m.tier), exp: m.exp, mega: m.mega, megaPick: m.megaPick || 0,
     items: { ...m.items }, perks: { ...(m.perks || {}) }, skills: { ...m.skills }, ups: [...m.ups], atkBonus: m.atkBonus, cdBonus: m.cdBonus, learned: [...m.learned], chargeType: m.chargeType || null, cardGrade: { ...(m.cardGrade || {}) }, cardLv: { ...(m.cardLv || {}) },
-    gear: { ...(m.gear || {}) }, boostCards: (m.boostCards || []).map(e => ({ ...e }))
+    gear: { ...(m.gear || {}) }, boostCards: (m.boostCards || []).map(e => ({ ...e })), vit: { ...(m.vit || {}) }
   };
 }
 // 저장해 둔 진행을 포켓몬 m 에 덮어쓴다
@@ -106,7 +108,7 @@ function applyMember(m, d) {
   const tier = Math.max(0, Math.min(2, Math.max(d.tier || 0, d.peakTier || 0)));   // 저장된 최고 단계보다 낮게 복원하지 않는다
   Object.assign(m, {
     tier, peakTier: tier, exp: d.exp, mega: !!d.mega, megaPick: d.megaPick || 0, alive: d.alive !== false,
-    items: { ...d.items }, perks: { ...(d.perks || {}) }, mods: computeMods(d.items || {}, d.perks || {}), skills: { ...m.skills, ...d.skills }, ups: new Set(d.ups || []), cardGrade: { ...(d.cardGrade || {}) },
+    items: { ...d.items }, perks: { ...(d.perks || {}) }, vit: { ...(d.vit || {}) }, mods: computeMods(d.items || {}, d.perks || {}, d.vit || {}), skills: { ...m.skills, ...d.skills }, ups: new Set(d.ups || []), cardGrade: { ...(d.cardGrade || {}) },
     atkBonus: d.atkBonus || 1, cdBonus: d.cdBonus || 1, learned: d.learned && d.learned.length ? [...d.learned] : m.learned, chargeType: d.chargeType || null,
     gear: { stone: (d.gear && d.gear.stone) || null, crystal: (d.gear && d.gear.crystal) || null },
     boostCards: (d.boostCards || []).map(e => ({ ...e })), cardLv: { ...(d.cardLv || {}) }, boost: boostTotals(d.boostCards, d.cardLv)   // 스킬 강화 카드
@@ -131,6 +133,8 @@ export function restorePlayer(p, s) {
   p.stageBonus = s.stageBonus || 1;
   p.bag = { ...(s.bag || {}) };
   p.candy = s.candy || 0;
+  p.money = s.money ?? START_MONEY; p.nuggets = { ...(s.nuggets || {}) }; p.uses = { ...(s.uses || {}) };   // 예전 저장(포켓샵 전): 용돈부터
+  p.shopLog = s.shopLog ? JSON.parse(JSON.stringify(s.shopLog)) : {}; p.shopStats = { bought: 0, sold: 0, spent: 0, earned: 0, ...(s.shopStats || {}) };
   p.keyStone = !!s.keyStone; p.zRing = !!s.zRing;
   p.stones = new Set(s.megaStones || []); p.crystals = { ...(s.crystals || {}) }; p.quests = { ...(s.quests || {}) };
   // 예전 저장: 파티 공용 Z크리스탈 · 메가스톤 개수 → Z링 + 파티 속성 Z크리스탈 / 키스톤 + 파티 메가스톤 (모두 전용 칸에)

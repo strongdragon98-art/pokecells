@@ -22,7 +22,9 @@ export const ITEMS = {
   shell_bell: { name: '조개껍질방울', desc: '준 피해의 6%만큼 회복', icon: 'bell', art: 'shellbell' },
   razor_claw: { name: '예리한손톱', desc: '급소율 +15%', icon: 'claw', art: 'razorclaw' },
   scope_lens: { name: '피트렌즈', desc: '급소율 +12% · 급소 피해 +20%', icon: 'claw', art: 'scopelens' },   // 그림은 systems/Textures.js 의 도트 (엘리트 드랍)
-  quick_claw: { name: '선제공격손톱', desc: '교대 쿨타임 -40%', icon: 'claw2', art: 'quickclaw' }
+  quick_claw: { name: '선제공격손톱', desc: '교대 쿨타임 -40%', icon: 'claw2', art: 'quickclaw' },
+  choice_band: { name: '구애머리띠', desc: '모든 피해 +40% · 교대 쿨타임 +60%', icon: 'scarf', art: null },   // 그림은 systems/Textures.js 의 도트 (포켓샵)
+  focus_sash: { name: '기합의띠', desc: '쓰러질 피해를 받으면 체력 1로 버티고 3초 무적 (방마다 1번)', icon: 'belt', art: null }
 };
 // 전설 유물 · 보스의 코어 (relic: 무작위로 나오지 않는다 · 그 보스가 정화될 때 떨어뜨린다 — data/cores.js)
 for (const c of Object.values(BOSS_CORES)) ITEMS[c.id] = { name: c.name, relic: true, core: c, desc: `전설 유물 · ${c.desc}`, icon: 'orb', art: null };
@@ -40,7 +42,10 @@ export const CONSUMABLES = {
 //  보스는 반드시 · 마을(포켓몬센터 옆) 자판기는 가끔(아니면 오렌열매) · 상자는 아주 가끔(아니면 오렌열매) · 야생 포켓몬은 안 떨어뜨림
 export const ITEM_DROP = { boss: 1, vending: .4, treasure: .2, chest: .08, wild: 0 };
 
-// 보유 아이템 + 기술머신 특성 카드(game/Perks.js) → 계산된 보정치
+// 영양제(data/shop.js USES · 포켓샵) 한 번에 오르는 양: 맥스업 체력 · 타우린 공격 · 사포닌 받는 피해 · 키토산 재사용 · 알칼로이드 속도
+export const VIT_STEP = { hp: .04, atk: .03, def: .03, cd: .03, spd: .02 };
+
+// 보유 아이템 + 기술머신 특성 카드(game/Perks.js) + 영양제 횟수(vit) → 계산된 보정치
 //  특성 카드의 다른 값(pBurn·chain·dashBomb·sturdy …)은 그대로 실려 간다
 // 장착한 코어: core.flag 고유 효과 · coreProj[속성] 투사체 +n · 부스트 속성은 typeBoost 에 더한다
 function coreMods(items) {
@@ -53,8 +58,8 @@ function coreMods(items) {
   }
   return { core, coreProj, psyCore: !!core.psy };
 }
-export function computeMods(items, perks) {
-  const n = k => items[k] || 0, pm = perkMods(perks);
+export function computeMods(items, perks, vit = {}) {
+  const n = k => items[k] || 0, pm = perkMods(perks), v = k => 1 + VIT_STEP[k] * (vit[k] || 0);
   const typeBoost = {};
   for (const k of ITEM_KEYS) {
     const it = ITEMS[k];
@@ -62,17 +67,21 @@ export function computeMods(items, perks) {
     if (it.boostType2) typeBoost[it.boostType2] = (typeBoost[it.boostType2] || 0) + .3 * n(k);
     if (it.core && n(k)) for (const t of it.core.boost || []) typeBoost[t] = (typeBoost[t] || 0) + .2;
   }
-  return Object.assign({ atkMul: 1, hpMul: 1, speedMul: 1, dashCdMul: 1, dashInvAdd: 0, extraJumps: 0, guard: 1, bandMul: 1, specsMul: 1, expMul: 1 }, pm, {
+  const base = Object.assign({ atkMul: 1, hpMul: 1, speedMul: 1, dashCdMul: 1, dashInvAdd: 0, extraJumps: 0, guard: 1, bandMul: 1, specsMul: 1, expMul: 1 }, pm);
+  return Object.assign(base, {
+    atkMul: base.atkMul * v('atk'), hpMul: base.hpMul * v('hp'), speedMul: base.speedMul * v('spd'),
+    guard: base.guard * (1 - VIT_STEP.def * (vit.def || 0)),
+    sturdy: pm.sturdy || (n('focus_sash') ? 1 : 0),   // 기합의띠: 특성 카드 유물과 같은 효과 (Player.hurt)
     typeBoost,
-    all: (1 + .3 * n('life_orb')) * (pm.allMul || 1),
+    all: (1 + .3 * n('life_orb')) * (1 + .4 * n('choice_band')) * (pm.allMul || 1),
     orbCost: n('life_orb') > 0 || !!pm.orbCost,
     extraProj: n('core_multi') + (pm.extraProj || 0),
-    cdMul: Math.pow(.8, n('core_haste')) * (pm.cdMul || 1) * (n('core_suicune') ? .85 : 1),   // 스이쿤의 북풍 코어: 재사용 -15%
+    cdMul: Math.pow(.8, n('core_haste')) * (pm.cdMul || 1) * (n('core_suicune') ? .85 : 1) * (1 - VIT_STEP.cd * (vit.cd || 0)),   // 스이쿤의 북풍 코어: 재사용 -15%
     sizeMul: (1 + .3 * n('core_giant') + (pm.sizeAdd || 0)) * (pm.sizeMul || 1),
     regen: .006 * n('leftovers') + (pm.regen || 0),
     lifesteal: .06 * n('shell_bell') + (pm.lifesteal || 0),
     crit: .15 * n('razor_claw') + .12 * n('scope_lens') + (pm.crit || 0), critMul: 1 + .2 * n('scope_lens'),
-    swapCdMul: Math.pow(.6, n('quick_claw')) * (pm.swapCdMul || 1),
+    swapCdMul: Math.pow(.6, n('quick_claw')) * Math.pow(1.6, n('choice_band')) * (pm.swapCdMul || 1),
     ...coreMods(items)   // 보스의 코어 (game/Cores.js)
   });
 }

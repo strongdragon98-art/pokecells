@@ -23,6 +23,7 @@ import { CHG_SHOW, CHG_AT } from '../game/Player.js';
 import { megaUltOf, megaSymbol, MEGA_ULT_CD, MEGA_ULT } from '../game/Spectacle.js';
 import { CHARGE_SIG } from '../game/Signature.js';
 import { installGameMenu } from './GameMenu.js';
+import { installShopMenu } from './ShopMenu.js';
 import { npcArt } from '../game/Npc.js';
 import { bossHome } from '../game/TestRoom.js';
 import { Save } from '../systems/Save.js';
@@ -240,6 +241,7 @@ export default class UIScene extends Phaser.Scene {
       area: a => this.areaTitle(a),
       overlay: kind => kind === 'map' ? this.showMap() : kind === 'inv' ? (this.invMember = null, this.showInv()) :   // 가방은 열 때마다 출전 중인 포켓몬부터
          kind === 'tm' ? (this.tmModal = null, this.showTM())
+        : kind === 'shop' ? (this.shopMoneyShown = null, this.shopQty = 1, this.shopConfirm = null, this.showShop())   // 포켓샵 (scenes/ShopMenu.js)
         : kind === 'taxi' ? this.showTaxi() : kind === 'talk' ? this.showTalk() : kind === 'debug' ? this.showDebug() : kind === 'test' ? this.showTest() : kind === 'settings' ? this.showSettings(0) : kind === 'box' ? this.showBox() : kind === 'join' ? this.showJoin() : this.clearOverlay(),
       lore: s => this.showLore(s),
       hurt: k => { this.hurtK = Math.max(this.hurtK, k); },
@@ -1068,7 +1070,7 @@ export default class UIScene extends Phaser.Scene {
 
   // 진행 저장 결과: 자동 저장은 작은 알림, 일시정지 메뉴에서 저장하면 메뉴 아래 글귀로
   onSaved({ ok, auto, where }) {
-    const msg = ok ? (auto ? (where === 'terminal' ? '간이 회복기 연결 · 자동 저장했다 · 쓰러지면 여기서 다시 일어난다' : '포켓몬센터 · 자동 저장했다') : '저장했다 · 로비의 이어하기로 여기서부터') : '저장하지 못했다 (브라우저 저장 공간을 확인해 주세요)';
+    const msg = ok ? (auto ? (where === 'terminal' ? '간이 회복기 연결 · 자동 저장했다 · 쓰러지면 여기서 다시 일어난다' : where === 'shop' ? '포켓샵 · 거래 내용(돈 · 가방 · 구매 이력)을 자동 저장했다' : '포켓몬센터 · 자동 저장했다') : '저장했다 · 로비의 이어하기로 여기서부터') : '저장하지 못했다 (브라우저 저장 공간을 확인해 주세요)';
     if (this.overlayMode === 'pause' && this.pauseNote && this.pauseNote.scene) { this.pauseNote.setText(msg).setColor(ok ? HK.gold : '#ff8a8a'); Sfx.play(ok ? 'heal' : 'deny'); }
     else this.toast(msg);
   }
@@ -2077,6 +2079,7 @@ export default class UIScene extends Phaser.Scene {
       return;
     }
     if (this.overlayMode === 'box' && this.boxPanel) { this.boxPanel.key(e); return; }
+    if (this.overlayMode === 'shop') { this.shopKey(e); return; }   // 포켓샵 (scenes/ShopMenu.js · Esc 는 GameScene 이 닫는다)
     if (this.overlayMode === 'test') {   // 테스트룸 패널 (닫기 T · F3 · Esc 는 GameScene 이 받는다)
       if (e.code === 'Tab') { this.testSetTab(this.testTab === 'mon' ? 'boss' : 'mon'); return; }
       if (this.testTab === 'mon') {
@@ -2162,3 +2165,5 @@ export default class UIScene extends Phaser.Scene {
 
 // 통합 메뉴 (🐾 포켓몬 · ⚔️ 스킬트리 · 🃏 보유 카드 · 🎒 가방 · 📖 도감 + 탭바의 🗺️ 지도 · ⚙️ 설정) — scenes/GameMenu.js
 installGameMenu(UIScene);
+// 포켓샵 창 — scenes/ShopMenu.js
+installShopMenu(UIScene);

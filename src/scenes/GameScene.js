@@ -7,6 +7,7 @@ import { WILD, DEX_ORDER, SPECIES, SKILLS, TIERS, wildForm, pickWildStage, EXP_P
 import { ITEMS, RANDOM_ITEM_KEYS, ITEM_DROP, CONSUMABLES, MAX_EQUIP } from '../data/items.js';
 import { stoneName, crystalName, zTypeOf, usesStone } from '../data/gear.js';
 import { coreOfBoss } from '../data/cores.js';
+import { NUGGETS, eliteNuggets, bossNuggets, martKey } from '../data/shop.js';
 import { typeColor } from '../data/types.js';
 import { PLAT_SET, groundYAt, T as TILE_ID } from '../game/Level.js';
 import { buildChapter, roomAt, CW, CH } from '../game/World.js';
@@ -664,11 +665,12 @@ export default class GameScene extends Phaser.Scene {
   // ---------------- 지도(M) · 가방(I): 게임을 멈추고 UI 가 그린다 ----------------
   toggleOverlay(kind) {
     if (this.over || this.transitioning) return;
-    if ((this.overlay === 'tm' || this.overlay === 'taxi' || this.overlay === 'debug' || this.overlay === 'test') && kind !== this.overlay) return;   // 카드·공중날기·디버그·테스트 창이 열려 있으면 다른 창으로 넘어가지 않는다
+    if ((this.overlay === 'tm' || this.overlay === 'taxi' || this.overlay === 'debug' || this.overlay === 'test' || this.overlay === 'shop') && kind !== this.overlay) return;   // 카드·공중날기·디버그·테스트 창이 열려 있으면 다른 창으로 넘어가지 않는다
     if (this.overlay === kind && kind === 'talk') this.talkClosedAt = this.time.now;
     if (this.overlay === kind) {
       this.overlay = null; this.setFrozen(false); this.consumeInput(); this.player.zBuf = 0; this.events.emit('overlay', null);
       if (kind === 'join') this.afterJoin();
+      if (kind === 'shop') { this.shopClosedAt = this.time.now; if (this.shopDirty) { this.shopDirty = false; this.saveRun(true, 'shop'); } }
       if (kind === 'talk' && this.talk && this.talk.onEnd) { const f = this.talk.onEnd; this.talk.onEnd = null; this.time.delayedCall(150, f); }   // 이야기 NPC 보상
       return;
     }   // 지도에서 누른 Z(확대)가 공격으로 새지 않게
@@ -847,12 +849,16 @@ export default class GameScene extends Phaser.Scene {
   // ---------------- 마을: 포켓몬센터 · 자판기 ----------------
   updateInteract() {
     const p = this.player, it = this.props ? this.props.nearest(p.x, p.bottom) : null;
-    if (!this.promptText) this.promptText = this.add.text(0, 0, '', { fontFamily: 'Galmuri9', fontSize: '9px', color: '#fff2c0', stroke: '#1a1008', strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(60);
+    if (!this.promptText) {
+      this.promptText = this.add.text(0, 0, '', { fontFamily: 'Galmuri9', fontSize: '9px', color: '#fff2c0', stroke: '#1a1008', strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(60);
+      this.promptText.setInteractive({ useHandCursor: true }).on('pointerdown', () => { if (!this.paused) this.promptTap = true; });
+    }
     this.promptText.setVisible(!!it);
     if (!it) return;
     const touch = this.touchInput && this.touchInput.on;   // 터치패드를 쓰면 키 대신 버튼 이름으로
     this.promptText.setText(touch ? it.prompt.replace('F 또는 ↑', '조사 버튼').replace('↓ + Space', '아래로 당기고 점프') : it.prompt).setPosition(Math.round(it.x), Math.round(it.promptY + Math.sin(this.time.now / 250) * 1.5));
-    if (!this.inp.useP && !this.inp.upP) return;
+    const tapped = this.promptTap; this.promptTap = false;   // 머리 위 안내 글자를 눌러도 조사 (터치)
+    if (!this.inp.useP && !this.inp.upP && !tapped) return;
     if (it.kind === 'hint') return;   // 안내만 띄운다 (↓ + Space 는 평소대로 발판 내려가기)
     this.inp.jumpP = false;
     if (it.kind === 'lore') { if (this.time.now - (this.loreAt || 0) > 500) { this.loreAt = this.time.now; this.events.emit('lore', it.text); Sfx.play('select'); } return; }
@@ -860,6 +866,7 @@ export default class GameScene extends Phaser.Scene {
     if (it.kind === 'door') { this.useDoor(it); return; }   // 오박사 연구소 문 (안 ↔ 밖)
     if (it.kind === 'tm') { this.openTM(it); return; }   // 카드를 확정해야 다 쓴 제단이 된다
     if (it.kind === 'taxi') { this.toggleOverlay('taxi'); Sfx.play('select'); return; }   // 아머까오 공중날기 (몇 번이고)
+    if (it.kind === 'mart') { this.openShop(it); return; }   // 포켓샵 (몇 번이고)
     if (it.kind === 'terminal') {   // 간이 포켓몬 회복기: 파티 전원 회복 + 연결(자동 저장 · 부활 자리)
       if (this.time.now - (this.healAt || 0) < 1500) return;
       this.healAt = this.time.now;
@@ -882,6 +889,19 @@ export default class GameScene extends Phaser.Scene {
       this.events.emit('toast', lucky ? '프렌들리숍 자판기에서 강화 아이템이 나왔다!' : '자판기에서 오렌열매가 나왔다  ·  강화 아이템은 가끔 나온다');
       Sfx.play(lucky ? 'unlock' : 'vend');
     }
+  }
+
+  // ---------------- 포켓샵 (data/shop.js · 창은 scenes/ShopMenu.js) ----------------
+  //  정문 앞에서 F / ↑ / 터치 → 딩동 · 게임을 멈추고 상점 창. 재고는 시내마다 따로 (shopAt.key)
+  //  거래를 한 번이라도 했으면 창을 닫을 때 자동 저장 (돈 · 금구슬 · 가방 · 구매 이력)
+  openShop(it) {
+    if (this.time.now - (this.shopClosedAt || 0) < 400) return;   // 닫은 F 키가 바로 다시 열지 않게
+    const room = it.room || this.room;
+    if (room && room.type === 'village') this.visitHub(room);   // 처음 온 시내면 정거장 해금 · 부활 자리 (포켓몬센터 바로 옆)
+    this.shopAt = { key: martKey(this.stageIdx, room ? room.id : -1), city: (room && (room.city || room.area)) || '포켓샵' };
+    this.shopDirty = false;
+    Sfx.play('mart');
+    this.toggleOverlay('shop');
   }
 
   // ---------------- 건물 출입문: 안 ↔ 밖 (오박사 연구소 · 방울탑 정문) ----------------
@@ -1764,7 +1784,7 @@ export default class GameScene extends Phaser.Scene {
     this.addEnemy(e, s.room || this.room);
     this.fx.ring(s.x, e.y, 34, 0xff3a2a, 460); this.fx.glow(s.x, e.y, 40, 0xff3a2a, 520, 1);
     this.fx.burst(s.x, e.y, [0xff3a2a, 0xffa040, 0xffffff], 20, 130, { glow: true, up: 80 });
-    this.events.emit('toast', `🔥 엘리트 ${def.name}이(가) 길을 막아섰다! 쓰러뜨리면 이상한사탕`);
+    this.events.emit('toast', `🔥 엘리트 ${def.name}이(가) 길을 막아섰다! 쓰러뜨리면 이상한사탕 · 금구슬`);
     Sfx.play('boss');
   }
 
@@ -1945,8 +1965,9 @@ export default class GameScene extends Phaser.Scene {
       this.player.quests.zTrial = 2;
       this.time.delayedCall(900, () => this.events.emit('banner', '시련 달성!', '수호자의 시련을 넘었다 · 하늘기둥 입구의 시련 캡틴에게 돌아가자'));
     }
-    if (e.elite) {   // 엘리트 보상: 이상한사탕 100% · 장착형 전술 도구 25%
+    if (e.elite) {   // 엘리트 보상: 이상한사탕 100% · 금구슬(data/shop.js eliteNuggets) · 장착형 전술 도구 25%
       this.spawnPickup('candy', e.x, e.y - 4);
+      eliteNuggets(this.stageIdx).forEach((id, k) => this.spawnPickup('nugget', e.x - 8 + k * 8, e.y - 6, id));
       if (Math.random() < .25) this.spawnPickup('item', e.x + 6, e.y - 4, pick(ELITE_TOOLS));
       this.fx.ring(e.x, e.y, 40, 0xffd27a, 420);
     }
@@ -2074,6 +2095,7 @@ export default class GameScene extends Phaser.Scene {
       this.setGates(room, true);
       this.unlockArena();
       if (drop) this.spawnPickup(drop, boss.x, boss.y - 10);
+      bossNuggets(room.type).forEach((id, k) => this.spawnPickup('nugget', boss.x - 10 + k * 20, boss.y - 18, id));   // 중간 보스 금구슬 · 지방/히든 보스 큰 금구슬 확정
       if (hidden) this.spawnPickup('megastone', boss.x, boss.y - 24);   // 숨겨진 심연의 균열: 다른 포켓몬용 메가스톤
       if (Math.random() < ITEM_DROP.boss) this.spawnPickup('item', boss.x + 14, boss.y - 10, pick(RANDOM_ITEM_KEYS));   // 보스는 강화 아이템 확정
       if (hidden) { this.spawnPickup('item', boss.x - 14, boss.y - 10, pick(RANDOM_ITEM_KEYS)); this.time.delayedCall(1500, () => this.openLegendCards()); }
@@ -2141,15 +2163,16 @@ export default class GameScene extends Phaser.Scene {
 
   spawnPickup(kind, x, y, id, still = false) {
     // 아이템·상처약은 가방과 같은 본가 그림을 16칸 크기로 (월드 배율만큼 곱게 줄여 둔다). 그림이 없으면 도트 아이콘
-    const artId = kind === 'item' ? id : kind === 'potion' ? 'potion' : kind === 'candy' ? 'rare_candy' : null, art = artId && itemArt(this, artId, 16 * ZOOM);
+    const artId = kind === 'item' || kind === 'nugget' ? id : kind === 'potion' ? 'potion' : kind === 'candy' ? 'rare_candy' : null, art = artId && itemArt(this, artId, 16 * ZOOM);
     const img = this.physics.add.image(x, y, art || (kind === 'item' ? `it:${id}` : kind === 'potion' ? 'oran' : kind === 'formitem' ? 'megastone' : kind)).setDepth(19);   // 폼체인지 아이템은 구슬 모양 (색으로 구분)
     if (kind === 'formitem') img.setTint(FORM_ITEMS[id].color);
     if (art) { img.setDisplaySize(16, 16); img.body.setSize(10 / img.scaleX, 16 / img.scaleY); }   // 몸통도 그림 크기에 맞춰 바닥에 딱 놓이게
     else img.body.setSize(10, 10);
     if (!still) img.setVelocity(rand(-70, 70), -190);
     img.body.setBounce(.35); img.body.setDragX(120);
-    const col = kind === 'formitem' ? FORM_ITEMS[id].color : kind === 'megastone' ? 0xff8ad0 : kind === 'zcrystal' ? 0xfff6a0 : kind === 'oran' ? 0x4a7aff : kind === 'potion' ? 0xd88aff : kind === 'candy' ? 0x9ad8ff : 0xffe08a;
-    const glow = this.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(col).setScale(.5).setDepth(18);
+    const col = kind === 'formitem' ? FORM_ITEMS[id].color : kind === 'megastone' ? 0xff8ad0 : kind === 'zcrystal' ? 0xfff6a0 : kind === 'oran' ? 0x4a7aff : kind === 'potion' ? 0xd88aff : kind === 'candy' ? 0x9ad8ff : kind === 'nugget' ? NUGGETS[id].color : 0xffe08a;
+    const glow = this.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(col).setScale(kind === 'nugget' ? .8 : .5).setDepth(18);
+    if (kind === 'nugget') img.setVelocity(rand(-60, 60), -260);   // 금구슬은 더 높이 튀어 오른다
     const coll = this.physics.add.collider(img, this.layers);
     const pk = { kind, id, img, glow, coll, t: 0 };
     this.pickups.push(pk);
@@ -2179,6 +2202,7 @@ export default class GameScene extends Phaser.Scene {
       const p = this.pickups[i];
       p.t += dt;
       p.glow.setPosition(p.img.x, p.img.y).setAlpha(.5 + Math.sin(p.t * 6) * .2);
+      if (p.kind === 'nugget' && Math.random() < .1) this.fx.burst(p.img.x + rand(-6, 6), p.img.y + rand(-6, 4), [0xfff6c0, 0xffd84a, 0xffffff], 1, 18, { grav: -50, bounce: false, glow: true, life: .45, size: 1 });   // 찬란한 반짝임
       if (p.img.y > this.level.height + 40) p.img.body.reset(p.img.x, 4 * TILE);
       if (p.t > .4 && overlap(pb, { x: p.img.x - 8, y: p.img.y - 8, w: 16, h: 16 })) { this.collect(p); p.coll.destroy(); p.img.destroy(); p.glow.destroy(); this.pickups.splice(i, 1); }
     }
@@ -2199,6 +2223,12 @@ export default class GameScene extends Phaser.Scene {
       pl.candy = (pl.candy || 0) + 1;
       this.events.emit('toast', `이상한사탕을 얻었다! (${pl.candy}개) · 가방(${keyLabel(Settings.key('bag'))} · 초상화 터치)에서 먹일 포켓몬을 고르자`, 'rare_candy');
       Sfx.play('item'); this.fx.burst(pl.x, pl.y, [0x9ad8ff, 0xff8ad0, 0xffffff], 16, 120, { glow: true, up: 70 });
+    } else if (p.kind === 'nugget') {   // 금구슬: 환금 전용 — 포켓샵에서 판다
+      const ng = NUGGETS[p.id];
+      pl.nuggets[p.id] = (pl.nuggets[p.id] || 0) + 1;
+      this.events.emit('toast', `[${ng.name}] 획득! (포켓샵에서 고가에 판매 가능 · ${ng.sell.toLocaleString('ko-KR')} ₽)`, p.id);
+      Sfx.play('coin'); this.fx.burst(pl.x, pl.y - 6, [0xffd84a, 0xfff6c0, 0xffffff], 18, 130, { glow: true, up: 90 });
+      this.fx.floatText(pl.x, pl.y - 22, `+${ng.sell.toLocaleString('ko-KR')} ₽`, '#ffd84a', 10);
     } else if (p.kind === 'oran') {
       pl.heal(pl.m.maxhp * .2); Sfx.play('heal');
     } else if (p.kind === 'potion') {   // 상처약: 출전 중인 포켓몬 체력 40%

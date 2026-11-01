@@ -413,7 +413,8 @@ export function buildChapter(ch, ci, retry = 0) {
       if (r.type === 'start') { addProp({ kind: 'lamp', x: x0 + 3, g: r.F }); lore(r.ai, x0 + 6, r.F); if (area.ash) addProp({ kind: 'lab', x: x0 + 12, g: r.F, w: 13 }, 13); }
       else if (Math.random() < .5) lore(r.ai, x0 + 2 + ri(0, 3), r.F);
     } else if (r.type === 'village') {
-      // 시내: 가로등 · 표지판 · 집 · 포켓몬센터 · 자판기 · 아머까오 정거장 · 집 (적 없음)
+      // 시내: 가로등 · 표지판 · 집 · 포켓몬센터 · 포켓샵(프렌들리숍) · 아머까오 정거장 · 가로등 · 집 (적 없음)
+      //  포켓샵은 예전 자판기 자리 — 소품 개수가 같아 예전 진행 저장의 '쓴 소품' 기록이 그대로 맞는다 (RunSave sigOf)
       const b = x0 + 1, g = r.F;
       for (let x = x0; x < x1; x++) setGround(x, g);
       addProp({ kind: 'lamp', x: b, g, warm: true });
@@ -422,13 +423,13 @@ export function buildChapter(ch, ci, retry = 0) {
       if (r.oak) r.oakDoor = b + 8 + 7;   // 문 칸 (집 그림의 문 가운데)
       addProp({ kind: 'lamp', x: b + 19, g, warm: true });
       addProp({ kind: 'center', x: b + 21, g, w: 14 }, 14);
-      addProp({ kind: 'vending', x: b + 36, g }, 2);
-      addProp({ kind: 'corvi', x: b + 40, g, w: 6 }, 6);
-      addProp({ kind: 'lamp', x: b + 47, g, warm: true });
-      house(b + 49, g, 7, 2, 1, 2, 'house');
+      addProp({ kind: 'mart', x: b + 38, g, w: 6 }, 6);
+      addProp({ kind: 'corvi', x: b + 46, g, w: 6 }, 6);
+      addProp({ kind: 'lamp', x: b + 53, g, warm: true });
+      house(b + 55, g, 5, 2, 1, 2, 'house');
       lore(r.ai, b + 5, g);
       r.village = { fireflies: [x0 + 1, x1 - 1], center: b + 28 };
-      marks.push({ kind: 'center', x: b + 28, y: g, room: r }, { kind: 'corvi', x: b + 43, y: g, room: r });
+      marks.push({ kind: 'center', x: b + 28, y: g, room: r }, { kind: 'corvi', x: b + 49, y: g, room: r });
       hubs.push({ room: r, name: r.city || area.name, x: (b + 28) * TILE + 8, y: g * TILE });
     } else if (r.type === 'mini' || r.type === 'boss' || r.type === 'sanctuary') {
       const mid = (x0 + x1) >> 1;
@@ -484,7 +485,10 @@ export function buildChapter(ch, ci, retry = 0) {
         for (let x = c - 2; x < c + 6; x++) { for (let y = FU - 6; y < FU; y++) if (y >= U.ty0 && grid[y][x] === 'S') return false; for (let y = D.ty0; y < D.F; y++) if (grid[y][x] === 'S') return false; }
         return true;
       };
-      for (let k = 0; k <= hi - lo && !clean(cx0); k++) for (const c of [cx0 + k, cx0 - k]) if (c >= lo && c <= hi && clean(c)) { cx0 = c; break; }
+      //  시내는 포켓몬센터 · 포켓샵 앞을 비운다 (사다리 발판이 간판 · 문을 가리지 않게) — 깨끗한 자리가 없으면 땅을 파서라도 비켜 선다
+      const shopFree = c => ![U, D].some(r => r.type === 'village' && c + 6 > r.tx0 + 20 && c - 2 <= r.tx0 + 46);
+      const near = ok => { for (let k = 0; k <= hi - lo; k++) for (const c of [cx0 + k, cx0 - k]) if ((k === 0 || (c >= lo && c <= hi)) && ok(c)) return c; return null; };
+      cx0 = near(c => clean(c) && shopFree(c)) ?? near(shopFree) ?? cx0;
       // 그래도 막혀 있으면 직접 판다: 아래 방은 통로 밑 사다리 자리(종유석 · 떠 있는 바위 · 솟은 땅)를 바닥까지 비우고,
       //  위 방 구멍을 덮은 땅은 우물처럼 파낸다 (깊으면 중간 발판)
       for (let x = cx0 - 2; x < cx0 + 6; x++) for (let y = D.ty0; y < D.F; y++) if (grid[y][x] === 'S') grid[y][x] = '.';
@@ -533,7 +537,7 @@ export function buildChapter(ch, ci, retry = 0) {
   // ---- 마을 사람들 (data/npcs.js): 오박사 연구소 안 · 시내 빈자리 (철창 · 표지 · 센터 문 · 자판기 · 정거장 앞은 비켜 선다) ----
   const npcs = [];
   {
-    const BUSY = { center: [4, 11], vending: [-1, 3], corvi: [0, 7], lore: [-1, 2], sign: [-1, 3], sidesign: [-2, 7], tm: [-3, 3], labdoor: [-2, 3], oakhouse: [5, 10] };
+    const BUSY = { center: [4, 11], mart: [0, 6], vending: [-1, 3], corvi: [0, 7], lore: [-1, 2], sign: [-1, 3], sidesign: [-2, 7], tm: [-3, 3], labdoor: [-2, 3], oakhouse: [5, 10] };
     const placeNpcs = (r, ids, slots) => {
       const busy = new Set();
       for (const d of r.doors) if (d.dir === 'v' && d.U === r) for (let x = d.cap - (d.D.tutorial ? 7 : 3); x <= d.cap + 6; x++) busy.add(x);   // 철창 둘레 (튜토리얼은 표지까지)

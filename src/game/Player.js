@@ -7,6 +7,7 @@ import { Actor } from './Actor.js';
 import { SPECIES, SKILLS, TAGS, TIERS, EVO_EXP, ZMOVES, Z_CD } from '../data/pokemon.js';
 import { FORM_ITEMS } from '../data/roster.js';
 import { computeMods, ITEMS, MAX_EQUIP } from '../data/items.js';
+import { START_MONEY, USES, VIT_MAX } from '../data/shop.js';
 import { onHurt, onDash } from './Perks.js';
 import { typeMultiplier, effectiveness, typeColor } from '../data/types.js';
 import * as base from './skills.js';
@@ -67,6 +68,12 @@ export class Player extends Actor {
     this.sandT = 0; this.flopT = 0;
     this.bag = {};                                      // 가방: 아무도 장착하지 않은 아이템
     this.candy = 0;                                     // 이상한사탕 (엘리트 처치 보상 · 가방에서 먹인다)
+    // 포켓샵 경제 (data/shop.js): 포켓달러 · 금구슬(환금 전용) · 가방 소모품(회복약 · 영양제) · 포켓샵마다의 구매 이력
+    this.money = START_MONEY;
+    this.nuggets = {};                                  // { tiny_nugget · nugget · big_nugget: 개수 }
+    this.uses = {};                                     // { potion · super_potion · … · hp_up …: 개수 }
+    this.shopLog = {};                                  // { '지방:시내 방': { 품목 id: 산 개수 } } — 재고 제한
+    this.shopStats = { bought: 0, sold: 0, spent: 0, earned: 0 };
     this.inv = 0; this.dash = null; this.dashCd = 0; this.airDash = true; this.swapCd = 0;
     this.jumpsUsed = 0; this.coyote = 0; this.jbuf = 0; this.dropT = 0; this.hurtT = 0; this.speedBuff = 0;
     this.action = null; this.combo = 0; this.comboT = 0; this.zBuf = 0;
@@ -105,7 +112,8 @@ export class Player extends Actor {
       skills: { ...(sp.evo[0].skills || sp.skills) }, ups: new Set(), atkBonus: 1, cdBonus: 1,   // 기술머신: 바꿔 단 기술 · 받은 강화 카드 · 숙련 보너스
       learned: Object.values(sp.evo[0].skills || sp.skills),   // 배운 기술 전부 (가방 → 기술에서 Z·X·C 자리에 골라 넣는다)
       chargeType: null,   // 차징 샷·내려찍기 속성 (듀얼 타입은 가방에서 두 속성 중 고른다 · null 이면 첫 속성)
-      gear: { stone: null, crystal: null }   // 전용 칸: 메가스톤(계열 id) · Z크리스탈(속성)
+      gear: { stone: null, crystal: null },   // 전용 칸: 메가스톤(계열 id) · Z크리스탈(속성)
+      vit: {}   // 영양제를 먹은 횟수 { hp · atk · def · cd · spd } (data/shop.js · 영구)
     };
   }
 
@@ -381,7 +389,34 @@ export class Player extends Actor {
   }
 
   // 장착 아이템 + 특성 카드가 바뀌면 보정치를 다시 계산 (최대 체력 배율도 바로 반영)
-  refreshMods(m) { m.mods = computeMods(m.items, m.perks); this.recalcHp(0, m); }
+  refreshMods(m) { m.mods = computeMods(m.items, m.perks, m.vit); this.recalcHp(0, m); }
+
+  // ---------------- 가방 소모품 (포켓샵에서 산 회복약 · 기력의조각 · 영양제) ----------------
+  //  반환: { ok, msg } — 못 쓰면 ok 거짓과 까닭
+  useItem(id, m) {
+    const u = USES[id];
+    if (!u || !(this.uses[id] > 0) || !m) return { ok: false, msg: '가방에 없다' };
+    let msg;
+    if (u.cat === 'revive') {
+      if (m.alive) return { ok: false, msg: `${this.formName(m)}은(는) 쓰러지지 않았다` };
+      m.alive = true; m.hp = Math.max(1, Math.round(m.maxhp * u.revive));
+      msg = `${this.formName(m)}이(가) 기운을 되찾았다! (체력 ${Math.round(u.revive * 100)}%)`;
+    } else if (u.cat === 'heal') {
+      if (!m.alive) return { ok: false, msg: '쓰러진 포켓몬은 기력의조각으로 깨워야 한다' };
+      if (m.hp >= m.maxhp) return { ok: false, msg: `${this.formName(m)}의 체력은 이미 가득하다` };
+      const n = Math.round(Math.min(m.maxhp - m.hp, m.maxhp * u.heal));
+      m.hp += n;
+      msg = `${this.formName(m)}의 체력이 ${n} 회복됐다`;
+    } else {
+      const k = u.vit, have = (m.vit && m.vit[k]) || 0;
+      if (have >= VIT_MAX) return { ok: false, msg: `${this.formName(m)}은(는) ${u.name}을(를) 더 먹을 수 없다 (${VIT_MAX}번 최대)` };
+      m.vit = { ...(m.vit || {}), [k]: have + 1 };
+      this.refreshMods(m);
+      msg = `${this.formName(m)}이(가) ${u.name}을(를) 먹었다! ${u.desc.split(' (')[0]} (${have + 1}/${VIT_MAX})`;
+    }
+    if (--this.uses[id] <= 0) delete this.uses[id];
+    return { ok: true, msg };
+  }
 
   heal(n, silent = false) {
     const m = this.m;

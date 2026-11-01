@@ -152,6 +152,47 @@ function centerArt(scene, w) {
   return { body, emis, TW, TH, mid, signY: RT + 9, doorY: GY - 26 };
 }
 
+// 포켓샵(프렌들리숍): 본가 특유의 파란 지붕 · 하얀 벽 · 파란 띠 · 유리 자동문 · 상품이 보이는 진열창 · 지붕 위 빛나는 MART 간판
+//  발광 그림(emis)에 유리 · 진열 상품 · 간판 글자를 따로 그려 어둠 속에서도 빛난다
+const MART_FONT = { M: ['1...1', '11.11', '1.1.1', '1...1', '1...1'], A: ['.111.', '1...1', '11111', '1...1', '1...1'], R: ['1111.', '1...1', '1111.', '1..1.', '1...1'], T: ['11111', '..1..', '..1..', '..1..', '..1..'] };
+function martArt(scene, w) {
+  const TW = w * 16 + 32, TH = 7 * 16, WX = 16, WR = 16 + w * 16, GY = TH, WT = GY - 4 * 16, RT = WT - 24, mid = TW / 2;
+  const blue = 0x2a64d0, white = 0xf0ece4, frame = 0x2a3448;
+  const SW = 44, SH = 15, SX = mid - SW / 2, SY = RT - 8;   // 간판
+  const body = canvasTex(scene, 'prop:mart:' + w, TW, TH, F => {
+    F(WX, WT, w * 16, GY - WT, white);
+    for (let y = WT; y < GY; y += 6) F(WX, y, w * 16, 1, shade(white, .93));
+    F(WX, GY - 22, w * 16, 5, blue); F(WX, GY - 22, w * 16, 1, shade(blue, 1.5)); F(WX, GY - 6, w * 16, 6, shade(white, .55));
+    F(WX, WT, 3, GY - WT, shade(white, .7)); F(WR - 3, WT, 3, GY - WT, shade(white, .7));
+    // 지붕: 파란 박공 지붕 (기와 줄) + 처마
+    for (let y = RT; y < WT; y++) {
+      const t = (y - RT) / (WT - RT), inset = Math.round((1 - t) * 18);
+      F(WX - 8 + inset, y, w * 16 + 16 - inset * 2, 1, (y - RT) % 5 === 0 ? shade(blue, .7) : blue);
+    }
+    F(WX - 10, WT - 2, w * 16 + 20, 4, shade(blue, .5)); F(WX - 10, WT - 2, w * 16 + 20, 1, shade(blue, 1.5));
+    F(WX, WT + 2, w * 16, 3, 0x05030a, .45);
+    // 간판 판 (테두리) · 자동문 틀 · 진열창 틀
+    F(SX - 2, SY - 2, SW + 4, SH + 4, shade(blue, .45)); F(SX, SY, SW, SH, 0x0a1430);
+    F(mid - 14, GY - 40, 28, 34, frame); F(mid - 1, GY - 38, 2, 32, frame);
+    for (const x of [WX + 8, WR - 8 - 22]) { F(x - 2, WT + 12, 26, 22, frame); F(x - 3, WT + 33, 28, 3, shade(blue, .8)); }
+    F(mid - 18, GY - 6, 36, 6, shade(white, .4));
+  });
+  const emis = canvasTex(scene, 'prop:mart:e:' + w, TW, TH, F => {
+    F(mid - 12, GY - 38, 11, 32, 0x8ad0ff, .85); F(mid + 1, GY - 38, 11, 32, 0x8ad0ff, .85);
+    F(mid - 10, GY - 36, 2, 16, 0xffffff, .5); F(mid + 3, GY - 36, 2, 16, 0xffffff, .5);
+    const goods = [0xff6a6a, 0xffd86a, 0x6aff9a, 0x6ac0ff, 0xff9ad8, 0xffffff];
+    for (const x of [WX + 8, WR - 8 - 22]) {   // 진열창: 따뜻한 실내 + 선반 두 줄의 상품
+      F(x, WT + 14, 22, 18, 0xfff0c8, .85);
+      for (let r = 0; r < 2; r++) { F(x, WT + 22 + r * 8, 22, 1, 0x8a6a4a, .9); for (let k = 0; k < 5; k++) F(x + 1 + k * 4, WT + 17 + r * 8, 3, 4, goods[(r * 5 + k + x) % goods.length]); }
+    }
+    // MART 간판 글자 (흰 글자 · 하늘빛 테두리)
+    const word = 'MART', px = 2, gw = 5 * px + 2, x0 = mid - (word.length * gw - 2) / 2, y0 = SY + 2;
+    F(SX, SY, SW, SH, 0x2a6aff, .55);
+    [...word].forEach((ch, i) => MART_FONT[ch].forEach((row, ry) => [...row].forEach((on, rx) => { if (on === '1') { F(x0 + i * gw + rx * px - .5, y0 + ry * px - .5, px + 1, px + 1, 0x8ad8ff, .7); F(x0 + i * gw + rx * px, y0 + ry * px, px, px, 0xffffff); } })));
+  });
+  return { body, emis, TW, TH, mid, signY: SY + SH / 2 };
+}
+
 // 프렌들리숍 자판기: 파란 몸체 · 하얀 머리띠 · 유리 진열창(상품) · 버튼 · 배출구
 function vendingArt(scene) {
   const W = 28, H = 46, blue = 0x2a5ad0;
@@ -917,6 +958,18 @@ export class Props {
           // 간판·전등은 간헐적으로 지지직 깜빡인다
           this.flickers.push({ objs: [sign, emis], base: [.75, 1], light: lightObj, lightK: 1.6, t: 0, off: 0 });
           this.interacts.push({ kind: 'center', x: x + a.mid, y: Y, range: 26, used: false, repeat: true, room, prompt: '[F 또는 ↑ : 포켓몬 치료 · 여기서 다시 일어나기]', sign, emis, lightObj, promptY: Y - 58 });
+          break;
+        }
+        case 'mart': {   // 포켓샵: 정문 앞에서 F / ↑ / 터치 → 상점 창 (GameScene.openShop)
+          const a = martArt(s, pr.w), x = X - 16;
+          this.lit(s.add.image(x, Y, a.body).setOrigin(0, 1).setDepth(5));
+          const emis = this.add(s.add.image(x, Y, a.emis).setOrigin(0, 1).setDepth(5.1));
+          const sy = Y - a.TH + a.signY;
+          const sign = this.glow(x + a.mid, sy, 1.1, 0x6ab0ff, .75, 5.2).setScale(1.5, .7);
+          const lightObj = this.light(x + a.mid, sy + 8, 150, 0xc0e0ff, 1.5);
+          this.light(x + a.mid, Y - 18, 100, 0x8ad0ff, 1);
+          this.pulses.push({ o: sign, base: .7, amp: .15, sp: 2.2 });
+          this.interacts.push({ kind: 'mart', x: x + a.mid, y: Y, range: 22, used: false, repeat: true, room, prompt: '🛒 포켓샵 입장 (F / 터치)', emis, lightObj, promptY: Y - 50 });
           break;
         }
         case 'vending': {

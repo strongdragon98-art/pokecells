@@ -183,6 +183,10 @@ class AudioSys {
       case 'evolve': for (let k = 0; k < 6; k++) this.tone(k % 2 ? 660 : 523, .1, 'square', .04, 0, k * .08); this.arp([784, 988, 1175, 1568, 2093], .09, 'square', .06); this.tone(1568, .7, 'triangle', .05, 0, .55); break;
       // Z기술: 낮게 모였다가 솟는 굉음
       case 'zmove': this.tone(90, .9, 'sawtooth', .1, 900); this.hiss(.9, .14, 600, 0, 1); this.arp([523, 659, 784, 1047, 1319, 1568], .07, 'square', .05); break;
+      case 'coin': [1319, 1760, 2637].forEach((f, i) => this.tone(f, i === 2 ? .45 : .09, 'square', .045, 0, i * .07)); this.tone(2637, .5, 'triangle', .03, 0, .16); break;   // 코인 차임 (칭-칭-칭~)
+      case 'buy': this.arp([988, 1319], .06, 'square', .05); this.tone(1976, .25, 'triangle', .04, 0, .12); break;
+      case 'sell': this.tone(1568, .05, 'square', .04); this.hiss(.08, .08, 5000, .04, 3); [2093, 2637].forEach((f, i) => this.tone(f, .14, 'triangle', .045, 0, .06 + i * .07)); break;   // 철컥 + 짤랑
+      case 'mart': this.arp([784, 988, 1175], .1, 'triangle', .06); this.tone(1568, .4, 'sine', .05, 0, .3); break;   // 딩동 (자동문)
       case 'vend': this.tone(220, .08, 'square', .05); this.hiss(.12, .1, 900, .08); this.arp([988, 1319], .07, 'square', .04); break;
       case 'crate': this.hiss(.16, .26, 700); this.tone(130, .1, 'square', .07, -50); this.hiss(.08, .12, 2400, .04, 2); break;
     }

@@ -13,6 +13,7 @@ import { UPGRADES, GRADE_STYLE, GRADES, PERK_TYPE, BOOSTS, BOOST_MAX, boostCard,
 import { PERKS } from '../game/Perks.js';
 import { MOVE_DB } from '../data/MoveDatabase.js';
 import { usesStone, stoneName, zTypeOf, crystalName } from '../data/gear.js';
+import { NUGGETS, NUGGET_KEYS, USES, VIT_MAX, won } from '../data/shop.js';
 import { MEGA_ULT, MEGA_ULT_CD, megaSymbol } from '../game/Spectacle.js';
 import { HK, hkText, glassPanel, glassButton, typePill, hiImage, bar3d } from '../systems/ui.js';
 import { roundPortrait, skillIcon } from '../systems/Textures.js';
@@ -30,7 +31,7 @@ const TAB_SUB = { mon: 'STATUS & PARTY', skill: 'SKILL TREE & DECK', cards: 'TM 
 const UW = 76, UX = i => 6 + i * (UW + 3);   // 탭 7개 + 닫기 (6 ~ 634)
 const CY = 80, CH = 262;   // 내용 영역: y 80 ~ 342
 const CARD_W = 150, CARD_H = 200;   // 기술머신 카드 원본 크기 (UIScene.tmFace) — 보유 카드 탭은 이걸 줄여서 그대로 그린다
-const BAG_FILTERS = [['all', '전체'], ['use', '소비'], ['tool', '도구'], ['stone', '메가스톤'], ['crystal', 'Z크리스탈']];
+const BAG_FILTERS = [['all', '전체'], ['use', '소비'], ['tool', '도구'], ['gold', '금구슬'], ['stone', '메가스톤'], ['crystal', 'Z크리스탈']];
 
 // 육각 소켓 (장착 칸)
 function hex(g, cx, cy, r, fill, fa, line, la, lw = 1.2) {
@@ -460,6 +461,8 @@ export const GameMenu = {
   menuEntries(p) {
     const out = [];
     if (p.candy > 0) out.push({ kind: 'candy', cat: 'use', n: p.candy });
+    for (const [id, n] of Object.entries(p.uses || {})) if (n > 0 && USES[id]) out.push({ kind: 'use', cat: 'use', id, n });   // 포켓샵 회복약 · 영양제
+    for (const id of NUGGET_KEYS) if ((p.nuggets || {})[id] > 0) out.push({ kind: 'nugget', cat: 'gold', id, n: p.nuggets[id] });   // 환금 아이템
     for (const [id, n] of Object.entries(p.bag)) out.push({ kind: 'tool', cat: 'tool', id, n, from: -1 });
     p.members.forEach((m, i) => { for (const [id, n] of Object.entries(m.items)) out.push({ kind: 'tool', cat: 'tool', id, n, from: i }); });
     for (const line of p.stones) out.push({ kind: 'stone', cat: 'stone', line, from: -1 });
@@ -477,18 +480,19 @@ export const GameMenu = {
     glassPanel(g, 16, CY, 392, CH, { alpha: .9, border: HK.goldN, borderAlpha: .25 });
     BAG_FILTERS.forEach(([id, label], i) => {
       const n = id === 'all' ? all.length : all.filter(e => e.cat === id).length;
-      glassButton(this, 24 + i * 76, CY + 8, 72, 20, `${label} ${n}`, () => { if (this.bagFilter !== id) { this.bagFilter = id; Sfx.play('select'); this.showInv(null); } }, { size: 8, bold: true, ls: 0, layer: C, primary: filter === id });
+      glassButton(this, 22 + i * 63, CY + 8, 60, 20, `${label} ${n}`, () => { if (this.bagFilter !== id) { this.bagFilter = id; Sfx.play('select'); this.showInv(null); } }, { size: 7.5, bold: true, ls: 0, layer: C, primary: filter === id });
     });
-    if (!list.length) C.add(hkText(this, 212, CY + 110, '비어 있어요\n보스·엘리트·상자·자판기에서 얻고, 메가스톤·Z크리스탈은 이야기 속에서 받는다', 8.5, HK.faint, { origin: .5, style: { align: 'center', lineSpacing: 4 } }));
+    if (!list.length) C.add(hkText(this, 212, CY + 110, filter === 'gold' ? '금구슬이 없어요\n샛길의 엘리트 · 보스를 쓰러뜨리면 떨어뜨린다 · 포켓샵에서 고가에 판다' : '비어 있어요\n보스·엘리트·상자·포켓샵에서 얻고, 메가스톤·Z크리스탈은 이야기 속에서 받는다', 8.5, HK.faint, { origin: .5, style: { align: 'center', lineSpacing: 4 } }));
     list.slice(0, 40).forEach((e, k) => {
-      const x = 44 + (k % 9) * 40, y = CY + 54 + Math.floor(k / 9) * 40, on = this.sameEntry(e, sel), col = e.kind === 'stone' ? PINK : e.kind === 'crystal' ? 0xffd84a : e.kind === 'candy' ? CYAN : HK.ivoryN;
+      const x = 44 + (k % 9) * 40, y = CY + 54 + Math.floor(k / 9) * 40, on = this.sameEntry(e, sel), col = e.kind === 'stone' ? PINK : e.kind === 'crystal' || e.kind === 'nugget' ? 0xffd84a : e.kind === 'candy' || e.kind === 'use' ? CYAN : HK.ivoryN;
       g.fillStyle(on ? 0x2c2650 : 0x12101e, on ? 1 : .92); g.fillRoundedRect(x - 17, y - 17, 34, 34, 6);
       g.lineStyle(on ? 1.8 : 1, on ? HK.goldN : col, on ? .95 : .35); g.strokeRoundedRect(x - 17, y - 17, 34, 34, 6);
       if (e.kind === 'candy') C.add(this.itemImage(x, y, 'rare_candy', 26, 1.4));
-      else if (e.kind === 'tool') C.add(this.itemImage(x, y, e.id, 26, 1.4));
+      else if (e.kind === 'tool' || e.kind === 'use') C.add(this.itemImage(x, y, e.id, 26, 1.4));
+      else if (e.kind === 'nugget') C.add([this.add.image(x, y, 'glow').setBlendMode(ADD).setTint(NUGGETS[e.id].color).setScale(.45).setAlpha(.45), this.itemImage(x, y, e.id, 26, 1.4)]);
       else if (e.kind === 'stone') C.add(this.add.image(x, y, 'megastone').setScale(1.6).setTint(typeColor(SPECIES[e.line].types[0])));
       else C.add(this.add.image(x, y, 'zcrystal').setScale(1.6).setTint(typeColor(e.type)));
-      if (e.n > 1) C.add(this.add.text(x + 15, y + 16, `×${e.n}`, txt(7.5, '#ffffff', { stroke: '#000', strokeThickness: 3 })).setOrigin(1, 1));
+      if (e.n > 1 || e.kind === 'nugget') C.add(this.add.text(x + 15, y + 16, `×${e.n}`, txt(7.5, e.kind === 'nugget' ? '#ffe08a' : '#ffffff', { stroke: '#000', strokeThickness: 3 })).setOrigin(1, 1));
       if (e.from >= 0) { g.fillStyle(HK.goldN, .95); g.fillCircle(x - 12, y - 12, 5); C.add(hkText(this, x - 12, y - 12, String(e.from + 1), 7, '#1a1008', { bold: true, origin: .5, flat: true })); }   // 장착한 포켓몬 번호
       const z = this.add.zone(x, y, 36, 36).setInteractive({ useHandCursor: true });
       z.on('pointerdown', () => { Sfx.play('select'); this.showInv(e); });
@@ -502,7 +506,10 @@ export const GameMenu = {
     C.add(hkText(this, 118, ky, p.keyStone ? '키스톤' : '키스톤 (없음)', 8, p.keyStone ? '#ff9ad8' : HK.faint, { origin: [0, .5] }));
     C.add(this.add.image(196, ky, 'zcrystal').setScale(1.1).setAlpha(p.zRing ? 1 : .25));
     C.add(hkText(this, 206, ky, p.zRing ? 'Z링' : 'Z링 (없음)', 8, p.zRing ? '#ffe68a' : HK.faint, { origin: [0, .5] }));
-    C.add(hkText(this, 398, ky, `일반 도구 칸 ${MAX_EQUIP}개 · 전용 칸 2개`, 7, HK.faint, { origin: [1, .5] }));
+    // 지갑: 포켓달러 + 금구슬 3종 개수 (포켓샵에서 판다)
+    const ng = NUGGET_KEYS.map(id => `${NUGGETS[id].icon}×${(p.nuggets || {})[id] || 0}`).join(' ');
+    const wallet = hkText(this, 398, ky, `💰 ${won(p.money || 0)}`, 9, '#ffd84a', { bold: true, origin: [1, .5], glow: true, glowColor: 'rgba(255,190,40,.8)', ls: 0 });
+    C.add([wallet, hkText(this, 396 - wallet.width - 6, ky, ng, 7.5, HK.dim, { origin: [1, .5], ls: 0 })]);
 
     // ── 오른쪽: 상세 패널
     const DX = 416, DW = 208;
@@ -512,6 +519,8 @@ export const GameMenu = {
     const art = (o, glowCol) => { C.add(this.add.image(DX + DW / 2, CY + 44, 'glow').setBlendMode(ADD).setTint(glowCol).setScale(1.3).setAlpha(.4)); C.add(o); };
     let title, cat, desc, col = HK.ivory;
     if (sel.kind === 'candy') { art(this.itemImage(DX + DW / 2, CY + 44, 'rare_candy', 44, 2.6), CYAN); title = `이상한사탕 ×${p.candy}`; cat = '소비 · 파티 공용'; desc = '다음 진화 경험치의 40%를 바로 채운다 (차면 진화) · 최종 진화면 체력 회복 + 공격력 +3% · 고대석 수집가와 메가스톤을 바꿀 수도 있다'; }
+    else if (sel.kind === 'use') { const u = USES[sel.id]; art(this.itemImage(DX + DW / 2, CY + 44, sel.id, 44, 2.6), CYAN); title = `${u.name} ×${sel.n}`; cat = u.cat === 'vit' ? '영양제 · 영구 강화' : u.cat === 'revive' ? '소비 · 쓰러진 포켓몬' : '소비 · 회복약'; desc = `${u.desc} · 게임이 멈춘 가방에서 바로 쓴다`; }
+    else if (sel.kind === 'nugget') { const ng = NUGGETS[sel.id]; art(this.itemImage(DX + DW / 2, CY + 44, sel.id, 44, 2.6), 0xffd84a); title = `${ng.name} ×${sel.n}`; cat = `환금 아이템 · 1개 ${won(ng.sell)}`; desc = `${ng.desc} 포켓몬센터 옆 포켓샵의 「금구슬 일괄 판매」로 한 번에 현금화할 수 있다. (지금 다 팔면 ${won(ng.sell * sel.n)})`; col = '#ffe08a'; }
     else if (sel.kind === 'tool') { const it = ITEMS[sel.id]; art(this.itemImage(DX + DW / 2, CY + 44, sel.id, 44, 2.6), it.relic ? 0xb05aff : HK.goldN); title = it.name; cat = it.relic ? '전설 유물 · 장착 도구' : '장착 도구'; desc = it.desc; col = it.relic ? '#e8b0ff' : HK.ivory; }
     else if (sel.kind === 'stone') { art(this.add.image(DX + DW / 2, CY + 44, 'megastone').setScale(3).setTint(typeColor(SPECIES[sel.line].types[0])), PINK); title = stoneName(sel.line); cat = '메가스톤 · 전용 칸'; desc = `${SPECIES[sel.line].name} 계열 전용. 키스톤과 함께 3단 진화 뒤 V 로 메가진화하고, 메가 중엔 R 필살기를 쓴다.`; col = '#ff9ad8'; }
     else { art(this.add.image(DX + DW / 2, CY + 44, 'zcrystal').setScale(3).setTint(typeColor(sel.type)), 0xffd84a); title = crystalName(sel.type); cat = 'Z크리스탈 · 전용 칸'; desc = `${typeName(sel.type)} 속성 포켓몬(첫 속성)의 Z크리스탈 칸에 끼우면, Z링과 함께 Q 로 일격필살 Z기술.`; col = '#ffe68a'; }
@@ -524,6 +533,12 @@ export const GameMenu = {
     const memberBtns = (label, ok, fn) => p.members.forEach((pm, i) => glassButton(this, DX + 8 + i * (bw + 4), BY, bw, 24, `${i + 1} ${label(pm)}`, () => fn(i), { size: n > 2 ? 7.5 : 8.5, bold: true, ls: 0, layer: C, primary: ok(pm, i) }).setEnabled(ok(pm, i)));
     const single = (label, fn, ok = true) => glassButton(this, DX + 8, BY, DW - 16, 24, label, fn, { size: 9, bold: true, ls: 0, layer: C, primary: ok }).setEnabled(ok);
     if (sel.kind === 'candy') { C.add(hkText(this, DX + DW / 2, BY - 10, '누구에게 먹일까?', 8, HK.gold, { bold: true, origin: .5 })); memberBtns(pm => p.formName(pm), () => true, i => this.menuFeed(i)); }
+    else if (sel.kind === 'use') {
+      const u = USES[sel.id], ok = pm => u.cat === 'revive' ? !pm.alive : u.cat === 'heal' ? pm.alive && pm.hp < pm.maxhp : ((pm.vit || {})[u.vit] || 0) < VIT_MAX;
+      C.add(hkText(this, DX + DW / 2, BY - 10, u.cat === 'revive' ? '누구를 깨울까?' : u.cat === 'heal' ? '누구에게 쓸까?' : '누구에게 먹일까?', 8, HK.gold, { bold: true, origin: .5 }));
+      memberBtns(pm => u.cat === 'vit' ? `${p.formName(pm)} ${(pm.vit || {})[u.vit] || 0}/${VIT_MAX}` : `${p.formName(pm)} ${pm.alive ? Math.round(pm.hp / pm.maxhp * 100) + '%' : '기절'}`, ok, i => this.menuUse(sel, i));
+    }
+    else if (sel.kind === 'nugget') single('💰 포켓샵(포켓몬센터 옆)에서 판매', () => {}, false);
     else if (sel.from >= 0) single('🎒 빼서 가방에', () => this.menuUnequip(sel));
     else if (sel.kind === 'tool') { C.add(hkText(this, DX + DW / 2, BY - 10, '누구에게 장착할까?', 8, HK.gold, { bold: true, origin: .5 })); memberBtns(pm => `${p.formName(pm)} ${p.equipCount(pm)}/${MAX_EQUIP}`, pm => p.equipCount(pm) < MAX_EQUIP, i => this.menuEquip(sel, i)); }
     else if (sel.kind === 'stone') { const i = p.members.findIndex(pm => pm.key === sel.line); single(i >= 0 ? `💎 ${p.formName(p.members[i])}에게 끼우기` : `${SPECIES[sel.line].name} 계열이 파티에 없다`, () => this.menuEquip(sel, i), i >= 0 && !p.members[i].gear.stone); }
@@ -542,6 +557,17 @@ export const GameMenu = {
     if (!ok) { Sfx.play('deny'); if (e.kind === 'stone') this.toast('메가진화 중엔 뺄 수 없어요'); return; }
     Sfx.play('item');
     this.showInv(Object.assign({}, e, { from: -1 }));
+  },
+  // 포켓샵 소모품: 회복약 · 기력의조각 · 영양제 (Player.useItem)
+  menuUse(e, i) {
+    const p = this.gs.player, m = p.members[i], u = USES[e.id];
+    const r = p.useItem(e.id, m);
+    if (!r.ok) { Sfx.play('deny'); this.toast(r.msg); return; }
+    Sfx.play(u.cat === 'vit' ? 'item' : 'heal');
+    this.toast(r.msg, e.id);
+    this.invMember = i;
+    const left = (p.uses || {})[e.id] || 0;
+    this.showInv(left > 0 ? { kind: 'use', cat: 'use', id: e.id, n: left } : null);
   },
   menuFeed(i) {
     const p = this.gs.player, m = p.members[i];
@@ -640,6 +666,8 @@ export const GameMenu = {
     if (tab === 'bag' && (e.code === 'Enter' || e.code === 'Space') && this.menuSel && this.menuSel.kind) {
       const s = this.menuSel;
       if (s.kind === 'candy') this.menuFeed(this.invMember);
+      else if (s.kind === 'use') this.menuUse(s, this.invMember);
+      else if (s.kind === 'nugget') { Sfx.play('deny'); this.toast('금구슬은 포켓샵에서 팔 수 있어요'); }
       else if (s.from >= 0) this.menuUnequip(s);
       else if (s.kind === 'stone') { const i = p.members.findIndex(pm => pm.key === s.line); if (i >= 0) this.menuEquip(s, i); else Sfx.play('deny'); }
       else if (s.kind === 'crystal') { const i = [this.invMember, ...p.members.keys()].find(k => p.members[k] && zTypeOf(p.members[k].key) === s.type); if (i !== undefined) this.menuEquip(s, i); else Sfx.play('deny'); }

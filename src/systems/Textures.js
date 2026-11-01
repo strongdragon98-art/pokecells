@@ -242,7 +242,69 @@ function coreArt(c, color) {
   c.fillStyle = 'rgba(255,255,255,.9)'; c.beginPath(); c.moveTo(-3, -12); c.lineTo(3, -8); c.lineTo(-5, -4); c.closePath(); c.fill();
   c.restore();
 }
+// 금구슬: 황금 구체 + 반사광 + 별빛 (크기 r · 큰 금구슬은 빛살 · 작은 금구슬은 알갱이 둘)
+function nuggetArt(c, r, rays, twin) {
+  const ball = (x, y, R) => {
+    const g = c.createRadialGradient(x - R * .35, y - R * .4, R * .1, x, y, R);
+    g.addColorStop(0, '#fffbe0'); g.addColorStop(.35, '#ffd84a'); g.addColorStop(.8, '#d08a10'); g.addColorStop(1, '#7a4a04');
+    c.beginPath(); c.arc(x, y, R, 0, Math.PI * 2); c.fillStyle = g; c.fill();
+    c.lineWidth = 2; c.strokeStyle = '#5a3404'; c.stroke();
+    c.fillStyle = 'rgba(255,255,255,.9)'; c.beginPath(); c.ellipse(x - R * .38, y - R * .42, R * .26, R * .14, -.6, 0, Math.PI * 2); c.fill();
+  };
+  if (rays) {
+    const h = c.createRadialGradient(32, 32, 4, 32, 32, 31); h.addColorStop(0, 'rgba(255,240,150,.8)'); h.addColorStop(1, 'rgba(255,200,60,0)');
+    c.fillStyle = h; c.fillRect(0, 0, 64, 64);
+    c.strokeStyle = 'rgba(255,250,200,.85)'; c.lineWidth = 2;
+    for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4, r0 = r + 3, r1 = r + (k % 2 ? 7 : 12); c.beginPath(); c.moveTo(32 + Math.cos(a) * r0, 32 + Math.sin(a) * r0); c.lineTo(32 + Math.cos(a) * r1, 32 + Math.sin(a) * r1); c.stroke(); }
+  }
+  if (twin) { ball(24, 36, r * .8); ball(40, 28, r); } else ball(32, 32, r);
+  c.fillStyle = '#ffffff';   // 반짝임 (십자 별)
+  const sx = twin ? 46 : 32 + r * .55, sy = twin ? 18 : 32 - r * .7;
+  c.fillRect(sx - 1, sy - 5, 2, 10); c.fillRect(sx - 5, sy - 1, 10, 2);
+}
+// 스프레이 회복약: 몸통 색 · 노즐 · 라벨
+function sprayArt(c, body, label) {
+  c.fillStyle = '#3a3a48'; c.fillRect(27, 6, 10, 8); c.fillStyle = '#c8ccd8'; c.fillRect(29, 8, 6, 4); c.fillRect(37, 9, 8, 3);
+  const g = c.createLinearGradient(16, 0, 48, 0); g.addColorStop(0, body[0]); g.addColorStop(.5, body[1]); g.addColorStop(1, body[2]);
+  c.beginPath(); c.roundRect(18, 14, 28, 44, 7); c.fillStyle = g; c.fill(); c.lineWidth = 2.5; c.strokeStyle = '#1a1424'; c.stroke();
+  c.fillStyle = label; c.fillRect(20, 28, 24, 14); c.fillStyle = 'rgba(255,255,255,.75)'; c.fillRect(22, 18, 4, 30);
+}
+// 영양제 병: 갈색 병 + 색 뚜껑 + 라벨 띠
+function vitaminArt(c, cap) {
+  c.beginPath(); c.roundRect(19, 18, 26, 40, 6); c.fillStyle = '#8a5a2a'; c.fill(); c.lineWidth = 2.5; c.strokeStyle = '#2a1408'; c.stroke();
+  c.fillStyle = cap; c.fillRect(22, 8, 20, 11); c.strokeRect(22, 8, 20, 11);
+  c.fillStyle = '#f4ecd8'; c.fillRect(21, 30, 22, 16); c.fillStyle = cap; c.fillRect(21, 36, 22, 4);
+  c.fillStyle = 'rgba(255,255,255,.55)'; c.fillRect(23, 21, 3, 34);
+}
 const PROC_ITEM = {
+  tiny_nugget(c) { nuggetArt(c, 13, false, true); },
+  nugget(c) { nuggetArt(c, 18, false, false); },
+  big_nugget(c) { nuggetArt(c, 20, true, false); },
+  super_potion(c) { sprayArt(c, ['#a0381c', '#f07a3a', '#a0381c'], '#ffe0a0'); },
+  full_restore(c) { sprayArt(c, ['#a08a10', '#ffe04a', '#a08a10'], '#3aa85a'); },
+  revive(c) {   // 기력의조각: 노란 마름모 결정
+    c.beginPath(); c.moveTo(32, 6); c.lineTo(54, 32); c.lineTo(32, 58); c.lineTo(10, 32); c.closePath();
+    const g = c.createLinearGradient(10, 6, 54, 58); g.addColorStop(0, '#fff8c0'); g.addColorStop(.5, '#ffd03a'); g.addColorStop(1, '#a87a08');
+    c.fillStyle = g; c.fill(); c.lineWidth = 2.5; c.strokeStyle = '#5a3a04'; c.stroke();
+    c.beginPath(); c.moveTo(32, 6); c.lineTo(32, 58); c.moveTo(10, 32); c.lineTo(54, 32); c.strokeStyle = 'rgba(255,255,255,.5)'; c.lineWidth = 1.5; c.stroke();
+  },
+  hp_up(c) { vitaminArt(c, '#e84a5a'); }, taurine(c) { vitaminArt(c, '#ff8a3a'); }, saponin(c) { vitaminArt(c, '#4a8ae8'); },
+  zinc(c) { vitaminArt(c, '#5ad08a'); }, carbos(c) { vitaminArt(c, '#c05ae8'); },
+  choice_band(c) {   // 구애머리띠: 붉은 머리띠 고리 + 매듭 리본
+    c.lineWidth = 9; c.strokeStyle = '#2a0a10'; c.beginPath(); c.ellipse(32, 30, 22, 13, 0, 0, Math.PI * 2); c.stroke();
+    c.lineWidth = 6; c.strokeStyle = '#e83a4a'; c.stroke();
+    c.lineWidth = 2; c.strokeStyle = '#ff9aa0'; c.beginPath(); c.ellipse(32, 28, 22, 12, 0, Math.PI * 1.1, Math.PI * 1.9); c.stroke();
+    c.fillStyle = '#e83a4a'; c.strokeStyle = '#2a0a10'; c.lineWidth = 2;
+    for (const d of [-1, 1]) { c.beginPath(); c.moveTo(32, 44); c.lineTo(32 + d * 12, 60); c.lineTo(32 + d * 4, 58); c.closePath(); c.fill(); c.stroke(); }
+    c.fillRect(28, 40, 8, 7); c.strokeRect(28, 40, 8, 7);
+  },
+  focus_sash(c) {   // 기합의띠: 흰 띠를 비스듬히 두르고 붉은 줄
+    c.save(); c.translate(32, 32); c.rotate(-.6);
+    c.fillStyle = '#2a2430'; c.fillRect(-30, -9, 60, 18); c.fillStyle = '#f4f0e8'; c.fillRect(-28, -7, 56, 14);
+    c.fillStyle = '#e84a4a'; c.fillRect(-28, -2, 56, 4); c.restore();
+    c.fillStyle = '#f4f0e8'; c.strokeStyle = '#2a2430'; c.lineWidth = 2;
+    c.beginPath(); c.moveTo(36, 30); c.lineTo(50, 52); c.lineTo(42, 54); c.lineTo(32, 34); c.closePath(); c.fill(); c.stroke();
+  },
   // 뮤츠의 코어: 보랏빛 사이코 에너지가 소용돌이치는 결정 핵 + 감싸는 고리 두 개
   mewtwo_core(c) {
     const halo = c.createRadialGradient(32, 32, 4, 32, 32, 31);
