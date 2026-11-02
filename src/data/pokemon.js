@@ -190,7 +190,7 @@ export const BOSSES = {
   // then: 정화되는 순간 같은 아레나에서 이어 싸우는 다음 보스 · entrance: 다음 보스 등장 연출 (shatter 공간이 깨진다 · abyss 심연에서 솟는다)
   dialga: { name: '디아루가', title: '시간의 신', types: ['steel', 'dragon'], hp: 3000, dmg: 31, ai: 'dialga', color: 0x6ab0ff, then: 'palkia', tier: 'boss' },
   palkia: { name: '펄기아', title: '공간의 신', types: ['water', 'dragon'], hp: 3000, dmg: 31, ai: 'palkia', color: 0xd88aff, entrance: 'shatter', intro: '공간이 유리처럼 깨진다 — 공간의 신 펄기아 강림', tier: 'boss' },
-  darkrai: { name: '다크라이', title: '악몽의 만월섬', types: ['dark'], hp: 3400, dmg: 30, ai: 'darkrai', fly: true, color: 0x6a2a9a, tier: 'hidden' },
+  darkrai: { name: '다크라이', title: '악몽의 만월섬', types: ['dark'], hp: 3400, dmg: 30, ai: 'darkrai', shotMul: 2, fly: true, color: 0x6a2a9a, tier: 'hidden' },
   giratina: { name: '기라티나', title: '깨어진 세계의', types: ['ghost', 'dragon'], hp: 4200, dmg: 32, ai: 'giratina', fly: true, color: 0xff3a5a, megaSprite: 'giratina-origin', megaName: '기라티나 오리진폼', startMega: true, tier: 'hidden' },   // 깨어진 세계의 왕좌: 처음부터 오리진폼으로 강림 (2페이즈는 폭주)
   // ---- 하나 · 심연 ----
   // 용나선탑 꼭대기 흑과 백의 제단: 다크스톤이 갈라지며 제크로무 → 정화되는 순간 라이트스톤이 갈라지며 레시라무 (이어 싸우기)

@@ -211,10 +211,11 @@ export const Cores = {
     if (!has(p, 'zekrom')) return;
     const sc = p.scene, v = sc.cameras.main.worldView;
     p.boltT = 5;
+    const k = (p.parryChain && p.parryChain.dmg) || 1;   // 연속 패링 점감 (Player.parryChainStep)
     for (const e of sc.enemies) {
       if (!e.alive || e.intangible || e.x < v.x || e.x > v.right || e.y < v.y || e.y > v.bottom) continue;
       bolt(sc, e.x + (Math.random() - .5) * 20, v.y - 4, e.x, e.y, 0x8ab0ff, 3, 260);
-      sc.combat.damageEnemy(e, p.atk * 1.2, 'electric', { proc: true, paralyze: .5, kb: 0, kby: -60, hs: 0 });
+      sc.combat.damageEnemy(e, p.atk * 1.2 * k, 'electric', { proc: true, paralyze: .5, kb: 0, kby: -60, hs: 0 });
     }
     sc.cameras.main.flash(120, 120, 170, 255, true); Sfx.play('thunder');
     sc.fx.floatText(p.x, p.b.y - 34, '⚡ 크로스썬더 · 공격 속도 +40%', '#8ac8ff', 10);
@@ -238,8 +239,9 @@ export const Cores = {
       const hx = gx + (right ? 14 : -14), hy = gy - 56, g = sc.add.graphics().setDepth(31).setBlendMode(Phaser.BlendModes.ADD);
       for (const [w, col, a] of [[14, CRIMSON, .35], [7, GOLD, .85], [2, 0xffffff, 1]]) { g.lineStyle(w, col, a); g.lineBetween(hx, hy, tgt.x, tgt.y); }
       sc.tweens.add({ targets: g, alpha: 0, duration: 380, onComplete: () => g.destroy() });
-      sc.combat.damageEnemy(tgt, p.atk * 3, 'fire', { proc: true, hs: 70, heavy: true, kb: 0, kby: 0, hx: tgt.x, hy: tgt.y });
-      if (tgt.boss && tgt.addStaggerRaw) tgt.addStaggerRaw(12);
+      const ch = p.parryChain || { dmg: 1, stag: 1 };   // 연속 패링 점감
+      sc.combat.damageEnemy(tgt, p.atk * 3 * ch.dmg, 'fire', { proc: true, hs: 70, heavy: true, kb: 0, kby: 0, hx: tgt.x, hy: tgt.y });
+      if (tgt.boss && tgt.addStaggerRaw && ch.stag > 0) tgt.addStaggerRaw(12 * ch.stag);
       sc.fx.ring(tgt.x, tgt.y, 50, GOLD, 380); sc.fx.ring(tgt.x, tgt.y, 30, CRIMSON, 300);
       sc.fx.burst(tgt.x, tgt.y, [GOLD, CRIMSON, 0xffffff], 30, 240, { glow: true, up: 80, life: .6 });
       Sfx.play('fire'); Sfx.play('boom');

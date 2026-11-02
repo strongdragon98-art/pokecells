@@ -70,6 +70,8 @@ const AIR_HOP = 75, AIR_HIT_HOP = 110, AIR_STALL_T = .26, AIR_STALL_G = .18, AIR
 //  헛방이면 WHIFF_T 초 자세 무너짐 + 재사용 PARRY_CD 초 · 성공하면 둘 다 즉시 0 (연속 패링)
 //  성공: 피해 무효 + 0.35초 무적 · 투사체 반사(2배 속도 · 250%) · 근접 카운터(충격파 · 보스 그로기 +30 · X·C·필살기 쿨 -2초 · 다음 한 방 확정 치명타)
 export const PARRY_WIN = .22, PARRY_R = 70, PARRY_CD = 1.8, WHIFF_T = .45;
+// 연속 패링 점감 (parryChainStep): 이 시간(초) 안에 다시 패링하면 연쇄 · n 번째 패링의 반사 피해 배율 · 그로기 누적 배율 (5번째부터 마지막 값)
+export const PARRY_CHAIN_T = 2, PARRY_DMG = [1, .65, .4, .25, .15], PARRY_STAG = [1, .6, .35, .15, 0];
 const PERFECT_WIN = .25, CHARGE_CRIT = 1.5, MULTI_T = .3;   // 퍼펙트 차징 창(초) · 그때 떼면 피해 ×1.5 (+ 확정 치명타) · 보스/엘리트 다단히트 시간
 
 export class Player extends Actor {
@@ -905,29 +907,39 @@ export class Player extends Actor {
     this.startAction({ dur: WHIFF_T, mm: 0, noDash: true, lockFace: 'hard', anim: 'Idle', whiff: true }, 'whiff');
     this.squash(.85, 1.1);
   }
-  // 패링 성공 (x, y: 부딪힌 자리 · kind: 'proj' 투사체 반사 · 'melee' 근접 공격 받아치기)
+  // 연속 패링 점감: 마지막 패링에서 PARRY_CHAIN_T 초 안에 다시 패링하면 연쇄 (parryN) — 반사 피해 100 → 65 → 40 → 25 → 15% · 그로기 누적 100 → 60 → 35 → 15 → 0%
+  //  PARRY_CHAIN_T 초 동안 패링이 없으면 다시 첫 패링 위력. 반환 { n, dmg, stag } (Combat 반사탄 · 근접 카운터 · 코어가 쓴다)
+  parryChainStep() {
+    const now = this.scene.time.now;
+    this.parryN = now - (this.parryAt ?? -99999) <= PARRY_CHAIN_T * 1000 ? (this.parryN || 0) + 1 : 1;
+    this.parryAt = now;
+    const i = Math.min(this.parryN, PARRY_DMG.length) - 1;
+    return (this.parryChain = { n: this.parryN, dmg: PARRY_DMG[i], stag: PARRY_STAG[i] });
+  }
+  // 패링 성공 (x, y: 부딪힌 자리 · kind: 'proj' 투사체 반사 · 'melee' 근접 공격 받아치기) → 연속 패링 단계 { n, dmg, stag }
   doParry(x, y, kind) {
-    const sc = this.scene, m = this.m, f = this.face, a = this.action;
+    const sc = this.scene, m = this.m, f = this.face, a = this.action, ch = this.parryChainStep(), first = ch.n === 1, s = first ? 1 : Math.max(.55, ch.dmg + .2);
     if (a && a.parry) { a.parried = true; this.endAction(true); }   // 자세를 풀고 후딜레이 없이 바로 움직인다
     this.parryCd = 0; this.zLock = 0; this.inv = Math.max(this.inv, .35);
-    sc.fx.starburst(x, y, 0xffe36a, 1.5, { debris: false });
-    sc.fx.ring(x, y, 28, 0xffffff, 220); sc.fx.ring(x, y, 46, 0xffe36a, 340);
-    sc.fx.burst(x, y, [0xffe36a, 0xffffff, 0x6ac8ff], 20, 220, { glow: true, grav: 0, bounce: false, life: .32 });
-    sc.fx.floatText(this.x, this.b.y - 24, '⚡ PERFECT PARRY!', '#ffe36a', 13);
-    Cores.parry(this);   // 보스의 코어: 제크로무 — 화면 안 모든 적에게 낙뢰 · 공격 속도 +40%
+    sc.fx.starburst(x, y, 0xffe36a, 1.5 * s, { debris: false });
+    sc.fx.ring(x, y, 28 * s, 0xffffff, 220); sc.fx.ring(x, y, 46 * s, 0xffe36a, 340);
+    sc.fx.burst(x, y, [0xffe36a, 0xffffff, 0x6ac8ff], Math.round(20 * s), 220, { glow: true, grav: 0, bounce: false, life: .32 });
+    sc.fx.floatText(this.x, this.b.y - 24, first ? '⚡ PERFECT PARRY!' : `PARRY x${ch.n} (${Math.round(ch.dmg * 100)}%)`, first ? '#ffe36a' : ch.dmg >= .4 ? '#f0d090' : '#c8c0b0', first ? 13 : 11);
+    Cores.parry(this);   // 보스의 코어: 제크로무 — 화면 안 모든 적에게 낙뢰 · 공격 속도 +40% (연속 패링이면 그만큼 약하게)
     sc.fx.hitStop(100);
     const cam = sc.cameras.main;
     if (!cam.zoomEffect.isRunning) { const z0 = cam.zoom; cam.zoomTo(z0 * 1.05, 60, 'Quad.easeOut', true); sc.time.delayedCall(100, () => cam.zoomTo(z0, 220, 'Sine.easeOut', true)); }
     Sfx.play('parry');
-    if (kind !== 'melee') return;
+    if (kind !== 'melee') return ch;
     // 근접 카운터: 전방 충격파 · 상대 큰 경직 (보스 그로기 +30) · X · C · 메가 필살기 쿨타임 -2초 · 다음 평타/차징 한 방 확정 치명타
     const type = this.types[0], cx = this.x + f * 26;
-    sc.combat.hitCircle(cx, this.y, 40 * this.mods.sizeMul, 1.5, type, { kbx: 280, kby: -180, hs: 40, stun: 1.2 });
+    sc.combat.hitCircle(cx, this.y, 40 * this.mods.sizeMul, 1.5 * ch.dmg, type, { kbx: 280, kby: -180, hs: 40, stun: 1.2 * Math.max(.4, ch.dmg) });
     sc.fx.ring(cx, this.y, 40 * this.mods.sizeMul, 0xffe36a, 300);
     const e = sc.enemies.filter(q => q.alive && !q.intangible && Math.abs(q.x - x) < 120 && Math.abs(q.y - this.y) < 100).sort((p1, p2) => Math.abs(p1.x - x) - Math.abs(p2.x - x))[0];
-    if (e && e.boss && e.addStaggerRaw) e.addStaggerRaw(30);
-    for (const k of ['x', 'c', 'r']) if (m.cd[k] > 0) m.cd[k] = Math.max(0, m.cd[k] - 2);
+    if (e && e.boss && e.addStaggerRaw && ch.stag > 0) e.addStaggerRaw(30 * ch.stag);
+    for (const k of ['x', 'c', 'r']) if (m.cd[k] > 0) m.cd[k] = Math.max(0, m.cd[k] - 2 * ch.dmg);
     this.critNext = sc.time.now + 4000;   // 4초 안의 다음 한 방 (Combat.damageEnemy)
+    return ch;
   }
   // 쿨타임 중 ↓ + Z: 캐릭터 옆에 작은 회색 방패 + 남은 쿨타임 고리
   drawParryGauge(dt) {
