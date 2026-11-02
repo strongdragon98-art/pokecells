@@ -498,7 +498,7 @@ export class Player extends Actor {
     //  ↓ + ← · → (조이스틱은 수평보다 아래 어느 쪽이든)이면 그 방향으로 대각선 강하
     const diveAim = inp.diveAim || ((inp.downAim ?? inp.down) ? { x: dir, y: 1 } : null);
     // 지상 ↓ + Z: 패링 자세 (평타 콤보 중에도 끊고 들어간다 · 자세 무너짐 · Z기술 중엔 안 된다)
-    if (inp.zP && (inp.downAim ?? inp.down) && this.onGround && !this.dash && (!this.action || this.action.comboStep)) {
+    if (inp.zP && (inp.parryAim ?? inp.downAim ?? inp.down) && this.onGround && !this.dash && (!this.action || this.action.comboStep)) {   // parryAim: 조이스틱 아래 45°~135° (GameScene.readInput)
       inp.zP = false; this.zBuf = 0;
       this.startParry();
     }

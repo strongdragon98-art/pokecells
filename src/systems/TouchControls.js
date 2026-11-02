@@ -1,7 +1,9 @@
 // 모바일 가상 패드 (할로우 나이트풍 반투명 유리 원)
 //  왼쪽 아래: 손가락을 따라오는 플로팅 조이스틱 (아래로 당기고 점프 = 발판 아래로)
-//  오른쪽 아래: 엄지 동선을 따라 부채꼴로 — 점프(가장 크게) · Z · X · C · 대시 · 교대 · 조사(F) · Z기술 · 메가
-//   (Z기술은 Z크리스탈을, 메가는 메가스톤을 얻기 전엔 아예 보이지 않는다)
+//  오른쪽 아래: 평타(Z) · 점프 · 대시가 6~7px 간격으로 맞붙은 정삼각형 (엄지를 살짝 굴리면 바로 다음 버튼 — 점프는 평타의 8시, 대시는 10시 · 점프 바로 위)
+//   그 바깥 2열 부채꼴에 X · C · 메가(메가 필살기) · Z기술 · 🧪 · 조사(F), 왼쪽 끝에 교대 (Z기술은 Z크리스탈을, 메가는 메가스톤을 얻기 전엔 아예 보이지 않는다)
+//   엄지 슬라이드: 누른 손가락을 떼지 않고 옆 버튼으로 미끄러뜨리면 그 버튼이 눌린다 (점프 → 대시 · 평타) · 터치 판정은 그림보다 HIT_PAD 넉넉하게
+//   배치는 저장하지 않는다 (기본 좌표 = 아래 buttons) — 크기는 설정의 「UI 크기」 배율을 곱한다 (applyScale)
 //  위쪽: 일시정지 + 터치패드 켜기/끄기 (지도 · 가방 · 설정은 통합 메뉴 — 왼쪽 위 초상화를 누르면 열린다) (항상 보인다 · 고른 값은 기억해 다음에도 그대로)
 //  투명도: 설정의 「패드 투명도」 — 아래 버튼·조이스틱 전체에 곱한다 (위쪽 줄은 찾을 수 있게 40% 아래로는 안 내려간다)
 //  크기: 설정의 「UI 크기」(0.8~1.4배) — 아래 버튼은 오른쪽 아래 구석, 조이스틱은 왼쪽 아래 구석을 기준으로 커진다 (위쪽 줄은 HUD 와 겹치지 않게 1.2배까지)
@@ -18,6 +20,9 @@ const lx = p => p.x / RES, ly = p => p.y / RES;
 
 const STICK_R = 30, STICK_HOME = { x: 92, y: 282 };
 const DIVE_TAN = Math.tan(Math.PI / 8);   // 내려찍기로 치는 조이스틱 각도: 수평에서 22.5° 넘게 아래
+const HIT_PAD = 10, SLIDE_PAD = 4;   // 터치 판정 여유 (그림 반지름 + HIT_PAD) · 엄지 슬라이드로 옆 버튼에 넘어가는 판정 (+SLIDE_PAD — 경계에서 떨리지 않게)
+// 지상 패링 (↓ + Z): 조이스틱이 아래쪽 45° ~ 135° 부채꼴이면 '아래' (PARRY_DEAD 넘게 당겼을 때) · 놓거나 벗어난 뒤 PARRY_GRACE 초까지는 그대로 쳐 준다
+const PARRY_DEAD = 9, PARRY_GRACE = .15;
 const PREF = 'pokecells.touchpad';   // 'on' · 'off' (없으면 기기에 맞춰: 터치 화면이면 켬)
 const readPref = () => { try { return localStorage.getItem(PREF); } catch (e) { return null; } };
 const writePref = v => { try { localStorage.setItem(PREF, v); } catch (e) { /* 저장소를 못 쓰면 이번 판만 */ } };
@@ -25,21 +30,23 @@ const writePref = v => { try { localStorage.setItem(PREF, v); } catch (e) { /* �
 export class TouchControls {
   constructor(ui, gs) {
     this.ui = ui; this.gs = gs;
-    this.state = { left: false, right: false, up: false, down: false, jumpH: false, pressed: {}, on: false };
+    this.state = { left: false, right: false, up: false, down: false, jumpH: false, pressed: {}, on: false, parryAim: false, parryAimAt: -1e9 };
     gs.touchInput = this.state;
     const pref = readPref();
     this.buttons = [
-      { id: 'jump', x: 596, y: 302, r: 27, label: '점프', press: 'jumpP', hold: 'jumpH' },
-      { id: 'z', x: 528, y: 318, r: 23, slot: 'z', press: 'zP', hold: 'zH' },   // 꾹 누르면 차징 샷
-      { id: 'x', x: 540, y: 254, r: 19, slot: 'x', press: 'xP' },
-      { id: 'c', x: 596, y: 232, r: 19, slot: 'c', press: 'cP' },
-      { id: 'dash', x: 466, y: 324, r: 18, label: '대시', press: 'dashP' },
-      { id: 'swap', x: 480, y: 272, r: 16, label: '교대', press: 'swapNext' },
-      { id: 'use', x: 624, y: 176, r: 15, label: '조사', press: 'useP' },
-      { id: 'zmove', x: 550, y: 194, r: 15, label: 'Z기술', press: 'zmoveP' },
-      { id: 'potion', x: 588, y: 188, r: 15, label: '🧪 3', press: 'potionP' },   // 상처약 퀵버튼 (남은 개수)
-      { id: 'mega', x: 500, y: 222, r: 15, label: '메가', press: 'mega' },
-      { id: 'ult', x: 500, y: 222, r: 18, label: 'MEGA\nSKILL', press: 'ultP', ult: true },   // 메가진화하면 메가 버튼 자리에 나타나는 전용 필살기
+      // 안쪽 삼각형: 평타(Z) 가운데 · 점프는 8시 · 대시는 10시 (점프 바로 위) — 중심 사이 66 = 반지름 합 + 6~7px 간격 · 대시도 점프와 같은 큰 원
+      { id: 'z', x: 600, y: 286, r: 29, slot: 'z', press: 'zP', hold: 'zH' },   // 꾹 누르면 차징 샷
+      { id: 'jump', x: 543, y: 319, r: 30, label: '점프', press: 'jumpP', hold: 'jumpH' },
+      { id: 'dash', x: 543, y: 253, r: 30, label: '대시', press: 'dashP' },
+      // 바깥 2열 부채꼴 (삼각형 무게중심 (562, 286) 에서 약 94): X 9시 · C 10시 · 메가 11시 · Z기술 12시 · 조사는 오른쪽 위 · 🧪 · 교대는 왼쪽 바깥
+      { id: 'x', x: 469, y: 299, r: 20, slot: 'x', press: 'xP' },
+      { id: 'c', x: 482, y: 236, r: 20, slot: 'c', press: 'cP' },
+      { id: 'mega', x: 533, y: 197, r: 16, label: '메가', press: 'mega' },
+      { id: 'ult', x: 533, y: 197, r: 18, label: 'MEGA\nSKILL', press: 'ultP', ult: true },   // 메가진화하면 메가 버튼 자리에 나타나는 전용 필살기
+      { id: 'zmove', x: 586, y: 195, r: 16, label: 'Z기술', press: 'zmoveP' },
+      { id: 'potion', x: 430, y: 270, r: 15, label: '🧪 3', press: 'potionP' },   // 상처약 퀵버튼 (남은 개수)
+      { id: 'use', x: 624, y: 172, r: 15, label: '조사', press: 'useP' },
+      { id: 'swap', x: 414, y: 322, r: 17, label: '교대', press: 'swapNext' },
       // 지도 · 가방 · 설정은 통합 메뉴(왼쪽 위 초상화 · 그 아래 바로가기 글자)로 합쳐 위쪽 버튼에서 뺐다
       { id: 'pause', x: 354, y: 32, r: 18, label: 'Ⅱ', special: 'pause' },
       ...(gs.test ? [{ id: 'test', x: 186, y: 32, r: 18, label: '테스트', special: 'test' }] : [])   // 테스트룸 패널
@@ -82,7 +89,7 @@ export class TouchControls {
     this.s = s;
     for (const b of this.buttons) {
       if (b.top) { b.x = 320 + (b.bx - 320) * st; b.y = topY(b.by); b.r = b.br * st; }
-      else { b.r = b.br * s; b.x = 640 - (640 - b.bx) * s; b.y = Math.max(360 - (360 - b.by) * s, 132 + b.r); }   // 커져도 오른쪽 위 정화 진행도 목록 아래에 머문다
+      else { b.r = b.br * s; b.x = 640 - (640 - b.bx) * s; b.y = Math.max(360 - (360 - b.by) * s, (b.x + b.r > 536 ? 132 : 92) + b.r); }   // 커져도 오른쪽 위 정화 진행도 목록(x 536~) 아래 · 왼쪽 HUD 아래에 머문다
       const k = b.top ? st : s;
       b.text.setScale(k).setPosition(b.x, b.slot ? b.y + b.r - 7 * k : b.y);
       if (b.icon) b.icon.setPosition(b.x, b.y);
@@ -106,14 +113,28 @@ export class TouchControls {
     }
   }
 
-  hit(p) {
+  // 누른 자리의 버튼: 그림 반지름 + pad 안에서 테두리가 가장 가까운 버튼 (크기가 다른 버튼끼리 맞붙어 있어도 공정하게)
+  hit(p, pad = HIT_PAD) {
     let best = null, bd = 1e9;
     for (const b of this.buttons) {
       if (b.hidden) continue;   // 아직 못 얻은 Z기술 · 메가
-      const d = Math.hypot(lx(p) - b.x, ly(p) - b.y);
-      if (d <= b.r + 8 && d < bd) { best = b; bd = d; }
+      const e = Math.hypot(lx(p) - b.x, ly(p) - b.y) - b.r;
+      if (e <= pad && e < bd) { best = b; bd = e; }
     }
     return best;
+  }
+  // 버튼을 누른다 · 놓는다 (손가락 하나에 버튼 하나 — 슬라이드로 넘어가면 놓고 새로 누른다)
+  pressBtn(id, b) {
+    this.active.set(id, b); b.down = true;
+    if (b.press) this.state.pressed[b.press] = true;
+    if (b.hold) this.state[b.hold] = true;
+  }
+  releaseBtn(id) {
+    const b = this.active.get(id);
+    if (!b) return;
+    this.active.delete(id);
+    if ([...this.active.values()].includes(b)) return;   // 다른 손가락이 아직 같은 버튼을 누르고 있다
+    b.down = false; if (b.hold) this.state[b.hold] = false;
   }
   hitToggle(p) { const t = this.toggleBtn; return Math.abs(lx(p) - t.x) <= t.w / 2 + 4 && Math.abs(ly(p) - t.y) <= t.h / 2 + 6; }
 
@@ -128,9 +149,7 @@ export class TouchControls {
       if (b.special === 'settings') { this.gs.toggleOverlay('settings'); return; }
       if (b.special === 'test') { this.gs.toggleOverlay('test'); return; }
       if (this.gs.paused) return;
-      this.active.set(p.id, b); b.down = true;
-      if (b.press) this.state.pressed[b.press] = true;
-      if (b.hold) this.state[b.hold] = true;
+      this.pressBtn(p.id, b);
       return;
     }
     // 왼쪽 아래 절반 어디든 엄지를 대면 그 자리가 조이스틱 중심 (왼쪽 위 HUD 는 빼고)
@@ -141,20 +160,26 @@ export class TouchControls {
   }
 
   onMove(p) {
+    // 엄지 슬라이드: 버튼을 누른 손가락이 떼지 않고 옆 버튼으로 미끄러지면 그 버튼을 누른다 (점프 → 대시 · 평타 → 대시). 버튼 밖으로 나가면 누르던 버튼을 그대로 쥔다 (점프 높이 · 차징)
+    const cur = this.active.get(p.id);
+    if (cur && this.visible && !this.gs.paused && p.isDown) {
+      const nb = this.hit(p, SLIDE_PAD);
+      if (nb && nb !== cur && !nb.special && !nb.top) { this.releaseBtn(p.id); this.pressBtn(p.id, nb); }
+      return;
+    }
     if (!this.stick || p.id !== this.stick.id) return;
     this.stick.x = lx(p); this.stick.y = ly(p);
     this.updateStick();
   }
 
   onUp(p) {
-    const b = this.active.get(p.id);
-    if (b) { b.down = false; if (b.hold) this.state[b.hold] = false; this.active.delete(p.id); }
+    this.releaseBtn(p.id);
     if (this.stick && this.stick.id === p.id) { this.stick = null; this.updateStick(); }
   }
 
   updateStick() {
     const s = this.state, st = this.stick;
-    if (!st) { s.left = s.right = s.up = s.down = s.downAim = false; s.diveAim = null; return; }
+    if (!st) { if (s.parryAim) s.parryAimAt = this.ui.time.now; s.left = s.right = s.up = s.down = s.downAim = s.parryAim = false; s.diveAim = null; return; }
     let dx = st.x - st.bx, dy = st.y - st.by;
     const d = Math.hypot(dx, dy), lim = this.stickR * 1.5;
     if (d > lim) { st.bx += dx * (1 - lim / d); st.by += dy * (1 - lim / d); dx = st.x - st.bx; dy = st.y - st.by; }   // 손가락을 따라 받침이 끌려온다
@@ -162,6 +187,10 @@ export class TouchControls {
     s.downAim = dy > 14 && dy >= Math.abs(dx);   // 하향 점프: 조이스틱이 아래쪽 ±45° 안 (대각선 아래로 걸으며 점프할 땐 보통 점프)
     // 공중 내려찍기 방향: 조이스틱이 수평보다 22.5° 넘게 아래를 가리키면 (8방향의 왼쪽 아래 · 아래 · 오른쪽 아래) 그 방향 그대로
     s.diveAim = d > 14 && dy > Math.abs(dx) * DIVE_TAN ? { x: dx / d, y: dy / d } : null;
+    // 지상 패링 '아래': 아래쪽 45° ~ 135° 부채꼴 (dy ≥ |dx|) · PARRY_DEAD 넘게 당겼을 때 — 벗어나는 순간을 기억해 PARRY_GRACE 초 동안 더 쳐 준다 (GameScene.readInput)
+    const pa = d > PARRY_DEAD && dy >= Math.abs(dx);
+    if (s.parryAim && !pa) s.parryAimAt = this.ui.time.now;
+    s.parryAim = pa;
   }
 
   // 유리 원: 어두운 속 + 상아색 테두리 + 왼쪽 위 얇은 광택 (눌리면 밝아진다)

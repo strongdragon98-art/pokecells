@@ -776,6 +776,8 @@ export default class GameScene extends Phaser.Scene {
       t.pressed = {};
     }
     i.downAim = b.down.isDown || !!(t && t.on !== false && t.downAim);   // 하향 점프 판정용 '아래' (키보드 ↓ · 조이스틱 아래 ±45°)
+    // 지상 패링(↓ + Z)용 '아래': 키보드 ↓ · 조이스틱 아래쪽 45° ~ 135° 부채꼴 — 조이스틱을 막 놓았거나 살짝 벗어났어도 0.15초까지는 쳐 준다 (TouchControls)
+    i.parryAim = b.down.isDown || !!(t && t.on !== false && (t.parryAim || this.time.now - (t.parryAimAt ?? -1e9) < 150));
     // 공중 내려찍기 방향: 키보드 ↓ (+ ← · → 를 같이 누르면 45° 대각선) · 조이스틱이 수평보다 아래를 가리키면 그 방향 (Player.startDive)
     i.diveAim = b.down.isDown ? { x: (b.right.isDown ? 1 : 0) - (b.left.isDown ? 1 : 0), y: 1 } : t && t.on !== false && t.diveAim ? t.diveAim : null;
     if (i.potionP) { i.potionP = false; this.quickPotion(); }   // 키보드 · 모바일 🧪 퀵버튼 · HUD 퀵슬롯 클릭
