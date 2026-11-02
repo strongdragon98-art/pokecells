@@ -6,7 +6,6 @@
 import { mkdir, writeFile, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchItemArt, ITEM_ART } from './fetch-items.js';
 import { assetTargets } from '../src/data/roster.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -17,6 +16,8 @@ const PA = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pok
 const ART = `${PA}/other/official-artwork`;
 const ANIMS = ['Walk', 'Attack', 'Strike', 'Shoot', 'Hurt', 'Idle'];
 const FORCE = process.argv.includes('--force');
+// --only=키,키 : 그 포켓몬만 받아 기존 manifest.json 에 더한다 (스킬 아이콘 · 아이템 그림은 건드리지 않는다) — 예: npm run fetch-assets -- --only=reshiram,arceus
+const ONLY = ((process.argv.find(a => a.startsWith('--only=')) || '').slice(7)).split(',').filter(Boolean);
 
 // key: 게임 안에서 쓰는 이름 / dex: 도감번호 4자리 / form: SpriteCollab 폼 폴더 / pokeapi: PokeAPI 번호
 const BASE_TARGETS = [
@@ -68,7 +69,7 @@ const BASE_TARGETS = [
   { key: 'darkrai', dex: '0491', role: '보스' },
   { key: 'zekrom', dex: '0644', role: '보스' },
   { key: 'kyurem-black', dex: '0646', form: '0001', role: '폼', pokeapi: 10022 },
-  { key: 'reshiram', dex: '0643', role: '보스' },   // 용나선탑 꼭대기 (제크로무 다음) — 받기 전엔 PokeAPI 도트로 대신 (SpriteLoader BOSS_ART)
+  { key: 'reshiram', dex: '0643', role: '보스' },   // 용나선탑 꼭대기 (제크로무 다음)
   { key: 'arceus', dex: '0493', role: '보스' },     // 최종장 시초의 방
   { key: 'groudon', dex: '0383', role: '보스' },
   { key: 'corviknight', dex: '0823', role: '택시' },
@@ -180,6 +181,7 @@ async function fetchTarget(t) {
 }
 
 async function main() {
+  if (ONLY.length) return mainOnly();
   console.log(`에셋 다운로드 시작 → ${path.relative(ROOT, OUT)}${FORCE ? ' (강제 재다운로드)' : ''}`);
   await mkdir(OUT, { recursive: true });
   const manifest = { generated: new Date().toISOString(), sources: { spriteCollab: SC, pokeapi: PA, artwork: ART }, pokemon: {} };
@@ -195,6 +197,7 @@ async function main() {
     if (await download(`${GI}/${name}.svg`, path.join(ASSETS, file), { text: true })) manifest.icons[skill] = file;
   }
   console.log(`  스킬 아이콘 ${Object.keys(manifest.icons).length} / ${Object.keys(SKILL_ICONS).length}개 (game-icons.net)`);
+  const { fetchItemArt, ITEM_ART } = await import('./fetch-items.js');   // 전체를 받을 때만 (아이템 표가 게임 코드 · Phaser 를 끌어온다 — --only 엔 필요 없다)
   manifest.items = await fetchItemArt({ force: FORCE });   // 가방에 보일 본가 아이템 그림
   manifest.sources.itemArt = ITEM_ART;
   await writeFile(path.join(ASSETS, 'manifest.json'), JSON.stringify(manifest, null, 2));
@@ -204,6 +207,19 @@ async function main() {
   console.log(`\n완료: 새로 받음 ${stats.ok}개 (${(stats.bytes / 1024).toFixed(0)}KB) · 이미 있음 ${stats.skipped}개 · 원본에 없음(404) ${stats.missing}개 · 실패 ${stats.failed}개`);
   console.log(`manifest: ${path.relative(ROOT, path.join(ASSETS, 'manifest.json'))}`);
   if (missingCore.length) { console.error(`필수 포켓몬 스프라이트를 받지 못했습니다: ${missingCore.join(', ')}`); process.exitCode = 1; }
+}
+
+// --only: 고른 포켓몬만 받아 기존 manifest 의 그 항목만 바꾼다
+async function mainOnly() {
+  const picked = TARGETS.filter(t => ONLY.includes(t.key));
+  const unknown = ONLY.filter(k => !picked.some(t => t.key === k));
+  if (unknown.length) { console.error(`대상 목록(BASE_TARGETS · 로스터)에 없는 키: ${unknown.join(', ')}`); process.exitCode = 1; return; }
+  console.log(`에셋 다운로드 (일부) → ${picked.map(t => t.key).join(', ')}${FORCE ? ' (강제 재다운로드)' : ''}`);
+  const file = path.join(ASSETS, 'manifest.json'), manifest = JSON.parse(await readFile(file, 'utf8'));
+  for (const t of picked) manifest.pokemon[t.key] = await fetchTarget(t);
+  await writeFile(file, JSON.stringify(manifest, null, 2));
+  console.log(`
+완료: 새로 받음 ${stats.ok}개 (${(stats.bytes / 1024).toFixed(0)}KB) · 이미 있음 ${stats.skipped}개 · 원본에 없음(404) ${stats.missing}개 · 실패 ${stats.failed}개`);
 }
 
 main().catch(err => { console.error(err); process.exitCode = 1; });
