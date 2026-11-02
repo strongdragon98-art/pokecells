@@ -14,7 +14,8 @@ import { roomAt, roomAtCell } from './World.js';
 
 const ADD = Phaser.BlendModes.ADD;
 const WARM = 0xffc070;
-const PAD_VY = 760;   // 차원 도약 수정이 솟구치는 속도 (최대 약 20칸 — 길 보장 Reach.PAD_TILES 18칸보다 넉넉히)
+const PAD_VY = 760;
+const FIELD_JUMP = 1.225, LIFT_ACC = 1500, LIFT_V = 300;   // 용나선탑 전자기장: 점프 속도 ×√1.5 (높이 1.5배) · 열기 상승 기류: 위로 가속 · 최고 상승 속도   // 차원 도약 수정이 솟구치는 속도 (최대 약 20칸 — 길 보장 Reach.PAD_TILES 18칸보다 넉넉히)
 const rand = (a, b) => a + Math.random() * (b - a);
 
 // 캔버스 텍스처 하나를 그린다. F(x,y,w,h,색,투명도) 로 픽셀 사각형을 칠한다
@@ -1109,6 +1110,153 @@ function throneArt(scene) {
   });
 }
 
+// ---------------- 하나: 용나선탑 · 최종장: 천계 ----------------
+// 용나선탑 1층 정문 (640×300): 나선 무늬를 새긴 백색 대리석 기단 · 흑과 백의 용이 양각된 초대형 기둥 · 화면 위 틀 밖으로 끝없이 뻗는 뾰족 아치 정문
+function spiralGateArt(scene) {
+  const W = 640, H = 300, cx = W / 2;
+  const st = 0x6a6e80, stD = 0x464a5c, stDD = 0x2e3040, stHi = 0x9a9eb0, mar = 0xc8c4d4, marD = 0x9490a8, marHi = 0xe8e4f0, snow = 0xdfe6f6;
+  return canvasTex(scene, 'prop:spiralgate', W, H, (F, c) => {
+    let seed = 23; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    // 뒤 벽: 탑 몸체의 거친 회청색 돌 (나선으로 감아 오르는 띠)
+    F(0, 0, W, 256, st);
+    for (let y = 6, k = 0; y < 256; y += 14, k++) { F(0, y, W, 1, stD); for (let x = (k % 2) * 20; x < W; x += 40) F(x, y, 1, 14, stD); }
+    for (let k = 0; k < 7; k++) { const y0 = 20 + k * 36; c.strokeStyle = css(stHi); c.globalAlpha = .35; c.lineWidth = 6; c.beginPath(); c.moveTo(0, y0 + 30); c.lineTo(W, y0 - 10); c.stroke(); c.globalAlpha = 1; }   // 나선 띠
+    // 정문: 위로 끝없이 뻗는 뾰족 아치 (꼭대기는 화면 틀 밖) · 안쪽은 나선 회랑의 빛 (왼쪽 백열 · 오른쪽 뇌전)
+    const gw = 76, gb = 256;
+    const ig = c.createLinearGradient(cx - gw, 0, cx + gw, 0); ig.addColorStop(0, '#fff0d0'); ig.addColorStop(.3, '#4a3a3a'); ig.addColorStop(.5, '#141220'); ig.addColorStop(.7, '#1a2a4a'); ig.addColorStop(1, '#8ac0ff');
+    c.fillStyle = ig; c.beginPath(); c.moveTo(cx - gw, gb); c.lineTo(cx - gw, 60); c.quadraticCurveTo(cx - gw, -40, cx, -80); c.quadraticCurveTo(cx + gw, -40, cx + gw, 60); c.lineTo(cx + gw, gb); c.closePath(); c.fill();
+    for (let k = 0; k < 9; k++) { const y = gb - 16 - k * 24, w = gw - 10 - k * 3; F(cx - w, y, w * 2, 3, 0x5a5468, .7); F(cx - w, y, w * 2, 1, 0xa8a0c0, .7); }   // 안쪽 나선 계단
+    c.strokeStyle = css(mar); c.lineWidth = 12; c.beginPath(); c.moveTo(cx - gw - 6, gb); c.lineTo(cx - gw - 6, 60); c.quadraticCurveTo(cx - gw - 6, -46, cx, -88); c.quadraticCurveTo(cx + gw + 6, -46, cx + gw + 6, 60); c.lineTo(cx + gw + 6, gb); c.stroke();
+    c.strokeStyle = css(marHi); c.lineWidth = 1; c.beginPath(); c.moveTo(cx - gw - 12, gb); c.lineTo(cx - gw - 12, 60); c.quadraticCurveTo(cx - gw - 12, -52, cx, -96); c.quadraticCurveTo(cx + gw + 12, -52, cx + gw + 12, 60); c.lineTo(cx + gw + 12, gb); c.stroke();
+    for (let y = 70; y < gb; y += 22) for (const d of [-1, 1]) F(cx + d * (gw + 6) - 6, y, 12, 2, marD);   // 아치 테 돌 이음매
+    // 흑과 백의 용이 양각된 초대형 기둥 (왼쪽 셋 = 검은 용 제크로무 · 오른쪽 셋 = 하얀 용 레시라무)
+    const dragon = (x, w, dark) => {
+      const body = dark ? 0x2a2c3a : 0xf0ecf4, rim = dark ? 0x4a8aff : 0xff9a4a, eye = dark ? 0xff3a3a : 0x4ab0ff;
+      c.strokeStyle = css(body); c.lineWidth = 7; c.beginPath();
+      for (let t = 0; t <= 1.001; t += .02) { const y = 230 - t * 220, xx = x + w / 2 + Math.sin(t * Math.PI * 3) * (w * .32); if (t === 0) c.moveTo(xx, y); else c.lineTo(xx, y); }
+      c.stroke();
+      c.strokeStyle = css(rim); c.lineWidth = 1; c.stroke();
+      const hx = x + w / 2 + Math.sin(Math.PI * 3) * (w * .32);
+      F(hx - 7, 6, 14, 10, body); F(hx - 3, 9, 3, 2, eye); F(hx - 9, 2, 4, 6, body); F(hx + 5, 2, 4, 6, body);   // 머리 · 뿔
+      for (let k = 0; k < 6; k++) { const t = .1 + k * .14, y = 230 - t * 220, xx = x + w / 2 + Math.sin(t * Math.PI * 3) * (w * .32); F(xx + (k % 2 ? 4 : -9), y, 5, 3, body); }   // 날개 · 비늘 돌기
+    };
+    const pillar = (x, w, dark) => {
+      F(x, 0, w, 240, mar); F(x, 0, 3, 240, marHi); F(x + w - 5, 0, 5, 240, marD);
+      for (let y = 0; y < 240; y += 30) F(x, y, w, 2, marD, .6);
+      dragon(x, w, dark);
+      F(x - 6, 228, w + 12, 12, marD); F(x - 6, 228, w + 12, 2, marHi); F(x - 8, 224, w + 16, 4, snow);
+    };
+    for (const [x, d] of [[10, 1], [104, 1], [190, 1]]) { pillar(x, 52, true); pillar(W - x - 52, 52, false); }
+    // 나선 무늬를 새긴 백색 대리석 기단 (256 → 300) · 넓게 퍼지는 계단
+    F(0, 252, W, 48, marD); F(0, 252, W, 3, marHi);
+    for (let k = 0; k < 7; k++) { const y = 258 + k * 6, w = 110 + k * 30; F(cx - w, y, w * 2, 6, k % 2 ? mar : shade(mar, .94)); F(cx - w, y, w * 2, 1, marHi); for (let x = cx - w; x < cx + w; x += 5) F(x, y - 1, 5, 1 + Math.round(rnd()), snow, .9); }
+    for (let k = 0; k < 40; k++) { const t = k / 40 * Math.PI * 4, x = 60 + k * 13, y = 276 + Math.sin(t) * 8; F(x, y, 6, 2, marHi, .6); }   // 기단의 나선 새김
+    // 위쪽은 차갑게 가라앉힌다 · 검은 번개 자국
+    c.save(); c.globalCompositeOperation = 'source-atop';
+    const dk = c.createLinearGradient(0, 0, 0, 180); dk.addColorStop(0, 'rgba(14,16,40,.5)'); dk.addColorStop(1, 'rgba(14,16,40,0)'); c.fillStyle = dk; c.fillRect(0, 0, W, 180); c.restore();
+    for (const x0 of [cx - 150, cx + 150]) { let x = x0, y = 40; for (let s = 0; s < 22; s++) { F(x - 1, y, 3, 4, 0x0a0a18); F(x, y, 1, 4, 0x6a8aff); x += (rnd() - .5) * 8; y += 4; } }
+  });
+}
+// 용나선탑 안 1층 출입문: 돌 아치 안에 설원의 은빛 (나가면 고대 다리 끝 정문 앞)
+function spiralInnerGateArt(scene) {
+  const W = 64, H = 80, cx = W / 2, st = 0x8a8ea0, stD = 0x5a5e70;
+  return canvasTex(scene, 'prop:spiralinner', W, H, (F, c) => {
+    const g = c.createLinearGradient(0, 20, 0, H); g.addColorStop(0, '#d8e4f8'); g.addColorStop(1, '#6a80b0');
+    c.fillStyle = g; c.beginPath(); c.moveTo(cx - 18, H); c.lineTo(cx - 18, 30); c.quadraticCurveTo(cx, 6, cx + 18, 30); c.lineTo(cx + 18, H); c.closePath(); c.fill();
+    for (let k = 0; k < 14; k++) F(cx - 14 + (k * 7) % 28, 24 + (k * 11) % 52, 1, 1, 0xffffff, .9);
+    c.strokeStyle = css(st); c.lineWidth = 7; c.beginPath(); c.moveTo(cx - 22, H); c.lineTo(cx - 22, 30); c.quadraticCurveTo(cx, 0, cx + 22, 30); c.lineTo(cx + 22, H); c.stroke();
+    for (const x of [0, W - 8]) { F(x, 18, 8, H - 18, st); F(x + 6, 18, 2, H - 18, stD); }
+  });
+}
+// 탑 안 벽: 왼쪽 = 진실의 백열 불꽃 화로 · 오른쪽 = 이상의 푸른 뇌전 코일
+function whiteFireArt(scene) {
+  return canvasTex(scene, 'prop:whitefire', 14, 26, F => {
+    F(2, 16, 10, 4, 0x6a6470); F(1, 15, 12, 2, 0x9a94a8); F(5, 20, 4, 6, 0x4a4450);
+    F(4, 6, 6, 10, 0xffe0b0); F(5, 2, 4, 8, 0xfff8e8); F(6, 0, 2, 4, 0xffffff); F(3, 9, 1, 5, 0xffd090); F(10, 8, 1, 5, 0xffd090);
+  });
+}
+function voltCoilArt(scene) {
+  return canvasTex(scene, 'prop:voltcoil', 12, 26, F => {
+    F(5, 8, 2, 18, 0x4a5068); for (let y = 10; y < 22; y += 3) F(3, y, 6, 1, 0x8a90a8);
+    F(3, 0, 6, 8, 0x3a6aff); F(4, 1, 4, 6, 0x8ac8ff); F(5, 2, 2, 3, 0xffffff); F(2, 24, 8, 2, 0x2a2e40);
+  });
+}
+// 열기 상승 기류 (16×32 반복): 붉은 아지랑이 결 · 피어오르는 불티
+function heatArt(scene) {
+  return canvasTex(scene, 'prop:heat', 16, 32, F => {
+    for (let y = 0; y < 32; y++) { F(0, y, 16, 1, 0xff5a2a, .1 + (y % 8 < 4 ? .04 : 0)); F(3 + Math.round(Math.sin(y * .4) * 2), y, 1, 1, 0xffb070, .5); F(11 + Math.round(Math.cos(y * .3) * 2), y, 1, 1, 0xff8a4a, .45); }
+    for (let k = 0; k < 4; k++) F(2 + k * 4, (k * 9) % 32, 1, 2, 0xffe0a0, .8);
+  });
+}
+// 흑과 백의 제단 (용나선탑 꼭대기): 반은 검고 반은 흰 단 · 가운데 다크스톤 · 라이트스톤 받침
+function spiralAltarArt(scene) {
+  const W = 220, H = 70, cx = W / 2;
+  return canvasTex(scene, 'prop:spiralaltar', W, H, (F, c) => {
+    for (let k = 0; k < 4; k++) { const w = 110 - k * 18, y = H - 8 - k * 8; F(cx - w, y, w, 8, 0x2a2c3a); F(cx, y, w, 8, 0xe8e4f0); F(cx - w, y, w * 2, 1, 0x9a9eb0); }
+    for (const [d, body, gem] of [[-1, 0x2a2c3a, 0x4a8aff], [1, 0xe8e4f0, 0xff9a4a]]) {
+      const x = cx + d * 60; F(x - 9, 20, 18, 28, body); F(x - 11, 16, 22, 5, shade(body, 1.2));
+      c.fillStyle = css(gem); c.beginPath(); c.arc(x, 10, 8, 0, Math.PI * 2); c.fill(); F(x - 3, 5, 3, 3, 0xffffff);
+    }
+    F(cx - 2, 8, 4, 30, 0x8a8ea0);
+  });
+}
+// 천계: 빛의 유리 계단 칸 (16×6 반복 — 통과 발판 위에 덮는다)
+function glassStepArt(scene) {
+  return canvasTex(scene, 'prop:glassstep', 16, 6, F => { F(0, 0, 16, 6, 0xc8ecff, .45); F(0, 0, 16, 1, 0xffffff, .95); F(0, 5, 16, 1, 0x8ac0e8, .6); F(3, 2, 4, 1, 0xffffff, .7); F(11, 3, 2, 1, 0xffffff, .5); });
+}
+// 천계: 하늘로 비스듬히 뻗은 커다란 유리 계단 (배경)
+function glassStairsArt(scene, dir) {
+  const W = 220, H = 170;
+  return canvasTex(scene, `prop:glassstairs:${dir}`, W, H, F => {
+    for (let k = 0; k < 15; k++) { const x = dir > 0 ? k * 13 : W - 30 - k * 13, y = H - 12 - k * 11; F(x, y, 30, 5, 0xc8ecff, .38); F(x, y, 30, 1, 0xffffff, .8); F(x + 3, y + 5, 24, 3, 0x9ac8f0, .18); }
+  });
+}
+// 시초의 성문 (640×300): 하늘 끝까지 솟은 백금색 기둥 · 화면 가득한 황금빛 천륜(아르세우스의 고리) · 한가운데 눈부신 빛의 문
+function originGateArt(scene) {
+  const W = 640, H = 300, cx = W / 2;
+  const pt = 0xd8d4e4, ptD = 0xa8a4c0, ptHi = 0xffffff, gold = 0xffd870, goldD = 0xc8a040;
+  return canvasTex(scene, 'prop:origingate', W, H, (F, c) => {
+    const bg = c.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#5a4e8e'); bg.addColorStop(.6, '#c8b0d0'); bg.addColorStop(1, '#f0e4d0');
+    c.fillStyle = bg; c.fillRect(0, 0, W, 256);
+    // 황금빛 천륜: 화면을 가득 채우는 큰 고리 + 네 개의 보석 + 빛살
+    const ry = 118;
+    for (let k = 0; k < 32; k++) { const a = k / 32 * Math.PI * 2; c.strokeStyle = 'rgba(255,230,160,.18)'; c.lineWidth = 3; c.beginPath(); c.moveTo(cx + Math.cos(a) * 60, ry + Math.sin(a) * 60); c.lineTo(cx + Math.cos(a) * 300, ry + Math.sin(a) * 300); c.stroke(); }
+    c.strokeStyle = css(goldD); c.lineWidth = 16; c.beginPath(); c.arc(cx, ry, 168, 0, Math.PI * 2); c.stroke();
+    c.strokeStyle = css(gold); c.lineWidth = 10; c.beginPath(); c.arc(cx, ry, 168, 0, Math.PI * 2); c.stroke();
+    c.strokeStyle = 'rgba(255,250,230,.9)'; c.lineWidth = 2; c.beginPath(); c.arc(cx, ry, 162, 0, Math.PI * 2); c.stroke();
+    for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + Math.PI / 4, x = cx + Math.cos(a) * 168, y = ry + Math.sin(a) * 168; c.fillStyle = css(gold); c.beginPath(); c.arc(x, y, 14, 0, Math.PI * 2); c.fill(); c.fillStyle = css(k % 2 ? 0x6ad8ff : 0xff8ad8); c.beginPath(); c.arc(x, y, 7, 0, Math.PI * 2); c.fill(); F(x - 3, y - 4, 3, 3, 0xffffff); }
+    for (let k = 0; k < 18; k++) { const a = k / 18 * Math.PI * 2; const x = cx + Math.cos(a) * 196, y = ry + Math.sin(a) * 196; F(x - 4, y - 6, 8, 12, TYPE18[k], .7); F(x - 4, y - 6, 8, 1, 0xffffff, .8); }   // 18 플레이트
+    // 백금색 기둥 (화면 위 틀 밖까지)
+    const pillar = (x, w) => { F(x, 0, w, 244, pt); F(x, 0, 3, 244, ptHi); F(x + w - 5, 0, 5, 244, ptD); for (let fx = x + 8; fx < x + w - 6; fx += 7) F(fx, 0, 2, 244, ptD, .5); F(x - 6, 232, w + 12, 12, ptD); F(x - 6, 232, w + 12, 2, gold); F(x - 6, 18, w + 12, 6, gold, .8); };
+    for (const x of [8, 96, 176]) { pillar(x, 46); pillar(W - x - 46, 46); }
+    // 한가운데 빛의 문: 둥근 아치 안이 눈부시게 하얗다
+    const dw = 70, top = 96, gb = 256;
+    const lg = c.createRadialGradient(cx, 190, 4, cx, 190, 110); lg.addColorStop(0, '#ffffff'); lg.addColorStop(.4, '#fff4d0'); lg.addColorStop(.8, '#ffd890'); lg.addColorStop(1, '#c8a050');
+    c.fillStyle = lg; c.beginPath(); c.moveTo(cx - dw, gb); c.lineTo(cx - dw, top + dw); c.arc(cx, top + dw, dw, Math.PI, 0); c.lineTo(cx + dw, gb); c.closePath(); c.fill();
+    c.strokeStyle = css(gold); c.lineWidth = 8; c.beginPath(); c.moveTo(cx - dw - 4, gb); c.lineTo(cx - dw - 4, top + dw); c.arc(cx, top + dw, dw + 4, Math.PI, 0); c.lineTo(cx + dw + 4, gb); c.stroke();
+    c.strokeStyle = css(ptHi); c.lineWidth = 1; c.beginPath(); c.arc(cx, top + dw, dw + 10, Math.PI, 0); c.stroke();
+    // 기단 · 빛나는 계단
+    F(0, 252, W, 48, ptD); F(0, 252, W, 3, gold);
+    for (let k = 0; k < 7; k++) { const y = 258 + k * 6, w = 100 + k * 32; F(cx - w, y, w * 2, 6, k % 2 ? pt : shade(pt, .95)); F(cx - w, y, w * 2, 1, ptHi); }
+    for (let k = 0; k < 7; k++) { const y = 258 + k * 6; F(cx - 30, y, 60, 6, 0xfff4d0, .5); }   // 계단 한가운데로 흘러내리는 빛
+  });
+}
+const TYPE18 = [0xa8a878, 0xf08030, 0x6890f0, 0xf8d030, 0x78c850, 0x98d8d8, 0xc03028, 0xa040a0, 0xe0c068, 0xa890f0, 0xf85888, 0xa8b820, 0xb8a038, 0x705898, 0x7038f8, 0x705848, 0xb8b8d0, 0xee99ac];   // 18 타입 색 (플레이트)
+// 시초의 방 결전장 바닥의 고대 문양 (320×46): 금빛 동심원 · 18 플레이트 자리
+function originSigilArt(scene) {
+  const W = 320, H = 46, cx = W / 2, cy = H / 2;
+  return canvasTex(scene, 'prop:originsigil', W, H, (F, c) => {
+    for (const [rx, ry, col, lw] of [[150, 20, '#ffd870', 3], [120, 16, '#fff0c0', 1], [86, 11, '#ffd870', 2], [40, 5, '#ffffff', 1]]) { c.strokeStyle = col; c.lineWidth = lw; c.beginPath(); c.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); c.stroke(); }
+    for (let k = 0; k < 18; k++) { const a = k / 18 * Math.PI * 2; F(cx + Math.cos(a) * 135 - 2, cy + Math.sin(a) * 18 - 1, 5, 3, TYPE18[k]); }
+    c.strokeStyle = 'rgba(255,230,150,.7)'; c.lineWidth = 1;
+    for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2; c.beginPath(); c.moveTo(cx + Math.cos(a) * 40, cy + Math.sin(a) * 5); c.lineTo(cx + Math.cos(a) * 120, cy + Math.sin(a) * 16); c.stroke(); }
+  });
+}
+// 설화시티 습지: 잔잔한 물 (64×6 반복)
+function stillWaterArt(scene) {
+  return canvasTex(scene, 'prop:stillwater', 64, 6, F => { F(0, 1, 64, 5, 0x8ab8e0, .45); F(0, 1, 64, 1, 0xe8f4ff, .8); for (let x = 3; x < 64; x += 11) F(x, 3, 5, 1, 0xffffff, .6); });
+}
+
 export class Props {
   constructor(scene, level, stage, si) {
     this.s = scene; this.level = level; this.stage = stage; this.si = si;
@@ -1364,6 +1512,7 @@ export class Props {
     this.buildBellTower();
     this.buildHoenn();
     this.buildSinnoh();
+    this.buildHeroes();
     this.groupByRoom();
   }
 
@@ -1417,7 +1566,7 @@ export class Props {
       }
     }
     // 탑 안 1층 출입문 (방울로드 정문으로 나간다): 붉은 옻칠 양개문 + 문틀 + 깔개
-    for (const r of rooms.filter(q => q.portalFrom && !q.spear)) {   // 창기둥 안 출입문은 buildSinnoh
+    for (const r of rooms.filter(q => q.portalFrom && !q.spear && !q.spiral && !q.origin)) {   // 창기둥 안 출입문은 buildSinnoh · 용나선탑 · 시초의 방은 buildHeroes
       const Y = (r.portalY ?? r.F) * TILE, w = 28, h = 46, x = r.left + 8;
       this.lit(s.add.image(x - 4, Y, labDoorFrameArt(s, w, h)).setOrigin(0, 1).setDepth(2.75));
       const d = this.door(x, Y, w, h, 0x9a2a1a, true, 2.8);
@@ -1546,7 +1695,7 @@ export class Props {
     this.revFalls = []; this.pads = []; this.phase = []; this.rift = null;
     for (const r of this.level.rooms) {
       const Y = r.F * TILE;
-      if (r.snowPeak) {
+      if (r.snowPeak || r.icirrus) {   // 천관산 만년설 협곡 · 설화시티 겨울 습지
         // 드러난 지형 윗면마다 만년설 (가로로 이어진 줄마다 한 장) · 턱 · 천장 아래 고드름 · 지형 옆면의 푸른 얼음
         for (let ty = r.ty0 - 1; ty <= r.F; ty++) {
           let run = null;
@@ -1562,15 +1711,15 @@ export class Props {
             }
           }
         }
-        // 능선의 고대 돌기둥 (배경 · 정문 앞 성역은 비운다) · 설산의 찬 빛
-        for (let x = r.left + 80, k = 0; x < r.right - 50; x += 190 + (k * 37) % 80, k++) {
+        // 능선의 고대 돌기둥 (배경 · 정문 앞 성역은 비운다) · 설산의 찬 빛 (천관산만)
+        if (r.snowPeak) for (let x = r.left + 80, k = 0; x < r.right - 50; x += 190 + (k * 37) % 80, k++) {
           if (r.spearGate && x > r.doorTx * TILE - 360) continue;
           const tx = Math.floor(x / TILE), base = floorRow(r, tx);
           if (base === null) continue;
           const h = Math.min(8, base - r.ty0 - 2);
           if (h >= 3) this.lit(s.add.image(x, base * TILE + 4, ancientPillarArt(s, h, k % 3 === 1)).setOrigin(.5, 1).setDepth(3.6));
         }
-        this.light(r.cx, r.top + 30, Math.max(300, (r.right - r.left) * .6), 0xd8e8ff, .5);
+        if (r.snowPeak) this.light(r.cx, r.top + 30, Math.max(300, (r.right - r.left) * .6), 0xd8e8ff, .5);
       }
       if (r.spearGate) {
         // 창기둥 정문 (협곡 끝 성역): 화면을 압도하는 열주 · 대정문 (정문 한가운데 = r.doorTx) — 방 천장 위로 솟은 열주는 천장 바위 앞에 그려 화면 위로 끝없이 이어지게
@@ -1789,6 +1938,159 @@ export class Props {
     }
   }
 
+  // 하나: 설화시티 고대 다리 · 겨울 습지(물가 · 빛무리 — 눈 · 고드름 · 얼음은 buildSinnoh 와 같이) · 용나선탑 정문 외관 · 탑 안(왼쪽 벽 백열 불꽃 · 오른쪽 벽 푸른 뇌전)
+  //  · 기믹: 열기 상승 기류(붉은 아지랑이 기둥) · 푸른 전자기장 (효과는 updateHeroes) · 꼭대기 흑과 백의 제단
+  //  최종장: 천계의 피리 공명로(빛의 유리 계단 · 걸음마다 맑은 공명) · 시초의 성문 외관 · 시초의 방 결전장(바닥의 고대 문양)
+  buildHeroes() {
+    const s = this.s, G = this.level.grid;
+    const label = (x, y, text, color, stroke) => this.add(s.add.text(x, y, text, { fontFamily: 'Galmuri9', fontSize: '9px', color, stroke, strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(3.5));
+    // 정문 외관 (방울탑 · 창기둥과 같은 규칙: 정문 한가운데 = r.doorTx · 천장 위로 솟은 부분은 천장 바위 앞에 그려 화면 위로 끝없이)
+    const facade = (r, art) => {
+      const Y = r.F * TILE, gx = r.doorTx * TILE + 8, AW = 640, AH = 300, cutH = r.top - (Y + 2 - AH);
+      this.lit(s.add.image(gx, Y + 2, art).setOrigin(.5, 1).setDepth(3.4));
+      if (cutH > 0) { const c0 = Math.max(0, cutH - 88); this.lit(s.add.image(gx, Y + 2, art).setOrigin(.5, 1).setCrop(0, c0, AW, cutH - c0).setDepth(10.45)); }
+      return { gx, Y };
+    };
+    // 탑 · 성소 안 1층 출입문 (나가면 정문 앞)
+    const innerDoor = (r, art, pair, text, prompt, col) => {
+      const PY = (r.portalY ?? r.F) * TILE, x = r.left + 40;
+      this.lit(s.add.image(x, PY, art).setOrigin(.5, 1).setDepth(2.8));
+      const gl = this.glow(x, PY - 30, 1, col, .22, 2.85);
+      this.pulses.push({ o: gl, base: .2, amp: .08, sp: 1.4 });
+      this.light(x, PY - 30, 120, col, .6);
+      label(x, PY - 84, text, '#e8eeff', '#141a30');
+      this.interacts.push({ kind: 'door', pair, side: 'in', face: 1, x, y: PY, range: 22, used: false, repeat: true, prompt, promptY: PY - 98, door: null, glowAt: { x, y: PY - 30 } });
+    };
+    this.lifts = []; this.fields = []; this.stepT = 0;
+    for (const r of this.level.rooms) {
+      const Y = r.F * TILE, W = r.right - r.left;
+      if (r.icirrus) {   // 잔잔한 물가: 바닥선을 따라 은빛 물결 · 푸른 빛무리
+        const w = this.add(s.add.tileSprite(r.left, Y - 3, W, 6, stillWaterArt(s)).setOrigin(0, 0).setDepth(10.4).setAlpha(.8));
+        (this.waves = this.waves || []).push(w);
+        for (let x = r.left + 60, k = 0; x < r.right - 40; x += 150, k++) { const g = this.add(s.add.image(x, Y - 8, 'glow').setBlendMode(ADD).setTint(0x8ac8ff).setScale(1.6, .4).setAlpha(.3).setDepth(10.35)); this.pulses.push({ o: g, base: .25, amp: .12, sp: 1 + k * .3 }); }
+        this.light(r.cx, r.top + 30, Math.max(300, W * .6), 0xd8e8ff, .5);
+      }
+      if (r.spiralGate) {
+        const { gx, Y: GY } = facade(r, spiralGateArt(s)), vy = GY - 120;
+        const warm = this.add(s.add.image(gx - 40, vy, 'glow').setBlendMode(ADD).setTint(0xfff0d0).setScale(1.6, 3.6).setAlpha(.35).setDepth(3.45));
+        const cold = this.add(s.add.image(gx + 40, vy, 'glow').setBlendMode(ADD).setTint(0x6ab0ff).setScale(1.6, 3.6).setAlpha(.35).setDepth(3.45));
+        this.pulses.push({ o: warm, base: .3, amp: .12, sp: 1.3 }, { o: cold, base: .3, amp: .12, sp: 1.7 });
+        label(gx, GY - 241, '龍 螺 旋 塔 · 용나선탑', '#e0e8ff', '#141830');
+        this.light(gx - 60, vy, 200, 0xfff0d0, .7); this.light(gx + 60, vy, 200, 0x6ab0ff, .7);
+        if (r.portalTo) this.interacts.push({ kind: 'door', pair: 'spiral', side: 'out', face: -1, x: gx, y: GY, range: 70, used: false, repeat: true, prompt: '[F 또는 ↑ : 용나선탑 안으로 들어가기]', promptY: GY - 128, door: null, glowAt: { x: gx, y: vy } });
+      }
+      if (r.spiral) {
+        if (r.portalFrom) innerDoor(r, spiralInnerGateArt(s), 'spiral', '출구 · 고대 다리', '[F 또는 ↑ : 용나선탑 밖으로 나가기]', 0xd8e8ff);
+        // 나선 회랑: 왼쪽 벽엔 진실의 백열 불꽃 · 오른쪽 벽엔 이상의 푸른 뇌전 (위아래로 촘촘히 · 일렁이고 지지직)
+        for (let y = Y - 40, k = 0; y > r.top + 20; y -= 88, k++) {
+          for (const [side, x] of [[-1, r.left + 10], [1, r.right - 10]]) {
+            if (s.isSolidAt(x + side * -6, y)) continue;
+            if (side < 0) {
+              this.lit(s.add.image(x, y, whiteFireArt(s)).setOrigin(.5, 1).setDepth(6.2));
+              const h = this.add(s.add.image(x, y - 18, 'glow').setBlendMode(ADD).setTint(0xfff0d0).setScale(1.2).setAlpha(.55).setDepth(6.3));
+              const L = this.light(x + 10, y - 18, 170, 0xfff0d0, 1.3);
+              this.flickers.push({ objs: [h], base: [.55], rate: .3, light: L, lightK: 1.3, off: 0 });
+            } else {
+              this.lit(s.add.image(x, y, voltCoilArt(s)).setOrigin(.5, 1).setDepth(6.2));
+              const h = this.add(s.add.image(x, y - 20, 'glow').setBlendMode(ADD).setTint(0x6ab0ff).setScale(1.1).setAlpha(.55).setDepth(6.3));
+              const L = this.light(x - 10, y - 20, 170, 0x6ab0ff, 1.3);
+              this.flickers.push({ objs: [h], base: [.55], rate: 1.6, light: L, lightK: 1.3, off: 0 });
+              (this.coils = this.coils || []).push({ x, y: y - 22 });
+            }
+          }
+        }
+        if (r.spiralTop) {   // 흑과 백의 제단
+          this.lit(s.add.image(r.cx, Y + 2, spiralAltarArt(s)).setOrigin(.5, 1).setDepth(3.5));
+          for (const [d, col] of [[-1, 0x4a8aff], [1, 0xff9a4a]]) { const o = this.add(s.add.image(r.cx + d * 60, Y - 62, 'glow').setBlendMode(ADD).setTint(col).setScale(.8).setAlpha(.6).setDepth(3.55)); this.pulses.push({ o, base: .5, amp: .25, sp: 1.5 }); this.light(r.cx + d * 60, Y - 62, 140, col, .9); }
+        }
+      }
+      if (r.azure) {
+        // 빛의 유리 계단: 통과 발판 줄마다 반투명 유리 계단을 덮는다 · 배경에 하늘로 뻗은 커다란 유리 계단
+        for (let ty = r.ty0; ty < r.F; ty++) {
+          let run = null;
+          for (let tx = r.tx0; tx <= r.tx1; tx++) {
+            const on = tx < r.tx1 && G[ty][tx] === 'P';
+            if (on && run === null) run = tx;
+            if (!on && run !== null) {
+              this.add(s.add.tileSprite(run * TILE, ty * TILE - 1, (tx - run) * TILE, 6, glassStepArt(s)).setOrigin(0, 0).setDepth(10.3));
+              const g = this.add(s.add.image((run + tx) / 2 * TILE, ty * TILE + 2, 'glow').setBlendMode(ADD).setTint(0xc8ecff).setScale((tx - run) * .35, .25).setAlpha(.35).setDepth(10.32));
+              this.pulses.push({ o: g, base: .3, amp: .1, sp: 1 + (tx % 5) * .2 });
+              run = null;
+            }
+          }
+        }
+        for (let x = r.left + 80, k = 0; x < r.right - 60; x += 260, k++) this.add(s.add.image(x, Y + 2, glassStairsArt(s, k % 2 ? -1 : 1)).setOrigin(.5, 1).setDepth(3.3).setAlpha(.6));
+        for (let x = r.left + 50; x < r.right; x += 180) this.add(s.add.image(x, r.top + 4, 'glow').setOrigin(.5, 0).setBlendMode(ADD).setTint(0xfff0c8).setScale(1.2, 5.5).setAlpha(.16).setDepth(3.3).setAngle(-12));   // 내려오는 빛줄기
+        this.light(r.cx, r.top + 40, Math.max(320, W * .7), 0xfff4d8, .7);
+      }
+      if (r.originGate) {
+        const { gx, Y: GY } = facade(r, originGateArt(s)), vy = GY - 80;
+        const core = this.add(s.add.image(gx, vy, 'glow').setBlendMode(ADD).setTint(0xfff4d8).setScale(2, 2.8).setAlpha(.3).setDepth(3.45));
+        const ring = this.add(s.add.image(gx, GY - 182, 'glow').setBlendMode(ADD).setTint(0xffd870).setScale(5, 5).setAlpha(.18).setDepth(3.44));
+        this.pulses.push({ o: core, base: .28, amp: .1, sp: 1.2 }, { o: ring, base: .16, amp: .06, sp: .7 });
+        label(gx, GY - 241, '始 原 之 間 · 시초의 방', '#fff4d0', '#3a2a10');
+        this.light(gx, vy, 240, 0xfff0c0, .55);
+        if (r.portalTo) this.interacts.push({ kind: 'door', pair: 'origin', side: 'out', face: -1, x: gx, y: GY, range: 70, used: false, repeat: true, prompt: '[F 또는 ↑ : 시초의 방으로 들어가기]', promptY: GY - 128, door: null, glowAt: { x: gx, y: vy } });
+      }
+      if (r.originHall) {
+        if (r.portalFrom) innerDoor(r, spiralInnerGateArt(s), 'origin', '출구 · 천계의 계단', '[F 또는 ↑ : 천계의 계단으로 돌아가기]', 0xfff0c0);
+        const sig = this.add(s.add.image(r.cx, Y - 4, originSigilArt(s)).setDepth(10.36).setAlpha(.85));
+        this.pulses.push({ o: sig, base: .75, amp: .15, sp: .9 });
+        this.light(r.cx, Y - 40, 300, 0xfff0c0, .8);
+      }
+    }
+    // 열기 상승 기류: 바닥에서 천장까지 붉은 아지랑이 기둥 · 발밑의 불씨 · 붉은 빛
+    for (const l of this.level.lifts || []) {
+      const x = l.x0 * TILE, y0 = l.y0 * TILE, y1 = (l.y1 + 1) * TILE, w = (l.x1 - l.x0 + 1) * TILE;
+      const col = this.add(s.add.tileSprite(x + w / 2, y0, w + 8, y1 - y0, heatArt(s)).setOrigin(.5, 0).setDepth(9.6).setBlendMode(ADD).setAlpha(.8));
+      this.add(s.add.image(x + w / 2, y1 - 4, 'glow').setBlendMode(ADD).setTint(0xff6a2a).setScale(1.4, .5).setAlpha(.6).setDepth(9.65));
+      this.light(x + w / 2, y1 - 20, 130, 0xff6a2a, 1.1);
+      this.lifts.push({ x0: x - 4, x1: x + w + 4, y0, y1, col });
+    }
+    // 푸른 전자기장: 테두리가 지지직 흐르는 푸른 장막 (안에서 뛰면 1.5배 높이)
+    for (const f of this.level.fields || []) {
+      const x0 = f.x0 * TILE, x1 = (f.x1 + 1) * TILE, y0 = f.y0 * TILE, y1 = (f.y1 + 1) * TILE;
+      const g = this.add(s.add.graphics().setDepth(9.55).setBlendMode(ADD));
+      g.fillStyle(0x3a7aff, .07); g.fillRect(x0, y0, x1 - x0, y1 - y0);
+      g.lineStyle(1, 0x8ac8ff, .5); for (let x = x0; x < x1; x += 10) { g.lineBetween(x, y0, x + 5, y0); g.lineBetween(x, y1 - 1, x + 5, y1 - 1); } for (let y = y0; y < y1; y += 10) { g.lineBetween(x0, y, x0, y + 5); g.lineBetween(x1, y, x1, y + 5); }
+      g.setPosition(0, 0);
+      this.pulses.push({ o: g, base: .75, amp: .25, sp: 3 });
+      this.light((x0 + x1) / 2, y1 - 30, Math.max(120, (x1 - x0) * .6), 0x4a8aff, .7);
+      this.fields.push({ x0, x1, y0, y1 });
+    }
+  }
+  // 상승 기류 · 전자기장 효과 · 유리 계단 공명 · 뇌전 코일 스파크
+  updateHeroes(dt, view) {
+    const s = this.s, p = s.player;
+    for (const l of this.lifts) l.col.tilePositionY += dt * 90;
+    if (!p) return;
+    p.jumpMul = 1;
+    for (const f of this.fields) if (p.x > f.x0 && p.x < f.x1 && p.bottom > f.y0 && p.bottom <= f.y1 + 2) {
+      p.jumpMul = FIELD_JUMP;
+      if (Math.random() < .25) s.fx.burst(p.x + (Math.random() - .5) * 16, p.bottom - Math.random() * 20, [0x8ac8ff, 0xffffff], 1, 40, { up: 0, grav: 0, bounce: false, glow: true, life: .15, size: 1 });
+      break;
+    }
+    for (const l of this.lifts) if (p.x > l.x0 && p.x < l.x1 && p.bottom > l.y0 && p.bottom <= l.y1 + 4) {   // 붉은 열기에 실려 위로 활공
+      p.b.setVelocityY(Math.max(p.b.velocity.y - LIFT_ACC * dt, -LIFT_V));
+      p.liftT = .12; p.jumpsUsed = Math.min(p.jumpsUsed, 1); p.airDash = true;
+      if (Math.random() < .4) s.fx.burst(p.x + (Math.random() - .5) * 20, p.bottom, [0xff6a2a, 0xffb060, 0xffe0a0], 1, 30, { angle: -Math.PI / 2, spread: .4, up: 60, grav: -40, bounce: false, glow: true, life: .5, size: 1 });
+      break;
+    }
+    // 천계의 유리 계단: 걸음마다 발밑에서 맑은 공명 (피리 · 하프)
+    const R = s.room;
+    if (R && R.azure && p.onGround && Math.abs(p.b.velocity.x) > 30) {
+      if ((this.stepT -= dt) <= 0) {
+        this.stepT = .32;
+        s.fx.ring(p.x, p.bottom - 1, 14, 0xc8ecff, 360); s.fx.ring(p.x, p.bottom - 1, 8, 0xfff0c0, 260);
+        s.fx.burst(p.x, p.bottom - 2, [0xc8ecff, 0xfff0c0, 0xffffff], 3, 40, { angle: -Math.PI / 2, spread: 1, up: 30, grav: -20, bounce: false, glow: true, life: .5, size: 1 });
+        Sfx.play('harp');
+      }
+    } else this.stepT = 0;
+    for (const c of this.coils || []) if (c.x > view.x - 20 && c.x < view.right + 20 && c.y > view.y - 20 && c.y < view.bottom + 20 && Math.random() < .03) {   // 뇌전 코일 스파크
+      s.fx.burst(c.x, c.y, [0x8ac8ff, 0xffffff], 3, 60, { up: 0, grav: 0, bounce: false, glow: true, life: .15, size: 1 }); s.fx.glow(c.x, c.y, 10, 0x6ab0ff, 120, .8);
+    }
+  }
+
   // 방울로드 낙엽 · 탑 횃불 불티 (화면 안에서만)
   updateBellTower(view) {
     const fx = this.s.fx, p = this.s.player;
@@ -1959,6 +2261,7 @@ export class Props {
     this.updateAsh(dt, view);
     this.updateBellTower(view);
     this.updateSinnoh(dt, view);
+    this.updateHeroes(dt, view);
     for (const w of this.waves || []) w.tilePositionX += dt * 18;   // 출렁이는 바닷물 · 파도
     if (this.runes) {   // 하늘기둥 델타 룬: 황금 ↔ 에메랄드로 천천히 맥동
       const c = Phaser.Display.Color.Interpolate.RGBWithRGB(255, 224, 128, 74, 255, 176, 100, (Math.sin(time / 700) + 1) * 50);
@@ -2182,7 +2485,7 @@ export class Props {
     if (this.webgl) for (const l of this.lights) this.s.lights.removeLight(l);
     this.objs = []; this.lights = []; this.grass = []; this.mush = []; this.flies = []; this.crates = []; this.interacts = [];
     this.vines = []; this.motes = []; this.flickers = []; this.eyes = []; this.fogs = []; this.pulses = []; this.ash = [];
-    this.revFalls = []; this.pads = []; this.phase = []; this.rift = null;
+    this.revFalls = []; this.pads = []; this.phase = []; this.rift = null; this.lifts = []; this.fields = []; this.coils = [];
     this.byRoom = null;
   }
 }

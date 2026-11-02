@@ -68,6 +68,8 @@ const BASE_TARGETS = [
   { key: 'darkrai', dex: '0491', role: '보스' },
   { key: 'zekrom', dex: '0644', role: '보스' },
   { key: 'kyurem-black', dex: '0646', form: '0001', role: '폼', pokeapi: 10022 },
+  { key: 'reshiram', dex: '0643', role: '보스' },   // 용나선탑 꼭대기 (제크로무 다음) — 받기 전엔 PokeAPI 도트로 대신 (SpriteLoader BOSS_ART)
+  { key: 'arceus', dex: '0493', role: '보스' },     // 최종장 시초의 방
   { key: 'groudon', dex: '0383', role: '보스' },
   { key: 'corviknight', dex: '0823', role: '택시' },
   { key: 'venusaur-mega', dex: '0003', form: '0001', role: '메가', pokeapi: 10033 },

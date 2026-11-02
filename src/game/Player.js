@@ -92,6 +92,7 @@ export class Player extends Actor {
     this.inv = 0; this.dash = null; this.dashCd = 0; this.airDash = true; this.swapCd = 0;
     this.launchT = 0;   // 차원 도약 수정으로 솟구치는 중 (launch)
     this.airStalls = 0; this.stallT = 0;   // 공중 평타 체공 횟수 · 남은 저중력 시간 (airStall)
+    this.jumpMul = 1; this.liftT = 0;   // 용나선탑: 전자기장 안 점프 배율 · 열기 상승 기류에 실린 중 (Props.updateHeroes)
     this.jumpsUsed = 0; this.coyote = 0; this.jbuf = 0; this.dropT = 0; this.hurtT = 0; this.speedBuff = 0;
     this.action = null; this.combo = 0; this.comboT = 0; this.zBuf = 0;
     this.chg = { t: 0, lvl: 0, st: 0 }; this.diveCd = 0;   // Z 홀드 차징 · 공중 내려찍기
@@ -564,13 +565,14 @@ export class Player extends Actor {
       else if (ground || this.coyote > 0) { this.jump(sp.jump, false); }
       else if (this.jumpsUsed < sp.jumps + this.mods.extraJumps) { this.jump(sp.jump * .92, true); }
     }
-    if (!inp.jumpH && b.velocity.y < -60 && !(a && a.ctrl) && !(this.launchT > 0)) b.setVelocityY(b.velocity.y * .86);   // 짧게 누르면 낮은 점프 (도약 수정으로 솟구칠 땐 그대로)
+    if (this.liftT > 0) this.liftT -= dt;
+    if (!inp.jumpH && b.velocity.y < -60 && !(a && a.ctrl) && !(this.launchT > 0) && !(this.liftT > 0)) b.setVelocityY(b.velocity.y * .86);   // 짧게 누르면 낮은 점프 (도약 수정 · 상승 기류로 솟구칠 땐 그대로)
     const hover = sp.hover || (this.pas.hoverForm !== undefined && this.form().fi >= this.pas.hoverForm);
     if (hover && inp.jumpH && b.velocity.y > 40 && !this.dash) b.setVelocityY(40);              // 고오스·망나뇽·전설 부유
 
     // 행동 진행 (스라크 계열은 모든 행동이 빠르다)
     if (a) {
-      a.t += dt * (this.pas.atkSpeed || 1);
+      a.t += dt * (this.pas.atkSpeed || 1) * (this.boltT > 0 ? 1.4 : 1);   // 제크로무의 뇌격 코어: 패링 뒤 5초간 공격 속도 +40%
       if (a.update) a.update(this, a, dt);
       while (a.ev && a.evi < a.ev.length && a.t >= a.ev[a.evi][0]) { a.ev[a.evi][1](); a.evi++; }
       if (this.action === a && a.t >= a.dur) this.endAction();
@@ -588,7 +590,7 @@ export class Player extends Actor {
   }
 
   jump(v, air) {
-    this.b.setVelocityY(-v);
+    this.b.setVelocityY(-v * (this.jumpMul || 1));   // 용나선탑 전자기장 안: 1.5배 높이
     this.jumpsUsed = air ? this.jumpsUsed + 1 : 1;
     if (air) this.airStalls = 0;   // 2단 점프: 공중 평타 체공 횟수를 다시 채운다
     this.coyote = 0; this.jbuf = 0;
@@ -912,6 +914,7 @@ export class Player extends Actor {
     sc.fx.ring(x, y, 28, 0xffffff, 220); sc.fx.ring(x, y, 46, 0xffe36a, 340);
     sc.fx.burst(x, y, [0xffe36a, 0xffffff, 0x6ac8ff], 20, 220, { glow: true, grav: 0, bounce: false, life: .32 });
     sc.fx.floatText(this.x, this.b.y - 24, '⚡ PERFECT PARRY!', '#ffe36a', 13);
+    Cores.parry(this);   // 보스의 코어: 제크로무 — 화면 안 모든 적에게 낙뢰 · 공격 속도 +40%
     sc.fx.hitStop(100);
     const cam = sc.cameras.main;
     if (!cam.zoomEffect.isRunning) { const z0 = cam.zoom; cam.zoomTo(z0 * 1.05, 60, 'Quad.easeOut', true); sc.time.delayedCall(100, () => cam.zoomTo(z0, 220, 'Sine.easeOut', true)); }

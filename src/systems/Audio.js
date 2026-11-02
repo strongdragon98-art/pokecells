@@ -178,6 +178,8 @@ class AudioSys {
       case 'door': this.tone(1400, .03, 'square', .025); this.nz(.22, .1, 'bandpass', 700, 4, .03, 300); this.drop(320, 190, .2, 'triangle', .04, .03); break;   // 딸깍 + 끼이익
       case 'doorshut': this.drop(150, 60, .14, 'sine', .22); this.nz(.08, .2, 'lowpass', 800, .8); this.tone(1100, .03, 'square', .02, 0, .07); break;   // 쿵 + 딸깍
       case 'echarge': this.tone(1500, .12, 'square', .02, 1600); this.tone(760, .16, 'triangle', .035, 900, .02); break;   // 보스 · 엘리트 탄 충전음: 날카롭게 치솟는 찡
+      case 'arceus': this.tone(330, 1.2, 'sawtooth', .08, 330); this.tone(495, 1.1, 'triangle', .06, 495, .05); this.tone(660, 1.3, 'sine', .07, 660, .1); this.tone(990, .9, 'sine', .03, 300, .25); this.nz(1.2, .2, 'bandpass', 1400, 1.2, 0, 3000); this.drop(160, 60, 1.2, 'sine', .25); break;   // 아르세우스의 신성한 울음: 장조 화음으로 치솟는 울림
+      case 'harp': { const P = [523, 587, 659, 784, 880, 1047, 1175]; const n = P[(Math.random() * P.length) | 0]; this.tone(n, .5, 'sine', .045); this.tone(n * 2, .35, 'triangle', .015, 0, .02); this.tone(n * 1.5, .4, 'sine', .02, 0, .06); break; }   // 천계의 유리 계단: 걸음마다 맑은 하프 · 피리 공명
       case 'pad': this.tone(220, .35, 'sine', .08, 900); this.tone(440, .3, 'triangle', .04, 1200, .03); this.hiss(.3, .08, 2400, 0, 2); break;   // 차원 도약 수정: 휘익 솟구치는 소리
       case 'rift': this.drop(160, 40, .9, 'sawtooth', .14); this.nz(.9, .3, 'lowpass', 600, 1, 0, 120); this.tone(1200, .5, 'sine', .03, -900, .1); break;   // 공간이 찢어지는 낮은 굉음
       case 'roar': this.drop(240, 70, 1.3, 'sawtooth', .2); this.drop(180, 50, 1.4, 'square', .1, .05); this.nz(1.2, .45, 'bandpass', 500, 1.5, 0, 180); this.nz(1, .25, 'lowpass', 300, .8, .1); this.tone(90, 1.4, 'sawtooth', .14, -30); break;   // 기라티나의 포효

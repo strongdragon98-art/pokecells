@@ -1,6 +1,7 @@
 // 보스의 코어 효과 (data/cores.js · 장착하면 Player.mods.core[flag])
 //  갈고리: hit(적중 · Combat.damageEnemy) · amp(피해 배율) · cast(기술 시전 · Player.useSkill) · dash · dive · revive(쓰러지는 순간)
 //          projectile(투사체가 생길 때 · Combat.spawnProjectile) · tick(매 프레임 · Player.update) · hurtMul(받는 피해)
+//          parry(패링 성공 · Player.doParry) · critMul(급소 피해 배율) · allPlate(모든 공격 약점 판정 — 아르세우스)
 import Phaser from 'phaser';
 import { Sfx } from '../systems/Audio.js';
 import { SKILLS } from '../data/pokemon.js';
@@ -10,6 +11,8 @@ import { magmaEruption } from './Spectacle.js';
 const RAINBOW = [0xff4a4a, 0xff9a2a, 0xffe04a, 0x6aff6a, 0x4ac8ff, 0x8a6aff, 0xff6ad8];
 const has = (p, f) => !!(p && p.mods && p.mods.core && p.mods.core[f]);
 const anyStatus = e => { const st = e.status || {}; return st.burn > 0 || st.poison > 0 || st.slow > 0 || st.root > 0 || st.stun > 0 || st.curse > 0; };
+const MELEE = /claw|slash|chop|punch|kick|fang|bite|tackle|tail|blade|cut|strike/;   // 근접(물리) 기술 이름 (한카리아스 · 제크로무 코어)
+const BLUE_FLARE = 0x5ab0ff;
 
 export const Cores = {
   // ---- 적중: o.proc(코어·특성이 만든 추가 타격)는 다시 일으키지 않는다 ----
@@ -69,7 +72,15 @@ export const Cores = {
     }
     // 한카리아스: 맞힐 때마다 중첩 (최대 7 = 35%)
     if (has(p, 'garchomp')) { p.chomp = Math.min(7, (p.chomp || 0) + 1); p.chompT = 3; }
+    // 큐레무: 얼음·드래곤 → 35% 즉시 빙결 (보스는 짧게)
+    if (has(p, 'kyurem') && (type === 'ice' || type === 'dragon') && Math.random() < .35 && !(e.frozenT > 0)) combat.applyStatus(e, { freeze: e.boss ? 1.6 : 1.4 });
   },
+  // 급소 피해 배율 (큐레무: 빙결 · 둔화된 적 +60%)
+  critMul(combat, e) {
+    return has(combat.p, 'kyurem') && (e.frozenT > 0 || (e.status && e.status.slow > 0)) ? 1.6 : 1;
+  },
+  // 아르세우스: 올라운드 플레이트 — 모든 공격이 약점 판정
+  allPlate(p) { return has(p, 'arceus'); },
   // 피해 배율 · 흡혈 (다크라이: 상태이상 걸린 적 +45%)
   amp(combat, e, d) {
     const p = combat.p;
@@ -83,6 +94,23 @@ export const Cores = {
     if (has(p, 'hooh') && (q.type === 'fire' || q.type === 'flying')) { q.color = RAINBOW[(Math.random() * RAINBOW.length) | 0]; q.rainbow = true; }   // 무지갯빛 성스러운 불꽃
     if (has(p, 'palkia') && (q.type === 'water' || q.type === 'dragon')) { q.life *= 1.5; q.r *= 1.5; q.pierce = 99; if (q.boom) q.boom = Object.assign({}, q.boom, { r: q.boom.r * 1.5 }); }
     if (p.deltaT > 0) { q.vx *= 1.5; q.vy *= 1.5; q.r *= 1.5; }   // 레쿠쟈: 델타스트림
+    if (has(p, 'reshiram') && (q.type === 'fire' || q.type === 'dragon' || combat.chargeSpawn)) {   // 레시라무: 초고온의 푸른 불꽃 — 반감 · 무효 · 방어 자세 무시 · 떨어진 자리에 푸른 화염 장판
+      q.color = BLUE_FLARE; q.blueFlare = true;
+      q.status = Object.assign({}, q.status, { ignoreResist: true, pierceGuard: true });
+      const end = q.onExpire;
+      q.onExpire = qq => { if (end) end(qq); this.blueFlare(combat.s, qq.x, qq.y); };
+    }
+  },
+  // 레시라무: 3초간 타오르는 푸른 화염 장판 (같은 자리에 겹쳐 깔리지 않게 0.25초에 하나)
+  blueFlare(sc, x, y) {
+    const p = sc.player, now = sc.time.now;
+    if (!p || !sc.combat || now - (p.flareAt || -999) < 250) return;
+    p.flareAt = now;
+    const gy = sc.groundBelow(x, y - 4);
+    if (gy - y > 120) return;   // 허공 높이에서 사라진 탄은 장판을 깔지 않는다
+    sc.combat.spawnZone({ owner: 'player', x: x - 28, y: gy - 14, w: 56, h: 14, life: 3, tick: .3, type: 'fire', color: BLUE_FLARE, draw: 'fire',
+      onTick: z => sc.combat.hitRect({ x: z.x, y: z.y - 6, w: z.w, h: z.h + 6 }, .25, 'fire', { proc: true, burn: 2, ignoreResist: true, pierceGuard: true, kbx: 0, kby: 0, hs: 0 }) });
+    sc.fx.burst(x, gy - 4, [BLUE_FLARE, 0xd8f0ff, 0xffffff], 8, 80, { angle: -Math.PI / 2, spread: .8, up: 50, glow: true, life: .5 });
   },
   // ---- 기술 시전 (Z 연타 제외) ----
   cast(p, id) {
@@ -93,12 +121,43 @@ export const Cores = {
       if (!(p.deltaT > 0)) { sc.fx.floatText(p.x, p.b.y - 16, '델타스트림!', '#8affb0', 10); Sfx.play('wind'); }
       p.deltaT = 5;
     }
-    if (has(p, 'garchomp') && (sk.type === 'ground' || sk.type === 'dragon' || /claw|slash|chop|punch|kick|fang|bite|tackle|tail|blade|cut|strike/.test(id))) {
+    if (has(p, 'zekrom') && (sk.type === 'electric' || sk.type === 'dragon' || MELEE.test(id))) this.crossThunder(p);   // 제크로무: 크로스썬더
+    if (has(p, 'reshiram') && (sk.type === 'fire' || sk.type === 'dragon')) this.blueFlare(sc, p.x + p.face * 30, p.y);   // 레시라무: 앞 바닥에 푸른 화염
+    if (has(p, 'arceus')) {   // 아르세우스: 심판의뭉치 — 빛의 탄환 3발이 유도탄으로
+      const f = p.face;
+      for (let k = 0; k < 3; k++) sc.combat.spawnProjectile({ owner: 'player', bonus: true, x: p.x + f * 6, y: p.y - 8, vx: f * (160 + k * 30), vy: -150 + k * 110, r: 5, mul: .55, type: p.types[0], kind: 'ball', color: 0xfff0b0, life: 1.6, homing: 1.6, pierce: 1, light: k === 1, status: { proc: true } });
+      sc.fx.ring(p.x, p.y - 8, 20, 0xfff0b0, 240);
+    }
+    if (has(p, 'garchomp') && (sk.type === 'ground' || sk.type === 'dragon' || MELEE.test(id))) {
       const f = p.face;   // 모래폭풍 검기: 앞으로 휘몰아치는 모래 칼날
       sc.combat.spawnProjectile({ owner: 'player', x: p.x + f * 10, y: p.y - 2, vx: f * 380, vy: 0, r: 9, mul: 1.1, type: 'ground', kind: 'wave', color: 0xd8b070, life: .5, pierce: 99, muzzle: false, kb: 120, status: { proc: true, hs: 20 } });
       sc.fx.slash(p.x + f * 14, p.y - 2, 18, f, 0xe8c890, { thick: 3 });
       sc.fx.burst(p.x + f * 14, p.y, [0xd8b070, 0xf8e0b0], 10, 120, { angle: f > 0 ? 0 : Math.PI, spread: .6, glow: false, life: .4 });
     }
+  },
+  // 제크로무: 몸 둘레에 X 자로 교차하는 푸른 번개가 터진다
+  crossThunder(p) {
+    const sc = p.scene, now = sc.time.now;
+    if (now - (p.crossAt || -999) < 350) return;
+    p.crossAt = now;
+    const x = p.x, y = p.y, R = 46;
+    for (const [a, b] of [[-1, -1], [1, -1]]) bolt(sc, x + a * R, y + b * R * .8, x - a * R, y - b * R * .8, 0x6ab0ff, 3, 220);
+    sc.combat.hitCircle(x, y, R, .9, 'electric', { proc: true, paralyze: .25, kbx: 140, kby: -120, hs: 20 });
+    sc.fx.ring(x, y, R, 0x6ab0ff, 260); sc.fx.glow(x, y, 30, 0xb8d8ff, 200, .9);
+    Sfx.play('zap');
+  },
+  // ---- 패링 성공 (제크로무: 화면 안 모든 적에게 낙뢰 · 5초간 공격 속도 +40%) ----
+  parry(p) {
+    if (!has(p, 'zekrom')) return;
+    const sc = p.scene, v = sc.cameras.main.worldView;
+    p.boltT = 5;
+    for (const e of sc.enemies) {
+      if (!e.alive || e.intangible || e.x < v.x || e.x > v.right || e.y < v.y || e.y > v.bottom) continue;
+      bolt(sc, e.x + (Math.random() - .5) * 20, v.y - 4, e.x, e.y, 0x8ab0ff, 3, 260);
+      sc.combat.damageEnemy(e, p.atk * 1.2, 'electric', { proc: true, paralyze: .5, kb: 0, kby: -60, hs: 0 });
+    }
+    sc.cameras.main.flash(120, 120, 170, 255, true); Sfx.play('thunder');
+    sc.fx.floatText(p.x, p.b.y - 34, '⚡ 크로스썬더 · 공격 속도 +40%', '#8ac8ff', 10);
   },
   dash(p) {
     if (has(p, 'entei')) this.lava(p);
@@ -134,6 +193,7 @@ export const Cores = {
   },
   // ---- 매 프레임 ----
   tick(p, dt) {
+    if (p.boltT > 0) { p.boltT -= dt; if (Math.random() < .3) p.scene.fx.burst(p.x + (Math.random() - .5) * 24, p.y + (Math.random() - .5) * 24, [0x8ac8ff, 0xffffff], 1, 50, { up: 0, grav: 0, bounce: false, glow: true, life: .15, size: 1 }); }   // 제크로무: 공격 속도 +40%
     if (p.deltaT > 0) {
       p.deltaT -= dt;
       if (!p.onGround && p.b.velocity.y > 0) p.b.setVelocityY(p.b.velocity.y * (1 - Math.min(1, dt * 3)));   // 체공 시간 증가

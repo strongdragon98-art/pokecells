@@ -955,6 +955,41 @@ const LANDMARKS = {
     }
     for (let k = 0; k < 160; k++) F(r() * W, r() * H, r() < .3 ? 2 : 1, r() < .3 ? 2 : 1, 0xffffff, .3 + r() * .4);   // 눈발
   },
+  // 설화시티 고대 다리 · 겨울 습지: 잔잔한 물 위로 아치가 이어진 고대 석조 다리 · 눈 덮인 침엽수 · 멀리 나선 띠를 두른 용나선탑 · 눈발
+  icirrus({ F, W, H, mc, ml, r, glow }) {
+    const snow = 0xeef4ff;
+    F(0, H - 26, W, 26, 0x8ab0d0, .35); for (let x = 0; x < W; x += 6) F(x, H - 26 + (x % 18 === 0 ? 2 : 0), 4, 1, 0xffffff, .45);   // 잔잔한 물 (반짝임)
+    { const tx = W * .78, base = H - 60;   // 멀리 용나선탑
+      for (let y = 30; y < base; y += 2) { const w = 46 + (y - 30) * .12; F(tx - w / 2, y, w, 2, mc); }
+      for (let k = 0; k < 260; k++) { const t = k / 260, y = base - t * (base - 30), w = 46 + (y - 30) * .12, a = t * Math.PI * 8; if (Math.sin(a) > 0) F(tx + Math.cos(a) * w / 2 - 2, y, 4, 3, ml); }
+      for (let j = 0; j < 46; j += 3) F(tx - 23 + j, 30 - r() * 14, 3, 14, mc);
+      glow(tx, 50, 50, 'rgba(160,190,255,.12)'); }
+    { const y = H - 70;   // 고대 석조 다리 (아치 기둥)
+      F(0, y, W, 8, ml); F(0, y, W, 2, snow, .7);
+      for (let x = 20; x < W; x += 90) { F(x, y + 8, 14, H - y - 30, mc); archAt(F, x + 14, y + 8, 76, ml); }
+      for (let x = 0; x < W; x += 12) F(x, y - 6, 3, 6, ml); }
+    for (let k = 0; k < 9; k++) { const x = r() * W, h = 40 + r() * 40; for (let yy = 0; yy < h; yy += 2) { const w = (yy / h) * 20; F(x - w / 2, H - 30 - h + yy, w, 2, mc); if (yy % 10 < 2) F(x - w / 2, H - 30 - h + yy, w, 1, snow, .6); } }   // 눈 덮인 침엽수
+    for (let k = 0; k < 140; k++) F(r() * W, r() * H, r() < .3 ? 2 : 1, r() < .3 ? 2 : 1, 0xffffff, .3 + r() * .4);
+  },
+  // 천계의 피리 공명로: 하늘로 비스듬히 끝없이 뻗은 반투명 유리 계단들 · 떠 있는 수정 기둥 · 빛줄기
+  azure({ F, W, H, r, glow }) {
+    for (let s = 0; s < 4; s++) {
+      const x0 = 40 + s * 190 + r() * 40, dir = s % 2 ? -1 : 1, n = 20 + (r() * 10 | 0);
+      for (let k = 0; k < n; k++) { const x = x0 + dir * k * 11, y = H - 10 - k * 11; F(x, y, 18, 4, 0xc8e8ff, .4); F(x, y, 18, 1, 0xffffff, .7); F(x + 2, y + 4, 14, 2, 0x8ab8e8, .2); }
+    }
+    for (let k = 0; k < 6; k++) { const x = r() * W, y = 40 + r() * 160, h = 20 + r() * 30; F(x, y, 6, h, 0xe8f4ff, .45); F(x + 1, y, 1, h, 0xffffff, .8); F(x - 2, y + h, 10, 3, 0xd8c890, .5); }   // 떠 있는 수정 기둥
+    for (let k = 0; k < 5; k++) glow(r() * W, 60 + r() * 120, 50, 'rgba(255,236,190,.14)');
+  },
+  // 시초의 방: 순백 · 황금빛 우주에 떠 있는 고대 대리석 열주 · 거대한 천륜 · 사방으로 뻗는 빛살
+  origin({ F, W, H, r, glow }) {
+    const cx = W * .5, cy = 120;
+    for (let k = 0; k < 24; k++) { const a = k / 24 * Math.PI * 2; for (let d = 60; d < 360; d += 4) F(cx + Math.cos(a) * d, cy + Math.sin(a) * d * .6, 2, 2, 0xffe8b0, .18 * (1 - d / 360)); }   // 빛살
+    for (const [rad, w, a] of [[92, 6, .45], [104, 2, .6], [120, 1, .4]]) for (let k = 0; k < 360; k++) { const t = k / 360 * Math.PI * 2; F(cx + Math.cos(t) * rad, cy + Math.sin(t) * rad, w, w, 0xffd870, a); }   // 천륜
+    for (let k = 0; k < 4; k++) { const t = k * Math.PI / 2 + Math.PI / 4; F(cx + Math.cos(t) * 98 - 6, cy + Math.sin(t) * 98 - 6, 12, 12, 0xffe08a, .8); }
+    glow(cx, cy, 120, 'rgba(255,244,210,.35)');
+    for (let k = 0; k < 7; k++) { const x = 30 + k * 110, h = 140 + r() * 90; F(x, H - h, 20, h, 0xe8e0f0, .55); F(x + 3, H - h, 2, h, 0xffffff, .7); F(x - 4, H - h - 6, 28, 6, 0xd8c890, .55); }   // 백금 열주
+    F(0, H - 18, W, 18, 0xf0e8d8, .5);
+  },
   // 깨어진 세계: 보랏빛 · 청록 성운 속에 떠 있는 섬들 · 섬 밑으로 거꾸로 자란 수정 나무 · 위로 거슬러 오르는 폭포 · 휘어진 돌기둥
   distortion({ F, W, H, mc, ml, r, glow }) {
     glow(160, 120, 140, 'rgba(160,80,255,.16)'); glow(560, 200, 160, 'rgba(60,220,210,.12)');
@@ -1034,6 +1069,9 @@ const LANDMARKS = {
     }
   }
 };
+
+// 아치 하나 (반원 테두리 · 폭 w)
+function archAt(F, x, y, w, col) { for (let k = 0; k <= 30; k++) { const t = k / 30 * Math.PI; F(x + w / 2 - Math.cos(t) * w / 2, y + 18 - Math.sin(t) * 18, 4, 4, col); } }
 
 function makeBgMid(scene, si, kind, p) {
   const key = `bgmid:${si}:${kind}`;
@@ -1148,7 +1186,23 @@ function unovaSky(cf, p, r) {
   for (let b = 0; b < 3; b++) { let x = 60 + b * 250 + r() * 60, y = 110; while (y < 250) { F(x, y, 2, 5, 0xff4a6a, .3); x += (r() - .5) * 10; y += 5; } }
   ridgeLine(cf, shade(p.far, .5), W, H, 50, 16, .015);
 }
-const SKIES = [stormSky, johtoSky, hoennSky, sinnohSky, unovaSky];
+// 최종장 · 천계: 짙은 남보라 우주에서 지평선의 황금빛 · 은빛으로 · 성운 · 별 · 멀리 하늘로 뻗은 빛의 유리 계단 · 꼭대기의 천륜
+function heavenSky(cf, p, r) {
+  const W = BG_W, H = BG_H, F = (...a) => bgF(cf, ...a);
+  const g = cf.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#1e1a40'); g.addColorStop(.42, '#5a4e8e'); g.addColorStop(.74, '#e0c08a'); g.addColorStop(1, '#fff2dc'); cf.fillStyle = g; cf.fillRect(0, 0, W, H);
+  for (let k = 0; k < 9; k++) glowAt(cf, r() * W, 30 + r() * 150, 60 + r() * 90, k % 2 ? 'rgba(255,214,140,.2)' : 'rgba(210,222,255,.18)');   // 황금빛 · 은빛 성운
+  for (let k = 0; k < 160; k++) F(r() * W, r() * H * .55, r() < .2 ? 2 : 1, 1, r() < .3 ? 0xffe8a8 : 0xffffff, .5 + r() * .5);   // 별
+  const cx = W * .5, cy = 46;   // 천륜 (아르세우스의 황금 고리)
+  cf.strokeStyle = 'rgba(255,224,150,.5)'; cf.lineWidth = 3; cf.beginPath(); cf.arc(cx, cy, 34, 0, Math.PI * 2); cf.stroke();
+  cf.lineWidth = 1; cf.beginPath(); cf.arc(cx, cy, 42, 0, Math.PI * 2); cf.stroke();
+  for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + Math.PI / 4; F(cx + Math.cos(a) * 38 - 3, cy + Math.sin(a) * 38 - 3, 6, 6, 0xffe08a, .7); }
+  glowAt(cf, cx, cy, 70, 'rgba(255,240,200,.3)');
+  for (const [x0, dir] of [[W * .12, 1], [W * .82, -1]]) for (let k = 0; k < 26; k++) {   // 멀리 하늘로 뻗은 빛의 유리 계단
+    const x = x0 + dir * k * 9, y = H - 20 - k * 8;
+    F(x, y, 14, 3, 0xd8f0ff, .35 - k * .01); F(x, y, 14, 1, 0xffffff, .5 - k * .015);
+  }
+}
+const SKIES = [stormSky, johtoSky, hoennSky, sinnohSky, unovaSky, heavenSky];
 
 function makeBackgrounds(scene, si, p) {
   const W = BG_W, H = BG_H;

@@ -4,11 +4,13 @@
 //  점프: 땅을 디디면 jmax 칸까지 오를 수 있다 (2단 점프 포함 — 가장 낮게 뛰는 포켓몬이 약 5.2칸)
 //  공중 좌우 이동은 제한 없이 본다 (2단 점프 + 공중 대시로 10칸 넘게 난다) · 통과 발판은 아래에서 뚫고 오르고 ↓ + Space 로 내려간다
 //  차원 도약 수정(깨어진 세계 · o.pads: 그 위에 선 발 칸 'x,y' 집합): 그 자리에선 o.padTiles 칸까지 솟구친다 (GameScene 의 발사 속도로 22칸 남짓 — 여유를 두고 18칸)
-export const BODY_W = 2, JUMP_TILES = 5, PAD_TILES = 18;
+//  전자기장(용나선탑 · o.boost: 칸 'x,y' 집합): 그 안의 땅을 디디면 o.boostJ 칸까지 (점프 높이 1.5배 — 약 8.8칸 · 여유를 두고 7칸)
+//  열기 상승 기류(용나선탑 · o.lifts: 칸 'x,y' 집합): 그 안에선 계속 떠오른다 (기류가 몸을 위로 밀어 올린다)
+export const BODY_W = 2, JUMP_TILES = 5, PAD_TILES = 18, BOOST_TILES = 7;
 
 // starts: [[x, y], ...] 발 칸 · win: { x0, y0, x1, y1 } 이 창 밖은 벽으로 본다 (x1·y1 은 미포함)
 export function reach(grid, starts, win, o = {}) {
-  const jmax = o.jmax ?? JUMP_TILES, bw = o.bw ?? BODY_W, pads = o.pads, padJ = o.padTiles ?? PAD_TILES;
+  const jmax = o.jmax ?? JUMP_TILES, bw = o.bw ?? BODY_W, pads = o.pads, padJ = o.padTiles ?? PAD_TILES, boost = o.boost, boostJ = o.boostJ ?? BOOST_TILES, lifts = o.lifts;
   const { x0, y0, x1, y1 } = win, W = x1 - x0, H = y1 - y0;
   const at = (x, y) => (x < x0 || x >= x1 || y < y0 || y >= y1) ? 'S' : grid[y][x];
   const solid = (x, y) => at(x, y) === 'S';
@@ -18,7 +20,12 @@ export function reach(grid, starts, win, o = {}) {
   const best = new Int8Array(W * H).fill(-1), q = [];
   const push = (x, y, b) => {
     if (!free(x, y)) return;
-    if (grounded(x, y)) { b = jmax; if (pads) for (let i = 0; i < bw; i++) if (pads.has((x + i) + ',' + y)) { b = padJ; break; } }
+    if (grounded(x, y)) {
+      b = jmax;
+      if (pads) for (let i = 0; i < bw; i++) if (pads.has((x + i) + ',' + y)) { b = padJ; break; }
+      if (boost && b < boostJ) for (let i = 0; i < bw; i++) if (boost.has((x + i) + ',' + y)) { b = boostJ; break; }
+    }
+    if (lifts) for (let i = 0; i < bw; i++) if (lifts.has((x + i) + ',' + y)) { b = Math.max(b, 2); break; }
     const k = (y - y0) * W + (x - x0);
     if (best[k] >= b) return;
     best[k] = b; q.push(x, y, b);

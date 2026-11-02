@@ -193,10 +193,15 @@ export const BOSSES = {
   darkrai: { name: '다크라이', title: '악몽의 만월섬', types: ['dark'], hp: 3400, dmg: 30, ai: 'darkrai', fly: true, color: 0x6a2a9a, tier: 'hidden' },
   giratina: { name: '기라티나', title: '깨어진 세계의', types: ['ghost', 'dragon'], hp: 4200, dmg: 32, ai: 'giratina', fly: true, color: 0xff3a5a, megaSprite: 'giratina-origin', megaName: '기라티나 오리진폼', startMega: true, tier: 'hidden' },   // 깨어진 세계의 왕좌: 처음부터 오리진폼으로 강림 (2페이즈는 폭주)
   // ---- 하나 · 심연 ----
-  zekrom: { name: '제크로무', title: '용나선탑의 검은 영웅', types: ['dragon', 'electric'], hp: 4000, dmg: 33, ai: 'zekrom', color: 0x4a8aff, tier: 'mini' },
+  // 용나선탑 꼭대기 흑과 백의 제단: 다크스톤이 갈라지며 제크로무 → 정화되는 순간 라이트스톤이 갈라지며 레시라무 (이어 싸우기)
+  zekrom: { name: '제크로무', title: '용나선탑의 검은 영웅', types: ['dragon', 'electric'], hp: 3000, dmg: 33, ai: 'zekrom', color: 0x4a8aff, then: 'reshiram', tier: 'mini' },
+  reshiram: { name: '레시라무', title: '용나선탑의 하얀 영웅', types: ['dragon', 'fire'], hp: 3000, dmg: 33, ai: 'reshiram', color: 0xff9a4a, entrance: 'lightstone', intro: '라이트스톤이 갈라진다 — 진실의 영웅 레시라무 강림', tier: 'mini' },
   // 최종장: 세뇌된 레드의 피카츄 → 리자몽(메가리자몽X) → 레드가 풀려나면 심연의 핵에서 무한다이노 (체력 50% 무한다이맥스)
   eternatus: { name: '무한다이노', title: '모든 것의 원흉', types: ['poison', 'dragon'], hp: 4600, dmg: 36, ai: 'eternatus', fly: true, color: 0xff2a5a, prelude: ['pikachu-red', 'charizard-red'], entrance: 'abyss', intro: '심연의 핵이 깨어난다 — 모든 것의 원흉', megaName: '무한다이맥스 무한다이노', megaScale: 1.35, tier: 'boss' },
   'pikachu-red': { name: '피카츄', sprite: 'pikachu', title: '세뇌된 레드의 파트너', types: ['electric'], hp: 1500, dmg: 30, ai: 'pikachu', trainer: 'red', color: 0xffe040, tier: 'boss' },
   'charizard-red': { name: '리자몽', sprite: 'charizard', title: '세뇌된 레드의 에이스', types: ['fire', 'flying'], hp: 2200, dmg: 33, ai: 'charizard', trainer: 'red', color: 0xff7a2a, megaSprite: 'charizard-mega-x', megaName: '메가리자몽X', megaLine: '……', tier: 'boss' },
-  'kyurem-black': { name: '블랙큐레무', title: '얼어붙은 이상의', types: ['dragon', 'ice'], hp: 4800, dmg: 34, ai: 'kyuremB', color: 0xbff0ff, tier: 'hidden' }
+  'kyurem-black': { name: '블랙큐레무', title: '얼어붙은 이상의', types: ['dragon', 'ice'], hp: 4800, dmg: 34, ai: 'kyuremB', color: 0xbff0ff, tier: 'hidden' },
+  // ---- 최종장 · 천계 ----
+  // 아르세우스: 18 플레이트가 몸 둘레를 돌며 주기적으로 속성을 바꾼다(심판의뭉치) — 지금 속성의 약점을 찌르거나 고속 탄을 패링해 되받아치면 그로기가 크게 쌓인다
+  arceus: { name: '아르세우스', title: '시초의 방의 창조신', types: ['normal'], hp: 6200, dmg: 38, ai: 'arceus', fly: true, color: 0xfff0b0, rage: '심연의 그림자가 걷히며 창조의 빛이 폭주한다', tier: 'boss' }
 };

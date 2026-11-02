@@ -102,6 +102,10 @@ const LOOKS = {
   scholar: t => ({ body: 'old', hair: 0xd8d4cc, hairStyle: 'bun', old: true, glasses: 0x6a6a7a, shawl: 0x4a3a6a, shirt: 0x6a5a8a, sleeve: 0x5a4a7a, skirt: 0x3a3048, shoes: 0x2a2030, cane: true }),   // 신오 신화 연구가: 보라 숄 · 돋보기 안경 (봉신마을의 이야기꾼)
   celestic: t => ({ body: 'old', hair: 0xe8e4dc, hairStyle: 'swept', old: true, beard: 0xe8e4dc, shirt: 0x3a4a7a, sleeve: 0x2a3a6a, shawl: 0xd8c890, skirt: 0x3a4a7a, shoes: 0x2a2030, cane: true }),   // 봉신마을 장로: 남색 도포 · 금빛 목도리
   guardian: t => ({ hair: 0x2a2a34, hairStyle: 'short', beanie: 0xe8ecf4, shirt: 0x5a6a8a, sleeve: 0x4a5a7a, coat: 0xd8dce8, coatD: 0xa8b0c8, pants: 0x3a4058, shoes: 0x2a2a34, cane: true }),   // 천관산 유적 수호자: 흰 방한 망토 · 털모자 · 지팡이
+  alder: t => ({ hair: 0xd8582a, hairStyle: 'messy', shirt: 0x7a5a32, sleeve: 0x6a4a2a, shawl: 0xe8d8a8, pants: 0x5a4a2a, shoes: 0x3a2a1a, pack: 0x8a3a2a }),   // 하나 챔피언 노간주: 붉은 덥수룩한 머리 · 상아색 판초 · 몬스터볼 꾸러미
+  sage: t => ({ body: 'old', hair: 0xd8d4cc, hairStyle: 'swept', old: true, beard: 0xe8e4dc, shirt: 0x3a2a5a, sleeve: 0x2a1a4a, shawl: 0xd8b040, skirt: 0x3a2a5a, shoes: 0x1a1428, cane: true }),   // 고대 성채의 현자: 보랏빛 법의 · 금빛 견대 · 긴 흰 수염
+  stguard: t => ({ hair: 0xd8dce8, hairStyle: 'long', longHair: true, coat: 0xe8ecf8, coatD: 0xb8c0e0, shirt: 0x3a5aa8, pants: 0x2a3a6a, shoes: 0x1a2040 }),   // 시공간의 수호자: 은발 · 흰 장포 · 푸른 안감 (디아루가 · 펄기아 빛)
+  heir: t => ({ hair: 0xf0e0a0, hairStyle: 'long', longHair: true, coat: 0x22222c, coatD: 0xd8c070, shirt: 0x3a3a48, pants: 0x22222c, shoes: 0x1a1a22 }),   // 고대 신오의 계승자: 금발 · 검은 코트 · 금빛 깃
   kimono: t => ({ hair: 0x1a1418, hairStyle: 'bun', pin: 0xe8c060, shirt: t || 0xc83a5a, skirt: t || 0xc83a5a, obi: 0xe8c060, shoes: 0x8a2a2a, legs: 0xf4f0e8 })
 };
 

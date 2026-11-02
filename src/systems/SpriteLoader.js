@@ -13,8 +13,10 @@ import { WILD } from '../data/pokemon.js';
 export const ANIMS = ['Idle', 'Walk', 'Attack', 'Strike', 'Shoot', 'Hurt'];
 const POKEAPI = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon';
 // 로스터의 모든 모습·메가 → PokeAPI 번호
+// 모션 시트(SpriteCollab)를 아직 받지 않은 보스 전용 모습 → PokeAPI 번호 (레시라무 · 아르세우스)
+const BOSS_ART = { reshiram: 643, arceus: 493 };
 const ROSTER_ART = (() => {
-  const out = {};
+  const out = Object.assign({}, BOSS_ART);
   for (const l of LINES) {
     for (const f of l.forms) out[f.key] = f.dex;
     for (const m of l.megas || []) out[m.key] = m.pokeapi;

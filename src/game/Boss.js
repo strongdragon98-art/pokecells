@@ -8,6 +8,7 @@ import { Sfx } from '../systems/Audio.js';
 import { overlap, ENEMY_FAST } from './Combat.js';
 import { bolt } from './Perks.js';
 import { shockwave } from '../systems/PostFX.js';
+import { typeColor, typeName } from '../data/types.js';
 
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const STRIKE = new Set(['dash', 'dive', 'spin', 'spark', 'glide', 'jet', 'serpent', 'skydive', 'lunge', 'volt', 'boltRun', 'fbDive']);
@@ -2131,6 +2132,180 @@ BOSS_AI.zekrom = function (e, dt, p) {
         boltFx(sc, e.x, room.top, gy, 0x8ab0ff); slamWave(e, 0x8ab0ff, 'electric');
         e.state = 'recover'; e.timer = .9;
       }
+      break;
+    case 'fire': case 'recover': recover(e, dt); break;
+  }
+};
+
+// ---- 레시라무 (용나선탑 꼭대기 · 제크로무 다음 · 진실의 하얀 영웅) ----
+//  푸른불꽃: 백열의 거대 화염구 셋을 차례로 (터지면 불꽃 장판) · 크로스플레임: 솟아올라 불꽃 구체가 되어 내리꽂힌다
+//  제크로무 환영: 반대편에 검은 환영이 나타나 푸른 번개 줄기를 가로로 · 화염방사: 앞으로 길게 뿜는 백열의 불길
+function zekromPhantom(e, p) {
+  const sc = e.scene, room = e.room, s0 = e.sprite, side = p.x > e.x ? 1 : -1, x = side > 0 ? room.right - 50 : room.left + 50, y = Phaser.Math.Clamp(p.y - 20, room.top + 30, room.bottom - 30);
+  const ghost = own(e, sc.add.sprite(x, y + 20, s0.texture.key, s0.frame.name).setOrigin(s0.originX, s0.originY).setScale(s0.scaleX, s0.scaleY).setDepth(18.8).setFlipX(side < 0).setTintFill(0x1a1c2a).setAlpha(0));
+  if (s0.anims.currentAnim) ghost.play(s0.anims.currentAnim.key);
+  sc.tweens.add({ targets: ghost, alpha: .6, duration: 300 });
+  sc.fx.glow(x, y, 50, 0x4a8aff, 1200, .8);
+  const ty = p.y, far = side > 0 ? room.left : room.right;
+  lineHazard(e, () => ({ x1: x - side * 20, y1: y, x2: far, y2: ty }), { delay: .8, life: .9, width: 18, color: 0x6a9aff, type: 'electric', dmg: e.dmg * 1.2 });
+  sc.time.delayedCall(2000, () => { if (ghost.active) sc.tweens.add({ targets: ghost, alpha: 0, duration: 300, onComplete: () => ghost.destroy() }); });
+  Sfx.play('zap');
+}
+BOSS_AI.reshiram = function (e, dt, p) {
+  const sc = e.scene, ph2 = e.phase === 2, b = e.b, col = 0xfff0d8, room = e.room;
+  switch (e.state) {
+    case 'idle':
+      approachPlayer(e, p, Math.abs(p.x - e.x) > 240 ? 110 : ph2 ? 60 : 46, 110);
+      e.cd -= dt;
+      if (e.cd > 0) break;
+      e.mode = e.choose(['blueflare', 'fusion', 'zekrom', 'breath']);
+      e.state = 'wind'; e.timer = (e.mode === 'fusion' ? .6 : .55) * (ph2 ? .85 : 1); e.telegraph(true); b.setVelocityX(0); e.facePlayer(p);
+      sc.fx.glow(e.x, e.y, 40, 0xff9a4a, e.timer * 1000, .9); Sfx.play('fire');
+      break;
+    case 'wind':
+      e.timer -= dt; b.setVelocityX(b.velocity.x * .8);
+      if (Math.random() < .5) sc.fx.burst(e.x + (Math.random() - .5) * b.width, e.y + (Math.random() - .5) * b.height, [0xffffff, 0xffc080, 0x8ac8ff], 1, 60, { angle: -Math.PI / 2, spread: .6, up: 40, grav: -30, bounce: false, glow: true, life: .3 });
+      if (e.timer > 0) break;
+      e.telegraph(false);
+      if (e.mode === 'blueflare') { e.flares = ph2 ? 4 : 3; e.state = 'flare'; e.timer = 0; }
+      else if (e.mode === 'fusion') { b.setAllowGravity(false); b.setVelocity(0, -380); e.state = 'fbRise'; e.timer = .55; Sfx.play('dash'); }
+      else if (e.mode === 'zekrom') { zekromPhantom(e, p); if (ph2) thunderAt(e, [p.x - 60, p.x + 60], { color: 0x6a9aff, delay: 1.1 }); e.state = 'fire'; e.timer = 1.9; }
+      else {   // 화염방사: 앞으로 길게 뿜는 백열의 불길 (2페이즈는 위아래로 한 번 쓸어 올린다)
+        const f = e.face, x0 = e.x + f * 24, y0 = e.y - 6, len = 320;
+        lineHazard(e, k => ({ x1: x0, y1: y0, x2: x0 + f * len, y2: y0 + (ph2 ? (k - .5) * 120 : 20) }), { delay: .45, life: 1, width: 20, color: 0xffd090, type: 'fire', dmg: e.dmg * 1.1,
+          onTick: s => { if (Math.random() < .7) sc.combat.pr.flamePuff(s.x1 + (s.x2 - s.x1) * Math.random(), s.y1 + (s.y2 - s.y1) * Math.random(), f * 90, (Math.random() - .5) * 30, .4, .6, 1.4, Math.random() < .4); } });
+        e.state = 'fire'; e.timer = 1.6;
+      }
+      break;
+    case 'flare':   // 푸른불꽃: 백열의 거대 화염구가 플레이어 쪽으로 (빠른 탄 — 패링할 수 있다) · 터진 자리에 불꽃 장판
+      e.timer -= dt;
+      if (e.timer > 0) break;
+      if (e.flares-- <= 0) { e.state = 'recover'; e.timer = .7; break; }
+      e.timer = ph2 ? .42 : .55; e.facePlayer(p);
+      { const a = Math.atan2(p.y - e.y, p.x - e.x), sp = 230;
+        e.shot({ x: e.x + e.face * 20, y: e.y - 6, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 10, kind: 'fire', color: 0xd8ecff, life: 2.4, type: 'fire', dmg: e.dmg * 1.15,
+          boom: { r: 34, mul: 1, color: 0x8ac8ff }, onExpire: q => { if (!live(e)) return; const gy = floorY(e, q.x); if (gy - q.y < 60) e.zone({ x: q.x - 26, y: gy - 12, w: 52, h: 12, delay: 0, life: 1.6, dmg: e.dmg * .5, type: 'fire', draw: 'fire', color: 0x8ac8ff, multi: true }); } }); }
+      Sfx.play('fire');
+      break;
+    case 'fbRise':   // 크로스플레임: 솟아올라 불꽃 구체가 된다
+      e.timer -= dt;
+      sc.fx.burst(e.x, e.y, [0xffffff, 0xffb070], 2, 60, { up: 0, grav: 0, bounce: false, glow: true, life: .2 });
+      if (e.timer <= 0) {
+        b.setVelocity(0, 0); e.fbX = Phaser.Math.Clamp(p.x, room.left + 30, room.right - 30);
+        const gy = floorY(e, e.fbX);
+        e.zone({ x: e.fbX - 30, y: room.top, w: 60, h: gy - room.top, delay: .6, life: .85, dmg: e.dmg * 1.4, type: 'fire', draw: 'pillar', color: 0xffb070 });
+        e.state = 'fbAim'; e.timer = .6; sc.fx.glow(e.x, e.y, 46, 0xffb070, 600, 1);
+      }
+      break;
+    case 'fbAim':
+      e.timer -= dt; b.setVelocity((e.fbX - e.x) * 6, 0);
+      if (e.timer <= 0) { b.setVelocity(0, 900); e.state = 'fbDive'; e.timer = .9; }
+      break;
+    case 'fbDive':
+      e.timer -= dt;
+      if (e.timer % .03 < dt) sc.fx.ghost(e.sprite, 0xffb070, .6, 220);
+      if (b.blocked.down || e.timer <= 0 || e.y >= room.bottom - 20) {
+        b.setAllowGravity(true); b.setVelocity(0, 0);
+        slamWave(e, 0xffb070, 'fire');
+        sc.combat.pr.flameBreath(e.x, floorY(e, e.x) - 6, 1, 60, 14, true, 2); sc.combat.pr.flameBreath(e.x, floorY(e, e.x) - 6, -1, 60, 14, true, 2);
+        e.state = 'recover'; e.timer = .9;
+      }
+      break;
+    case 'fire': case 'recover': recover(e, dt); break;
+  }
+};
+
+// ---- 아르세우스 (최종장 시초의 방 · 창조신) ----
+//  18 플레이트가 몸 둘레를 돌며 주기적으로 한 장을 끼운다 → 그 속성이 된다 (약점이 바뀐다 · 탄 · 기둥의 속성도 그 플레이트)
+//  심판의뭉치: 빛의 탄환이 부채꼴로 빠르게 (패링해 되받아치면 그로기가 크게) · 천벌의 빛기둥: 바닥을 따라 행진 · 창조의 낙성: 플레이어 둘레에 빛줄기가 차례로
+//  신속 돌진: 아레나를 가로질러 돌진 · 폭주(체력 50%)하면 플레이트가 더 빨리 바뀌고 탄이 늘어난다
+const PLATE_TYPES = ['fire', 'water', 'electric', 'grass', 'ice', 'fighting', 'poison', 'ground', 'flying', 'psychic', 'bug', 'rock', 'ghost', 'dragon', 'dark', 'steel', 'fairy', 'normal'];
+function plateOrbit(e, dt) {
+  const sc = e.scene;
+  if (!e.plates) {
+    e.plates = PLATE_TYPES.map(t => ({ t, im: own(e, sc.add.image(e.x, e.y, 'px').setTint(typeColor(t)).setScale(4, 6).setDepth(19)), gl: own(e, sc.add.image(e.x, e.y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(typeColor(t)).setScale(.25).setAlpha(.5).setDepth(18.9)) }));
+    e.plateA = 0; e.plateT = 2.5; e.plateIdx = PLATE_TYPES.length - 1;
+  }
+  e.plateA += dt * (e.phase === 2 ? 1.4 : .9);
+  const R = Math.max(40, e.b.width * .9), cur = PLATE_TYPES[e.plateIdx];
+  e.plates.forEach((pl, k) => {
+    const a = e.plateA + k / PLATE_TYPES.length * Math.PI * 2, on = pl.t === cur;
+    const x = e.x + Math.cos(a) * R, y = e.y + Math.sin(a) * R * .55;
+    pl.im.setPosition(x, y).setScale(on ? 6 : 3.5, on ? 9 : 5.5).setAlpha(on ? 1 : .75).setDepth(Math.sin(a) > 0 ? 19.5 : 17.5);
+    pl.gl.setPosition(x, y).setScale(on ? .6 : .22).setAlpha(on ? .8 : .4);
+  });
+  // 플레이트 바꿔 끼우기
+  if (e.state === 'intro' || e.groggyT > 0) return;
+  e.plateT -= dt;
+  if (e.plateT > 0) return;
+  e.plateT = e.phase === 2 ? 6 : 8;
+  e.plateIdx = (e.plateIdx + 1 + Math.floor(Math.random() * (PLATE_TYPES.length - 2))) % (PLATE_TYPES.length - 1);   // 노말을 빼고 다른 플레이트로
+  const t = PLATE_TYPES[e.plateIdx], col = typeColor(t);
+  e.types = [t];
+  e.glowImg.setTint(col);
+  sc.fx.ring(e.x, e.y, 60, col, 420); sc.fx.ring(e.x, e.y, 36, 0xffffff, 320); sc.fx.glow(e.x, e.y, 50, col, 400, .9);
+  sc.fx.burst(e.x, e.y, [col, 0xffffff], 24, 200, { glow: true, life: .5 });
+  sc.fx.floatText(e.x, e.top - 22, `${typeName(t)} 플레이트!`, '#' + col.toString(16).padStart(6, '0'), 12);
+  Sfx.play('resonate');
+}
+BOSS_AI.arceus = function (e, dt, p) {
+  const sc = e.scene, ph2 = e.phase === 2, b = e.b, room = e.room, t = e.types[0], col = typeColor(t);
+  plateOrbit(e, dt);
+  switch (e.state) {
+    case 'idle': {
+      e.facePlayer(p);
+      const tx = p.x - Math.sign(p.x - e.x || 1) * 140, ty = p.y - 70 + Math.sin(e.t * 1.4) * 12;
+      b.setVelocity(Phaser.Math.Clamp((tx - e.x) * 1.5, -160, 160), Phaser.Math.Clamp((ty - e.y) * 1.5, -110, 110));
+      e.cd -= dt;
+      if (e.cd > 0) break;
+      e.mode = e.choose(['judgment', 'pillars', 'meteor', 'dash', 'judgment']);
+      e.state = 'wind'; e.timer = (e.mode === 'dash' ? .6 : .5) * (ph2 ? .85 : 1); e.telegraph(true); b.setVelocity(0, 0);
+      sc.fx.glow(e.x, e.y, 44, col, e.timer * 1000, .9);
+      break;
+    }
+    case 'wind':
+      e.timer -= dt; b.setVelocity(b.velocity.x * .85, b.velocity.y * .85);
+      if (Math.random() < .5) sc.fx.burst(e.x + (Math.random() - .5) * b.width, e.y + (Math.random() - .5) * b.height, [col, 0xffffff, 0xfff0b0], 1, 70, { up: 0, grav: 0, bounce: false, glow: true, life: .2 });
+      if (e.timer > 0) break;
+      e.telegraph(false);
+      if (e.mode === 'judgment') { e.volleys = ph2 ? 3 : 2; e.state = 'judge'; e.timer = 0; }
+      else if (e.mode === 'pillars') {   // 천벌의 빛기둥: 몸 아래에서 양옆으로 바닥을 따라 행진
+        const gx = Phaser.Math.Clamp(e.x, room.left + 20, room.right - 20);
+        marchPillars(e, gx, 1, ph2 ? 9 : 7, { gap: 40, step: .1, h: 90, w: 24, color: col, type: t, delay: .35 });
+        marchPillars(e, gx, -1, ph2 ? 9 : 7, { gap: 40, step: .1, h: 90, w: 24, color: col, type: t, delay: .35 });
+        Sfx.play('beam'); e.state = 'fire'; e.timer = 1.5;
+      } else if (e.mode === 'meteor') {   // 창조의 낙성: 플레이어 둘레에 빛줄기가 차례로 내리꽂힌다
+        const xs = []; for (let k = 0; k < (ph2 ? 7 : 5); k++) xs.push(p.x + (k - (ph2 ? 3 : 2)) * 52 + (Math.random() - .5) * 14);
+        xs.forEach((x0, k) => {
+          const x = Phaser.Math.Clamp(x0, room.left + 12, room.right - 12), gy = floorY(e, x), d = .6 + k * .1;
+          e.zone({ x: x - 12, y: room.top, w: 24, h: gy - room.top, delay: d, life: d + .3, dmg: e.dmg * 1.1, type: t, draw: 'pillar', color: col });
+          sc.time.delayedCall(d * 1000, () => { if (live(e)) { sc.fx.ring(x, gy - 4, 26, col, 300); sc.fx.burst(x, gy - 4, [col, 0xffffff], 10, 160, { up: 80, glow: true, life: .4 }); } });
+        });
+        Sfx.play('wave'); e.state = 'fire'; e.timer = 1.6;
+      } else {   // 신속 돌진: 플레이어 높이로 아레나를 가로지른다
+        e.facePlayer(p); e.dashY = Phaser.Math.Clamp(p.y - 6, room.top + 30, room.bottom - 30);
+        b.setVelocity(0, (e.dashY - e.y) * 4); e.state = 'dashAim'; e.timer = .35;
+      }
+      break;
+    case 'judge':   // 심판의뭉치: 빛의 탄환이 부채꼴로 (보스 탄 — 1.42배 빠르고 0.2초 예비 동작 · 패링하면 그로기 +32)
+      e.timer -= dt;
+      if (e.timer > 0) break;
+      if (e.volleys-- <= 0) { e.state = 'recover'; e.timer = .6; break; }
+      e.timer = ph2 ? .5 : .65; e.facePlayer(p);
+      { const n = ph2 ? 7 : 5, a0 = Math.atan2(p.y - e.y, p.x - e.x), sp = 240;
+        for (let k = 0; k < n; k++) { const a = a0 + (k - (n - 1) / 2) * .16; e.shot({ x: e.x + Math.cos(a) * 18, y: e.y + Math.sin(a) * 18, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 7, kind: 'ball', color: col, life: 2.2, type: t }); }
+        sc.fx.ring(e.x, e.y, 30, col, 240); }
+      Sfx.play('beam');
+      break;
+    case 'dashAim':
+      e.timer -= dt;
+      if (e.timer > 0) break;
+      b.setVelocity(e.face * (ph2 ? 620 : 520), 0); e.state = 'lunge'; e.timer = 1.1; sc.fx.sonicBoom(e.x, e.y, e.face, 2); Sfx.play('dash');
+      break;
+    case 'lunge':   // 몸에 닿아도 피해 (STRIKE)
+      e.timer -= dt;
+      if (e.timer % .03 < dt) sc.fx.ghost(e.sprite, col, .55, 220);
+      if (e.timer <= 0 || b.blocked.left || b.blocked.right || e.x <= room.left + 30 || e.x >= room.right - 30) { b.setVelocity(0, 0); sc.fx.shake(.012, 200); sc.fx.ring(e.x, e.y, 50, col, 300); e.state = 'recover'; e.timer = .7; }
       break;
     case 'fire': case 'recover': recover(e, dt); break;
   }

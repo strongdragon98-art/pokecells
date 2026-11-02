@@ -39,18 +39,18 @@ export class Combat {
     const p = this.p, mods = p.mods;
     this.applyStatus(e, o);
     if (base <= 0) return 0;
-    const m0 = typeMultiplier(type, e.types), m = o.parried ? Math.max(2, m0) : o.ignoreResist ? Math.max(1, m0) : m0;   // 깨물어부수기: 반감 무시 · 패링 반사탄: 무조건 약점
+    const m0 = typeMultiplier(type, e.types), m = o.parried || Cores.allPlate(p) ? Math.max(2, m0) : o.ignoreResist ? Math.max(1, m0) : m0;   // 깨물어부수기 · 레시라무의 푸른 불꽃: 반감 무시 · 패링 반사탄 · 아르세우스의 창조 코어: 무조건 약점
     const eff = effectiveness(m);
     let d = base * m * mods.all * (1 + (mods.typeBoost[type] || 0));
     if (e.status.curse > 0) d *= 1.3;
     d *= Cores.amp(this, e, d);   // 다크라이의 나이트메어 코어: 상태이상 걸린 적 +45% · 흡혈
     if (mods.execute && e.hp <= e.maxhp * .25) d *= 1 + mods.execute;   // 특성 카드: 마무리 일격
     if (e.groggyT > 0) d *= GROGGY_MUL;   // 보스 그로기(약점 누적으로 자세 무너짐): 받는 피해 ×1.35
-    if (e.guardMul) d *= e.guardMul;
+    if (e.guardMul && !o.pierceGuard) d *= e.guardMul;   // 레시라무의 푸른 불꽃은 방어 자세도 꿰뚫는다
     const sure = !o.dot && p.critNext > this.s.time.now;   // 패링 카운터 뒤 다음 한 방은 확정 치명타
     if (sure) p.critNext = 0;
     const crit = sure || (!o.dot && Math.random() < .06 + (o.crit || 0) + mods.crit);
-    if (crit) d *= 1.6 * (mods.critMul || 1);   // 피트렌즈: 급소 피해 +20%
+    if (crit) d *= 1.6 * (mods.critMul || 1) * Cores.critMul(this, e);   // 피트렌즈: 급소 피해 +20% · 큐레무의 절대영도 코어: 빙결 · 둔화된 적 +60%
     d += o.flat || 0;
     d = Math.max(1, Math.round(d * (.92 + Math.random() * .16)));
     e.hp -= d;

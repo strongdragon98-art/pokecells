@@ -1,4 +1,4 @@
-// 5대 지방 = 5개 챕터: 침식된 관동 → 어둠에 잠긴 성도 → 폭풍의 호연 → 시공이 뒤틀린 신오 → 종언의 하나·무한다이노의 심연
+// 5대 지방 + 최종장 = 6개 챕터: 침식된 관동 → 어둠에 잠긴 성도 → 폭풍의 호연 → 시공이 뒤틀린 신오 → 종언의 하나·무한다이노의 심연 → 최종장 천계(시초의 방 · 아르세우스)
 // 챕터마다 메트로배니아식 2D 방 그래프를 만든다 (game/World.js). 지역(area)은 본길 순서대로 이어지고, 지역마다 샛길이 갈라진다.
 //  각 지방 첫 지역엔 결계에 지켜지는 안전한 시내(hub)가 있다 — 마을 사람들(data/npcs.js)이 이야기를 들려준다. 관동 입구는 오박사 연구소 안
 //  plan: 그 지역 본길의 방 차례. 토큰 —
@@ -6,6 +6,7 @@
 //   stairs 계단(1×2, 한 줄 위로) · bridge 낭떠러지 다리 방(2×1) · hub 시내(포켓몬센터 · 아머까오 정거장, 적 없음)
 //   mini:보스 중간 보스 아레나 · boss:보스 지방 최종 보스 아레나 · sanct:보스 본길 끝 전설 성소(히든 전설 · 깨어진 세계의 기라티나)
 //   토큰 끝 ^ = 앞 방 바로 위에 쌓는다 (수직 탑: 포켓몬타워 · 방울탑 · 하늘기둥 · 창기둥 · 용나선탑)
+//   정문(포털)으로만 들어가는 독립 던전: 바로 앞 지역의 마지막 본 경로 전투방이 정문 앞 성역(몬스터 0 · 수문장 NPC 둘)이 된다 — 방울탑 · 창기둥 · 용나선탑 · 시초의 방 (game/World.js templeGate)
 //  branches: 본길에서 갈라지는 샛길 — tm 기술머신 비밀방(카드 고르기 · 막다른 굴 일부를 바꿔 지방마다 2~3곳) · treasure 보물 · potion 상처약 · fake 막다른 굴 · hidden:보스 히든 전설 성소
 //   hidden 은 부서지는 벽 너머로 깊게(2~4방) 뻗고, hiddenDir 쪽(down 아래 · left 왼쪽 · up 위)을 좋아한다
 //  color: 지도·방 뒤 배경 색 · bg: 중경 배경 종류(town · road · city · forest · gym · default + 지역 랜드마크: museum · tower · silph · crystal · shrine · radio · burnt · belltower · lighthouse · volcano · seacave · skypillar · snowcity · temple · rift · spear · ferris · dragonspiral · core — systems/Textures.js 의 LANDMARKS) · city: 시내 이름(아머까오 목적지)
@@ -96,10 +97,28 @@ export const STAGES = [
     areas: [
       { name: '뇌문시티 폐허', en: 'Nimbasa Ruins', color: 0x2b4c59, bg: 'ferris', city: '뇌문시티', plan: ['start', 'hub', 'c', 'bridge'], branches: ['fake', 'potion', 'tm'],
         lore: ['뇌문시티 — 무너진 대관람차가 혼자 돌고 있다.'] },
+      // 설화시티 고대 다리 · 겨울 습지: 밝기 85% 은빛 설원 · 잔잔한 물가 위 고대 석조 다리 · 피어오르는 눈꽃과 푸른 빛무리 — 마지막 방 = 용나선탑 정문 앞 성역(몬스터 0 · 노간주 · 고대 성채의 현자)
+      { name: '설화시티 고대 다리 · 겨울 습지', en: 'Icirrus Bridge · Winter Marsh', color: 0x48607e, bg: 'icirrus', plan: ['c', 'bridge', 'wide'], branches: ['treasure'],
+        terrain: { bridge: 2, flat: 3, island: 1, tiers: 1 }, props: { pillar: 2, statue: 1, fence: 2 }, stalactites: [0, 0],
+        lore: ['설화시티 — 겨울이면 습지가 얼어붙어, 고대 석조 다리만이 용나선탑으로 이어진다.'] },
+      // 용나선탑 안(밝기 80%): 왼쪽 벽엔 진실의 백열 불꽃 · 오른쪽 벽엔 이상의 푸른 뇌전 · 전자기장(점프 1.5배) · 열기 상승 기류(위층으로 활공) — 꼭대기 = 흑과 백의 제단 (N의 성이 다리로 맞물린 절경)
       { name: '용나선탑', en: 'Dragonspiral Tower', color: 0x3d4452, bg: 'dragonspiral', plan: ['tower', 'c^', 'mini:zekrom^'], branches: ['hidden:kyurem-black', 'treasure'], hiddenDir: 'down',
-        terrain: { tiers: 4, ziggurat: 3 }, lore: ['용나선탑 — 검은 번개가 탑을 감싸고 돈다.'] },
+        terrain: { tiers: 4, ziggurat: 3 }, lore: ['용나선탑 — 검은 번개와 하얀 불꽃이 탑을 감싸고 돈다.'] },
       { name: 'N의 성 · 심연의 왕좌', en: "N's Castle · Abyssal Throne", color: 0x3b1238, bg: 'core', plan: ['c', 'wide', 'abyss', 'boss:eternatus'], branches: ['tm'],
         lore: ['N의 성 — 고대 성벽을 뚫고 붉은 결정이 자라났다.', '왕좌 앞에 낯익은 빨간 모자가 떨어져 있다.'] }
+    ]
+  },
+  // 최종장: 무한다이노를 정화한 뒤 하늘로 열리는 성역 — 천계의 피리 공명로(빛의 유리 계단 · 밝기 95% · 완전 평화 구역) → 시초의 성문 앞(시공간의 수호자 · 고대 신오의 계승자) → 시초의 방(아르세우스)
+  {
+    name: '최종장 · 천계의 계단과 시초의 방', region: '천계', short: '천계', boss: 'arceus', bgm: 'celestial', bossBgm: 'boss_origin', pool: ['gastly', 'machop', 'zubat', 'pichu', 'rattata'],
+    terrain: { tiers: 3, ziggurat: 2, flat: 3, island: 2 }, props: { pillar: 3, statue: 1 }, stalactites: [0, 0],
+    roofs: [0xd8c890, 0xc8b8e8, 0xe8d8b0, 0xb8c8e8],
+    palette: { sky: 0xfff6e0, far: 0xe8dcc0, wall: 0x9a92b8, wall2: 0x6e6890, edge: 0xffe08a, plat: 0xd8e8ff, light: 0xfff0c0, accent: 0xffe8a0, ambient: 0xb8b0d0, moss: 0xffd8f0 },
+    areas: [
+      { name: '천계의 피리 공명로', en: 'Azure Stairway', color: 0x8a9ac8, bg: 'azure', plan: ['start', 'stairs', 'stairs', 'c', 'wide'], branches: [],
+        lore: ['천계의 피리 공명로 — 한 걸음마다 유리 계단이 맑은 소리로 운다.', '하늘 끝, 모든 것이 시작된 방이 있다고 한다.'] },
+      { name: '시초의 방', en: 'Hall of Origin', color: 0xc8b070, bg: 'origin', plan: ['boss:arceus'], branches: [],
+        lore: ['시초의 방 — 천 개의 팔로 우주를 빚었다는 신의 자리.'] }
     ]
   }
 ];

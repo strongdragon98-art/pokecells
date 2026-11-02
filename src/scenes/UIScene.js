@@ -1181,7 +1181,7 @@ export default class UIScene extends Phaser.Scene {
     this.input.keyboard.on('keydown', this.onOverlayKey, this);
     // 범례 (핀 모양을 글로 풀어서) · 탐험률 · 조작
     L.add(hkText(this, 34, 316, '◉ 포켓몬센터  ◉ 아머까오  ☠ 보스·중간 보스  ? 숨겨진 전설  ◉ 기술머신  ◉ 보물  ◉ 상처약  ◉ 현재 위치  ┆ 안 가 본 길', 8.5, HK.dim));
-    L.add(hkText(this, 320, 340, `${st.short} 탐험 ${Math.round(this.mapView.progress * 100)}%   ·   1~5 지방   ·   ${keyLabel(Settings.key('map'))} · Esc 닫기   ·   끌어서 이동 · 휠 · Z · +– 확대`, 9, HK.faint, { origin: .5 }));
+    L.add(hkText(this, 320, 340, `${st.short} 탐험 ${Math.round(this.mapView.progress * 100)}%   ·   1~${STAGES.length} 지방   ·   ${keyLabel(Settings.key('map'))} · Esc 닫기   ·   끌어서 이동 · 휠 · Z · +– 확대`, 9, HK.faint, { origin: .5 }));
     this.overlayMode = 'map';
   }
 
@@ -1430,7 +1430,7 @@ export default class UIScene extends Phaser.Scene {
     const showPerf = () => perf.setText(`FPS ${Math.round(this.game.loop.actualFps)}  ·  적 ${awake} 활동 / ${slept} 잠듦(화면 밖)  ·  풀 이미지 ${gs.fx.pool.size}/${gs.fx.pool.made}`);
     showPerf();
     const perfT = this.time.addEvent({ delay: 500, loop: true, callback: () => { if (perf.scene) showPerf(); else perfT.remove(); } });
-    L.add(hkText(this, 320, 348, '1~5 챕터 · ↑↓←→ 고르기 · Enter 순간이동 · R 정화한 보스 다시 싸우기 · F3 · Esc 닫기', 8.5, HK.faint, { origin: .5 }));
+    L.add(hkText(this, 320, 348, `1~${STAGES.length} 챕터 · ↑↓←→ 고르기 · Enter 순간이동 · R 정화한 보스 다시 싸우기 · F3 · Esc 닫기`, 8.5, HK.faint, { origin: .5 }));
     glassButton(this, 566, 8, 64, 20, '✕  닫기', () => gs.toggleOverlay('debug'), { size: 9, layer: L });
     this.input.keyboard.on('keydown', this.onOverlayKey, this);
     this.overlayMode = 'debug';
@@ -1931,7 +1931,7 @@ export default class UIScene extends Phaser.Scene {
     g.fillStyle(0x05040a, .9); g.fillRect(0, 0, GAME_W, GAME_H);
     L.add(hkText(this, 320, 44, r.won ? '심연 정화 완료' : '눈앞이 캄캄해졌다…', 26, r.won ? HK.gold : HK.ivory, { ls: 4, bold: true, origin: .5, glow: true }));
     L.add(fadeLine(this, 320, 70, 340));
-    L.add(hkText(this, 320, 86, r.won ? '무한다이노를 쓰러뜨리고 다섯 지방을 모두 정화했다' : `${r.stage}장 · ${r.stageName}에서 여정을 멈췄다`, 10, HK.dim, { origin: .5 }));
+    L.add(hkText(this, 320, 86, r.won ? '무한다이노의 심연을 걷어 내고 시초의 방에서 창조신 아르세우스까지 정화했다' : `${r.stage}장 · ${r.stageName}에서 여정을 멈췄다`, 10, HK.dim, { origin: .5 }));
     const mm = Math.floor(r.time / 60), ss = String(Math.floor(r.time % 60)).padStart(2, '0');
     const rows = [['도달 챕터', `${r.stage} / ${STAGES.length}`], ['정화한 포켓몬', `${r.kills}마리`], ['획득 아이템', `${r.items}개`], ['플레이 시간', `${mm}:${ss}`]];
     rows.forEach(([k, v], i) => {
@@ -2142,7 +2142,7 @@ export default class UIScene extends Phaser.Scene {
       else if (e.code === 'KeyH') this.testHalf();
       return;
     }
-    const digit = /^(Digit|Numpad)[1-5]$/.test(e.code) ? +e.code.slice(-1) - 1 : -1;
+    const digit = /^(Digit|Numpad)[1-9]$/.test(e.code) && +e.code.slice(-1) <= STAGES.length ? +e.code.slice(-1) - 1 : -1;   // 1 ~ 지방 수
     if ((this.overlayMode === 'map' || (this.overlayMode === 'settings' && !this.keyWait)) && (e.code === 'KeyQ' || e.code === 'KeyE')) { this.menuCycle(e.code === 'KeyE' ? 1 : -1); return; }   // 통합 탭바 한 칸 옆으로
     if (this.overlayMode === 'map' && this.mapView) {
       if (digit >= 0) { if (this.mapOpen(digit) && digit !== this.mapCi) { Sfx.play('select'); this.showMap(digit); } return; }
