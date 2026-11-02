@@ -143,6 +143,12 @@ const RED_THANKS = [
   '이 불꽃은 이제 너의 것이다. 어느 지방을 여행하든, 늘 네 곁에서 타오를 거야.',
   '자, 돌아가자. 모두가 기다리는 맑은 하늘 아래로!'
 ];
+const MEWTWO_LINES = ['나를 조종하던 붉은 사슬은 가라르의 무한다이노에게서 뻗어 나온 것... 레드는 아직 살아있다. 너의 유대의 불꽃을 더 키워라.'];
+const CYNTHIA_LINES = [
+  '…정신이 드는 것 같아. 너희가 날 붙잡아 준 거구나. 고마워.',
+  '무한다이노와 그 배후 세력이 레드의 에너지를 이용해 창기둥의 시공간마저 비틀어버렸어. 네 안의 『유대의 불꽃』이 처음보다 훨씬 거대하고 눈부시게 타오르고 있네... 기라티나마저 정화한다면, 마침내 레드가 갇힌 심장부로 갈 길이 열릴 거야!'
+];
+const BOND_ATK = .03;   // 유대의 불꽃 정화 단계마다 모든 공격 피해 +3% (Combat.damageEnemy)
 const LEGEND_GHOSTS = ['mewtwo', 'ho-oh', 'rayquaza', 'dialga', 'palkia', 'giratina-origin', 'zekrom', 'reshiram', 'arceus'];   // 시네마틱에 나오는 정화한 전설들의 환영 (시트가 있는 것만)
 // 긴 대사를 대화창 한 쪽(약 n 글자)씩 문장 단위로 나눈다
 function pagesOf(text, n = 90) {
@@ -217,11 +223,13 @@ export default class GameScene extends Phaser.Scene {
     this.runStats = { kills: 0, unlocked: [], start: this.time.now, items: 0, stage: 1 };
     this.seeds = [];                       // 챕터마다 지형 시드 (저장·이어하기에서 같은 지형을 다시 만든다)
     this.purifiedSet = new Set();          // 최종 보스를 정화해 침식이 걷힌 지방 (밝고 맑게 · 야생 포켓몬은 평화롭게 · 마을 사람 대사가 바뀐다)
+    this.bondStages = new Set();           // 유대의 불꽃 정화 단계: 침식의 핵(지방 최종 보스 · 가라르는 무한다이노)을 정화한 지방 — bondStage
     const rs = this.resume;
     this.savedWorlds = rs ? rs.worlds.slice() : null;   // 챕터마다 저장해 둔 바뀐 것 (worldOf 가 그 챕터를 만들 때 덮어쓴다)
     if (rs) {
       this.stageIdx = rs.stageIdx; this.seeds = rs.seeds.slice(); this.unlockedHubs = rs.hubs.slice(); this.lastCenter = rs.lastCenter;
       this.purifiedSet = new Set(rs.purified || []);
+      this.bondStages = new Set(this.purifiedSet);   // 이어하기: 정화한 지방만큼 유대의 불꽃도 자라 있다
       Object.assign(this.runStats, { kills: rs.stats.kills, unlocked: rs.stats.unlocked.slice(), items: rs.stats.items, start: this.time.now - rs.stats.time * 1000 });
     }
     if (this.test) { this.testOpt = { ci: 0, ai: 0, arena: null, tall: false }; this.testGod = false; this.testNoCd = false; this.testChain = false; this.dummy = null; }
@@ -571,6 +579,9 @@ export default class GameScene extends Phaser.Scene {
     this.events.emit('area', { region: st.name, name: area.name, en: area.en, label: areaLabel(this.stageIdx, room.ai, area) });
   }
 
+  // 유대의 불꽃 정화 단계 0~6 (HUD 불꽃 Lv = 단계 + 1, 최대 6 — UIScene · 모든 공격 피해 +BOND_ATK × 단계 — Combat)
+  get bondStage() { return this.bondStages ? Math.min(6, this.bondStages.size) : 0; }
+  get bondMul() { return 1 + BOND_ATK * this.bondStage; }
   // 지금 방 지역의 곡 (지역마다 bgm 이 있으면 그것 · 없으면 지방 곡)
   areaBgm() { const a = this.room && this.stage.areas[this.room.ai]; return (a && a.bgm) || this.stage.bgm; }
 
@@ -887,6 +898,7 @@ export default class GameScene extends Phaser.Scene {
       this.abyssTear = this.abyssSil = null;
       const core = this.props && this.props.redCore;
       if (core && core.broken) this.props.buildRedCore(r);
+      this.bondStages.delete(this.stageIdx);   // 무한다이노부터 다시 — 마지막 불꽃도 그때 다시 모인다
     }
     this.setGates(r, true);
     this.unlockArena();
@@ -2422,6 +2434,7 @@ export default class GameScene extends Phaser.Scene {
       this.time.delayedCall(700, () => { if (this.arenaRoom === room) this.stoneSplit(room, true, x => this.beginBoss(key, room, x)); });
     } else if (def.entrance === 'bondflame') {   // 유대의 불꽃 시네마틱 → 레드 소생 → 아비스 네크로즈마가 찢어진 하늘에서 내려온다 + 오버드라이브
       this.events.emit('banner', `${prev.name} 정화!`, '레드를 가둔 결정에 금이 간다');
+      this.bondStageGain(this.stageIdx);   // 정화 단계 6 / 6 — 모든 불꽃이 모였다 (이제 레드에게로 돌아간다)
       this.bondFlameCinematic(room, prev, () => {
         if (this.arenaRoom !== room || this.over) return;
         const t = this.abyssTear, sil = this.abyssSil, gy = this.groundBelow(room.cx, room.bottom - 24);
@@ -2534,7 +2547,7 @@ export default class GameScene extends Phaser.Scene {
     this.announceJoin(Save.addPurify());   // 누적 정화로 합류하는 특수 포켓몬 (롱스톤·스라크)
     const joinedBy = e.boss && Save.unlockByBoss(e.bossKey);   // 전설 보스 정화 → 그 전설이 플레이어블로 합류 (한카리아스 → 딥상어동 계열)
     if (joinedBy) this.time.delayedCall(2800, () => this.announceJoin([joinedBy]));
-    if (e.boss) this.dropFormItem(e);
+    if (e.boss) { this.dropFormItem(e); this.bondPurify(e); }
     if (e.boss && coreOfBoss(e.bossKey)) this.time.delayedCall(1300, () => { if (this.level) this.spawnPickup('item', e.x, e.y - 14, coreOfBoss(e.bossKey)); });   // 보스의 코어 100% (짝 보스 · 이어 싸우기도 한 마리마다)
     if (e.boss) { this.bossDefeated(e); return; }
     if (e.elite && this.stageIdx === 2 && this.player.quests && this.player.quests.zTrial === 1) {   // 호연의 시련: 엘리트 수호자를 넘었다 → 루네시티 시련 캡틴에게
@@ -2657,7 +2670,13 @@ export default class GameScene extends Phaser.Scene {
     if (this.player.flipT > 0) this.player.flipT = .001;
     if (tr) {   // 세뇌된 트레이너가 정신을 차린다 (레드는 이미 풀려 있으면 마지막 한마디)
       const L = TRAINER_LINES[tr.kind];
-      if (!tr.freed) { tr.release(L.freed); this.time.delayedCall(1200, () => this.events.emit('toast', L.toast)); }
+      if (!tr.freed) {
+        tr.release(L.freed); this.time.delayedCall(1200, () => this.events.emit('toast', L.toast));
+        if (tr.kind === 'cynthia') {   // 정신을 차린 난천: 레드 · 무한다이노 · 유대의 불꽃 · 기라티나 — 그동안 합류 창은 기다린다
+          this.storyWait = true;
+          this.time.delayedCall(5600, () => this.openStory({ name: '난천', portrait: { key: 'trainer:cynthia:free', max: 1.6, glow: 0xd8c8ff }, lines: CYNTHIA_LINES, onEnd: () => { this.storyWait = false; } }));
+        }
+      }
       else if (L.end) this.time.delayedCall(1400, () => tr.say(L.end));
     }
     this.events.emit('boss', null);
@@ -2684,6 +2703,7 @@ export default class GameScene extends Phaser.Scene {
       if (!last) this.time.delayedCall(2600, () => this.purifyRegion());   // 지방 전체의 침식이 걷힌다
       else this.time.delayedCall(1600, () => this.trueEnding(boss, room));   // 진 최종전: 황금빛 새벽 · 레드의 인사 · 유대의 불꽃 영구 획득 (포털로 들어가면 진 엔딩)
       if (room.originHall) { this.storyWait = true; this.time.delayedCall(7000, () => this.arceusTelepathy(room)); }   // 시초의 방: 엔딩 대신 아르세우스의 텔레파시 (합류 창은 그 뒤로)
+      if (boss.bossKey === 'mewtwo') { this.storyWait = true; this.time.delayedCall(6400, () => this.telepathy('mewtwo', '뮤츠 · 텔레파시', MEWTWO_LINES, 0xd8a0ff, 'wave')); }   // 관동: 정화된 뮤츠가 알려 주는 첫 단서
       const joined = Save.newlyJoined();
       this.time.delayedCall(5600, () => this.announceJoin(joined));
     }
@@ -2691,21 +2711,67 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // 시초의 방: 아르세우스를 정화하면 엔딩 대신 텔레파시 — 유대의 불꽃 · 가라르 심연의 결계 · 진짜 배후 → 제단 오른쪽에 가라르로 가는 포털
+  // 정화된 전설의 텔레파시 (관동 뮤츠 · 하나 아르세우스): 그 자리에 머무는 전설의 도트를 초상으로 대화창 — 대화를 마칠 때까지 합류 창은 기다린다 (storyWait)
+  telepathy(key, name, lines, col, sfx, onEnd = null) {
+    if (this.over) { this.storyWait = false; return; }
+    const e = (this.restingBosses || []).find(q => q.bossKey === key && q.sprite && q.sprite.scene);
+    if (e) { this.fx.ring(e.x, e.y, 80, col, 900); this.fx.ring(e.x, e.y, 50, 0xffffff, 700); this.fx.glow(e.x, e.y, 90, col, 900, .7); }
+    this.cameras.main.flash(300, 255, 244, 230, true); Sfx.play(sfx);
+    const portrait = e ? { key: e.sprite.texture.key, frame: e.sprite.frame.name, glow: col, max: 1.4 } : { key: 'glow', tint: col, max: 1 };
+    this.openStory({ name, portrait, lines, onEnd: () => { this.storyWait = false; if (onEnd && !this.over && this.level) onEnd(); } });
+  }
   arceusTelepathy(room) {
-    if (this.over) return;
-    const arc = (this.restingBosses || []).find(e => e.bossKey === 'arceus' && e.sprite && e.sprite.scene);
-    if (arc) { this.fx.ring(arc.x, arc.y, 80, 0xfff0b0, 900); this.fx.ring(arc.x, arc.y, 50, 0xffffff, 700); this.fx.glow(arc.x, arc.y, 90, 0xffffff, 900, .7); }
-    this.cameras.main.flash(300, 255, 244, 214, true); Sfx.play('arceus');
-    const portrait = arc ? { key: arc.sprite.texture.key, frame: arc.sprite.frame.name, glow: 0xfff0b0, max: 1.4 } : { key: 'glow', tint: 0xfff0b0, max: 1 };
-    this.openStory({ name: '아르세우스 · 텔레파시', portrait, lines: ARCEUS_LINES, onEnd: () => {
-      this.storyWait = false;
-      if (this.over || !this.level) return;
+    this.telepathy('arceus', '아르세우스 · 텔레파시', ARCEUS_LINES, 0xfff0b0, 'arceus', () => {
       const x = Math.min(room.right - 40, room.cx + 170), gy = this.groundBelow(x, room.top + 8);
       this.cameras.main.flash(400, 255, 244, 210, true); Sfx.play('resonate');
       for (let k = 0; k < 3; k++) this.time.delayedCall(k * 140, () => this.fx.ring(x, gy - 20, 30 + k * 30, 0xfff0b0, 500));
       this.fx.burst(x, gy - 20, [0xfff0b0, 0xffffff, 0xff8aa0], 30, 200, { glow: true, up: 80, life: .8 });
       this.spawnPortal(x, gy, `창조의 힘이 가라르 심연의 결계를 열었다 — 제단 오른쪽 포털로 ${STAGES[this.stageIdx + 1] ? STAGES[this.stageIdx + 1].region : '다음 지방'}에!`);
-    } });
+    });
+  }
+
+  // ---------------- 유대의 불꽃 정화 (보스를 쓰러뜨리는 순간 · 테스트룸 제외) ----------------
+  //  ① 주인공의 가슴에서 황금빛 · 진홍빛 『유대의 불꽃』 파동이 뿜어져 나와, 보스를 감싼 무한다이노의 검붉은 침식 오라를 태운다
+  //  ② 정화된 보스가 감사의 뜻으로 순수한 힘을 불꽃에 보탠다 — 빛 구슬이 주인공에게 흡수된다
+  //  ③ 침식의 핵(지방 최종 보스 · 이어 싸우기의 마지막)이면 정화 단계 +1 → HUD 불꽃이 커지고 화면 위쪽에 알림 (bondStageGain)
+  //  가라르의 무한다이노는 nextInChain 의 유대의 불꽃 시네마틱이 단계를 채운다 · 진 최종전(아비스 네크로즈마)은 오버드라이브가 대신
+  bondPurify(e) {
+    if (this.test || this.overdrive || e.bossKey === 'necrozma' || e.bossKey === 'eternatus') return;
+    const p = this.player, room = e.room, ch = this.chain, si = this.stageIdx, ex = e.x, ey = e.y, name = e.name;
+    const last = !ch || ch.i >= ch.list.length - 1, pair = e.partner && e.partner.alive;
+    const core = !!(room && room.type === 'boss' && last && !pair && si < STAGES.length - 1);
+    for (let k = 0; k < 3; k++) this.time.delayedCall(k * 120, () => { if (this.player) this.fx.ring(p.x, p.y - 6, 20 + k * 18, k % 2 ? BOND_CRIMSON : BOND_GOLD, 420); });
+    this.fx.glow(p.x, p.y - 6, 30, BOND_GOLD, 500, .9);
+    for (let k = 0; k < 12; k++) this.time.delayedCall(k * 40, () => { if (this.player && this.level) this.bondOrb(p.x, p.y - 6, { x: ex + (Math.random() - .5) * 36, y: ey + (Math.random() - .5) * 30 }, k % 2 ? BOND_CRIMSON : BOND_GOLD, 420, .55); });
+    Sfx.play('fire');
+    this.time.delayedCall(420, () => {   // 침식 오라가 불꽃에 타오른다
+      if (!this.level) return;
+      Sfx.play('fire');
+      this.time.addEvent({ delay: 60, repeat: 14, callback: () => { if (this.level) this.fx.burst(ex + (Math.random() - .5) * 50, ey + (Math.random() - .5) * 40, [BOND_GOLD, BOND_CRIMSON, 0x3a0a1a, 0xffe8a0], 3, 60, { angle: -Math.PI / 2, spread: .7, up: 90, grav: -60, bounce: false, glow: true, life: .6 }); } });
+      this.fx.ring(ex, ey, 46, BOND_GOLD, 500); this.fx.ring(ex, ey, 30, BOND_CRIMSON, 420); this.fx.glow(ex, ey, 60, BOND_CRIMSON, 700, .8);
+      this.fx.floatText(ex, ey - 40, '🔥 유대의 불꽃!', '#ffd890', 11);
+    });
+    this.time.delayedCall(1400, () => {   // 순수한 힘이 불꽃에 보태진다
+      if (!this.player || !this.level) return;
+      for (let k = 0; k < 14; k++) this.time.delayedCall(k * 45, () => { if (this.player && this.level) this.bondOrb(ex + (Math.random() - .5) * 30, ey + (Math.random() - .5) * 30, this.player, k % 3 ? BOND_GOLD : 0xffffff, 520, .45); });
+      Sfx.play('heal');
+    });
+    this.time.delayedCall(2500, () => {
+      if (!this.player || !this.level || this.over) return;
+      const q = this.player;
+      for (let k = 0; k < 3; k++) this.time.delayedCall(k * 110, () => { if (this.player) this.fx.ring(q.x, q.y - 6, 24 + k * 22, k % 2 ? BOND_CRIMSON : BOND_GOLD, 500); });
+      this.fx.burst(q.x, q.y - 6, [BOND_GOLD, BOND_CRIMSON, 0xffffff], 24, 160, { glow: true, up: 80, grav: -40, bounce: false, life: .7 });
+      if (core) this.bondStageGain(si);
+      else { this.events.emit('bond', `🔥 유대의 불꽃이 ${name}의 침식을 태워 냈다`, null); Sfx.play('purify'); }
+    });
+  }
+  // 정화 단계 +1: HUD 불꽃이 커지고 화면 위쪽 알림 (같은 지방은 한 번만)
+  bondStageGain(si) {
+    if (this.test || this.bondStages.has(si)) return;
+    this.bondStages.add(si);
+    const n = this.bondStage;
+    this.events.emit('bond', `🔥 레드가 남긴 [유대의 불꽃]이 공명하여 더욱 강해집니다! (정화 단계: ${n} / 6)`, n);
+    Sfx.play('mega');
   }
 
   // ---------------- 유대의 불꽃 (가라르 · 블랙나이트의 심장) ----------------
@@ -2740,10 +2806,10 @@ export default class GameScene extends Phaser.Scene {
     return s;
   }
   // 불꽃 구슬 하나: (x, y) 에서 피어올라 곡선을 그리며 tgt(레드의 가슴)로 빨려 든다
-  bondOrb(x, y, tgt, col) {
-    const o = this.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(col).setScale(.32).setDepth(31), k = { t: 0 };
+  bondOrb(x, y, tgt, col, ms = 900, sc = .32) {
+    const o = this.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(col).setScale(sc).setDepth(31), k = { t: 0 };
     const mx = (x + tgt.x) / 2 + (Math.random() - .5) * 160, my = Math.min(y, tgt.y) - 60 - Math.random() * 80;
-    this.tweens.add({ targets: k, t: 1, duration: 900 + Math.random() * 500, ease: 'Sine.easeIn',
+    this.tweens.add({ targets: k, t: 1, duration: ms + Math.random() * ms * .55, ease: 'Sine.easeIn',
       onUpdate: () => {
         const t = k.t, u = 1 - t;
         o.setPosition(u * u * x + 2 * u * t * mx + t * t * tgt.x, u * u * y + 2 * u * t * my + t * t * tgt.y);

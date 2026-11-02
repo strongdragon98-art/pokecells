@@ -37,6 +37,9 @@ import { Settings, SETTING_DEFAULTS, DEFAULT_KEYS, KEY_ACTIONS, FIXED_KEYS, keyL
 
 const ADD = Phaser.BlendModes.ADD;
 const V = { x: 36, y: 36, r: 20 };                      // 메가 게이지 그릇 (중심·안쪽 반지름)
+const B = { x: 9, y: 66 };                              // 유대의 불꽃 (그릇 왼쪽 아래 · 불꽃 밑동)
+// 유대의 불꽃 Lv.1~6 색 [바깥 · 가운데 · 속]: 작은 주황 불씨 → 진홍빛 불꽃 → 찬란한 황금빛 태양 불꽃
+const BOND_PAL = [[0xff8a3a, 0xffb060, 0xffe0a0], [0xff6a2a, 0xffa040, 0xffe0a0], [0xe8283a, 0xff6a3a, 0xffd080], [0xd81a3a, 0xff5a3a, 0xffe090], [0xff3a3a, 0xffb040, 0xfff0b0], [0xffb020, 0xffe060, 0xffffff]];
 const MASK_X = 80, MASK_Y = 23, MASK_GAP = 19, MAX_MASKS = 9;
 const BALL = { top: .8, h: 16.4 };                      // 가면 텍스처 안에서 공이 차지하는 세로 범위 (논리 px)
 // PC 스킬 바 (오른쪽 아래 사각 카드 칸): 대시 · Z · X · C (+ Z크리스탈을 얻으면 Q Z기술). 터치패드를 쓰면 터치 버튼이 대신한다
@@ -137,6 +140,16 @@ export default class UIScene extends Phaser.Scene {
     const pz = this.add.zone(V.x, V.y, 50, 50).setInteractive({ useHandCursor: true }).setDepth(6);
     pz.on('pointerdown', () => { if (!this.overlayMode && this.gs.player && !this.gs.paused && !this.gs.overlay) { this.invMember = null; this.gs.toggleOverlay('inv'); } });
     this.tName = hkText(this, MASK_X - 8, 40, '', 11, HK.ivory, { ls: 1, bold: true }).setDepth(3);
+    // ── 유대의 불꽃 (그릇 왼쪽 아래): 침식의 핵을 정화할 때마다 커지고 색이 바뀐다 · 마우스를 올리거나 누르면 설명
+    this.bondGlow = this.add.image(B.x, B.y - 7, 'glow').setBlendMode(ADD).setAlpha(0).setDepth(2.7);
+    this.gBond = this.add.graphics().setDepth(2.8);
+    this.tBondLv = hkText(this, B.x + 16, B.y, '', 7, '#ffd890', { bold: true, origin: [.5, 1] }).setDepth(2.9);
+    this.bondPulse = 0; this.bondTipOn = false; this.bondTipT = 0;
+    const bz = this.add.zone(B.x + 4, B.y - 8, 26, 22).setInteractive({ useHandCursor: true }).setDepth(6);
+    bz.on('pointerover', () => { this.bondTipOn = true; });
+    bz.on('pointerout', p => { if (!p.wasTouch) this.bondTipOn = false; });
+    bz.on('pointerdown', () => { this.bondTipOn = true; this.bondTipT = 3.5; });   // 터치: 3.5초 동안
+    this.tBondTip = this.add.text(B.x + 26, B.y - 24, '', txt(10, HK.ivory, { backgroundColor: '#140a0cee', padding: { x: 7, y: 5 }, lineSpacing: 3, wordWrap: { width: 300, useAdvancedWrap: true } })).setDepth(30).setVisible(false);
     this.tType = hkText(this, 0, 41, '', 10, HK.dim).setDepth(3);
     this.vHint = hkText(this, MASK_X - 8, 55, '', 10, '#ffc4ec', { ls: 1, glow: true, glowColor: 'rgba(255,138,208,0.7)' }).setDepth(3);
 
@@ -231,6 +244,11 @@ export default class UIScene extends Phaser.Scene {
     darkBand(this.loreG, 70, 228, 500, 46, .85);
     this.tLore = hkText(this, 320, 251, '', 11, '#d8d0e8', { origin: .5, style: { align: 'center', wordWrap: { width: 440, useAdvancedWrap: true }, lineSpacing: 3 } });
     this.loreBox.add([this.loreG, fadeLine(this, 320, 230, 380, .5), fadeLine(this, 320, 272, 300, .35), this.tLore]);
+    // 유대의 불꽃 공명 알림 (화면 위쪽 가운데 · 보스를 정화할 때 — HP 가면 줄 아래 · 지역 배너 위): 황금빛 띠
+    this.bondBox = this.add.container(0, 0).setDepth(22).setAlpha(0);
+    const bondG = this.add.graphics(); darkBand(bondG, 186, 46, 268, 32, .82);
+    this.tBondNote = hkText(this, 320, 62, '', 10, '#ffd890', { origin: .5, bold: true, glow: true, glowColor: 'rgba(255,160,60,0.6)', style: { align: 'center', wordWrap: { width: 256, useAdvancedWrap: true }, lineSpacing: 2 } });
+    this.bondBox.add([bondG, fadeLine(this, 320, 47, 240, .6), fadeLine(this, 320, 77, 200, .45), this.tBondNote]);
     // 이야기 자막 (화면 위쪽 가운데 · 유대의 불꽃 시네마틱 — 아레나 한가운데의 레드를 가리지 않게): 어둠 띠 위 황금빛 글이 떠올랐다 사라진다
     this.captionBox = this.add.container(0, 0).setDepth(22).setAlpha(0);
     this.captionG = this.add.graphics();
@@ -277,8 +295,9 @@ export default class UIScene extends Phaser.Scene {
       hurt: k => { this.hurtK = Math.max(this.hurtK, k); },
       say: (who, s) => this.showLore(s, who),   // 트레이너 대사 (난천 · 레드)
       caption: (s, ms) => this.showCaption(s, ms),   // 이야기 자막 (GameScene.bondFlameCinematic)
+      bond: (s, n) => this.showBondNote(s, n),   // 유대의 불꽃 공명 (GameScene.bondPurify · bondStageGain)
       boss: b => { if (b) this.bossTitle(b); },
-      clearTitles: () => { this.tweens.killTweensOf([this.loreBox, this.captionBox]); this.loreBox.setAlpha(0); this.captionBox.setAlpha(0); this.bossTitleT = 0; },   // 테스트룸에서 보스를 바로 바꿀 때 앞 보스의 이름 · 트레이너 대사를 지운다
+      clearTitles: () => { this.tweens.killTweensOf([this.loreBox, this.captionBox, this.bondBox]); this.loreBox.setAlpha(0); this.captionBox.setAlpha(0); this.bondBox.setAlpha(0); this.bossTitleT = 0; },   // 테스트룸에서 보스를 바로 바꿀 때 앞 보스의 이름 · 트레이너 대사를 지운다
       unlock: (k, kind) => this.onUnlock(k, kind),
       killcount: (k, n) => { this.recent[k] = this.time.now; this.toast(`${SPECIES[k].name} 정화 진행도: ${n} / ${UNLOCK_KILLS}`); },
       pause: on => this.showPause(on),
@@ -348,6 +367,39 @@ export default class UIScene extends Phaser.Scene {
     this.areaBox.setAlpha(0).setY(6);
     this.tweens.add({ targets: this.areaBox, alpha: 1, y: 0, duration: 900, ease: 'Sine.easeOut' });
     this.tweens.add({ targets: this.areaBox, alpha: 0, duration: 1300, delay: 3700, ease: 'Sine.easeIn' });
+  }
+
+  // 유대의 불꽃 공명: 화면 위쪽 황금빛 띠 (n: 정화 단계가 올랐으면 그 값 — HUD 불꽃이 크게 맥동한다)
+  showBondNote(s, n) {
+    this.tBondNote.setText(s);
+    this.tweens.killTweensOf(this.bondBox);
+    this.bondBox.setAlpha(0).setY(-4);
+    this.tweens.add({ targets: this.bondBox, alpha: 1, y: 0, duration: 450, ease: 'Sine.easeOut' });
+    this.tweens.add({ targets: this.bondBox, alpha: 0, duration: 700, delay: n ? 3800 : 2400, ease: 'Sine.easeIn' });
+    this.bondPulse = n ? 1 : .5;
+  }
+  // HUD 유대의 불꽃: 단계마다 커지고 색이 진화하며 일렁인다 (Lv.6 은 둘레에 빛살이 도는 태양 불꽃)
+  drawBond(dt, time) {
+    const gs = this.gs, stage = gs.bondStage || 0, lv = Math.min(6, stage + 1), pal = BOND_PAL[lv - 1], g = this.gBond, t = time / 1000;
+    this.bondPulse = Math.max(0, this.bondPulse - dt * .6);
+    const pk = 1 + this.bondPulse * .7, h = (9 + lv * 2) * pk, w = (6 + lv * .9) * pk, x = B.x, y = B.y;
+    g.clear();
+    if (lv >= 6) {   // 태양 불꽃: 빛살
+      for (let k = 0; k < 8; k++) { const a = t * .8 + k / 8 * Math.PI * 2, r0 = w * .9, r1 = w * 1.9 + Math.sin(t * 4 + k) * 1.2; g.lineStyle(1, 0xffe080, .55); g.lineBetween(x + Math.cos(a) * r0, y - h * .35 + Math.sin(a) * r0, x + Math.cos(a) * r1, y - h * .35 + Math.sin(a) * r1); }
+    }
+    const flame = (sc, col, a) => {   // 물방울을 거꾸로 세운 불꽃: 둥근 밑동 + 일렁이는 끝
+      const r = w * sc / 2, top = y - h * sc, sway = Math.sin(t * 7 + sc * 3) * (.7 + lv * .2) * sc;
+      g.fillStyle(col, a); g.fillCircle(x, y - r, r);
+      g.fillTriangle(x - r, y - r, x + r, y - r, x + sway, top);
+      g.fillTriangle(x - r * .6, y - r * 1.2, x - r * .1, y - r * 1.4, x - r * .9 + sway * .5, top + h * sc * .3);   // 곁불꽃
+    };
+    flame(1, pal[0], .95); flame(.7, pal[1], .95); flame(.4, pal[2], 1);
+    this.bondGlow.setTint(pal[0]).setScale((.35 + lv * .07) * pk).setAlpha(.35 + lv * .04 + this.bondPulse * .4 + Math.sin(t * 3) * .05);
+    this.tBondLv.setText(`Lv.${lv}`).setColor(lv >= 6 ? '#fff0a0' : lv >= 3 ? '#ffb0a0' : '#ffd890');
+    if (this.bondTipT > 0) { this.bondTipT -= dt; if (this.bondTipT <= 0) this.bondTipOn = false; }
+    const tip = this.bondTipOn && !this.overlayMode;
+    this.tBondTip.setVisible(tip);
+    if (tip) this.tBondTip.setText(`🔥 유대의 불꽃 Lv.${lv}  ·  정화 단계 ${stage} / 6\n레드가 붙잡히기 전 전해준 유대의 불꽃. 보스를 정화할수록 강해지며, 모든 불꽃이 모이면 레드를 구원할 수 있다 (모든 공격력 +${Math.round((gs.bondMul - 1) * 100)}% 상승 중)`);
   }
 
   showCaption(s, ms = 4200) {
@@ -501,6 +553,7 @@ export default class UIScene extends Phaser.Scene {
     const tailX = V.x + 27, tailEnd = MASK_X + (N - 1) * MASK_GAP + 30;
     g.fillGradientStyle(HK.ivoryN, HK.ivoryN, HK.ivoryN, HK.ivoryN, .18, 0, .18, 0); g.fillRect(tailX, V.y - 1.5, tailEnd - tailX, 3);
     g.fillGradientStyle(HK.ivoryN, HK.ivoryN, HK.ivoryN, HK.ivoryN, .95, 0, .95, 0); g.fillRect(tailX, V.y - .4, tailEnd - tailX, .9);
+    this.drawBond(dt, time);
     this.tName.setText(`${p.name}${mg.active ? ' ★' : ''}`);
     this.tType.setText(`${p.types.map(typeName).join(' · ')}${p.slowT > 0 ? ' · 둔화됨' : ''}`).setX(this.tName.x + this.tName.width + 7);
 
