@@ -2882,6 +2882,23 @@
       "portrait": "sprites/arceus/portrait.png",
       "icon": "sprites/arceus/pokeapi.png",
       "artwork": "sprites/arceus/artwork.png"
+    },
+    "necrozma": {
+      "key": "necrozma",
+      "dex": "0800",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/necrozma/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/necrozma/Walk-Anim.png",
+        "Attack": "sprites/necrozma/Attack-Anim.png",
+        "Shoot": "sprites/necrozma/Shoot-Anim.png",
+        "Hurt": "sprites/necrozma/Hurt-Anim.png",
+        "Idle": "sprites/necrozma/Idle-Anim.png"
+      },
+      "portrait": "sprites/necrozma/portrait.png",
+      "icon": "sprites/necrozma/pokeapi.png",
+      "artwork": "sprites/necrozma/artwork.png"
     }
   },
   "icons": {
