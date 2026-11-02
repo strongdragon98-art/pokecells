@@ -9,7 +9,7 @@
 //  grid 문자: 'S' 벽 · 'B' 부서지는 벽 · 'P' 통과 발판(보이는 다리·철창) · 'H' 통과 발판(집 지붕·발코니) · '.' 빈칸
 import { TILE } from '../config.js';
 import { T } from './Level.js';
-import { reach } from './Reach.js';
+import { reach, PAD_TILES } from './Reach.js';
 import { LAB, TOWNS } from '../data/npcs.js';
 
 export const CW = 32, CH = 20;          // 셀 하나의 크기 (타일)
@@ -27,7 +27,7 @@ const DEFAULT_TERRAIN = { terrace: 3, pit: 2, island: 2, ziggurat: 1, bridge: 2,
 const DEFAULT_PROPS = { lamp: 2, tree: 1, statue: 1, fence: 1 };
 
 // 방 모양 [폭, 높이] (셀)
-const SHAPE = { start: [1, 1], wide: [2, 1], plaza: [2, 2], tower: [1, 3], abyss: [1, 3], stairs: [1, 2], bridge: [2, 1], hub: [2, 1], mini: [2, 1], boss: [2, 1] };
+const SHAPE = { start: [1, 1], wide: [2, 1], plaza: [2, 2], tower: [1, 3], abyss: [1, 3], stairs: [1, 2], bridge: [2, 1], hub: [2, 1], mini: [2, 1], boss: [2, 1], sanct: [2, 1] };
 const C_SHAPES = [[1, 1], [1, 1], [1, 1], [2, 1], [1, 2]];
 export const BIG_ARENA = new Set(['ho-oh', 'rayquaza', 'eternatus', 'latias', 'giratina', 'mewtwo', 'darkrai']);   // 날아다니는 보스는 2×2 아레나
 const END = { tm: { shape: [1, 1], type: 'tm' }, treasure: { shape: [1, 1], type: 'treasure' }, potion: { shape: [1, 1], type: 'pocket' }, fake: { shape: [1, 1], type: 'pocket' }, sanctuary: { shape: [2, 1], type: 'sanctuary' } };
@@ -76,14 +76,14 @@ export function buildChapter(ch, ci, retry = 0) {
     doors.push(d); a.doors.push(d); b.doors.push(d); a.links.add(b.id); b.links.add(a.id);
     return d;
   };
-  const typeOf = kind => kind === 'start' ? 'start' : kind === 'hub' ? 'village' : kind === 'mini' ? 'mini' : kind === 'boss' ? 'boss' : 'combat';
+  const typeOf = kind => kind === 'start' ? 'start' : kind === 'hub' ? 'village' : kind === 'mini' ? 'mini' : kind === 'boss' ? 'boss' : kind === 'sanct' ? 'sanctuary' : 'combat';
 
   // ---- 본길 ----
   let cur = null, exitRow = 0, seg = 0;
   ch.areas.forEach((area, ai) => area.plan.forEach(tok0 => {
     const up = tok0.endsWith('^'), tok = up ? tok0.slice(0, -1) : tok0, [kind, arg] = tok.split(':');
     let [w, h] = kind === 'c' ? pick(C_SHAPES) : SHAPE[kind];
-    if ((kind === 'boss' || kind === 'mini') && BIG_ARENA.has(arg)) [w, h] = [2, 2];
+    if ((kind === 'boss' || kind === 'mini' || kind === 'sanct') && BIG_ARENA.has(arg)) [w, h] = [2, 2];
     if (ci === 0 && !cur) [w, h] = [2, 1];   // 오박사 연구소는 넓게 (박사 · 연구원 둘 · 튜토리얼 철창)
     let gx, gy;
     if (!cur) { gx = 0; gy = 0; }
@@ -93,7 +93,7 @@ export function buildChapter(ch, ci, retry = 0) {
       gy = kind === 'tower' || kind === 'stairs' ? exitRow - (h - 1) : kind === 'abyss' ? exitRow : exitRow - ri(0, h - 1);
     }
     for (let k = 0; k < 6 && !free(gx, gy, w, h); k++) gy -= 1;   // 드물게 겹치면 위로 비켜 놓는다
-    const r = place({ gx, gy, gw: w, gh: h, kind, type: typeOf(kind), ai, boss: arg || null, main: true, seg, cleared: !(kind === 'boss' || kind === 'mini'), hub: kind === 'hub', city: kind === 'hub' ? area.city : null, lab: ci === 0 && !cur });
+    const r = place({ gx, gy, gw: w, gh: h, kind, type: typeOf(kind), ai, boss: arg || null, main: true, seg, cleared: !(kind === 'boss' || kind === 'mini' || kind === 'sanct'), hub: kind === 'hub', city: kind === 'hub' ? area.city : null, lab: ci === 0 && !cur });
     // 오박사 연구소는 닫힌 실내: 바로 옆 태초마을과 벽으로 나뉘고, 연구소 안 출입문 ↔ 마을의 연구소 건물 문으로 오간다 (GameScene.useDoor)
     if (cur && cur.lab) r.oak = true;
     else if (cur) link(cur, r, up ? {} : { row: exitRow });
@@ -264,6 +264,7 @@ export function buildChapter(ch, ci, retry = 0) {
 
   // ---- 방 안 지형 (예전 일자 맵의 지형 덩어리를 방마다 그 방 바닥 기준으로) ----
   const props = [], chests = [], spawns = [], marks = [], potions = [], hubs = [];
+  const phaseCells = [], pads = [];   // 깨어진 세계: 유령 발판 칸 · 차원 도약 수정 (distortionRoom)
   let L = null, taken = new Set(), terrain = DEFAULT_TERRAIN, propW = DEFAULT_PROPS;
   const style = { burnt: false, ruined: false };
   const setP = (x, y, w, chr = 'P') => { for (let i = 0; i < w; i++) if (grid[y] && grid[y][x + i] === '.') grid[y][x + i] = chr; };
@@ -361,10 +362,10 @@ export function buildChapter(ch, ci, retry = 0) {
   };
   const decorate = (sx, ex, every, crates = [3, 5]) => {
     for (let x = sx + ri(1, 4); x < ex - 3; x += ri(every[0], every[1])) {
-      const kind = pickWeighted(propW), w = kind === 'fence' ? ri(3, 5) : kind === 'tree' ? 3 : kind === 'statue' || kind === 'tallgrass' ? 2 : 1;
+      const kind = pickWeighted(propW), w = kind === 'fence' ? ri(3, 5) : kind === 'tree' ? 3 : kind === 'statue' || kind === 'tallgrass' || kind === 'pillar' ? 2 : 1;
       const g = flatAt(x, w);
       if (g < L.F - 8 || g > L.F + 1 || !freeCol(x, w)) continue;
-      addProp({ kind, x, g, w, variant: ri(0, 3) }, w);
+      addProp({ kind, x, g, w, variant: ri(0, 3), ...(kind === 'pillar' ? { h: ri(4, 8) } : {}) }, w);   // 돌기둥: 천관산 협곡의 고대 석주
     }
     for (let k = ri(crates[0], crates[1]); k > 0; k--) {
       const x = ri(sx, ex - 2), n = ri(1, 3), g = flatAt(x, n);
@@ -378,6 +379,38 @@ export function buildChapter(ch, ci, retry = 0) {
   const zigzag = r => {
     const iw = r.tx1 - r.tx0, pw = Math.max(8, Math.round(iw * .55));
     for (let y = r.F - 3, k = 0; y >= r.ty0 + 2; y -= 3, k++) setP(k % 2 ? r.tx1 - pw : r.tx0, y, pw);
+  };
+  // 깨어진 세계 방 (bg 'distortion'): 반물질 바닥 위로 부유섬 · 유령 발판 · 차원 도약 수정 — 적은 나오지 않는 플랫포밍 구역
+  //  유령 발판은 평범한 통과 발판('P') 칸이라 길 보장(Reach)에 그대로 잡힌다 (모습만 다가갈 때 보랏빛 조각이 모여 조립된다 — GameScene.updateDistortion)
+  //  차원 도약 수정은 밟거나 치면 중력을 거슬러 높이 솟구친다 — Reach 의 pads (그 자리에선 PAD_TILES 칸까지 오른다)
+  //  구간마다 번갈아: 도약 수정 + 바로 옆 9칸 위 높은 부유섬(보물 상자) · 유령 발판 계단(4 · 7칸) + 낮은 부유섬. 키 큰 방은 위층 문까지 유령 발판 사다리
+  //  도약 수정은 부유섬 옆에 둔다 (바로 밑이면 섬 밑바닥에 머리를 박는다) — 솟구친 뒤 옆으로 몸을 틀어 섬에 내려앉는다
+  const distortionRoom = (r, tall) => {
+    const x0 = r.tx0, x1 = r.tx1, W = x1 - x0, before = new Set();
+    for (let x = x0; x < x1; x++) setGround(x, r.F);
+    for (let y = r.ty0; y < r.F; y++) for (let x = x0; x < x1; x++) if (grid[y][x] === 'P') before.add(x + ',' + y);
+    r.islands = [];
+    const island = (ix, top, w) => { block(ix, top, w, 2); block(ix + 1, top + 2, w - 2, 1); r.islands.push({ x: ix, y: top, w }); };
+    if (tall) zigzag(r);
+    const segs = Math.max(1, Math.floor((W - 12) / 22)), sw = Math.floor((W - 12) / segs);
+    for (let k = 0; k < segs; k++) {
+      const sx = x0 + 6 + k * sw;
+      if (k % 2 === 0) {
+        const px = sx + ri(1, Math.max(1, sw - 12)), top = Math.max(r.ty0 + 3, r.F - 10);
+        pads.push({ x: px, g: r.F, room: r, isl: [px + 3, 8] });
+        island(px + 3, top, 8);
+        chests.push({ x: (px + 7) * TILE + 8, y: top * TILE, island: true, room: r });
+      } else {
+        const ax = sx + ri(1, Math.max(1, sw - 16));
+        setP(ax, r.F - 4, 4); setP(ax + 5, r.F - 7, 4);
+        island(ax + 9, r.F - 9, 6);
+      }
+    }
+    if (tall) {   // 키 큰 방: 가운데 높이에 도약 수정을 하나 더 (아래층 바닥 → 16칸 위 부유섬)
+      const px = ((x0 + x1) >> 1) - 5, top = r.F - 16;
+      if (top > r.ty0 + 3) { pads.push({ x: px, g: r.F, room: r, isl: [px + 3, 9] }); island(px + 3, top, 9); }
+    }
+    for (let y = r.ty0; y < r.F; y++) for (let x = x0; x < x1; x++) if (grid[y][x] === 'P' && !before.has(x + ',' + y)) phaseCells.push([x, y, r]);
   };
   const loreLeft = ch.areas.map(a => [...(a.lore || [])]);
   const lore = (ai, x, g) => { const text = loreLeft[ai].shift(); if (text && freeCol(x, 1)) addProp({ kind: 'lore', x, g, text }, 1); };
@@ -398,6 +431,8 @@ export function buildChapter(ch, ci, retry = 0) {
       for (let x = x0; x < x1; x++) setGround(x, r.F);
       props.push({ kind: 'labroom', x: x0, g: r.F, w: x1 - x0, h: r.F - r.ty0 });
       props.push({ kind: 'labdoor', x: x1 - 5, g: r.F });   // 오른쪽 벽 가까이 출입문 → 마을의 연구소 건물 앞으로
+    } else if (area.bg === 'distortion' && r.type === 'combat') {
+      distortionRoom(r, tall);
     } else if (r.type === 'combat' || r.type === 'start') {
       if (!tall) {
         if (r.kind === 'bridge') { FEATURES.bridge(x0 + 6, Math.min(30, x1 - x0 - 12)); fillTerrain(x0 + 40, x1 - 6, { pit: 2, island: 1, flat: 1 }); }
@@ -512,14 +547,16 @@ export function buildChapter(ch, ci, retry = 0) {
   // ---- 보물방 제단 · 상자: 철창 구멍 · 사다리 · 옆문 앞을 비켜 방 가운데에서 가장 가까운 자리 (난수를 쓰지 않는다) ----
   for (const r of rooms) {
     if (r.type !== 'treasure') continue;
-    const busy = new Set();
+    const busy = new Set(), grate = new Set();
     for (const d of r.doors) {
-      if (d.dir === 'v') for (let x = d.cap - 4; x <= d.cap + 7; x++) busy.add(x);
+      if (d.dir === 'v') for (let x = d.cap - 4; x <= d.cap + 7; x++) { busy.add(x); grate.add(x); }
       else for (let x = r.tx0; x <= r.tx0 + 7; x++) if (d.R === r) busy.add(x); else busy.add(r.tx1 - 1 - (x - r.tx0));
     }
-    const mid = (r.tx0 + r.tx1) >> 1, fits = ax => ax - 2 > r.tx0 && ax + 2 < r.tx1 - 1 && [-2, -1, 0, 1, 2].every(o => !busy.has(ax + o));
-    let ax = mid;
-    for (let k = 0; k < r.tx1 - r.tx0; k++) { if (fits(mid + k)) { ax = mid + k; break; } if (fits(mid - k)) { ax = mid - k; break; } }
+    const mid = (r.tx0 + r.tx1) >> 1, fitsIn = set => ax => ax - 2 > r.tx0 && ax + 2 < r.tx1 - 1 && [-2, -1, 0, 1, 2].every(o => !set.has(ax + o));
+    let ax = null;
+    //  문이 셋이라 빈자리가 없으면 옆문 앞은 양보하되 철창(위아래 통로)만은 덮지 않는다 — 덮으면 아래 방으로 가는 길이 막힌다
+    for (const fits of [fitsIn(busy), fitsIn(grate)]) for (let k = 0; k < r.tx1 - r.tx0 && ax === null; k++) { if (fits(mid + k)) ax = mid + k; else if (fits(mid - k)) ax = mid - k; }
+    if (ax === null) ax = mid;
     for (let x = ax - 2; x <= ax + 2; x++) { grid[r.F][x] = 'S'; for (let y = r.F - 6; y < r.F; y++) if (y > r.ty0) grid[y][x] = '.'; }   // 바닥을 단단히 · 위는 비운다 (종유석 · 발판)
     const g = altar(ax, r.F);
     chests.push({ x: ax * TILE + 8, y: g * TILE, treasure: true });
@@ -556,11 +593,140 @@ export function buildChapter(ch, ci, retry = 0) {
       if (r.lab) placeNpcs(r, LAB, [r.tx0 + 12, r.tx0 + 26, r.tx0 + 40]);
       else if (r.type === 'village' && TOWNS[r.city]) { const b = r.tx0 + 1; placeNpcs(r, TOWNS[r.city], [b + 13, b + 52, b + 18, b + 33]); }
     }
+    // ---- 정문(포털)으로만 들어가는 독립 던전 (성도 방울탑 · 신오 창기둥 · 깨어진 세계) ----
+    //  sealRealm: 그 지역(ti)으로 걸어 들어가는 다른 문(지역 경계를 넘는 옆문 · 정문 방 천장 철창)을 벽으로 메운다
+    //   (메워도 모든 방에 여전히 갈 수 있을 때만 — 포털은 통로로 친다 · 월드 생성 · 난수는 그대로라 저장과 무관)
+    //   문 그래프로 이어져 있어도 방 안 지형(높은 단 · 섬)에 막혀 실제로는 못 가는 반쪽이 생길 수 있어, 메운 뒤 걸어서 닿는지(Reach)도 본다
+    //   못 닿게 된 방이 생기면 그 둘레의 너무 높은 턱(점프로 못 오르는 6~10칸 단) 앞에 디딤 발판을 놓아 보고, 그래도 안 되면 문을 그대로 둔다
+    // 깨어진 세계 도약 수정: 아래층으로 가는 바닥 문(사다리 구멍)에 바닥이 깎였으면 짝 부유섬 옆 가까운 멀쩡한 바닥으로 옮긴다 (길 보장 · 봉인 검사 전에)
+    const padOk = (x, g) => [0, 1].every(dx => grid[g][x + dx] === 'S' && grid[g - 1][x + dx] === '.' && grid[g - 2][x + dx] === '.');
+    for (const pd of pads) {
+      if (padOk(pd.x, pd.g) || !pd.isl) continue;
+      const [ix, iw] = pd.isl, r = pd.room, cand = [];
+      for (let k = 0; k < 6; k++) cand.push(ix - 3 - k, ix + iw + 1 + k);
+      const nx = cand.find(x => x >= r.tx0 + 1 && x + 1 <= r.tx1 - 2 && padOk(x, pd.g) && !pads.some(q => q !== pd && q.g === pd.g && Math.abs(q.x - x) < 3));
+      if (nx != null) pd.x = nx;
+    }
+    for (let i = pads.length - 1; i > 0; i--) if (pads.slice(0, i).some(q => q.g === pads[i].g && Math.abs(q.x - pads[i].x) < 3)) pads.splice(i, 1);   // 겹쳐 놓인 도약 수정은 하나만
+    const realmStarts = () => {
+      const s0 = mainRooms[0], sx = s0.tx0 + 5; let sy = s0.ty0 + 1;
+      while (sy < s0.F && !(grid[sy][sx] === '.' && grid[sy - 1][sx] === '.' && grid[sy + 1][sx] !== '.')) sy++;
+      const st = [[sx, sy]];
+      for (const d of doors) if (d.portalIn) st.push([d.portalIn.x, d.portalIn.y - 1]);
+      return st;
+    };
+    const deadRooms = () => {
+      const padSet = new Set(); for (const pd of pads) for (const dx of [0, 1]) padSet.add((pd.x + dx) + ',' + (pd.g - 1));
+      const R = reach(grid, realmStarts(), { x0: 0, y0: 0, x1: cols, y1: rows }, { pads: padSet, padTiles: PAD_TILES });
+      return new Set(rooms.filter(r => { for (let y = r.ty0; y < r.F; y++) for (let x = r.tx0; x < r.tx1; x++) if (R.has(x, y)) return false; return true; }));
+    };
+    //  stepUp: 새로 못 닿게 된 방과 그 이웃 방에서, 닿는 바닥 바로 옆에 6~10칸 높은 턱이 있으면 그 앞 3칸 위에 디딤 발판(P 3칸)을 놓는다 (undo 에 기록)
+    const stepUp = undo => {
+      const padSet = new Set(); for (const pd of pads) for (const dx of [0, 1]) padSet.add((pd.x + dx) + ',' + (pd.g - 1));
+      const R = reach(grid, realmStarts(), { x0: 0, y0: 0, x1: cols, y1: rows }, { pads: padSet, padTiles: PAD_TILES });
+      const near = new Set();
+      for (const r of rooms) {
+        let ok = false; for (let y = r.ty0; y < r.F && !ok; y++) for (let x = r.tx0; x < r.tx1 && !ok; x++) if (R.has(x, y)) ok = true;
+        if (ok) continue;
+        near.add(r); for (const d of r.doors) near.add(d.a === r ? d.b : d.a);
+      }
+      const free = (x, y) => grid[y] && grid[y][x] === '.';
+      let placed = false;
+      for (const r of near) for (let y = r.ty0 + 2; y < r.F; y++) for (let x = r.tx0 + 1; x < r.tx1 - 1; x++) {
+        if (!R.has(x, y) || !(free(x, y) && free(x, y - 1) && !free(x, y + 1))) continue;
+        for (const dir of [1, -1]) {
+          const cx = x + dir; if (free(cx, y)) continue;
+          let top = y; while (top > r.ty0 && !free(cx, top)) top--;
+          const rise = y - top;
+          if (rise < 6 || rise > 10 || !free(cx, top - 1) || R.has(cx, top)) continue;
+          const p = y - 2, xs = dir > 0 ? [x - 2, x - 1, x] : [x, x + 1, x + 2];
+          if (!xs.every(xx => free(xx, p) && free(xx, p - 1) && free(xx, p - 2))) continue;
+          for (const xx of xs) { undo.push([xx, p, '.']); grid[p][xx] = 'P'; }
+          placed = true;
+        }
+      }
+      return placed;
+    };
+    const sealRealm = (ti, gate, isPortal) => {
+      const sealed = new Set(), dead0 = deadRooms();   // 메우기 전에도 못 가던 방은 탓하지 않는다
+      const walkable = () => { for (const r of deadRooms()) if (!dead0.has(r)) return false; return true; };
+      const linked = () => {
+        const seen = new Set([rooms[0]]), q = [rooms[0]];
+        while (q.length) { const r = q.shift(); for (const d of r.doors) { if (sealed.has(d) || d.sealed) continue; const o = d.a === r ? d.b : d.a; if (!seen.has(o)) { seen.add(o); q.push(o); } } }   // 앞서 다른 던전을 봉인하며 메운 문도 막힌 것으로
+        return seen.size === rooms.length;
+      };
+      for (const d of doors) {
+        if (d.breakable || d.sealed || isPortal(d)) continue;
+        if (!((d.a.ai === ti) !== (d.b.ai === ti) || (gate && d.dir === 'v' && (d.a === gate || d.b === gate)))) continue;
+        sealed.add(d);
+        if (!linked()) { sealed.delete(d); continue; }
+        const undo = [];
+        for (const [x, y] of d.cells) { undo.push([x, y, grid[y][x]]); grid[y][x] = 'S'; }   // 아래 방 사다리 발판은 그대로 둔다 (천장이 막혀도 방 안 높은 턱을 넘는 디딤이 된다 — 걷어 내면 반쪽이 갇히는 구덩이가 될 수 있다)
+        for (let k = 0; k < 3 && !walkable(); k++) if (!stepUp(undo)) break;   // 메우면 높은 턱에 막혀 못 가는 방이 생기면 디딤 발판
+        if (!walkable()) { for (let i = undo.length - 1; i >= 0; i--) { const [x, y, c] = undo[i]; grid[y][x] = c; } sealed.delete(d); continue; }   // 그래도 못 가는 방이 생긴다 → 그대로 둔다
+        d.sealed = true;
+      }
+    };
+    //  templeGate: gate(정문 외관이 서는 바깥 방 · 본 경로) 앞을 성역 마당으로 만들고 hall(정문 너머 첫 방)과 출입문(포털)으로 잇는다
+    //   · 두 방이 맞닿아 있지 않으면 벽 없는 가상의 출입문으로 잇는다 (출입문은 원래 포털이라 붙어 있을 필요가 없다)
+    //   · 정문 앞 성역 마당: 외관 너비만큼 언덕 · 떠 있는 바위 · 천장 덩어리를 걷어 평평한 돌바닥으로 · 그 위 소품은 바닥으로 (개수 그대로 — 저장 서명 유지)
+    //     메우지 못한 문(다른 방으로 가는 유일한 길)의 철창 구멍 · 사다리 · 옆문 앞은 그대로 둔다
+    //   · 수문장 NPC 둘을 정문 양옆에 · 두 방 사이 통로를 벽으로 막고 d.portal (정문 앞에서 ↑/F → 암전 → 첫 방 출입문 앞 — GameScene.useDoor)
+    //   o: { npcs: [왼쪽, 오른쪽], faces: { id: -1|1 }, name: 지도에 적을 입구 이름 }
+    const templeGate = (gate, hall, ti, o) => {
+      if (gate && hall && !gate.doors.some(q => q.dir === 'h' && (q.a === hall || q.b === hall))) {
+        const hd = hall.doors.find(q => q.dir === 'h' && q.R === hall);
+        const vd = { dir: 'h', a: gate, b: hall, L: gate, R: hall, cells: [], mx: hall.tx0, my: hd ? hd.my : hall.F - 2.5, virtual: true };
+        doors.push(vd); gate.doors.push(vd); hall.doors.push(vd);
+      }
+      const isPortalDoor = q => (q.dir === 'h' && hall && ((q.a === gate && q.b === hall) || (q.b === gate && q.a === hall))) || !!q.portal;
+      if (!gate) return;
+      gate.gateFront = true;
+      gate.doorTx = gate.tx1 - 21;   // 거대한 정문 한가운데 칸 (Props 의 정문 외관 640px 이 오른쪽 벽 안에 들도록)
+      sealRealm(ti, gate, isPortalDoor);
+      const fx0 = Math.max(gate.tx0 + 1, gate.doorTx - 21), fx1 = gate.tx1 - 1, keep = new Set();
+      for (const d of gate.doors) if (!d.sealed && !isPortalDoor(d)) {
+        if (d.dir === 'v') for (let x = d.cap - 3; x <= d.cap + 6; x++) keep.add(x);
+        else if (d.L === gate) for (let x = gate.tx1 - 8; x < gate.tx1; x++) keep.add(x);
+      }
+      for (let x = fx0; x <= fx1; x++) {
+        if (keep.has(x)) continue;
+        for (let y = gate.ty0; y < gate.F; y++) grid[y][x] = '.';
+        grid[gate.F][x] = 'S'; grid[gate.F + 1][x] = 'S';
+      }
+      // 마당이 구덩이가 되지 않게: 마당에서 걸어서 들어온 문(메우지 않은 문)으로 되돌아갈 수 없으면 가로막는 왼쪽 턱 앞에 디딤 발판 계단을 놓는다
+      //  (마당을 깎으며 턱 오른쪽에 있던 언덕 · 계단까지 걷혀 버린 경우 — 정문 안에서 나와도 갇히지 않게)
+      const backOk = () => {
+        const R = reach(grid, [[gate.doorTx, gate.F - 1]], { x0: gate.X0, y0: gate.Y0, x1: gate.X1, y1: gate.Y1 });
+        return gate.doors.filter(d => !d.sealed && !isPortalDoor(d) && d.cells.length).every(d => d.cells.some(([x, y]) => R.has(x, y) || R.has(x - 1, y)));
+      };
+      if (!backOk()) {
+        let cx = fx0 - 1; while (cx > gate.tx0 && grid[gate.F - 1][cx] !== 'S') cx--;
+        let top = gate.F - 1; while (top > gate.ty0 && grid[top - 1][cx] === 'S') top--;
+        const xs = [cx + 1, cx + 2, cx + 3];
+        for (let st = gate.F - 1; st - (top - 1) > 5; st -= 3) {
+          const p = st - 2;
+          if (xs.every(x => grid[p][x] === '.' && grid[p - 1][x] === '.' && grid[p - 2][x] === '.')) for (const x of xs) grid[p][x] = 'P';
+        }
+      }
+      for (const pr of props) if (pr.x >= fx0 && pr.x <= fx1 && pr.g != null && pr.g >= gate.ty0 && pr.g <= gate.F) {
+        pr.g = gate.F;
+        if (Math.abs(pr.x - gate.doorTx) <= 20 && ['statue', 'crate', 'lamp', 'tree', 'pillar', 'fence', 'tallgrass', 'signpost'].includes(pr.kind)) pr.hide = true;   // 정문 · 수문장 자리는 비운다
+      }
+      placeNpcs(gate, o.npcs, [gate.doorTx - 9, gate.doorTx + 9]);
+      for (const n of npcs) if (n.room === gate) { n.face = o.faces[n.id] ?? n.face; n.guide = true; }
+      const d = hall && gate.doors.find(q => q.dir === 'h' && (q.a === hall || q.b === hall));
+      if (d) {
+        for (const [x, y] of d.cells) grid[y][x] = 'S';   // 옆방 통로를 벽으로
+        d.portal = true; d.portalName = o.name;
+        gate.portalTo = hall; hall.portalFrom = gate;
+        hall.portalY = d.my + 2.5;   // 첫 방 출입문 자리 바닥 줄 (문 앞 4칸은 방 바닥보다 높을 수 있다)
+        d.portalOut = { x: gate.doorTx, y: gate.F }; d.portalIn = { x: hall.tx0 + 2, y: hall.portalY };
+      }
+    };
     // 성도 방울탑 (bg 'belltower' 지역): 바로 앞 지역(인주시티)의 지상 전투 구역 = 방울로드(단풍 가로수길 · 밝은 가을 햇살)
     //  그 끝 방 = 방울탑 정문 앞 막다른 성역 (초대형 1층 기단 · 정문 외관 · 수문장 승려 둘) · 탑 안 = 횃불이 일렁이는 목조 탑 · 칠색조 아레나 = 노을 지는 옥상
     //  방울로드 전체는 평화 구역(peaceful: 침식된 포켓몬이 하나도 나오지 않는다 — GameScene.updateSpawns · safeZones)
-    //  정문 ↔ 탑 안 1층은 옆방 통로가 아니라 건물 출입문(포털): 두 방 사이 벽을 다시 메우고, 정문 앞에서 ↑/F → 암전 → 탑 안 출입문 앞 (GameScene.useDoor)
-    //  (월드 생성 · 난수는 그대로 — 문 칸만 벽으로 되돌리므로 저장과 무관)
     {
       const ti = ch.areas.findIndex(a => a.bg === 'belltower');
       if (ti > 0) {
@@ -570,67 +736,45 @@ export function buildChapter(ch, ci, retry = 0) {
         for (const r of rooms) if (r.ai === ti) { r.tower = true; if (r.type === 'boss') r.rooftop = true; }
         const hall1 = rooms.filter(r => r.ai === ti && r.main).sort((a, b) => a.id - b.id)[0];   // 탑 안 1층
         const gate = mainTrail[mainTrail.length - 1];
-        // 본 경로가 땅속(불탄탑 지하)을 거쳐 탑에 닿는 시드: 정문 방이 탑 1층과 맞닿아 있지 않다 → 벽 없는 가상의 출입문으로 잇는다
-        //  (출입문은 원래 포털이라 붙어 있을 필요가 없다 — 땅속 쪽 옆문은 아래에서 다른 샛길처럼 메운다)
-        if (gate && hall1 && !gate.doors.some(q => q.dir === 'h' && (q.a === hall1 || q.b === hall1))) {
-          const hd = hall1.doors.find(q => q.dir === 'h' && q.R === hall1);
-          const vd = { dir: 'h', a: gate, b: hall1, L: gate, R: hall1, cells: [], mx: hall1.tx0, my: hd ? hd.my : hall1.F - 2.5, virtual: true };
-          doors.push(vd); gate.doors.push(vd); hall1.doors.push(vd);
-        }
-        const isPortalDoor = q => q.dir === 'h' && hall1 && ((q.a === gate && q.b === hall1) || (q.b === gate && q.a === hall1));
-        if (gate) {
-          gate.trailEnd = true;
-          gate.doorTx = gate.tx1 - 21;   // 거대한 정문 한가운데 칸 (Props bellGateArt 외관 640px 이 오른쪽 벽 안에 들도록)
-          // 탑으로 들어가는 길은 정문 하나뿐: 정문 방 천장의 철창(위 방으로 오르는 샛길) · 탑 1층으로 바로 이어지는 다른 옆문은 벽으로 메운다
-          //  (메워도 모든 방에 여전히 갈 수 있을 때만 — 정문 포털은 통로로 친다)
-          {
-            const isPortal = isPortalDoor;
-            const sealed = new Set();
-            const linked = () => {
-              const seen = new Set([rooms[0]]), q = [rooms[0]];
-              while (q.length) { const r = q.shift(); for (const d of r.doors) { if (sealed.has(d)) continue; const o = d.a === r ? d.b : d.a; if (!seen.has(o)) { seen.add(o); q.push(o); } } }
-              return seen.size === rooms.length;
-            };
-            for (const d of doors) {
-              if (d.breakable || isPortal(d)) continue;
-              if (!((d.a.ai === ti) !== (d.b.ai === ti) || (d.dir === 'v' && (d.a === gate || d.b === gate)))) continue;
-              sealed.add(d);
-              if (!linked()) { sealed.delete(d); continue; }
-              for (const [x, y] of d.cells) grid[y][x] = 'S';
-              if (d.dir === 'v') for (let x = d.cap - 2; x < d.cap + 6; x++) for (let y = d.D.ty0; y < d.D.F; y++) if (grid[y][x] === 'P') grid[y][x] = '.';   // 아래 방 사다리 발판
-              d.sealed = true;
-            }
-          }
-          // 정문 앞 성역 마당: 외관 너비만큼 언덕 · 떠 있는 바위 · 천장 덩어리를 걷어 평평한 돌바닥으로
-          //  그 위에 놓였던 소품은 바닥으로 내려놓는다 (개수는 그대로 — 저장 서명 유지)
-          //  메우지 못한 문(다른 방으로 가는 유일한 길)의 철창 구멍 · 사다리 · 옆문 앞은 그대로 둔다
-          const fx0 = Math.max(gate.tx0 + 1, gate.doorTx - 21), fx1 = gate.tx1 - 1, keep = new Set();
-          for (const d of gate.doors) if (!d.sealed && !isPortalDoor(d)) {
-            if (d.dir === 'v') for (let x = d.cap - 3; x <= d.cap + 6; x++) keep.add(x);
-            else if (d.L === gate) for (let x = gate.tx1 - 8; x < gate.tx1; x++) keep.add(x);
-          }
-          for (let x = fx0; x <= fx1; x++) {
-            if (keep.has(x)) continue;
-            for (let y = gate.ty0; y < gate.F; y++) grid[y][x] = '.';
-            grid[gate.F][x] = 'S'; grid[gate.F + 1][x] = 'S';
-          }
-          for (const pr of props) if (pr.x >= fx0 && pr.x <= fx1 && pr.g != null && pr.g >= gate.ty0 && pr.g <= gate.F) {
-            pr.g = gate.F;
-            if (Math.abs(pr.x - gate.doorTx) <= 20 && ['statue', 'crate', 'lamp', 'tree', 'pillar', 'fence', 'tallgrass', 'signpost'].includes(pr.kind)) pr.hide = true;   // 정문 · 승려 자리는 비운다
-          }
-          // 수문장 승려 둘: 선임 노승려는 정문 왼쪽 벽 앞, 수행 승려는 정문 오른쪽 벽 앞
-          placeNpcs(gate, ['elder_monk', 'trainee_monk'], [gate.doorTx - 9, gate.doorTx + 9]);
-          for (const n of npcs) if (n.room === gate) { n.face = n.id === 'elder_monk' ? -1 : 1; n.guide = true; }
-          const hall = rooms.filter(r => r.ai === ti && r.main).sort((a, b) => a.id - b.id)[0];   // 탑 안 1층
-          const d = hall && gate.doors.find(q => q.dir === 'h' && (q.a === hall || q.b === hall));
-          if (d) {
-            for (const [x, y] of d.cells) grid[y][x] = 'S';   // 옆방 통로를 벽으로
-            d.portal = true;
-            gate.portalTo = hall; hall.portalFrom = gate;
-            hall.portalY = d.my + 2.5;   // 탑 안 출입문 자리 바닥 줄 (문 앞 4칸은 방 바닥보다 높을 수 있다)
-            d.portalOut = { x: gate.doorTx, y: gate.F }; d.portalIn = { x: hall.tx0 + 2, y: hall.portalY };
-          }
-        }
+        if (gate) gate.trailEnd = true;
+        templeGate(gate, hall1, ti, { npcs: ['elder_monk', 'trainee_monk'], faces: { elder_monk: -1, trainee_monk: 1 }, name: '방울탑 입구' });   // 선임 노승려는 정문 왼쪽, 수행 승려는 오른쪽
+      }
+    }
+    // 신오: 천관산 만년설 협곡(bg 'coronet') → 창기둥(bg 'spear') → 깨어진 세계(bg 'distortion') — 난수를 쓰지 않는다
+    //  · 협곡: 동굴이 아닌 탁 트인 설산 길목 (snowPeak: 밝기 85% · 눈발 · 오로라 · 시공 균열 하늘 — GameScene) · 마지막 본 경로 방 = 창기둥 정문 앞 성역(몬스터 0 · 봉신마을 장로 · 유적 수호자)
+    //  · 창기둥 안(spear): 무너진 대리석 기둥 · 금강옥(푸른) · 백옥(분홍) 결정이 맥동 (밝기 80%) · 디아루가 → 펄기아 제단(spearAltar)
+    //  · 제단 뒤 차원 균열(rift): 창기둥 제단 ↔ 깨어진 세계 첫 방. 평소엔 닫혀 있다가 펄기아까지 정화하면 영구히 열린다 (GameScene.openRift · 방 cleared 로 저장)
+    //  · 깨어진 세계(distortion): 적이 없는 플랫포밍 구역(부유섬 · 유령 발판 · 차원 도약 수정 — distortionRoom) · 맨 끝 반물질의 왕좌(throne) = 기라티나 성소
+    {
+      const idx = bg => ch.areas.findIndex(a => a.bg === bg);
+      const ki = idx('coronet'), si = idx('spear'), di = idx('distortion');
+      const mainOf = ai => rooms.filter(r => r.ai === ai && r.main).sort((a, b) => a.id - b.id);
+      if (ki >= 0) for (const r of rooms) if (r.ai === ki && !r.under) r.snowPeak = true;
+      if (si >= 0) for (const r of rooms) if (r.ai === si) { r.spear = true; if (r.type === 'boss') r.spearAltar = true; }
+      if (di >= 0) for (const r of rooms) if (r.ai === di) { r.distortion = true; r.peaceful = true; if (r.type === 'sanctuary') r.throne = true; }
+      // 제단 뒤 차원 균열: 창기둥 제단 아레나 ↔ 깨어진 세계 첫 방 (맞닿아 있지 않으면 가상의 문)
+      const altarRoom = si >= 0 ? rooms.find(r => r.spearAltar) : null, dw0 = di >= 0 ? mainOf(di)[0] : null;
+      if (altarRoom && dw0) {
+        let d = altarRoom.doors.find(q => q.a === dw0 || q.b === dw0);
+        if (!d) { d = { dir: 'h', a: altarRoom, b: dw0, L: altarRoom, R: dw0, cells: [], mx: dw0.tx0, my: dw0.F - 2.5, virtual: true }; doors.push(d); altarRoom.doors.push(d); dw0.doors.push(d); }
+        for (const [x, y] of d.cells) grid[y][x] = 'S';
+        d.portal = true; d.rift = true; d.portalName = '깨어진 세계';
+        if (d.my == null) d.my = dw0.F - 2.5;   // 위아래로 맞닿은 문이면 균열 출구 높이는 깨어진 세계 첫 방 바닥에서
+        altarRoom.riftTo = dw0; dw0.riftFrom = altarRoom;
+        d.portalOut = { x: (altarRoom.tx0 + altarRoom.tx1) >> 1, y: altarRoom.F }; d.portalIn = { x: dw0.tx0 + 4, y: dw0.F };
+        sealRealm(di, null, q => q === d);   // 깨어진 세계로 걸어 들어가는 다른 길(지름길 고리 · 샛길)은 없다
+      }
+      // 창기둥 정문 앞 성역 (협곡의 마지막 본 경로 방)
+      if (ki >= 0 && si >= 0) {
+        const gate = mainOf(ki).filter(r => r.type === 'combat').pop(), hall = mainOf(si)[0];
+        if (gate) { gate.spearGate = true; gate.peaceful = true; }
+        templeGate(gate, hall, si, { npcs: ['celestic_elder', 'coronet_guardian'], faces: { celestic_elder: -1, coronet_guardian: 1 }, name: '창기둥 입구' });
+      }
+      // 신오 초입: 시작 방에 신화 연구가 (시간 · 공간 · 반물질의 뒤틀림 — 천관산 정상으로)
+      if (ki >= 0) {
+        const s0 = mainRooms[0];
+        placeNpcs(s0, ['myth_scholar'], [s0.tx0 + 10]);
+        for (const n of npcs) if (n.id === 'myth_scholar') { n.face = -1; n.guide = true; }
       }
     }
     // 호연 기상 이변 · 하늘기둥 (지역 bg 로 찾는다 · 난수를 쓰지 않는다)
@@ -685,7 +829,7 @@ export function buildChapter(ch, ci, retry = 0) {
 
   // ---- 적 자리: 전투방 바닥·발판 위 (방 넓이 × 챕터) ----
   for (const r of rooms) {
-    if (r.type !== 'combat') continue;
+    if (r.type !== 'combat' || ch.areas[r.ai].bg === 'distortion' || r.spearGate) continue;   // 깨어진 세계는 적이 없는 플랫포밍 구역 · 창기둥 정문 앞 성역은 몬스터 0
     const n = Math.round(r.gw * r.gh * (2.6 + ci * .5) * (r.branch ? .7 : 1));
     for (let k = 0, tries = 0; k < n && tries < n * 12; tries++) {
       const x = ri(r.tx0 + 3, r.tx1 - 4), y0 = ri(r.ty0 + 1, r.F - 2);
@@ -718,7 +862,7 @@ export function buildChapter(ch, ci, retry = 0) {
   const terminals = [], byId = new Map(rooms.map(r => [r.id, r]));
   const SKIP_ROOM = new Set(['boss', 'mini', 'sanctuary', 'tm', 'treasure', 'pocket']);
   const solid = (x, y) => grid[y] && (grid[y][x] === 'S' || grid[y][x] === 'B');
-  const spot = (r, xx) => xx > r.tx0 + 2 && xx < r.tx1 - 3 && !(r.trailEnd && xx > r.doorTx - 25) && [0, 1].every(o => solid(xx + o, r.F) && [1, 2, 3].every(h => grid[r.F - h][xx + o] === '.'));
+  const spot = (r, xx) => xx > r.tx0 + 2 && xx < r.tx1 - 3 && !(r.gateFront && xx > r.doorTx - 25) && [0, 1].every(o => solid(xx + o, r.F) && [1, 2, 3].every(h => grid[r.F - h][xx + o] === '.'));
   const TOWN_NEAR = 3;
   for (const boss of rooms.filter(r => r.type === 'boss' || r.type === 'mini' || r.type === 'sanctuary')) {
     const dist = new Map([[boss.id, 0]]), q = [boss];
@@ -743,7 +887,7 @@ export function buildChapter(ch, ci, retry = 0) {
       break;
     }
     if (!placed && cand.length) {   // 바닥을 다진다: 방 가운데 2칸 바닥을 단단하게, 그 위 4칸을 비운다
-      const r = cand[0], x = r.trailEnd ? r.tx0 + 4 : Math.max(r.tx0 + 4, Math.min(r.tx1 - 6, (r.tx0 + r.tx1) >> 1));   // 방울탑 정문 앞은 비운다
+      const r = cand[0], x = r.gateFront ? r.tx0 + 4 : Math.max(r.tx0 + 4, Math.min(r.tx1 - 6, (r.tx0 + r.tx1) >> 1));   // 방울탑 · 창기둥 정문 앞은 비운다
       for (const o of [0, 1]) { grid[r.F][x + o] = 'S'; for (let h = 1; h <= 4; h++) if (r.F - h > r.ty0) grid[r.F - h][x + o] = '.'; }
       terminals.push({ x, g: r.F, room: r, boss, flattened: true });
       marks.push({ kind: 'terminal', x, y: r.F, room: r });
@@ -761,7 +905,9 @@ export function buildChapter(ch, ci, retry = 0) {
     if (oak) starts.push([oak.oakDoor, oak.F - 1]);   // 닫힌 연구소에서 문으로 나오는 자리 (마을의 연구소 건물 앞)
     for (const d of doors) if (d.portalIn) starts.push([d.portalIn.x, d.portalIn.y - 1]);   // 방울탑 안 1층 출입문 (정문과 벽으로 막혀 걸어선 못 닿는다 — 빠뜨리면 탑 안 전체가 '못 닿는 칸'으로 메워진다)
     const win = { x0: 0, y0: 0, x1: cols, y1: rows };
-    let R = reach(grid, starts, win);
+    const padSet = new Set(); for (const pd of pads) for (const dx of [0, 1]) padSet.add((pd.x + dx) + ',' + (pd.g - 1));   // 깨어진 세계 차원 도약 수정 (그 위에 선 발 칸)
+    const ro = { pads: padSet, padTiles: PAD_TILES };
+    let R = reach(grid, starts, win, ro);
     const standing = (x, y) => grid[y][x] === '.' && grid[y - 1][x] === '.' && grid[y + 1][x] !== '.';
     for (let pass = 0; pass < 3 && R.has(sx, sy); pass++) {
       let changed = false;
@@ -772,7 +918,7 @@ export function buildChapter(ch, ci, retry = 0) {
         for (const c of stalCells) if (c[2] === r && c[0] >= lo - 3 && c[0] <= hi + 3 && grid[c[1]][c[0]] === 'S') { grid[c[1]][c[0]] = '.'; changed = true; }
       }
       if (!changed) break;
-      R = reach(grid, starts, win);
+      R = reach(grid, starts, win, ro);
     }
     if (R.has(sx, sy)) {
       // 몸이 들어가지 않는 낮은 틈(천장까지 2칸)인데 못 닿는 자리는 바위로 메운다 — 못 닿는 칸은 어떤 길에도 쓰이지 않으니 메워도 안전하다
@@ -780,6 +926,7 @@ export function buildChapter(ch, ci, retry = 0) {
         if (standing(x, y) && grid[y - 2][x] !== '.' && !R.has(x, y)) { grid[y][x] = 'S'; grid[y - 1][x] = 'S'; }
       for (const r of rooms) for (let y = r.F - 3; y < r.Y1; y++) for (let x = r.tx0; x < r.tx1; x++) if (grid[y][x] === '.' && !R.has(x, y)) grid[y][x] = 'S';
       for (let i = spawns.length - 1; i >= 0; i--) { const sp = spawns[i], x = Math.floor(sp.x / TILE), y = sp.y / TILE - 1; if (!R.has(x, y) && !R.has(x, y - 1)) spawns.splice(i, 1); }
+      for (let i = chests.length - 1; i >= 0; i--) { const c = chests[i], x = Math.floor(c.x / TILE), y = c.y / TILE - 1; if (c.island && !R.has(x, y) && !R.has(x + 1, y) && !R.has(x - 1, y)) chests.splice(i, 1); }   // 깨어진 세계 부유섬 상자 안전망
     }
   }
 
@@ -794,7 +941,7 @@ export function buildChapter(ch, ci, retry = 0) {
   };
   // 탑 안 1층 출입문 바닥 줄: 지형을 다 깎은 뒤의 실제 바닥 (문 앞 계단 · 언덕이 나중에 솟을 수 있다 — 벽 속에 내려앉지 않게)
   for (const d of doors) if (d.portalIn) {
-    const r = d.a.portalFrom ? d.a : d.b, x = d.portalIn.x;
+    const r = d.a.portalFrom || d.a.riftFrom ? d.a : d.b, x = d.portalIn.x;   // 출입문(포털)이 열리는 쪽 방 (방울탑 · 창기둥 안 1층 · 깨어진 세계 첫 방)
     const solidAt = yy => grid[yy][x] === 'S' || grid[yy][x] === 'P';
     let y = Math.max(r.ty0 + 1, Math.floor(d.my - 2.5));
     if (solidAt(y)) while (y > r.ty0 + 1 && solidAt(y - 1)) y--;   // 문 높이까지 땅이 솟았으면 그 위로
@@ -802,11 +949,26 @@ export function buildChapter(ch, ci, retry = 0) {
     r.portalY = d.portalIn.y = y;
   }
   const data = grid.map((row, y) => row.map((c, x) => tileOf(x, y)));
+  // 깨어진 세계: 유령 발판(문 뚫기 · 길 보장 뒤에도 남은 'P' 칸을 가로 줄 단위로) · 도약 수정(바닥이 그대로인 것만) · 부유섬 보물 상자(섬이 그대로인 것만)
+  const phase = [];
+  {
+    const live = phaseCells.filter(([x, y]) => grid[y][x] === 'P').sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+    for (const [x, y, r] of live) {
+      const last = phase[phase.length - 1];
+      if (last && last.y === y && last.x1 === x - 1) last.x1 = x; else phase.push({ x0: x, x1: x, y, room: r });
+    }
+  }
+  for (let i = pads.length - 1; i >= 0; i--) { const pd = pads[i]; if (![0, 1].every(dx => grid[pd.g][pd.x + dx] === 'S' && grid[pd.g - 1][pd.x + dx] === '.' && grid[pd.g - 2][pd.x + dx] === '.')) pads.splice(i, 1); }
+  for (let i = chests.length - 1; i >= 0; i--) {
+    const c = chests[i]; if (!c.island) continue;
+    const x = Math.floor(c.x / TILE), y = c.y / TILE;
+    if (!(grid[y] && grid[y][x] === 'S' && grid[y - 1][x] === '.' && grid[y - 2][x] === '.')) chests.splice(i, 1);
+  }
 
   const start = mainRooms[0];
   return {
     ci, chapter: ch, data, grid, cols, rows, width: cols * TILE, height: rows * TILE, ncx, ncy, cellRoom,
-    rooms, doors, sides, breakables, props, chests, spawns, marks, potions, hubs, tileOf, terminals, npcs,
+    rooms, doors, sides, breakables, props, chests, spawns, marks, potions, hubs, tileOf, terminals, npcs, phase, pads,
     start: { x: (start.tx0 + 5) * TILE, y: start.F * TILE - 12, room: start }, surfaceRow
   };
 }

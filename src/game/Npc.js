@@ -99,6 +99,9 @@ const LOOKS = {
   veteran: t => ({ hair: 0x3a2a1a, hairStyle: 'short', cap: t || 0x2a4a8a, beard: 0x4a3424, shirt: 0x5a6a3a, sleeve: 0xe8e0d0, pants: 0x3a3a48, shoes: 0x2a2020, pack: 0x5a4a2a, cane: true }),   // 붕대 감은 팔 · 지팡이
   hiker: t => ({ hair: 0x4a2a1a, hairStyle: 'short', beard: 0x5a3a24, beanie: t || 0xa83a2a, shirt: 0x8a5a2a, pants: 0x4a4a38, shoes: 0x3a2a1a, pack: 0x6a4a2a }),
   nurse: t => ({ hair: 0xf08aa8, hairStyle: 'nurse', shirt: 0xf8b8c8, skirt: 0xf8b8c8, apron: 0xfaf8f4, shoes: 0xf4f0ec, legs: 0xf8e8e0 }),
+  scholar: t => ({ body: 'old', hair: 0xd8d4cc, hairStyle: 'bun', old: true, glasses: 0x6a6a7a, shawl: 0x4a3a6a, shirt: 0x6a5a8a, sleeve: 0x5a4a7a, skirt: 0x3a3048, shoes: 0x2a2030, cane: true }),   // 신오 신화 연구가: 보라 숄 · 돋보기 안경 (봉신마을의 이야기꾼)
+  celestic: t => ({ body: 'old', hair: 0xe8e4dc, hairStyle: 'swept', old: true, beard: 0xe8e4dc, shirt: 0x3a4a7a, sleeve: 0x2a3a6a, shawl: 0xd8c890, skirt: 0x3a4a7a, shoes: 0x2a2030, cane: true }),   // 봉신마을 장로: 남색 도포 · 금빛 목도리
+  guardian: t => ({ hair: 0x2a2a34, hairStyle: 'short', beanie: 0xe8ecf4, shirt: 0x5a6a8a, sleeve: 0x4a5a7a, coat: 0xd8dce8, coatD: 0xa8b0c8, pants: 0x3a4058, shoes: 0x2a2a34, cane: true }),   // 천관산 유적 수호자: 흰 방한 망토 · 털모자 · 지팡이
   kimono: t => ({ hair: 0x1a1418, hairStyle: 'bun', pin: 0xe8c060, shirt: t || 0xc83a5a, skirt: t || 0xc83a5a, obi: 0xe8c060, shoes: 0x8a2a2a, legs: 0xf4f0e8 })
 };
 

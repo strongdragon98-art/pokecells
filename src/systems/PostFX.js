@@ -62,3 +62,49 @@ export function shockwave(scene, x, y, strength = .035, ms = 650) {
 function clearShockwaves(cam) {
   for (const p of (cam.postPipelines || []).filter(q => q instanceof ShockwaveFX)) cam.removePostPipeline(p);
 }
+
+// 색수차 (Chromatic Aberration): 빨강 · 파랑 채널을 화면 가운데에서 바깥쪽으로 어긋나게 + 살짝 가로로 흔들리는 띠
+//  공간 자체가 찢어지는 순간(기라티나 강림 · 차원 균열이 열릴 때)에만 잠깐 붙였다가 뗀다
+const CHROMA_FRAG = `
+precision mediump float;
+uniform sampler2D uMainSampler;
+uniform float uAmount;
+uniform float uTime;
+varying vec2 outTexCoord;
+void main() {
+  vec2 uv = outTexCoord;
+  vec2 d = uv - vec2(0.5);
+  float band = step(0.82, fract(uv.y * 7.0 + uTime * 1.7)) * uAmount * 0.6;
+  vec2 off = d * uAmount + vec2(band, 0.0);
+  float r = texture2D(uMainSampler, uv + off).r;
+  vec4 g = texture2D(uMainSampler, uv + vec2(band * 0.5, 0.0));
+  float b = texture2D(uMainSampler, uv - off).b;
+  gl_FragColor = vec4(r, g.g, b, g.a);
+}`;
+
+export class ChromaFX extends Phaser.Renderer.WebGL.Pipelines.PostFXPipeline {
+  constructor(game) {
+    super({ game, name: 'ChromaFX', fragShader: CHROMA_FRAG });
+    this.amount = 0;
+  }
+  onPreRender() {
+    this.set1f('uAmount', this.amount);
+    this.set1f('uTime', this.game.loop.time / 1000);
+  }
+}
+
+// 색수차를 amount(0.006 ~ 0.03)로 걸었다가 ms 동안 잦아들게. WebGL 이 아니면 아무것도 안 한다
+export function chromatic(scene, amount = .02, ms = 900) {
+  if (!scene || !scene.renderer || scene.renderer.type !== Phaser.WEBGL || !scene.cameras || !scene.cameras.main) return;
+  const cam = scene.cameras.main;
+  clearChroma(cam);
+  cam.setPostPipeline(ChromaFX);
+  let fx = cam.getPostPipeline(ChromaFX);
+  if (Array.isArray(fx)) fx = fx[fx.length - 1];
+  if (!fx) return;
+  fx.amount = amount;
+  scene.tweens.add({ targets: fx, amount: 0, duration: ms, ease: 'Cubic.easeIn', onComplete: () => clearChroma(cam) });
+}
+function clearChroma(cam) {
+  for (const p of (cam.postPipelines || []).filter(q => q instanceof ChromaFX)) cam.removePostPipeline(p);
+}

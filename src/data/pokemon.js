@@ -191,7 +191,7 @@ export const BOSSES = {
   dialga: { name: '디아루가', title: '시간의 신', types: ['steel', 'dragon'], hp: 3000, dmg: 31, ai: 'dialga', color: 0x6ab0ff, then: 'palkia', tier: 'boss' },
   palkia: { name: '펄기아', title: '공간의 신', types: ['water', 'dragon'], hp: 3000, dmg: 31, ai: 'palkia', color: 0xd88aff, entrance: 'shatter', intro: '공간이 유리처럼 깨진다 — 공간의 신 펄기아 강림', tier: 'boss' },
   darkrai: { name: '다크라이', title: '악몽의 만월섬', types: ['dark'], hp: 3400, dmg: 30, ai: 'darkrai', fly: true, color: 0x6a2a9a, tier: 'hidden' },
-  giratina: { name: '기라티나', title: '깨어진 세계의', types: ['ghost', 'dragon'], hp: 4200, dmg: 32, ai: 'giratina', fly: true, color: 0xff3a5a, megaSprite: 'giratina-origin', megaName: '기라티나 오리진폼', tier: 'hidden' },
+  giratina: { name: '기라티나', title: '깨어진 세계의', types: ['ghost', 'dragon'], hp: 4200, dmg: 32, ai: 'giratina', fly: true, color: 0xff3a5a, megaSprite: 'giratina-origin', megaName: '기라티나 오리진폼', startMega: true, tier: 'hidden' },   // 깨어진 세계의 왕좌: 처음부터 오리진폼으로 강림 (2페이즈는 폭주)
   // ---- 하나 · 심연 ----
   zekrom: { name: '제크로무', title: '용나선탑의 검은 영웅', types: ['dragon', 'electric'], hp: 4000, dmg: 33, ai: 'zekrom', color: 0x4a8aff, tier: 'mini' },
   // 최종장: 세뇌된 레드의 피카츄 → 리자몽(메가리자몽X) → 레드가 풀려나면 심연의 핵에서 무한다이노 (체력 50% 무한다이맥스)

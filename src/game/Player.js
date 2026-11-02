@@ -86,6 +86,7 @@ export class Player extends Actor {
     this.shopLog = {};                                  // { '지방:시내 방': { 품목 id: 산 개수 } } — 재고 제한
     this.shopStats = { bought: 0, sold: 0, spent: 0, earned: 0 };
     this.inv = 0; this.dash = null; this.dashCd = 0; this.airDash = true; this.swapCd = 0;
+    this.launchT = 0;   // 차원 도약 수정으로 솟구치는 중 (launch)
     this.jumpsUsed = 0; this.coyote = 0; this.jbuf = 0; this.dropT = 0; this.hurtT = 0; this.speedBuff = 0;
     this.action = null; this.combo = 0; this.comboT = 0; this.zBuf = 0;
     this.chg = { t: 0, lvl: 0, st: 0 }; this.diveCd = 0;   // Z 홀드 차징 · 공중 내려찍기
@@ -514,6 +515,7 @@ export class Player extends Actor {
     this.slowT = (this.slowT || 0) - dt;
     this.windT = (this.windT || 0) - dt;
     if (this.flipT > 0 && (this.flipT -= dt) <= 0) { this.b.setGravityY(0); this.sprite.setFlipY(false); }
+    if (this.launchT > 0 && ((this.launchT -= dt) <= 0 || this.b.velocity.y >= 0)) { this.launchT = 0; this.b.setMaxVelocity(700, 640); }   // 꼭대기에 닿으면 원래 낙하 속도 한도로
     const speed = sp.speed * this.mods.speedMul * (this.speedBuff > 0 ? 1.25 : 1) * slow * (this.mega.active ? 1.1 : 1) * this.statOf('speed') * this.buffMul('speed') * Cores.speedMul(this);
     if (this.dash && this.dash.tele) {   // 순간이동: 이미 옮겨졌다. 잠깐 멈춰 잔상만 남긴다
       this.dash.t += dt;
@@ -556,7 +558,7 @@ export class Player extends Actor {
       else if (ground || this.coyote > 0) { this.jump(sp.jump, false); }
       else if (this.jumpsUsed < sp.jumps + this.mods.extraJumps) { this.jump(sp.jump * .92, true); }
     }
-    if (!inp.jumpH && b.velocity.y < -60 && !(a && a.ctrl)) b.setVelocityY(b.velocity.y * .86);   // 짧게 누르면 낮은 점프
+    if (!inp.jumpH && b.velocity.y < -60 && !(a && a.ctrl) && !(this.launchT > 0)) b.setVelocityY(b.velocity.y * .86);   // 짧게 누르면 낮은 점프 (도약 수정으로 솟구칠 땐 그대로)
     const hover = sp.hover || (this.pas.hoverForm !== undefined && this.form().fi >= this.pas.hoverForm);
     if (hover && inp.jumpH && b.velocity.y > 40 && !this.dash) b.setVelocityY(40);              // 고오스·망나뇽·전설 부유
 
@@ -1282,6 +1284,12 @@ export class Player extends Actor {
   // 바람: t초 동안 v(px/s) 만큼 한쪽으로 밀린다 (대시 중엔 버틴다)
   wind(v, t) { this.windV = v; this.windT = t; }
   // 뒤틀린 중력 (기라티나): t초 동안 천장으로 떨어진다 — 몸도 뒤집혀 보인다
+  // 차원 도약 수정 (깨어진 세계 — Props.launchPad): 중력을 거슬러 높이 솟구친다 · 2단 점프 · 공중 대시는 다시 쓸 수 있다
+  launch(v) {
+    this.launchT = 1.2; this.b.setMaxVelocity(700, Math.max(640, v));
+    this.b.setVelocityY(-v); this.jumpsUsed = 1; this.airDash = true; this.coyote = 0; this.jbuf = 0; this.dropT = 0;
+    this.squash(.6, 1.5);
+  }
   gravFlip(t) { this.flipT = t; this.b.setGravityY(-1800); this.sprite.setFlipY(true); }
 
   takeHit(dmg, type, srcX, o = {}) {

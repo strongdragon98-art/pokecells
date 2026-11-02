@@ -35,7 +35,7 @@ export function buildMapModel(level, explored) {
   const byRoom = new Map(blocks.map(b => [b.r, b]));
   const corridors = level.doors.filter(d => !d.sealed).map(d => {   // sealed: 벽으로 메운 문 (방울탑 샛길)
     const w = wallOf.get(d), shut = !!(w && !w.broken);
-    if (d.portal) { const out = d.a.portalTo ? d.a : d.b, inn = out === d.a ? d.b : d.a; return { A: byRoom.get(d.a), B: byRoom.get(d.b), portal: true, ends: [{ b: byRoom.get(out), p: d.portalOut }, { b: byRoom.get(inn), p: d.portalIn }] }; }
+    if (d.portal) { const out = d.a.portalTo || d.a.riftTo ? d.a : d.b, inn = out === d.a ? d.b : d.a; return { A: byRoom.get(d.a), B: byRoom.get(d.b), portal: true, rift: !!d.rift, closed: !!(d.rift && !out.cleared), name: d.portalName, ends: [{ b: byRoom.get(out), p: d.portalOut, out: true }, { b: byRoom.get(inn), p: d.portalIn }] }; }   // rift: 창기둥 제단 뒤 차원 균열 (펄기아까지 정화해야 열린다)
     if (d.dir === 'h') { const Fr = d.my + 2.5; return { A: byRoom.get(d.L), B: byRoom.get(d.R), x0: d.mx - 2, x1: d.mx + 2, y0: Fr - 5, y1: Fr, shut, secret: d.breakable || d.hidden }; }
     return { A: byRoom.get(d.U), B: byRoom.get(d.D), x0: d.cap, x1: d.cap + 4, y0: d.U.F, y1: d.D.ty0, vertical: true, grate: !d.breakable, shut, secret: d.breakable || d.hidden };
   });
@@ -110,16 +110,24 @@ export class MapView {
     for (const cd of corridors) {
       const A = cd.A, B = cd.B;
       if (!A.seen && !B.seen) continue;
-      if (cd.portal) {   // 건물 출입문(포털): 이어 붙이지 않고 양쪽 방에 금빛 문 아이콘 — 독립된 던전으로 들어가는 입구
-        for (const { b, p } of cd.ends) {
+      if (cd.portal) {   // 건물 출입문(포털): 이어 붙이지 않고 양쪽 방에 금빛 문 아이콘 — 독립된 던전으로 들어가는 입구 (차원 균열은 검붉은 소용돌이 · 열리기 전엔 안 그린다)
+        if (cd.closed) continue;
+        for (const { b, p, out } of cd.ends) {
           if (!b || !b.seen || !p) continue;
           const x = X(p.x + .5), y = Y(p.y), u = Math.max(3.5, Math.min(7, s * 2.2));
+          if (cd.rift) {
+            g.fillStyle(0x12000a, .95); g.fillEllipse(x, y - u * 1.4, u * 1.7, u * 2.7);
+            g.lineStyle(1.4, 0xff2a4a, 1); g.strokeEllipse(x, y - u * 1.4, u * 1.7, u * 2.7);
+            g.lineStyle(1, 0xc06aff, .9); g.strokeEllipse(x, y - u * 1.4, u * 2.4, u * 3.4);
+            if (s > 1.2 && out && cd.name) C.add(hkText(ui, x, y - u * 3.2, cd.name, 7.5, '#ffa0b8', { bold: true, ls: 1, origin: [.5, 1] }));
+            continue;
+          }
           g.fillStyle(0x140a06, .95); g.fillRect(x - u, y - u * 2.2, u * 2, u * 2.2);
           g.fillStyle(0xffd890, .85); g.fillRect(x - u * .45, y - u * 1.5, u * .9, u * 1.5);
           g.lineStyle(1.2, 0xffd060, 1); g.strokeRect(x - u, y - u * 2.2, u * 2, u * 2.2);
           g.fillStyle(0xb83a24, 1); g.fillTriangle(x - u * 1.6, y - u * 2.2, x + u * 1.6, y - u * 2.2, x, y - u * 3.2);
           g.lineStyle(1, 0xffd060, .9); g.lineBetween(x - u * 1.6, y - u * 2.2, x + u * 1.6, y - u * 2.2);
-          if (s > 1.2 && b.r.portalTo) C.add(hkText(ui, x, y - u * 3.4, '방울탑 입구', 7.5, '#ffd890', { bold: true, ls: 1, origin: [.5, 1] }));
+          if (s > 1.2 && out && cd.name) C.add(hkText(ui, x, y - u * 3.4, cd.name, 7.5, '#ffd890', { bold: true, ls: 1, origin: [.5, 1] }));
         }
         continue;
       }

@@ -4,7 +4,7 @@
 //  plan: 그 지역 본길의 방 차례. 토큰 —
 //   start 입구 · c 전투방(모양 무작위) · wide 넓은 방(2×1) · plaza 광장(2×2) · tower 위로 솟은 탑(1×3) · abyss 아래로 파고드는 갱도(1×3)
 //   stairs 계단(1×2, 한 줄 위로) · bridge 낭떠러지 다리 방(2×1) · hub 시내(포켓몬센터 · 아머까오 정거장, 적 없음)
-//   mini:보스 중간 보스 아레나 · boss:보스 지방 최종 보스 아레나
+//   mini:보스 중간 보스 아레나 · boss:보스 지방 최종 보스 아레나 · sanct:보스 본길 끝 전설 성소(히든 전설 · 깨어진 세계의 기라티나)
 //   토큰 끝 ^ = 앞 방 바로 위에 쌓는다 (수직 탑: 포켓몬타워 · 방울탑 · 하늘기둥 · 창기둥 · 용나선탑)
 //  branches: 본길에서 갈라지는 샛길 — tm 기술머신 비밀방(카드 고르기 · 막다른 굴 일부를 바꿔 지방마다 2~3곳) · treasure 보물 · potion 상처약 · fake 막다른 굴 · hidden:보스 히든 전설 성소
 //   hidden 은 부서지는 벽 너머로 깊게(2~4방) 뻗고, hiddenDir 쪽(down 아래 · left 왼쪽 · up 위)을 좋아한다
@@ -71,15 +71,21 @@ export const STAGES = [
     terrain: { island: 4, tiers: 3, ziggurat: 3, terrace: 2, bridge: 2, pit: 1 }, props: { statue: 3, lamp: 2, fence: 1 }, stalactites: [2, 4],
     plat: 'metal', roofs: [0x3a4a6a, 0x4a4a5a, 0x2a3a5a, 0x5a5a6a],
     palette: { sky: 0x080a14, far: 0x161a30, wall: 0x3a4466, wall2: 0x242a44, edge: 0xa0c8ff, plat: 0x4a5a86, light: 0xb0d0ff, accent: 0xe0e8ff, ambient: 0x464e6e, moss: 0x5a7a9a },
+    // 신오 순서: 축복시티(신화 연구가의 복선) → 챔피언로드(조종당하는 난천의 한카리아스) → 천관산 만년설 협곡(밝은 설경 · 끝에 창기둥 정문 성역)
+    //  → 창기둥(정문 포털로만 들어가는 독립 던전 · 디아루가 → 펄기아) → 깨어진 세계(제단 뒤 차원 균열로만 들어간다 · 부유섬 · 유령 발판 · 차원 도약 수정 · 기라티나)
+    //  천관산 · 창기둥 · 깨어진 세계의 표시와 연출은 game/World.js(지형 · 포털) · game/Props.js(buildSinnoh) · GameScene(하늘 · 눈 · 기믹 · 기라티나 강림)
     areas: [
       { name: '눈 덮인 축복시티', en: 'Snowpoint City', color: 0x3b4254, bg: 'snowcity', city: '축복시티', plan: ['start', 'hub', 'c'], branches: ['fake', 'potion'],
         lore: ['축복시티 — 눈이 위로 떨어진다.'] },
-      { name: '천관산 설산 신전', en: 'Mt. Coronet Snow Temple', color: 0x465866, bg: 'temple', plan: ['tower', 'c', 'wide', 'abyss'], branches: ['hidden:giratina', 'tm'], hiddenDir: 'down',
-        terrain: { terrace: 3, island: 3, tiers: 3 }, lore: ['천관산 — 고대 신전 기둥에 금이 가 있다. 그 틈으로 다른 세계가 보인다.'] },
       { name: '신오 챔피언로드', en: 'Sinnoh Victory Road', color: 0x4a3b5c, bg: 'rift', plan: ['c', 'stairs', 'mini:garchomp'], branches: ['hidden:darkrai', 'treasure'], hiddenDir: 'left',
         lore: ['챔피언로드 — 정상에서 차가운 목소리가 들린다: 「심연의 뜻대로...」', '만월섬 쪽으로 가는 길은 악몽에 잠겼다.'] },
-      { name: '시공의 창기둥', en: 'Spear Pillar', color: 0x3c3261, bg: 'spear', plan: ['tower', 'c^', 'boss:dialga^'], branches: ['tm', 'tm'],
-        terrain: { island: 4, tiers: 3 }, lore: ['창기둥 — 시간과 공간이 서로를 삼키고 있다.'] }
+      { name: '천관산 만년설 협곡', en: 'Mt. Coronet Snow Peak', color: 0x5a6a86, bg: 'coronet', plan: ['c', 'wide', 'stairs', 'wide'], branches: ['tm', 'treasure'],
+        terrain: { terrace: 3, island: 2, tiers: 2, flat: 2, ziggurat: 1 }, props: { pillar: 3, statue: 2, fence: 1 }, stalactites: [0, 1],
+        lore: ['천관산 — 만년설 아래 고대 신전의 기둥이 줄지어 서 있다. 하늘의 균열이 날마다 넓어진다.', '정상의 창기둥 — 신이라 불리던 포켓몬들이 태어난 태고의 신전.'] },
+      { name: '시공의 창기둥', en: 'Spear Pillar', color: 0x6a6496, bg: 'spear', plan: ['tower', 'c^', 'boss:dialga^'], branches: ['tm'],
+        terrain: { island: 4, tiers: 3 }, lore: ['창기둥 — 시간과 공간이 서로를 삼키고 있다.'] },
+      { name: '깨어진 세계', en: 'Distortion World', color: 0x4a2a6a, bg: 'distortion', plan: ['c', 'stairs', 'c', 'sanct:giratina'], branches: [], sprites: ['giratina-origin'],
+        lore: ['깨어진 세계 — 위와 아래가, 앞과 뒤가 뒤섞인 세계의 뒷면.'] }
     ]
   },
   {

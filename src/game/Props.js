@@ -14,6 +14,7 @@ import { roomAt, roomAtCell } from './World.js';
 
 const ADD = Phaser.BlendModes.ADD;
 const WARM = 0xffc070;
+const PAD_VY = 760;   // 차원 도약 수정이 솟구치는 속도 (최대 약 20칸 — 길 보장 Reach.PAD_TILES 18칸보다 넉넉히)
 const rand = (a, b) => a + Math.random() * (b - a);
 
 // 캔버스 텍스처 하나를 그린다. F(x,y,w,h,색,투명도) 로 픽셀 사각형을 칠한다
@@ -885,6 +886,229 @@ function decorArt(scene, si, p) {
 }
 
 // ---------------- 배치 · 갱신 ----------------
+// ---------------- 신오: 천관산 만년설 협곡 · 창기둥 · 깨어진 세계 ----------------
+// 창기둥 정문 외관 (640×300): 눈 덮인 대리석 대계단 · 화면 위 틀에 잘린 코린트식 열주 · 한가운데 아치형 대정문(금강 · 백옥빛 시공의 소용돌이)
+function spearGateArt(scene) {
+  const W = 640, H = 300, cx = W / 2;
+  const mar = 0xc8c4da, marD = 0x9490b2, marDD = 0x5e5c80, marHi = 0xeceaf6, snow = 0xdfe6f6, snowD = 0xb0bcd8, gold = 0xe0c058, ice = 0x8ac0f0;   // 조명(Light2D)을 받으면 한 톤 밝아진다
+  return canvasTex(scene, 'prop:speargate', W, H, (F, c) => {
+    let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    // ---- 뒤 벽: 열주 사이로 보이는 신전 안쪽의 깊은 대리석 벽 (석재 줄눈) ----
+    F(0, 0, W, 254, 0x4e4c6e);
+    for (let y = 30, k = 0; y < 254; y += 18, k++) { F(0, y, W, 1, 0x3c3a5a); for (let x = (k % 2) * 24; x < W; x += 48) F(x, y, 1, 18, 0x3c3a5a); }
+    // ---- 프리즈 (맨 위 — 화면 틀에 잘린다): 고대 문자가 새겨진 띠 ----
+    F(0, 0, W, 28, marD); F(0, 0, W, 2, mar); F(0, 26, W, 3, marDD);
+    for (let x = 10, k = 0; x < W - 10; x += 24, k++) {   // 고대 문자 (안농 같은 둥근 고리 · 막대)
+      const v = (k * 7) % 5;
+      c.strokeStyle = css(marDD); c.lineWidth = 2; c.beginPath();
+      if (v === 0) c.arc(x + 6, 14, 5, 0, Math.PI * 2); else if (v === 1) { c.moveTo(x + 1, 8); c.lineTo(x + 11, 20); c.moveTo(x + 11, 8); c.lineTo(x + 1, 20); }
+      else if (v === 2) { c.arc(x + 6, 14, 5, Math.PI * .2, Math.PI * 1.8); c.moveTo(x + 6, 14); c.lineTo(x + 12, 14); } else if (v === 3) { c.moveTo(x + 6, 7); c.lineTo(x + 6, 21); c.moveTo(x + 1, 11); c.lineTo(x + 11, 11); } else { c.rect(x + 1, 9, 10, 10); }
+      c.stroke(); F(x + 5, 13, 2, 2, k % 3 ? 0x8ac8ff : 0xffa8d8);
+    }
+    for (let x = 0; x < W; x += 3) F(x, 0, 3, 3 + Math.round(rnd() * 3), snow, .9);   // 프리즈 위 눈
+    // ---- 아치형 대정문 (가운데): 백옥 · 금강 빛이 소용돌이치는 시공의 문 ----
+    const ar = 78, spring = 132, gb = 254;   // 아치 반지름 · 아치 시작 높이 · 문턱
+    const vg = c.createRadialGradient(cx, 168, 4, cx, 176, 120);
+    vg.addColorStop(0, '#ffffff'); vg.addColorStop(.16, '#ffd8f4'); vg.addColorStop(.38, '#a890ff'); vg.addColorStop(.62, '#4a6ae0'); vg.addColorStop(.86, '#1a1850'); vg.addColorStop(1, '#0a0820');
+    c.fillStyle = vg; c.beginPath(); c.moveTo(cx - ar, gb); c.lineTo(cx - ar, spring); c.arc(cx, spring, ar, Math.PI, 0); c.lineTo(cx + ar, gb); c.closePath(); c.fill();
+    c.save(); c.beginPath(); c.moveTo(cx - ar, gb); c.lineTo(cx - ar, spring); c.arc(cx, spring, ar, Math.PI, 0); c.lineTo(cx + ar, gb); c.closePath(); c.clip();
+    for (let arm = 0; arm < 4; arm++) {   // 소용돌이 팔 (금강의 푸른빛 · 백옥의 분홍빛이 번갈아)
+      c.strokeStyle = arm % 2 ? 'rgba(255,150,220,.55)' : 'rgba(130,190,255,.55)'; c.lineWidth = 3; c.beginPath();
+      for (let t = 0; t < 1; t += .02) { const a = arm * Math.PI / 2 + t * Math.PI * 3.2, rr = 6 + t * 96; const x = cx + Math.cos(a) * rr, y = 176 + Math.sin(a) * rr * .9; t === 0 ? c.moveTo(x, y) : c.lineTo(x, y); }
+      c.stroke();
+    }
+    for (let k = 0; k < 40; k++) { const a = rnd() * Math.PI * 2, rr = 10 + rnd() * 90; F(cx + Math.cos(a) * rr, 176 + Math.sin(a) * rr * .9, 2, 2, rnd() < .5 ? 0xffffff : 0xd8c8ff, .8); }   // 빛 알갱이
+    c.restore();
+    // 아치 테 (홍예석 · 이맛돌의 창기둥 문장) · 양옆 벽기둥
+    c.strokeStyle = css(mar); c.lineWidth = 16; c.beginPath(); c.arc(cx, spring, ar + 8, Math.PI, 0); c.stroke();
+    c.strokeStyle = css(marHi); c.lineWidth = 1; c.beginPath(); c.arc(cx, spring, ar + 15, Math.PI, 0); c.stroke();
+    c.strokeStyle = css(marD); c.lineWidth = 1; c.beginPath(); c.arc(cx, spring, ar + 1, Math.PI, 0); c.stroke();
+    for (let k = 1; k < 12; k++) { const a = Math.PI + k / 12 * Math.PI; c.strokeStyle = css(marD); c.beginPath(); c.moveTo(cx + Math.cos(a) * (ar + 1), spring + Math.sin(a) * (ar + 1)); c.lineTo(cx + Math.cos(a) * (ar + 16), spring + Math.sin(a) * (ar + 16)); c.stroke(); }
+    F(cx - 12, spring - ar - 20, 24, 26, mar); F(cx - 12, spring - ar - 20, 24, 2, marHi); F(cx - 10, spring - ar - 16, 20, 18, 0x3a3858);
+    c.fillStyle = css(gold); c.beginPath(); c.moveTo(cx, spring - ar - 14); c.lineTo(cx + 6, spring - ar - 4); c.lineTo(cx, spring - ar + 2); c.lineTo(cx - 6, spring - ar - 4); c.closePath(); c.fill();   // 창 문장 (금빛 마름모)
+    F(cx - 1, spring - ar - 12, 2, 12, 0xfff4c0);
+    for (const d of [-1, 1]) {
+      const px = d < 0 ? cx - ar - 18 : cx + ar + 4;
+      F(px, spring - 6, 14, gb - spring + 6, mar); F(px, spring - 6, 2, gb - spring + 6, marHi); F(px + 11, spring - 6, 3, gb - spring + 6, marD);
+      F(px - 3, spring - 10, 20, 6, mar); F(px - 3, spring - 10, 20, 1, marHi); F(px - 3, spring - 13, 20, 3, snow, .9);
+    }
+    // ---- 코린트식 열주 (6개): 세로 홈 · 아칸서스 잎 기둥머리 · 화면 위로 계속 뻗어 오른다 ----
+    const col = (x, w) => {
+      const top = 30, capB = 62, baseT = 234;
+      F(x + 4, capB, w - 8, baseT - capB, mar);   // 기둥 몸통
+      for (let fx = x + 7; fx < x + w - 6; fx += 5) { F(fx, capB, 2, baseT - capB, marD, .7); F(fx + 2, capB, 1, baseT - capB, marHi, .5); }   // 세로 홈
+      F(x + 4, capB, 2, baseT - capB, marHi); F(x + w - 7, capB, 3, baseT - capB, marDD, .6);
+      // 기둥머리: 아칸서스 잎 두 줄 + 모서리 소용돌이 + 사각 판
+      for (let row = 0; row < 2; row++) for (let lx = x + 2 + row * 4; lx < x + w - 4; lx += 8) { const ly = capB - 10 - row * 10; c.fillStyle = css(row ? mar : marD); c.beginPath(); c.moveTo(lx, ly + 12); c.quadraticCurveTo(lx + 4, ly - 2, lx + 8, ly + 12); c.closePath(); c.fill(); F(lx + 3, ly + 3, 2, 8, marHi, .6); }
+      for (const vx of [x - 2, x + w - 6]) { c.strokeStyle = css(marD); c.lineWidth = 2; c.beginPath(); c.arc(vx + 4, top + 10, 4, 0, Math.PI * 1.6); c.stroke(); }
+      F(x - 4, top, w + 8, 8, mar); F(x - 4, top, w + 8, 1, marHi); F(x - 4, top - 4, w + 8, 4, snow);   // 사각 판 + 쌓인 눈
+      for (let k = 0; k < 3; k++) F(x + 4 + k * 13 + rnd() * 6, top + 8, 2, 4 + rnd() * 8, ice, .8);   // 고드름
+      // 받침 (둥근 테 · 사각 받침돌) + 쌓인 눈
+      F(x, baseT, w, 6, mar); F(x, baseT, w, 1, marHi); F(x - 4, baseT + 6, w + 8, 14, marD); F(x - 4, baseT + 6, w + 8, 1, mar);
+      F(x - 6, baseT - 3, w + 12, 4, snow); for (let k = 0; k < w + 12; k += 4) F(x - 6 + k, baseT - 5, 4, 2 + rnd() * 2, snow);
+      // 금 · 깨진 홈
+      let kx = x + 8 + rnd() * (w - 16), ky = capB + 30 + rnd() * 100; for (let s = 0; s < 18; s++) { F(kx, ky, 1, 2, marDD); kx += rnd() < .5 ? -1 : 1; ky += 2; }
+    };
+    for (const x of [6, 92, 178]) { col(x, 44); col(W - x - 44, 44); }
+    // ---- 눈 덮인 대리석 대계단 (254 → 300): 앞으로 갈수록 넓어진다 ----
+    F(0, 252, W, 4, marD); F(0, 252, W, 1, mar);
+    for (let k = 0; k < 8; k++) {
+      const y = 256 + k * 5.5, w = 120 + k * 34;
+      F(cx - w, y, w * 2, 6, k % 2 ? mar : shade(mar, .94)); F(cx - w, y, w * 2, 1, marHi); F(cx - w, y + 5, w * 2, 1, marD);
+      for (let x = cx - w; x < cx + w; x += 6) F(x, y - 1, 6, 1 + Math.round(rnd() * 2), snow, .95);   // 계단마다 쌓인 눈
+    }
+    for (const d of [-1, 1]) {   // 계단 양옆 눈더미 · 눈 덮인 돌사자 받침
+      const x = d < 0 ? cx - 150 : cx + 126;
+      F(x, 236, 24, 64, marD); F(x, 236, 24, 2, mar); F(x - 4, 228, 32, 10, mar); F(x - 4, 224, 32, 5, snow);
+      c.fillStyle = css(snow); c.beginPath(); c.ellipse(x + 12, 300, 44, 14, 0, Math.PI, 0); c.fill();
+      c.fillStyle = css(snowD); c.beginPath(); c.ellipse(x + 12 + d * 14, 300, 22, 6, 0, Math.PI, 0); c.fill();
+    }
+    // ---- 시공의 뒤틀림: 문틈에서 번지는 푸른 · 분홍 균열 · 떠오른 대리석 조각 ----
+    const vein = (x, y, ang, len, colA, colB) => { for (let i = 0; i < len; i++) { x += Math.cos(ang) * 2; y += Math.sin(ang) * 2; ang += (rnd() - .5) * .6; if (x < 0 || x >= W || y < 30 || y >= 252) return; F(x - 1, y, 2, 2, 0x2a2850); F(x, y, 1, 1, i % 3 ? colA : colB); } };
+    for (const d of [-1, 1]) { vein(cx + d * (ar + 20), 210, d < 0 ? Math.PI * 1.1 : -Math.PI * .1, 40, 0x8ac8ff, 0xffffff); vein(cx + d * (ar + 20), 150, d < 0 ? Math.PI * 1.25 : -Math.PI * .25, 30, 0xff8ad8, 0xffffff); }
+    for (let k = 0; k < 6; k++) { const x = cx + (k < 3 ? -1 : 1) * (100 + (k % 3) * 18), y = 90 + (k % 3) * 34; F(x, y, 8, 5, mar); F(x, y, 8, 1, marHi); F(x + 1, y + 5, 6, 1, marDD); }
+    // 위쪽은 차갑게 가라앉힌다 (천장 위 · 프리즈 쪽)
+    c.save(); c.globalCompositeOperation = 'source-atop';
+    const dk = c.createLinearGradient(0, 0, 0, 200); dk.addColorStop(0, 'rgba(20,24,60,.45)'); dk.addColorStop(1, 'rgba(20,24,60,0)'); c.fillStyle = dk; c.fillRect(0, 0, W, 200); c.restore();
+  });
+}
+// 창기둥 안 1층 출입문: 대리석 아치 안에서 천관산의 눈빛이 비치는 작은 시공의 문 (나가면 정문 앞 성역)
+function spearInnerGateArt(scene) {
+  const W = 64, H = 80, cx = W / 2, mar = 0xbcb8d0, marD = 0x8884a6, marHi = 0xe0dcee;
+  return canvasTex(scene, 'prop:spearinner', W, H, (F, c) => {
+    const g = c.createRadialGradient(cx, 48, 2, cx, 50, 34); g.addColorStop(0, '#e8f0ff'); g.addColorStop(.3, '#a8c0f0'); g.addColorStop(.7, '#5a74c0'); g.addColorStop(1, '#1e1e48');
+    c.fillStyle = g; c.beginPath(); c.moveTo(cx - 18, H); c.lineTo(cx - 18, 36); c.arc(cx, 36, 18, Math.PI, 0); c.lineTo(cx + 18, H); c.closePath(); c.fill();
+    for (let k = 0; k < 14; k++) F(cx - 14 + (k * 7) % 28, 26 + (k * 11) % 50, 1, 1, 0xffffff, .9);   // 비쳐 드는 눈송이
+    c.strokeStyle = css(mar); c.lineWidth = 7; c.beginPath(); c.moveTo(cx - 22, H); c.lineTo(cx - 22, 36); c.arc(cx, 36, 22, Math.PI, 0); c.lineTo(cx + 22, H); c.stroke();
+    c.strokeStyle = css(marHi); c.lineWidth = 1; c.beginPath(); c.arc(cx, 36, 26, Math.PI, 0); c.stroke();
+    F(cx - 5, 8, 10, 8, mar); F(cx - 2, 10, 4, 4, 0xe8c860);
+    for (const x of [0, W - 8]) { F(x, 20, 8, H - 20, mar); F(x, 20, 2, H - 20, marHi); F(x + 6, 20, 2, H - 20, marD); F(x - 1, 16, 10, 5, marD); }
+  });
+}
+// 만년설: 드러난 지형 윗면을 덮는 눈 (16×7 · 흘러내린 자국) · 처마 고드름 · 푸른 얼음 절벽 결
+function snowCapArt(scene, v) {
+  return canvasTex(scene, `prop:snowcap:${v}`, 16, 7, F => {
+    F(0, 1, 16, 3, 0xf4f8ff); F(0, 1, 16, 1, 0xffffff);
+    for (let x = 0; x < 16; x += 2) F(x, 0, 2, ((x * 7 + v * 5) % 3) ? 1 : 0, 0xffffff);
+    for (let x = (v * 5) % 6; x < 16; x += 6) F(x, 4, 2, 1 + ((x + v) % 3), 0xe0eaff);
+    F(0, 3, 16, 1, 0xc8d8f0, .7);
+  });
+}
+function icicleArt(scene, v) {
+  const h = 6 + v * 3;
+  return canvasTex(scene, `prop:icicle:${v}`, 5, h, F => { for (let y = 0; y < h; y++) { const w = Math.max(1, Math.round(4 * (1 - y / h))); F(2 - Math.floor(w / 2), y, w, 1, y % 3 ? 0xa8d8ff : 0xe8f6ff); } F(1, 0, 1, h - 2, 0xffffff, .8); });
+}
+function iceFaceArt(scene) {
+  return canvasTex(scene, 'prop:iceface', 5, 16, F => { F(0, 0, 5, 16, 0x8ac8ff, .4); F(1, 0, 1, 16, 0xd8f0ff, .7); F(3, 2, 1, 10, 0x5aa0e8, .5); F(0, 0, 5, 1, 0xffffff, .8); });
+}
+// 협곡 능선의 고대 돌기둥 (배경): 푸른 잿빛 돌 · 이끼 대신 서리 · 위에 쌓인 눈 · 몇은 부러졌다
+function ancientPillarArt(scene, h, broken) {
+  const W = 40, H = h * 16, st = 0x7a8298;
+  return canvasTex(scene, `prop:apillar:${h}:${broken ? 1 : 0}`, W, H + 10, (F, c) => {
+    const top = broken ? 30 : 10;
+    for (let y = top; y < H; y++) { const seg = Math.floor((H - y) / 26); F(6, y + 6, 28, 1, (H - y) % 26 === 0 ? shade(st, .55) : seg % 2 ? st : shade(st, .92)); F(6, y + 6, 3, 1, shade(st, 1.35)); F(30, y + 6, 4, 1, shade(st, .6)); }
+    if (broken) { for (let x = 0; x < 28; x++) c.clearRect(6 + x, top + 6, 1, Math.round(3 + Math.abs(Math.sin(x * .9)) * 10)); }
+    else { F(2, top, 36, 7, shade(st, 1.1)); F(2, top, 36, 1, 0xd8e0f0); F(0, top - 4, 40, 5, 0xf4f8ff); for (let k = 0; k < 4; k++) F(6 + k * 9, top + 7, 2, 5 + (k % 2) * 4, 0xa8d8ff); }
+    for (let k = 0; k < 4; k++) { const y = top + 20 + k * (H - top - 30) / 4; F(6, y, 28, 2, 0xe8f0ff, .55); }   // 홈에 낀 서리
+    F(2, H + 4, 36, 6, shade(st, .7)); F(0, H + 2, 40, 3, 0xf4f8ff);
+    F(14, top + 30, 12, 10, shade(st, .8)); c.strokeStyle = 'rgba(138,200,255,.6)'; c.lineWidth = 1; c.beginPath(); c.arc(20, top + 35, 4, 0, Math.PI * 2); c.stroke();   // 새겨진 고대 문양
+  });
+}
+// 창기둥 안: 흰 대리석 기둥(배경 · 금 가고 부러짐) · 바닥에 쓰러진 기둥 토막 · 맥동하는 금강(푸른) · 백옥(분홍) 결정 · 제단
+function marbleColumnArt(scene, h, v) {
+  const W = 36, H = h * 16, mar = 0xbcb8d0, marD = 0x8884a6, marHi = 0xe0dcee;
+  return canvasTex(scene, `prop:mcol:${h}:${v}`, W, H + 8, (F, c) => {
+    const top = v % 2 ? 24 : 12;
+    F(4, top, 28, H - top, mar);
+    for (let x = 7; x < 30; x += 5) { F(x, top, 2, H - top, marD, .6); F(x + 2, top, 1, H - top, marHi, .5); }
+    F(4, top, 2, H - top, marHi); F(29, top, 3, H - top, 0x8a88a8, .6);
+    if (v % 2) for (let x = 0; x < 28; x++) c.clearRect(4 + x, top, 1, Math.round(2 + Math.abs(Math.sin(x * 1.1 + v)) * 12));   // 부러진 꼭대기
+    else { F(0, 4, 36, 8, mar); F(0, 4, 36, 1, marHi); for (let k = 0; k < 4; k++) { c.fillStyle = css(marD); c.beginPath(); c.moveTo(4 + k * 8, 20); c.quadraticCurveTo(8 + k * 8, 10, 12 + k * 8, 20); c.fill(); } }
+    F(0, H, 36, 8, marD); F(0, H, 36, 1, mar);
+    let x = 10 + (v * 5) % 14, y = top + 20; for (let s = 0; s < 24; s++) { F(x, y, 1, 2, 0x6a688c); x += (s + v) % 2 ? -1 : 1; y += 2; }
+  });
+}
+function fallenDrumArt(scene, v) {
+  const W = 46, H = 22, mar = 0xbcb8d0, marD = 0x8884a6;
+  return canvasTex(scene, `prop:mdrum:${v}`, W, H, (F, c) => {
+    F(2, 6, 38, 16, mar); for (let y = 8; y < 22; y += 4) F(2, y, 38, 1, marD, .7); F(2, 6, 38, 1, 0xe0dcee);
+    c.fillStyle = css(0xa8a4c0); c.beginPath(); c.ellipse(40, 14, 5, 8, 0, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = css(marD); c.beginPath(); c.ellipse(40, 14, 3, 6, 0, 0, Math.PI * 2); c.stroke();
+    if (v % 2) { F(0, 14, 12, 8, mar); F(0, 14, 12, 1, 0xe0dcee); F(-2 + 14, 18, 6, 4, marD); }
+    for (let k = 0; k < 4; k++) F(6 + k * 9, 21, 6, 1, 0x6a688c);
+  });
+}
+function spearCrystalArt(scene, kind) {
+  const [a, b, hi] = kind === 'pink' ? [0xc83a8a, 0xff7ac8, 0xffe0f4] : [0x2a5ad8, 0x6aa8ff, 0xe0f0ff];
+  return canvasTex(scene, `prop:scrystal:${kind}`, 22, 30, (F, c) => {
+    const shard = (x, w, h, col) => { c.fillStyle = css(col); c.beginPath(); c.moveTo(x, 30); c.lineTo(x + w / 2, 30 - h); c.lineTo(x + w, 30); c.closePath(); c.fill(); };
+    shard(0, 9, 16, a); shard(13, 9, 19, a); shard(5, 12, 30, b); F(10, 6, 2, 20, hi, .9); F(3, 18, 1, 8, hi, .6); F(17, 15, 1, 10, hi, .6);
+  });
+}
+function spearAltarArt(scene) {
+  const W = 220, H = 74, cx = W / 2, mar = 0xbcb8d0, marD = 0x8884a6, marHi = 0xe0dcee;
+  return canvasTex(scene, 'prop:spearaltar', W, H, (F, c) => {
+    for (let k = 0; k < 4; k++) { const w = 110 - k * 18, y = H - 8 - k * 8; F(cx - w, y, w * 2, 8, k % 2 ? mar : shade(mar, .95)); F(cx - w, y, w * 2, 1, marHi); F(cx - w, y + 7, w * 2, 1, marD); }
+    F(cx - 22, 10, 44, 34, mar); F(cx - 22, 10, 44, 2, marHi); F(cx + 18, 10, 4, 34, marD);   // 가운데 제대
+    c.strokeStyle = '#e8c860'; c.lineWidth = 2; c.beginPath(); c.moveTo(cx, 16); c.lineTo(cx + 9, 27); c.lineTo(cx, 38); c.lineTo(cx - 9, 27); c.closePath(); c.stroke();
+    for (const [d, col] of [[-1, 0x6aa8ff], [1, 0xff7ac8]]) {   // 양옆 받침 위 금강옥 · 백옥
+      const x = cx + d * 70; F(x - 8, 24, 16, 26, mar); F(x - 8, 24, 16, 1, marHi); F(x - 10, 20, 20, 5, marD);
+      c.fillStyle = css(col); c.beginPath(); c.arc(x, 13, 8, 0, Math.PI * 2); c.fill(); F(x - 3, 8, 3, 3, 0xffffff);
+    }
+  });
+}
+// 깨어진 세계: 떠 있는 바위섬(배경) · 거꾸로 자란 수정 나무 · 거슬러 오르는 폭포 물줄기 · 차원 도약 수정 · 반물질의 왕좌
+function floatRockArt(scene, v) {
+  const W = 70, H = 46;
+  return canvasTex(scene, `prop:frock:${v}`, W, H, (F, c) => {
+    c.fillStyle = '#2a1a3e'; c.beginPath(); c.moveTo(4, 10); c.lineTo(66, 8); c.lineTo(56, 22); c.lineTo(38, 44 - v * 3); c.lineTo(20, 26); c.closePath(); c.fill();
+    F(4, 7, 62, 4, 0x4a3a6a); F(4, 7, 62, 1, 0x8a6ac8);
+    for (let k = 0; k < 4; k++) F(12 + k * 13 + v * 2, 4 - (k % 2) * 3, 3, 4 + (k % 2) * 3, k % 2 ? 0x6affe8 : 0xc08aff);
+    for (let k = 0; k < 8; k++) F(14 + (k * 7) % 40, 14 + (k * 5) % 18, 3, 2, 0x3a2a54);
+  });
+}
+function invTreeArt(scene, v) {
+  const W = 36, H = 52;
+  return canvasTex(scene, `prop:invtree:${v}`, W, H, (F, c) => {
+    F(17, 0, 3, 30, 0x2a1a3a); F(17, 0, 1, 30, 0x5a3a7a);
+    c.strokeStyle = '#2a1a3a'; c.lineWidth = 2;
+    for (const [x0, y0, x1, y1] of [[18, 10, 6, 22], [19, 14, 30, 24], [18, 22, 10, 32], [19, 20, 26, 34]]) { c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke(); }
+    const leaf = (x, y, col) => { c.fillStyle = css(col); c.beginPath(); c.moveTo(x - 4, y); c.lineTo(x + 4, y); c.lineTo(x, y + 10); c.closePath(); c.fill(); };   // 아래로 뾰족한 수정 잎
+    for (const [x, y] of [[6, 22], [30, 24], [10, 32], [26, 34], [18, 30], [14, 40], [22, 42]]) leaf(x, y, (x + v) % 3 ? 0x8a4aff : 0x4affd8);
+    for (const [x, y] of [[6, 24], [26, 36], [18, 32]]) F(x - 1, y, 2, 5, 0xffffff, .7);
+  });
+}
+function revFallArt(scene) {
+  return canvasTex(scene, 'prop:revfall', 12, 48, F => {
+    for (let y = 0; y < 48; y++) { F(1, y, 10, 1, 0x3ad8e8, .35); if ((y * 7) % 11 < 3) F(2 + (y * 3) % 7, y, 2, 1, 0xd8ffff, .9); }
+    F(0, 0, 1, 48, 0x8affff, .5); F(11, 0, 1, 48, 0x8affff, .5);
+  });
+}
+function padCrystalArt(scene) {
+  return canvasTex(scene, 'prop:padcrystal', 34, 24, (F, c) => {
+    F(2, 20, 30, 4, 0x2a1a44); F(2, 20, 30, 1, 0x8a6ac8);
+    const shard = (x, w, h, col) => { c.fillStyle = css(col); c.beginPath(); c.moveTo(x, 21); c.lineTo(x + w / 2, 21 - h); c.lineTo(x + w, 21); c.closePath(); c.fill(); };
+    shard(3, 8, 9, 0x6a2ad8); shard(23, 8, 10, 0x6a2ad8); shard(10, 14, 18, 0xb070ff); F(16, 6, 2, 12, 0xf0e0ff);
+    c.strokeStyle = '#8affe8'; c.lineWidth = 1; c.beginPath(); c.moveTo(13, 14); c.lineTo(17, 9); c.lineTo(21, 14); c.stroke();   // 위로 솟는 화살 문양
+  });
+}
+function throneArt(scene) {
+  const W = 150, H = 170, cx = W / 2;
+  return canvasTex(scene, 'prop:throne', W, H, (F, c) => {
+    for (const [d, h] of [[-1, 120], [1, 120], [-1, 80], [1, 80]]) {   // 등받이 뒤로 솟은 검붉은 반물질 가시
+      const x = cx + d * (h > 100 ? 52 : 70);
+      c.fillStyle = '#14060e'; c.beginPath(); c.moveTo(x - 9, H - 30); c.lineTo(x + d * 10, H - 30 - h); c.lineTo(x + 9, H - 30); c.closePath(); c.fill();
+      c.strokeStyle = '#ff2a4a'; c.lineWidth = 1; c.beginPath(); c.moveTo(x, H - 34); c.lineTo(x + d * 10, H - 30 - h); c.stroke();
+    }
+    F(cx - 40, 30, 80, H - 60, 0x1a0a1e); F(cx - 40, 30, 80, 3, 0x6a2a4a); F(cx - 34, 38, 68, H - 74, 0x2a0e2a);   // 높은 등받이
+    c.fillStyle = '#c8a040'; for (let k = 0; k < 6; k++) { const a = Math.PI + k / 5 * Math.PI; c.fillRect(cx + Math.cos(a) * 30 - 2, 52 + Math.sin(a) * 18, 4, 4); }   // 등받이의 금빛 고리 (기라티나의 금 장식)
+    F(cx - 6, 46, 12, 12, 0xff2a4a); F(cx - 3, 49, 6, 6, 0xffa0b0);
+    F(cx - 54, H - 48, 108, 14, 0x2a0e2a); F(cx - 54, H - 48, 108, 2, 0x8a3a5a);   // 앉는 자리
+    for (const d of [-1, 1]) { F(cx + d * 54 - (d < 0 ? 0 : 12), H - 70, 12, 40, 0x1a0a1e); F(cx + d * 54 - (d < 0 ? 0 : 12), H - 72, 12, 3, 0xc8a040); }   // 팔걸이
+    for (let k = 0; k < 3; k++) { const w = 70 - k * 0 + k * 14; F(cx - w, H - 30 + k * 10, w * 2, 10, k % 2 ? 0x1a0a1e : 0x241024); F(cx - w, H - 30 + k * 10, w * 2, 1, 0x6a2a4a); }   // 단
+  });
+}
+
 export class Props {
   constructor(scene, level, stage, si) {
     this.s = scene; this.level = level; this.stage = stage; this.si = si;
@@ -1139,6 +1363,7 @@ export class Props {
     this.buildAtmosphere();
     this.buildBellTower();
     this.buildHoenn();
+    this.buildSinnoh();
     this.groupByRoom();
   }
 
@@ -1192,7 +1417,7 @@ export class Props {
       }
     }
     // 탑 안 1층 출입문 (방울로드 정문으로 나간다): 붉은 옻칠 양개문 + 문틀 + 깔개
-    for (const r of rooms.filter(q => q.portalFrom)) {
+    for (const r of rooms.filter(q => q.portalFrom && !q.spear)) {   // 창기둥 안 출입문은 buildSinnoh
       const Y = (r.portalY ?? r.F) * TILE, w = 28, h = 46, x = r.left + 8;
       this.lit(s.add.image(x - 4, Y, labDoorFrameArt(s, w, h)).setOrigin(0, 1).setDepth(2.75));
       const d = this.door(x, Y, w, h, 0x9a2a1a, true, 2.8);
@@ -1307,6 +1532,260 @@ export class Props {
           if (k % 2 === 0) this.light(x, y - 6, 120, 0x4affb0, 1.2);
         }
       }
+    }
+  }
+
+  // 신오: 천관산 만년설 협곡(지형마다 쌓인 눈 · 고드름 · 푸른 얼음 절벽 · 능선의 고대 돌기둥) · 창기둥 정문 외관(정문 앞 성역) · 창기둥 안(흰 대리석 기둥 · 쓰러진 기둥 토막 · 맥동하는 금강 · 백옥 결정 · 제단)
+  //  · 제단 뒤 차원 균열(펄기아까지 정화하면 열린다 — openRift) · 깨어진 세계(떠 있는 바위 · 거꾸로 자란 수정 나무 · 거슬러 오르는 폭포 · 차원 도약 수정 · 유령 발판 · 반물질의 왕좌)
+  //  방 표시는 game/World.js (snowPeak · spearGate · spear · spearAltar · distortion · throne) · 하늘 · 눈발 · 밝기는 GameScene
+  buildSinnoh() {
+    const s = this.s, G = this.level.grid;
+    const solid = (x, y) => G[y] && (G[y][x] === 'S' || G[y][x] === 'B'), empty = (x, y) => G[y] && G[y][x] === '.';
+    const floorRow = (r, tx) => { for (let y = r.F; y > r.ty0; y--) if (solid(tx, y) && empty(tx, y - 1) && empty(tx, y - 2)) return y; return null; };   // 방 바닥 쪽에서 가장 가까운 디딜 면
+    const label = (x, y, text, color, stroke) => this.add(s.add.text(x, y, text, { fontFamily: 'Galmuri9', fontSize: '9px', color, stroke, strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(3.5));
+    this.revFalls = []; this.pads = []; this.phase = []; this.rift = null;
+    for (const r of this.level.rooms) {
+      const Y = r.F * TILE;
+      if (r.snowPeak) {
+        // 드러난 지형 윗면마다 만년설 (가로로 이어진 줄마다 한 장) · 턱 · 천장 아래 고드름 · 지형 옆면의 푸른 얼음
+        for (let ty = r.ty0 - 1; ty <= r.F; ty++) {
+          let run = null;
+          for (let tx = r.tx0; tx <= r.tx1; tx++) {
+            const top = tx < r.tx1 && solid(tx, ty) && empty(tx, ty - 1);
+            if (top && !run) run = tx;
+            if (!top && run !== null) { this.add(s.add.tileSprite(run * TILE, ty * TILE - 1, (tx - run) * TILE, 7, snowCapArt(s, (run + ty) % 3)).setOrigin(0, 0).setDepth(10.3)); run = null; }
+            if (tx >= r.tx1 || !solid(tx, ty)) continue;
+            if (empty(tx, ty + 1) && (tx * 5 + ty * 3) % 4 === 0) this.add(s.add.image(tx * TILE + 8, (ty + 1) * TILE, icicleArt(s, (tx + ty) % 3)).setOrigin(.5, 0).setDepth(10.3).setAlpha(.9));
+            if (ty > r.ty0 && ty < r.F && tx > r.tx0 && tx < r.tx1 - 1) {
+              if (empty(tx - 1, ty)) this.add(s.add.image(tx * TILE, ty * TILE, iceFaceArt(s)).setOrigin(0, 0).setDepth(10.25));
+              if (empty(tx + 1, ty)) this.add(s.add.image(tx * TILE + TILE - 5, ty * TILE, iceFaceArt(s)).setOrigin(0, 0).setDepth(10.25).setFlipX(true));
+            }
+          }
+        }
+        // 능선의 고대 돌기둥 (배경 · 정문 앞 성역은 비운다) · 설산의 찬 빛
+        for (let x = r.left + 80, k = 0; x < r.right - 50; x += 190 + (k * 37) % 80, k++) {
+          if (r.spearGate && x > r.doorTx * TILE - 360) continue;
+          const tx = Math.floor(x / TILE), base = floorRow(r, tx);
+          if (base === null) continue;
+          const h = Math.min(8, base - r.ty0 - 2);
+          if (h >= 3) this.lit(s.add.image(x, base * TILE + 4, ancientPillarArt(s, h, k % 3 === 1)).setOrigin(.5, 1).setDepth(3.6));
+        }
+        this.light(r.cx, r.top + 30, Math.max(300, (r.right - r.left) * .6), 0xd8e8ff, .5);
+      }
+      if (r.spearGate) {
+        // 창기둥 정문 (협곡 끝 성역): 화면을 압도하는 열주 · 대정문 (정문 한가운데 = r.doorTx) — 방 천장 위로 솟은 열주는 천장 바위 앞에 그려 화면 위로 끝없이 이어지게
+        const gx = r.doorTx * TILE + 8, AW = 640, AH = 300, art = spearGateArt(s), cutH = r.top - (Y + 2 - AH), vy = Y + 2 - AH + 182;
+        this.lit(s.add.image(gx, Y + 2, art).setOrigin(.5, 1).setDepth(3.4));
+        if (cutH > 0) { const c0 = Math.max(0, cutH - 88); this.lit(s.add.image(gx, Y + 2, art).setOrigin(.5, 1).setCrop(0, c0, AW, cutH - c0).setDepth(10.45)); }
+        // 대정문 안 시공의 소용돌이: 금강(푸른) · 백옥(분홍) 빛이 천천히 돌며 숨 쉬듯 일렁인다
+        const swirl = this.add(s.add.image(gx, vy, 'glow').setBlendMode(ADD).setTint(0xb8a0ff).setScale(3, 3.4).setAlpha(.45).setDepth(3.45));
+        const core = this.add(s.add.image(gx, vy - 6, 'glow').setBlendMode(ADD).setTint(0xffffff).setScale(1.1).setAlpha(.6).setDepth(3.46));
+        this.pulses.push({ o: swirl, base: .4, amp: .12, sp: 1.1 }, { o: core, base: .5, amp: .2, sp: 2.3 });
+        const ring = this.add(s.add.graphics().setDepth(3.47).setBlendMode(ADD).setPosition(gx, vy));
+        for (let k = 0; k < 4; k++) {
+          ring.lineStyle(2, k % 2 ? 0xff9ad8 : 0x8ac8ff, .55); ring.beginPath();
+          for (let t = 0; t <= 1.001; t += .04) { const a = k * Math.PI / 2 + t * 4.4, rr = 8 + t * 62, x = Math.cos(a) * rr, y = Math.sin(a) * rr * .92; if (t === 0) ring.moveTo(x, y); else ring.lineTo(x, y); }
+          ring.strokePath();
+        }
+        s.tweens.add({ targets: ring, angle: 360, duration: 9000, repeat: -1 });
+        label(gx, Y - 241, '槍 柱 · 창기둥', '#e0e8ff', '#1a1838');
+        this.light(gx, vy, 240, 0xb8a0ff, .8);
+        this.light(gx - 150, Y - 70, 180, 0x8ac8ff, .4); this.light(gx + 150, Y - 70, 180, 0xff9ad8, .4);
+        // 정문 출입 (방울탑처럼 ↑/F → 암전 → 창기둥 안 1층 출입문 앞)
+        if (r.portalTo) this.interacts.push({ kind: 'door', pair: 'spear', side: 'out', face: -1, x: gx, y: Y, range: 70, used: false, repeat: true, prompt: '[F 또는 ↑ : 창기둥 안으로 들어가기]', promptY: Y - 128, door: null, glowAt: { x: gx, y: vy } });
+      }
+      if (r.spear) {
+        // 창기둥 안 1층 출입문 (협곡의 정문 앞 성역으로 나간다): 대리석 아치 안에 설산의 눈빛
+        if (r.portalFrom) {
+          const PY = (r.portalY ?? r.F) * TILE, x = r.left + 40;
+          this.lit(s.add.image(x, PY, spearInnerGateArt(s)).setOrigin(.5, 1).setDepth(2.8));
+          const gl = this.glow(x, PY - 30, 1, 0xb8d0ff, .22, 2.85);
+          this.pulses.push({ o: gl, base: .2, amp: .08, sp: 1.4 });
+          this.light(x, PY - 30, 120, 0xc8e0ff, .6);
+          label(x, PY - 84, '출구 · 천관산', '#e0ecff', '#141a30');
+          this.interacts.push({ kind: 'door', pair: 'spear', side: 'in', face: 1, x, y: PY, range: 22, used: false, repeat: true, prompt: '[F 또는 ↑ : 창기둥 밖으로 나가기]', promptY: PY - 98, door: null, glowAt: { x, y: PY - 30 } });
+        }
+        // 흰 대리석 기둥 (배경 · 몇은 부러졌다) · 바닥에 쓰러진 기둥 토막 · 금강 · 백옥 결정 (빛이 맥동한다) · 높은 틈으로 드는 연보랏빛
+        for (let x = r.left + 60, k = 0; x < r.right - 40; x += 150 + (k * 29) % 50, k++) {
+          if ((r.portalFrom && x < r.left + 110) || (r.spearAltar && Math.abs(x - r.cx) < 150)) continue;
+          const tx = Math.floor(x / TILE), base = floorRow(r, tx);
+          if (base === null) continue;
+          const h = Math.min(9, base - r.ty0 - 1);
+          if (h >= 3) this.lit(s.add.image(x, base * TILE + 6, marbleColumnArt(s, h, k)).setOrigin(.5, 1).setDepth(3.6));
+        }
+        for (let x = r.left + 130, k = 0; x < r.right - 60; x += 240 + (k * 41) % 60, k++) {
+          const tx = Math.floor(x / TILE), base = floorRow(r, tx);
+          if (base === null || !empty(tx + 2, base - 1) || !solid(tx + 2, base)) continue;
+          this.lit(s.add.image(x, base * TILE + 1, fallenDrumArt(s, k)).setOrigin(.5, 1).setDepth(6.1).setFlipX(k % 2 === 1));
+        }
+        for (let x = r.left + 90, k = 0; x < r.right - 40; x += 120 + (k * 23) % 40, k++) {
+          const tx = Math.floor(x / TILE), base = floorRow(r, tx);
+          if (base === null || (r.portalFrom && x < r.left + 90)) continue;
+          const pink = k % 2 === 1, col = pink ? 0xff7ac8 : 0x6aa8ff, y = base * TILE + 1;
+          this.add(s.add.image(x, y, spearCrystalArt(s, pink ? 'pink' : 'blue')).setOrigin(.5, 1).setDepth(6.2).setScale(k % 3 ? 1 : 1.3));
+          const h = this.add(s.add.image(x, y - 14, 'glow').setBlendMode(ADD).setTint(col).setScale(.9).setAlpha(.5).setDepth(6.3));
+          this.pulses.push({ o: h, base: .45, amp: .25, sp: 1.2 + (k % 3) * .5 });
+          if (k % 2 === 0) this.light(x, y - 14, 110, col, .8);
+        }
+        for (let x = r.left + 70; x < r.right; x += 170) this.add(s.add.image(x, r.top + 6, 'glow').setOrigin(.5, 0).setBlendMode(ADD).setTint(0xe8dcff).setScale(1.1, 5.5).setAlpha(.14).setDepth(3.3).setAngle(-12));
+        // 디아루가 · 펄기아 제단 (아레나 가운데 뒤) + 그 뒤 차원 균열 (평소엔 닫혀 있다)
+        if (r.spearAltar) {
+          this.lit(s.add.image(r.cx, Y + 2, spearAltarArt(s)).setOrigin(.5, 1).setDepth(3.5));
+          for (const [d, col] of [[-1, 0x6aa8ff], [1, 0xff7ac8]]) {
+            const o = this.add(s.add.image(r.cx + d * 70, Y - 61, 'glow').setBlendMode(ADD).setTint(col).setScale(.7).setAlpha(.6).setDepth(3.55));
+            this.pulses.push({ o, base: .5, amp: .25, sp: 1.6 });
+            this.light(r.cx + d * 70, Y - 61, 130, col, .7);
+          }
+          if (r.riftTo) this.buildRift(r, r.cx, Y - 118, !!r.cleared);
+        }
+      }
+      if (r.distortion) {
+        // 떠 있는 바위 (배경 · 천천히 오르내린다)
+        const W = r.right - r.left, Hh = Y - r.top;
+        for (let k = 0; k < Math.max(2, Math.round(W / 260)); k++) {
+          const o = this.add(s.add.image(r.left + ((k * 211 + r.id * 53) % 997) / 997 * W, r.top + 20 + ((k * 89 + r.id * 31) % 401) / 401 * Hh * .5, floatRockArt(s, k % 3)).setDepth(1.9).setAlpha(.85).setScale(k % 2 ? .8 : 1.1));
+          s.tweens.add({ targets: o, y: o.y - 8, duration: 2600 + k * 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+        }
+        // 부유섬 밑으로 거꾸로 자란 수정 나무
+        for (const [k, isl] of (r.islands || []).entries()) {
+          if (!solid(isl.x + (isl.w >> 1), isl.y + 2)) continue;
+          this.lit(s.add.image((isl.x + isl.w / 2) * TILE, (isl.y + 3) * TILE - 1, invTreeArt(s, k % 3)).setOrigin(.5, 0).setDepth(9.7));
+          const g = this.add(s.add.image((isl.x + isl.w / 2) * TILE, (isl.y + 3) * TILE + 40, 'glow').setBlendMode(ADD).setTint(k % 2 ? 0x4affd8 : 0xa070ff).setScale(.6).setAlpha(.4).setDepth(9.75));
+          this.pulses.push({ o: g, base: .35, amp: .15, sp: 1.3 + k * .2 });
+        }
+        // 거슬러 오르는 폭포: 바닥 물웅덩이에서 천장까지 물줄기가 위로 흐른다
+        for (let k = 0; k < Math.max(1, Math.round(W / 420)); k++) {
+          const x = r.left + W * (.25 + k * .5) + ((r.id * 37) % 60) - 30;
+          const w = this.add(s.add.tileSprite(x, r.top, 12, Y - r.top, revFallArt(s)).setOrigin(.5, 0).setDepth(3.3).setAlpha(.6));
+          this.revFalls.push(w);
+          this.add(s.add.image(x, Y - 2, 'glow').setBlendMode(ADD).setTint(0x3ad8e8).setScale(1.4, .3).setAlpha(.5).setDepth(3.31));
+          const sp = this.add(s.add.image(x, r.top + 4, 'glow').setBlendMode(ADD).setTint(0x8affff).setScale(1, .5).setAlpha(.4).setDepth(3.31));
+          this.pulses.push({ o: sp, base: .35, amp: .15, sp: 3 });
+        }
+        // 반물질의 왕좌 (기라티나 성소 한가운데)
+        if (r.throne) {
+          this.lit(s.add.image(r.cx, Y + 2, throneArt(s)).setOrigin(.5, 1).setDepth(3.5));
+          const g = this.add(s.add.image(r.cx, Y - 110, 'glow').setBlendMode(ADD).setTint(0xff2a4a).setScale(2.4, 3).setAlpha(.3).setDepth(3.45));
+          this.pulses.push({ o: g, base: .26, amp: .12, sp: .8 });
+          this.light(r.cx, Y - 90, 240, 0xff3a5a, 1.2); this.light(r.cx, Y - 30, 200, 0xc06aff, .8);
+        }
+        // 깨어진 세계 첫 방: 창기둥 제단으로 돌아가는 작은 균열
+        if (r.riftFrom) {
+          const d = this.level.doors.find(q => q.rift), x = (d ? d.portalIn.x : r.tx0 + 4) * TILE + 8, PY = (d ? d.portalIn.y : r.F) * TILE;
+          this.vortex(x, PY - 40, .55, 3.4);
+          label(x, PY - 92, '균열 · 창기둥 제단', '#ffb8d0', '#1a0612');
+          this.light(x, PY - 40, 150, 0xff3a6a, 1.2);
+          this.interacts.push({ kind: 'door', pair: 'rift', side: 'in', face: 1, x, y: PY, range: 26, used: false, repeat: true, prompt: '[F 또는 ↑ : 균열을 지나 창기둥으로]', promptY: PY - 104, door: null, glowAt: { x, y: PY - 40 } });
+        }
+      }
+    }
+    // 차원 도약 수정: 밟거나 치면 높이 솟구친다 (updatePads · hitRect)
+    for (const pd of this.level.pads || []) {
+      const x = (pd.x + 1) * TILE, y = pd.g * TILE;
+      const img = this.add(s.add.image(x, y + 2, padCrystalArt(s)).setOrigin(.5, 1).setDepth(6.4));
+      const glow = this.add(s.add.image(x, y - 12, 'glow').setBlendMode(ADD).setTint(0xb070ff).setScale(1.1, .9).setAlpha(.5).setDepth(6.5));
+      const beam = this.add(s.add.image(x, y - 8, 'glow').setOrigin(.5, 1).setBlendMode(ADD).setTint(0x8affe8).setScale(.3, 2.4).setAlpha(.18).setDepth(6.3));
+      this.pulses.push({ o: glow, base: .45, amp: .2, sp: 2.4 }, { o: beam, base: .16, amp: .08, sp: 1.6 });
+      this.light(x, y - 14, 110, 0xb070ff, 1.3);
+      this.pads.push({ x, y, img, glow, cd: 0 });
+    }
+    this.buildPhase();
+  }
+  // 차원의 소용돌이 (검붉은 · 보랏빛 반물질 · 한가운데는 검게 꺼진 구멍 · 천천히 도는 나선): 창기둥 제단 뒤 균열 · 깨어진 세계 쪽 출구가 같이 쓴다
+  vortex(x, y, sc, depth) {
+    const s = this.s;
+    const vio = this.add(s.add.image(x, y, 'glow').setBlendMode(ADD).setTint(0x5a10c0).setScale(3.4 * sc, 4.6 * sc).setAlpha(.24).setDepth(depth));
+    const red = this.add(s.add.image(x, y, 'glow').setBlendMode(ADD).setTint(0xb0102a).setScale(2.4 * sc, 3.6 * sc).setAlpha(.34).setDepth(depth + .005));
+    this.pulses.push({ o: red, base: .32, amp: .1, sp: 1.7 }, { o: vio, base: .22, amp: .08, sp: 1.1 });
+    const sp = this.add(s.add.graphics().setDepth(depth + .01).setBlendMode(ADD).setPosition(x, y).setScale(sc, sc * 1.5));
+    for (let k = 0; k < 3; k++) {
+      sp.lineStyle(3, k === 1 ? 0x7a2ad8 : 0xc0102e, .75); sp.beginPath();
+      for (let t = 0; t <= 1.001; t += .04) { const a = k * Math.PI * 2 / 3 + t * 5, rr = 4 + t * 46; if (t === 0) sp.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); else sp.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+      sp.strokePath();
+    }
+    sp.lineStyle(2, 0xff5a7a, .45); sp.strokeEllipse(0, 0, 70, 70);
+    s.tweens.add({ targets: sp, angle: -360, duration: 5200, repeat: -1 });
+    const core = this.add(s.add.image(x, y, 'glow').setTint(0x0a0006).setScale(1.1 * sc, 1.9 * sc).setAlpha(.92).setDepth(depth + .015));   // 빛을 삼키는 검은 심
+    return [vio, red, sp, core];
+  }
+  // 창기둥 제단 뒤 차원 균열: 닫혀 있으면 안 보이고 조사도 안 된다 → 펄기아까지 정화하면 열린다 (GameScene.openRift · 방이 cleared 로 저장돼 다시 와도 열려 있다)
+  buildRift(r, x, y, open) {
+    const objs = this.vortex(x, y, 1.15, 3.3);
+    const it = { kind: 'door', pair: 'rift', side: 'out', face: 1, x, y: r.F * TILE, range: 46, used: !open, repeat: true, prompt: '[F 또는 ↑ : 차원의 균열 속으로]', promptY: y - 76, door: null, glowAt: { x, y } };
+    this.interacts.push(it);
+    const light = this.light(x, y, 220, 0xd01a4a, open ? 1 : 0);
+    this.rift = { objs, it, light, x, y, open, room: r, scales: objs.map(o => [o.scaleX, o.scaleY]) };
+    if (!open) for (const o of objs) o.setVisible(false);
+  }
+  openRift() {
+    const R = this.rift, s = this.s;
+    if (!R || R.open) return;
+    R.open = true; R.it.used = false;
+    R.objs.forEach((o, i) => { o.setVisible(true).setScale(0, 0); s.tweens.add({ targets: o, scaleX: R.scales[i][0], scaleY: R.scales[i][1], duration: 1400, ease: 'Back.easeOut' }); });
+    if (R.light) s.tweens.add({ targets: R.light, intensity: 1, duration: 1400 });
+  }
+
+  // 유령 발판: 깨어진 세계의 통과 발판 줄 (World.phase). 멀리선 희미한 윤곽만 — 다가가면 흩어진 보랏빛 조각이 모여들어 단단한 발판으로 조립된다 (밟히는 건 언제나 — 길 보장과 같다)
+  buildPhase() {
+    const s = this.s;
+    for (const ph of this.level.phase || []) {
+      const r = ph.room; if (!r || !r.layer) continue;
+      const tiles = [];
+      for (let x = ph.x0; x <= ph.x1; x++) { const t = r.layer.getTileAt(x - r.X0, ph.y - r.Y0); if (t) { t.alpha = .22; tiles.push(t); } }
+      const shards = [];
+      for (let x = ph.x0; x <= ph.x1; x++) for (let k = 0; k < 1; k++) {
+        const tx = x * TILE + 8, ty = ph.y * TILE + 3, a = ((x * 7 + k * 13) % 17) / 17 * Math.PI * 2, d = 26 + ((x * 11 + k * 5) % 7) * 6;
+        const o = this.add(s.add.image(tx, ty, 'px').setBlendMode(ADD).setTint(x % 2 ? 0x8affe8 : 0xc08aff).setScale(2, 1.5).setAlpha(.4).setDepth(10.35));
+        shards.push({ o, tx, ty, hx: tx + Math.cos(a) * d, hy: ty + Math.sin(a) * d * .7, ph: a });
+      }
+      const line = this.add(s.add.image((ph.x0 + ph.x1 + 1) / 2 * TILE, ph.y * TILE + 2, 'glow').setBlendMode(ADD).setTint(0xb070ff).setScale((ph.x1 - ph.x0 + 1) * .6, .18).setAlpha(0).setDepth(10.36));
+      this.phase.push({ tiles, shards, line, cx: (ph.x0 + ph.x1 + 1) / 2 * TILE, cy: ph.y * TILE, k: 0 });
+    }
+  }
+  updatePhase(dt, view) {
+    const p = this.s.player, t = this.s.time.now / 1000;
+    for (const g of this.phase) {
+      if (g.cx < view.x - 160 || g.cx > view.right + 160 || g.cy < view.y - 120 || g.cy > view.bottom + 120) continue;
+      const d = p ? Math.hypot(p.x - g.cx, (p.y - g.cy) * 1.3) : 999, want = d < 110 ? 1 : d > 180 ? 0 : (180 - d) / 70;
+      g.k += (want - g.k) * Math.min(1, dt * 4);
+      const k = g.k, e = k * k * (3 - 2 * k);
+      for (const tile of g.tiles) tile.alpha = .22 + .78 * e;
+      for (const sh of g.shards) {
+        const wob = (1 - e) * 4;
+        sh.o.setPosition(sh.hx + (sh.tx - sh.hx) * e + Math.sin(t * 2 + sh.ph) * wob, sh.hy + (sh.ty - sh.hy) * e + Math.cos(t * 1.7 + sh.ph) * wob);
+        sh.o.setAlpha(e > .96 ? .2 : .35 + .5 * e).setAngle((1 - e) * 120 + sh.ph * 30);
+      }
+      g.line.setAlpha(e * .5);
+    }
+  }
+  // 차원 도약 수정: 위에 서면(또는 공격으로 치면) 중력을 거슬러 솟구친다
+  updatePads(dt) {
+    const p = this.s.player;
+    for (const pd of this.pads) {
+      if (pd.cd > 0) pd.cd -= dt;
+      if (!p || pd.cd > 0 || p.launchT > 0 || !p.onGround) continue;
+      if (Math.abs(p.x - pd.x) < 15 && Math.abs(p.bottom - pd.y) < 5) this.launchPad(pd);
+    }
+  }
+  launchPad(pd) {
+    const s = this.s, p = s.player;
+    pd.cd = .6;
+    p.launch(PAD_VY);
+    s.tweens.killTweensOf(pd.img);
+    s.tweens.add({ targets: pd.img, scaleY: { from: .6, to: 1 }, scaleX: { from: 1.3, to: 1 }, duration: 260, ease: 'Back.easeOut' });
+    s.fx.ring(pd.x, pd.y - 6, 30, 0xb070ff, 320); s.fx.ring(pd.x, pd.y - 6, 18, 0x8affe8, 260);
+    s.fx.burst(pd.x, pd.y - 8, [0xb070ff, 0x8affe8, 0xffffff], 16, 160, { angle: -Math.PI / 2, spread: .5, up: 200, grav: -60, bounce: false, glow: true, life: .6 });
+    s.fx.glow(pd.x, pd.y - 20, 40, 0xc08aff, 300, .9);
+    Sfx.play('pad');
+  }
+  updateSinnoh(dt, view) {
+    for (const w of this.revFalls) w.tilePositionY += dt * 70;   // 물줄기가 위로 거슬러 오른다 (텍스처를 아래에서 위로 흘린다)
+    if (this.phase.length) this.updatePhase(dt, view);
+    if (this.pads.length) this.updatePads(dt);
+    const R = this.rift;
+    if (R && R.open && R.x > view.x - 40 && R.x < view.right + 40 && R.y > view.y - 60 && R.y < view.bottom + 60 && Math.random() < .5) {   // 균열로 빨려 드는 검붉은 티끌
+      const a = Math.random() * Math.PI * 2, d = 70 + Math.random() * 40;
+      this.s.fx.burst(R.x + Math.cos(a) * d, R.y + Math.sin(a) * d * 1.3, [0xff2a4a, 0x8a2aff, 0x2a0612], 1, 60, { angle: a + Math.PI, spread: .2, up: 0, grav: 0, bounce: false, glow: true, life: .9, size: 1, drag: .98 });
     }
   }
 
@@ -1479,6 +1958,7 @@ export class Props {
     for (const f of this.fogs) f.tilePositionX += dt * f.sp;
     this.updateAsh(dt, view);
     this.updateBellTower(view);
+    this.updateSinnoh(dt, view);
     for (const w of this.waves || []) w.tilePositionX += dt * 18;   // 출렁이는 바닷물 · 파도
     if (this.runes) {   // 하늘기둥 델타 룬: 황금 ↔ 에메랄드로 천천히 맥동
       const c = Phaser.Display.Color.Interpolate.RGBWithRGB(255, 224, 128, 74, 255, 176, 100, (Math.sin(time / 700) + 1) * 50);
@@ -1584,6 +2064,12 @@ export class Props {
       if (!c.alive || c.x + 7 < rect.x || c.x - 7 > rect.x + rect.w || c.y + 7 < rect.y || c.y - 7 > rect.y + rect.h) continue;
       if (c.need && c.need !== src) { this.nudge(c); continue; }   // 연습용 과녁: 그 기술로만
       this.breakCrate(c); n++;
+    }
+    for (const pd of this.pads || []) {   // 차원 도약 수정을 치면: 곁에 있으면 솟구치고, 멀면 반짝이기만
+      if (pd.cd > 0 || pd.x + 12 < rect.x || pd.x - 12 > rect.x + rect.w || pd.y < rect.y || pd.y - 22 > rect.y + rect.h) continue;
+      const p = this.s.player;
+      if (p && p.launchT <= 0 && Math.abs(p.x - pd.x) < 40 && p.bottom > pd.y - 90 && p.bottom < pd.y + 6) this.launchPad(pd);
+      else { pd.cd = .3; this.s.fx.glow(pd.x, pd.y - 12, 26, 0xc08aff, 220, .8); }
     }
     return n;
   }
@@ -1696,6 +2182,7 @@ export class Props {
     if (this.webgl) for (const l of this.lights) this.s.lights.removeLight(l);
     this.objs = []; this.lights = []; this.grass = []; this.mush = []; this.flies = []; this.crates = []; this.interacts = [];
     this.vines = []; this.motes = []; this.flickers = []; this.eyes = []; this.fogs = []; this.pulses = []; this.ash = [];
+    this.revFalls = []; this.pads = []; this.phase = []; this.rift = null;
     this.byRoom = null;
   }
 }

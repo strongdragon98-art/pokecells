@@ -933,6 +933,45 @@ const LANDMARKS = {
     F(150, H - 226, 280, 20, mc);
     for (let k = 0; k < 90; k++) F(r() * W, r() * H, 6, 1, 0xe0e8ff, .22);
   },
+  // 천관산 만년설 협곡: 하얗게 눈 덮인 톱니 봉우리 두 겹 · 푸른 얼음 절벽(세로 결) · 능선에 선 고대 돌기둥 · 흩날리는 눈
+  coronet({ F, W, H, mc, ml, r }) {
+    const snow = 0xeef4ff, ice = 0x8ac8ff;
+    for (const [base, amp, col, cap, ph] of [[230, 70, ml, .55, 0], [150, 50, mc, .75, 2.1]]) {
+      for (let x = 0; x < W; x += 2) {
+        const h = base + Math.abs(Math.sin(x * .011 + ph)) * amp + Math.abs(Math.sin(x * .037 + ph * 2)) * amp * .4 - Math.abs(((x + ph * 90) % 180) - 90) * .5;
+        F(x, H - h, 2, h, col);
+        F(x, H - h, 2, 10 + Math.abs(Math.sin(x * .05)) * 14, snow, cap);   // 봉우리 만년설
+      }
+    }
+    for (let k = 0; k < 7; k++) {   // 푸른 얼음 절벽 (세로 결 · 끝에 고드름)
+      const x = 20 + k * 104 + r() * 30, w = 26 + r() * 20, top = H - 120 - r() * 70;
+      for (let j = 0; j < w; j += 3) { const len = H - top - r() * 30; F(x + j, top + r() * 10, 2, len, ice, .22 + r() * .14); }
+      for (let j = 0; j < w; j += 5) F(x + j, top - 4, 3, 6, snow, .7);
+    }
+    for (let k = 0; k < 5; k++) {   // 능선의 고대 돌기둥 (몇 개는 부러졌다)
+      const x = 60 + k * 150 + r() * 40, broken = k % 2 === 1, h = broken ? 50 + r() * 20 : 90 + r() * 30, y = H - 70 - h;
+      F(x, y, 14, h, mc); F(x + 3, y, 2, h, shade(mc, 1.3)); F(x - 3, y + h - 5, 20, 5, mc);
+      if (!broken) { F(x - 4, y - 6, 22, 6, mc); F(x - 4, y - 9, 22, 3, snow, .8); } else for (let j = 0; j < 14; j += 3) F(x + j, y - r() * 8, 3, 8, mc);
+    }
+    for (let k = 0; k < 160; k++) F(r() * W, r() * H, r() < .3 ? 2 : 1, r() < .3 ? 2 : 1, 0xffffff, .3 + r() * .4);   // 눈발
+  },
+  // 깨어진 세계: 보랏빛 · 청록 성운 속에 떠 있는 섬들 · 섬 밑으로 거꾸로 자란 수정 나무 · 위로 거슬러 오르는 폭포 · 휘어진 돌기둥
+  distortion({ F, W, H, mc, ml, r, glow }) {
+    glow(160, 120, 140, 'rgba(160,80,255,.16)'); glow(560, 200, 160, 'rgba(60,220,210,.12)');
+    for (let k = 0; k < 7; k++) {
+      const x = 20 + k * 110 + r() * 40, y = 60 + r() * 200, w = 50 + r() * 70;
+      F(x, y, w, 6, ml); for (let j = 0; j < 24; j += 2) F(x + j * .9, y + 6 + j, Math.max(2, w - j * 1.8), 2, mc);   // 떠 있는 섬 (아래로 뾰족)
+      for (let t = 0; t < 2; t++) {   // 거꾸로 자란 수정 나무
+        const tx = x + 10 + t * (w - 24) * .8;
+        F(tx, y + 6, 2, 26, mc);
+        for (let j = 0; j < 16; j += 2) F(tx - (16 - j) / 2, y + 20 + j, 16 - j, 2, 0x8a4aff, .45);
+        F(tx - 1, y + 36, 4, 4, 0xd8a0ff, .6);
+      }
+      if (k % 2 === 0) for (let yy = y - 2; yy > y - 60 - r() * 60; yy -= 3) F(x + w * .5 + Math.sin(yy * .2) * 1.5, yy, 3, 2, 0x6affe8, .35);   // 위로 거슬러 오르는 물줄기
+    }
+    for (let k = 0; k < 5; k++) { const x = r() * W, h = 80 + r() * 140; for (let y = 0; y < h; y += 2) F(x + Math.sin(y * .03) * 12, H - y, 8, 2, mc); }   // 뒤틀려 휘어진 돌기둥
+    for (let k = 0; k < 90; k++) F(r() * W, r() * H, 1, 1, r() < .5 ? 0xd8a0ff : 0x8affe8, .4 + r() * .4);   // 떠도는 빛 알갱이
+  },
   // 신오 챔피언로드: 뒤틀린 하늘의 균열 · 거꾸로 매달린 바위 · 떠 있는 바위섬
   rift({ F, W, H, mc, ml, r, glow }) {
     for (let c = 0; c < 3; c++) {

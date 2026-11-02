@@ -34,6 +34,9 @@ export class Boss extends Enemy {
     this.b.setAllowGravity(!this.flying);
     this.b.setMaxVelocity(700, 900);
     this.glowImg = scene.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setDepth(18).setAlpha(.35);
+    if (this.def.startMega && this.def.megaSprite && scene.registry.get('spriteMeta')[this.def.megaSprite]?.hasSprite) {   // 처음부터 폼체인지한 모습 (기라티나 오리진폼)
+      this.setSpecies(this.def.megaSprite, 2); this.name = this.def.megaName; this.megaForm = true;
+    }
   }
 
   // 등장 연출 이동 (GameScene.bossIntro): (x0, y0) → (x1, y1) 을 ms 동안 · 끝나면 onLand() 를 부르고 원래 중력으로
@@ -117,7 +120,7 @@ export class Boss extends Enemy {
     sc.fx.shake(.012, 400); Sfx.play('boss');
     sc.fx.ring(this.x, this.y, 80, 0xff5a9a, 500);
     const meta = sc.registry.get('spriteMeta');
-    if (this.def.megaName) {   // 메가진화·폼 체인지: 도트가 있으면 모습까지, 없으면 오라만 짙어진다
+    if (this.def.megaName && !this.megaForm) {   // 메가진화·폼 체인지: 도트가 있으면 모습까지, 없으면 오라만 짙어진다
       const was = this.name;
       if (this.def.megaSprite && meta[this.def.megaSprite]?.hasSprite) this.setSpecies(this.def.megaSprite, 2);
       else { this.glowImg.setAlpha(.7); this.scaleBase *= this.def.megaScale || 1.1; }   // 도트가 없으면 오라 + 몸집 (무한다이맥스는 1.35배)
@@ -125,10 +128,10 @@ export class Boss extends Enemy {
       if (this.def.megaLine && sc.trainer && !sc.trainer.freed) { sc.trainer.gesture(0xffd27a); sc.trainer.say(this.def.megaLine); }   // 트레이너가 키스톤을 든다
       sc.cameras.main.flash(300, 255, 255, 255, true);
       sc.events.emit('banner', `${was}이(가) ${this.def.megaName}(으)로!`, '공격이 거세진다');
-    } else if (this.def.rage) {   // 모습은 그대로 폭주 (뮤츠)
+    } else if (this.def.rage || this.megaForm) {   // 모습은 그대로 폭주 (뮤츠 · 처음부터 오리진폼인 기라티나)
       this.glowImg.setAlpha(.6);
       sc.cameras.main.flash(260, 230, 180, 255, true);
-      sc.events.emit('banner', `${this.name} 폭주!`, this.def.rage);
+      sc.events.emit('banner', `${this.name} 폭주!`, this.def.rage || '반물질의 힘이 들끓는다 · 공격이 거세진다');
     } else sc.events.emit('toast', `${this.name}이(가) 분노했다!`);
   }
 
