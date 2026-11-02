@@ -11,6 +11,7 @@ import { css, shade } from '../systems/Textures.js';
 import { drawDetailedPixelTree, drawVine } from '../systems/TreeArt.js';
 import { Sfx } from '../systems/Audio.js';
 import { roomAt, roomAtCell } from './World.js';
+import { makeTrainerArt } from './Trainer.js';
 
 const ADD = Phaser.BlendModes.ADD;
 const WARM = 0xffc070;
@@ -1256,6 +1257,111 @@ function originSigilArt(scene) {
 function stillWaterArt(scene) {
   return canvasTex(scene, 'prop:stillwater', 64, 6, F => { F(0, 1, 64, 5, 0x8ab8e0, .45); F(0, 1, 64, 1, 0xe8f4ff, .8); for (let x = 3; x < 64; x += 11) F(x, 3, 5, 1, 0xffffff, .6); });
 }
+// ---------------- 가라르: 너클시티 지하 에너지 플랜트 · 블랙나이트의 심장 ----------------
+// 플랜트 최종 격리 게이트 (640×300): 리벳 박힌 강철 벽 · 화면 위 틀 밖으로 뻗는 검붉은 다이맥스 파이프 · 한가운데 거대한 방폭문(경고 줄무늬 · 비상등) · 문 위 원형 에너지 코어 창 · 홀로그램 경고판
+function plantGateArt(scene) {
+  const W = 640, H = 300, cx = W / 2;
+  const steel = 0x4a4650, steelD = 0x2e2a34, steelHi = 0x7a7684, red = 0xd82a4a, redD = 0x7a1424, hazard = 0xe8b020;
+  return canvasTex(scene, 'prop:plantgate', W, H, (F, c) => {
+    // 강철 벽 (판 이음매 · 리벳)
+    F(0, 0, W, 256, steelD);
+    for (let y = 0; y < 256; y += 32) for (let x = (y / 32 % 2) * 40; x < W; x += 80) { F(x + 1, y + 1, 78, 30, steel); F(x + 1, y + 1, 78, 1, steelHi); F(x + 1, y + 30, 78, 1, 0x1e1a24); for (const [rx, ry] of [[4, 4], [74, 4], [4, 26], [74, 26]]) F(x + rx, y + ry, 2, 2, steelHi); }
+    // 다이맥스 파이프: 위 틀 밖에서 내려와 게이트로 모인다 (양옆 셋씩) · 맥박처럼 빛나는 이음매
+    for (const [x, w] of [[20, 26], [70, 18], [112, 22], [W - 46, 26], [W - 88, 18], [W - 134, 22]]) {
+      F(x, 0, w, 252, redD); F(x + 2, 0, w - 6, 252, red); F(x + 3, 0, 2, 252, 0xff8aa0, .7);
+      for (let y = 20; y < 250; y += 46) { F(x - 3, y, w + 6, 8, steel); F(x - 3, y, w + 6, 1, steelHi); F(x + w / 2 - 2, y + 2, 4, 4, 0xff3a5a); }
+    }
+    // 원형 에너지 코어 창 (문 위): 검붉은 다이맥스 에너지가 소용돌이친다
+    const ey = 78, er = 46;
+    const g = c.createRadialGradient(cx, ey, 4, cx, ey, er); g.addColorStop(0, '#ffffff'); g.addColorStop(.25, '#ff8aa0'); g.addColorStop(.6, '#d81a40'); g.addColorStop(1, '#2a0610');
+    c.fillStyle = g; c.beginPath(); c.arc(cx, ey, er, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = css(steelHi); c.lineWidth = 8; c.beginPath(); c.arc(cx, ey, er + 5, 0, Math.PI * 2); c.stroke();
+    c.strokeStyle = css(hazard); c.lineWidth = 2; c.beginPath(); c.arc(cx, ey, er + 10, 0, Math.PI * 2); c.stroke();
+    for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; F(cx + Math.cos(a) * (er + 5) - 4, ey + Math.sin(a) * (er + 5) - 4, 8, 8, steel); }
+    c.strokeStyle = 'rgba(255,240,240,.6)'; c.lineWidth = 1;
+    for (let k = 0; k < 6; k++) { c.beginPath(); c.moveTo(cx + Math.cos(k) * 6, ey + Math.sin(k) * 6); c.lineTo(cx + Math.cos(k * 1.7) * er * .85, ey + Math.sin(k * 1.7) * er * .85); c.stroke(); }   // 육각 결정 결
+    // 거대한 방폭문 (두 쪽 · 가운데 틈으로 붉은 빛)
+    const dx0 = cx - 110, dx1 = cx + 110, dt = 132, db = 254;
+    F(dx0 - 14, dt - 14, dx1 - dx0 + 28, db - dt + 14, steelD); F(dx0 - 14, dt - 14, dx1 - dx0 + 28, 3, steelHi);
+    for (const d of [-1, 1]) {
+      const x0 = d < 0 ? dx0 : cx + 2, w = 108;
+      F(x0, dt, w, db - dt, steel); F(x0, dt, w, 2, steelHi);
+      for (let y = dt + 12; y < db; y += 26) F(x0 + 6, y, w - 12, 2, steelD);
+      for (let k = 0; k < 9; k++) { const y = dt + 70 + k * 6; F(x0 + 4, y, w - 8, 3, k % 2 ? hazard : 0x1a1a20); }   // 경고 줄무늬
+      F(x0 + (d < 0 ? w - 16 : 6), dt + 30, 10, 26, steelD); F(x0 + (d < 0 ? w - 14 : 8), dt + 32, 6, 22, 0x6a6474);   // 손잡이 · 잠금 장치
+    }
+    F(cx - 2, dt, 4, db - dt, 0xff2a4a); F(cx - 1, dt, 2, db - dt, 0xffd8e0);   // 틈으로 새는 붉은 빛
+    for (const d of [-1, 1]) { const x = cx + d * 132; F(x - 7, dt - 6, 14, 14, 0x2a0610); F(x - 5, dt - 4, 10, 10, 0xff2a4a); F(x - 2, dt - 2, 4, 4, 0xffd0d8); }   // 비상등
+    // 홀로그램 경고판
+    for (const d of [-1, 1]) { const x = cx + d * 190 - 34; F(x, 150, 68, 40, 0x0a2a3a, .85); F(x, 150, 68, 1, 0x4af0ff); F(x, 189, 68, 1, 0x4af0ff); for (let k = 0; k < 5; k++) F(x + 6, 158 + k * 6, 30 + (k * 13) % 26, 2, k === 0 ? 0xff5a7a : 0x4af0ff, .8); }
+    // 바닥 · 문턱 (강철 계단)
+    F(0, 252, W, 48, 0x24202a); F(0, 252, W, 3, steelHi);
+    for (let k = 0; k < 6; k++) { const y = 258 + k * 7, w = 130 + k * 34; F(cx - w, y, w * 2, 7, k % 2 ? steel : steelD); F(cx - w, y, w * 2, 1, steelHi); }
+    for (let x = cx - 130; x < cx + 130; x += 14) F(x, 256, 7, 2, hazard);
+    // 위쪽은 어둡게 가라앉힌다
+    c.save(); c.globalCompositeOperation = 'source-atop';
+    const dk = c.createLinearGradient(0, 0, 0, 160); dk.addColorStop(0, 'rgba(10,4,8,.55)'); dk.addColorStop(1, 'rgba(10,4,8,0)'); c.fillStyle = dk; c.fillRect(0, 0, W, 160); c.restore();
+  });
+}
+// 블랙나이트의 심장 안 출입문 (나가면 격리 게이트 앞)
+function plantInnerDoorArt(scene) {
+  return canvasTex(scene, 'prop:plantinner', 56, 72, (F, c) => {
+    F(0, 6, 56, 66, 0x2e2a34); F(4, 10, 48, 62, 0x4a4650); F(4, 10, 48, 1, 0x7a7684);
+    F(8, 16, 40, 56, 0x1a0a10); F(26, 16, 4, 56, 0xff2a4a, .8); F(27, 16, 2, 56, 0xffd0d8, .8);
+    for (let k = 0; k < 6; k++) F(8, 40 + k * 4, 40, 2, k % 2 ? 0xe8b020 : 0x1a1a20);
+    F(22, 0, 12, 8, 0x2a0610); F(24, 2, 8, 4, 0xff2a4a);
+  });
+}
+// 다이맥스 파이프 (32×12 반복 · 천장을 따라)
+function pipeArt(scene) {
+  return canvasTex(scene, 'prop:pipe', 32, 12, F => { F(0, 2, 32, 8, 0x7a1424); F(0, 3, 32, 5, 0xd82a4a); F(0, 4, 32, 1, 0xff8aa0, .7); F(0, 9, 32, 1, 0x3a0a14); F(26, 0, 6, 12, 0x4a4650); F(26, 0, 6, 1, 0x7a7684); F(28, 5, 2, 2, 0xff3a5a); });
+}
+// 홀로그램 패널 (26×18): 청록 글줄 · 붉은 경고 줄
+function hologramArt(scene, v) {
+  return canvasTex(scene, `prop:holo:${v}`, 26, 18, F => {
+    F(0, 0, 26, 18, 0x0a3a4a, .55); F(0, 0, 26, 1, 0x6af8ff); F(0, 17, 26, 1, 0x6af8ff); F(0, 0, 1, 18, 0x6af8ff, .6); F(25, 0, 1, 18, 0x6af8ff, .6);
+    for (let k = 0; k < 4; k++) F(3, 3 + k * 3.5, 8 + ((k * 7 + v * 5) % 14), 1, k === v % 4 ? 0xff5a7a : 0x8af8ff, .9);
+    if (v % 2) { F(17, 4, 6, 6, 0xff3a5a, .7); F(19, 6, 2, 2, 0xffffff); } else { for (let x = 15; x < 24; x += 2) F(x, 12 - ((x * 3) % 7), 1, 2 + ((x * 3) % 7), 0x6af8ff, .8); }
+  });
+}
+// 기밀 연구 일지 단말 (18×30): 받침대 위 떠 있는 홀로그램 판
+function journalArt(scene) {
+  return canvasTex(scene, 'prop:journal', 18, 30, F => {
+    F(5, 20, 8, 10, 0x2e2a34); F(4, 19, 10, 2, 0x4a4650); F(7, 22, 4, 2, 0xff3a5a); F(3, 28, 12, 2, 0x24202a);
+    F(1, 2, 16, 13, 0x0a3a4a, .7); F(1, 2, 16, 1, 0x6af8ff); F(1, 14, 16, 1, 0x6af8ff);
+    for (let k = 0; k < 3; k++) F(3, 5 + k * 3, 10 - k * 2, 1, k ? 0x8af8ff : 0xff8aa0);
+  });
+}
+// 레드를 가둔 검붉은 에너지 결정 기둥 (96×176): 뒷면(안쪽 빛) · 앞면(반투명 결정 면 — 레드 위에 덮는다)
+function redCrystalArt(scene, front) {
+  return canvasTex(scene, front ? 'prop:redcrystal:f' : 'prop:redcrystal:b', 96, 176, (F, c) => {
+    const pts = [[48, 0], [84, 34], [90, 150], [70, 176], [26, 176], [6, 150], [12, 34]];
+    c.beginPath(); pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath();
+    if (!front) {
+      const g = c.createLinearGradient(0, 0, 0, 176); g.addColorStop(0, '#5a0a20'); g.addColorStop(.5, '#a01a3a'); g.addColorStop(1, '#3a0614');
+      c.fillStyle = g; c.fill();
+      const rg = c.createRadialGradient(48, 96, 4, 48, 96, 60); rg.addColorStop(0, 'rgba(255,170,190,.55)'); rg.addColorStop(1, 'rgba(255,60,100,0)'); c.fillStyle = rg; c.fill();
+    } else {
+      c.fillStyle = 'rgba(255,60,100,.28)'; c.fill();
+      c.strokeStyle = 'rgba(255,190,205,.9)'; c.lineWidth = 2; c.stroke();
+      c.strokeStyle = 'rgba(255,220,230,.55)'; c.lineWidth = 1;
+      for (const [x0, y0, x1, y1] of [[48, 0, 40, 176], [84, 34, 58, 176], [12, 34, 34, 176], [20, 70, 76, 60]]) { c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke(); }   // 결정 면의 모서리
+      F(20, 20, 4, 60, 0xffffff, .35); F(70, 50, 3, 40, 0xffffff, .25);   // 반사광
+    }
+  });
+}
+// 세로 다이맥스 파이프 (12×32 반복 · 벽을 타고 내려온다)
+function vpipeArt(scene) {
+  return canvasTex(scene, 'prop:vpipe', 12, 32, F => { F(2, 0, 8, 32, 0x7a1424); F(3, 0, 5, 32, 0xd82a4a); F(4, 0, 1, 32, 0xff8aa0, .7); F(9, 0, 1, 32, 0x3a0a14); F(0, 26, 12, 6, 0x4a4650); F(0, 26, 12, 1, 0x7a7684); F(5, 28, 2, 2, 0xff3a5a); });
+}
+// 회전 경고등 (10×8 · 천장에 매달린다)
+function warnLampArt(scene) {
+  return canvasTex(scene, 'prop:warnlamp', 10, 8, F => { F(3, 0, 4, 2, 0x4a4650); F(1, 2, 8, 5, 0x7a1424); F(2, 2, 6, 4, 0xff3a5a); F(3, 3, 2, 2, 0xffd0d8); F(0, 7, 10, 1, 0x2e2a34); });
+}
+// 증기 배출구 (14×6 · 바닥)
+function ventArt(scene) {
+  return canvasTex(scene, 'prop:vent', 14, 6, F => { F(0, 2, 14, 4, 0x2e2a34); F(0, 2, 14, 1, 0x7a7684); for (let x = 2; x < 13; x += 3) F(x, 3, 1, 3, 0x0a0608); F(5, 0, 4, 2, 0x4a4650); });
+}
 
 export class Props {
   constructor(scene, level, stage, si) {
@@ -1410,6 +1516,16 @@ export class Props {
           this.interacts.push({ kind: 'lore', x: X + 8, y: Y, range: 16, used: false, repeat: true, text: pr.text, prompt: '[F 또는 ↑ : 읽기]', promptY: Y - 34 });
           break;
         }
+        case 'journal': {   // 가라르 지하 플랜트의 기밀 연구 일지: 받침대 위 홀로그램 단말 → F / ↑ 로 열람 (대화창 — GameScene.readJournal)
+          const x = X + 8;
+          this.lit(s.add.image(x, Y + 1, journalArt(s)).setOrigin(.5, 1).setDepth(7));
+          const h = this.glow(x, Y - 22, .5, 0x6af8ff, .45, 7.3);
+          this.pulses.push({ o: h, base: .4, amp: .2, sp: 2.4 });
+          this.light(x, Y - 22, 90, 0x6af8ff, 1.1);
+          this.add(s.add.text(x, Y - 32, `기밀 연구 일지 ${pr.no}`, { fontFamily: 'Galmuri9', fontSize: '8px', color: '#8af8ff', stroke: '#0a1a24', strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(7.2));
+          this.interacts.push({ kind: 'journal', no: pr.no, x, y: Y, range: 18, used: false, repeat: true, text: pr.text, prompt: '[F 또는 ↑ : 기밀 연구 일지 열람]', promptY: Y - 44 });
+          break;
+        }
         case 'signpost': this.lit(s.add.image(X + 8, Y + 1, signpostArt(s)).setOrigin(.5, 1).setDepth(7).setFlipX(Math.random() < .5)); break;
         case 'tm': {   // 샛길 끝의 거대 기술머신 캡슐 (다가가면 공명해 에너지 기둥이 솟고, F / ↑ 로 작동 → 캡슐이 열리며 카드 3장)
           const a = tmArt(s), x = X + 8;
@@ -1513,6 +1629,7 @@ export class Props {
     this.buildHoenn();
     this.buildSinnoh();
     this.buildHeroes();
+    this.buildGalar();
     this.groupByRoom();
   }
 
@@ -1566,7 +1683,7 @@ export class Props {
       }
     }
     // 탑 안 1층 출입문 (방울로드 정문으로 나간다): 붉은 옻칠 양개문 + 문틀 + 깔개
-    for (const r of rooms.filter(q => q.portalFrom && !q.spear && !q.spiral && !q.origin)) {   // 창기둥 안 출입문은 buildSinnoh · 용나선탑 · 시초의 방은 buildHeroes
+    for (const r of rooms.filter(q => q.portalFrom && !q.spear && !q.spiral && !q.origin && !q.plantHeart)) {   // 창기둥 안 출입문은 buildSinnoh · 용나선탑 · 시초의 방은 buildHeroes · 블랙나이트의 심장은 buildGalar
       const Y = (r.portalY ?? r.F) * TILE, w = 28, h = 46, x = r.left + 8;
       this.lit(s.add.image(x - 4, Y, labDoorFrameArt(s, w, h)).setOrigin(0, 1).setDepth(2.75));
       const d = this.door(x, Y, w, h, 0x9a2a1a, true, 2.8);
@@ -1941,26 +2058,29 @@ export class Props {
   // 하나: 설화시티 고대 다리 · 겨울 습지(물가 · 빛무리 — 눈 · 고드름 · 얼음은 buildSinnoh 와 같이) · 용나선탑 정문 외관 · 탑 안(왼쪽 벽 백열 불꽃 · 오른쪽 벽 푸른 뇌전)
   //  · 기믹: 열기 상승 기류(붉은 아지랑이 기둥) · 푸른 전자기장 (효과는 updateHeroes) · 꼭대기 흑과 백의 제단
   //  최종장: 천계의 피리 공명로(빛의 유리 계단 · 걸음마다 맑은 공명) · 시초의 성문 외관 · 시초의 방 결전장(바닥의 고대 문양)
+  // 정문 앞 글씨 (가운데 아래 기준)
+  tag(x, y, text, color, stroke) { return this.add(this.s.add.text(x, y, text, { fontFamily: 'Galmuri9', fontSize: '9px', color, stroke, strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(3.5)); }
+  // 정문 외관 (방울탑 · 창기둥과 같은 규칙: 정문 한가운데 = r.doorTx · 천장 위로 솟은 부분은 천장 바위 앞에 그려 화면 위로 끝없이)
+  facade(r, art) {
+    const s = this.s, Y = r.F * TILE, gx = r.doorTx * TILE + 8, AW = 640, AH = 300, cutH = r.top - (Y + 2 - AH);
+    this.lit(s.add.image(gx, Y + 2, art).setOrigin(.5, 1).setDepth(3.4));
+    if (cutH > 0) { const c0 = Math.max(0, cutH - 88); this.lit(s.add.image(gx, Y + 2, art).setOrigin(.5, 1).setCrop(0, c0, AW, cutH - c0).setDepth(10.45)); }
+    return { gx, Y };
+  }
+  // 탑 · 성소 안 1층 출입문 (나가면 정문 앞)
+  innerDoor(r, art, pair, text, prompt, col) {
+    const PY = (r.portalY ?? r.F) * TILE, x = r.left + 40;
+    this.lit(this.s.add.image(x, PY, art).setOrigin(.5, 1).setDepth(2.8));
+    const gl = this.glow(x, PY - 30, 1, col, .22, 2.85);
+    this.pulses.push({ o: gl, base: .2, amp: .08, sp: 1.4 });
+    this.light(x, PY - 30, 120, col, .6);
+    this.tag(x, PY - 84, text, '#e8eeff', '#141a30');
+    this.interacts.push({ kind: 'door', pair, side: 'in', face: 1, x, y: PY, range: 22, used: false, repeat: true, prompt, promptY: PY - 98, door: null, glowAt: { x, y: PY - 30 } });
+  }
+
   buildHeroes() {
     const s = this.s, G = this.level.grid;
-    const label = (x, y, text, color, stroke) => this.add(s.add.text(x, y, text, { fontFamily: 'Galmuri9', fontSize: '9px', color, stroke, strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(3.5));
-    // 정문 외관 (방울탑 · 창기둥과 같은 규칙: 정문 한가운데 = r.doorTx · 천장 위로 솟은 부분은 천장 바위 앞에 그려 화면 위로 끝없이)
-    const facade = (r, art) => {
-      const Y = r.F * TILE, gx = r.doorTx * TILE + 8, AW = 640, AH = 300, cutH = r.top - (Y + 2 - AH);
-      this.lit(s.add.image(gx, Y + 2, art).setOrigin(.5, 1).setDepth(3.4));
-      if (cutH > 0) { const c0 = Math.max(0, cutH - 88); this.lit(s.add.image(gx, Y + 2, art).setOrigin(.5, 1).setCrop(0, c0, AW, cutH - c0).setDepth(10.45)); }
-      return { gx, Y };
-    };
-    // 탑 · 성소 안 1층 출입문 (나가면 정문 앞)
-    const innerDoor = (r, art, pair, text, prompt, col) => {
-      const PY = (r.portalY ?? r.F) * TILE, x = r.left + 40;
-      this.lit(s.add.image(x, PY, art).setOrigin(.5, 1).setDepth(2.8));
-      const gl = this.glow(x, PY - 30, 1, col, .22, 2.85);
-      this.pulses.push({ o: gl, base: .2, amp: .08, sp: 1.4 });
-      this.light(x, PY - 30, 120, col, .6);
-      label(x, PY - 84, text, '#e8eeff', '#141a30');
-      this.interacts.push({ kind: 'door', pair, side: 'in', face: 1, x, y: PY, range: 22, used: false, repeat: true, prompt, promptY: PY - 98, door: null, glowAt: { x, y: PY - 30 } });
-    };
+    const label = (...a) => this.tag(...a), facade = (r, art) => this.facade(r, art), innerDoor = (...a) => this.innerDoor(...a);
     this.lifts = []; this.fields = []; this.stepT = 0;
     for (const r of this.level.rooms) {
       const Y = r.F * TILE, W = r.right - r.left;
@@ -2059,6 +2179,104 @@ export class Props {
       this.fields.push({ x0, x1, y0, y1 });
     }
   }
+  // 가라르 · 너클시티 지하 에너지 플랜트(plant): 천장을 따라 뻗은 검붉은 다이맥스 파이프 · 벽을 타고 내려오는 세로 파이프(맥박처럼 빛나는 이음매)
+  //  · 떠 있는 청록 홀로그램 패널(지지직 깜빡) · 천장의 회전 경고등 · 바닥 증기 배출구 (증기는 updateGalar)
+  //  · 최종 격리 게이트 앞(plantGate): 거대한 플랜트 최종 격리 게이트 외관 → F / ↑ → 블랙나이트의 심장
+  //  · 블랙나이트의 심장(plantHeart): 한가운데 뒤편 검붉은 에너지 결정 기둥 속에 사슬에 묶인 창백한 레드 (this.redCore — GameScene 의 유대의 불꽃 시네마틱이 깬다)
+  buildGalar() {
+    const s = this.s;
+    this.vents = []; this.warnLamps = []; this.redCore = null;
+    for (const r of this.level.rooms) {
+      if (!r.plant && !r.plantHeart) continue;
+      const Y = r.F * TILE, W = r.right - r.left;
+      // 천장 파이프 두 줄 (방 너비 전체 · 지형 뒤)
+      for (const [dy, a] of [[10, 1], [26, .8]]) this.lit(s.add.tileSprite(r.left, r.top + dy, W, 12, pipeArt(s)).setOrigin(0, .5).setDepth(3.25).setAlpha(a).setTilePosition(dy * 3, 0));
+      // 세로 파이프 (벽을 타고 바닥까지) · 이음매마다 맥동하는 검붉은 빛
+      for (let x = r.left + 70, k = 0; x < r.right - 50; x += 230 + (k * 37) % 60, k++) {
+        if (r.plantGate && Math.abs(x - (r.doorTx * TILE + 8)) < 340) continue;   // 격리 게이트 외관 앞은 비운다
+        if (r.portalFrom && x < r.left + 90) continue;   // 심장 안 출입문 자리
+        this.lit(s.add.tileSprite(x, r.top + 16, 12, Y - r.top - 16, vpipeArt(s)).setOrigin(.5, 0).setDepth(3.3));
+        for (let y = r.top + 60, j = 0; y < Y - 20; y += 96, j++) { const g = this.glow(x, y, .35, 0xff2a4a, .5, 3.35); this.pulses.push({ o: g, base: .4, amp: .3, sp: 2.2 + ((k + j) % 3) * .4 }); }
+        this.light(x, Y - 60, 110, 0xff3a5a, .7);
+      }
+      if (r.plant) {
+        // 홀로그램 패널 (청록 · 가끔 지지직)
+        for (let x = r.left + 150, k = 0; x < r.right - 120; x += 260 + (k * 53) % 80, k++) {
+          if (r.plantGate && Math.abs(x - (r.doorTx * TILE + 8)) < 360) continue;
+          const y = Y - 70 - (k % 3) * 26;
+          if (s.isSolidAt(x, y) || s.isSolidAt(x, y + 20)) continue;
+          const h = this.add(s.add.image(x, y, hologramArt(s, k % 4)).setDepth(3.6).setAlpha(.85));
+          const hg = this.glow(x, y, .9, 0x4af0ff, .18, 3.58);
+          this.flickers.push({ objs: [h, hg], base: [.85, .18], rate: 1.2, t: 0, off: 0 });
+          this.light(x, y, 90, 0x4af0ff, .6);
+        }
+        // 회전 경고등 (천장)
+        for (let x = r.left + 110, k = 0; x < r.right - 60; x += 300, k++) {
+          if (s.isSolidAt(x, r.top + 40)) continue;
+          this.lit(s.add.image(x, r.top + 34, warnLampArt(s)).setOrigin(.5, 0).setDepth(3.4));
+          const beam = this.add(s.add.image(x, r.top + 44, 'glow').setOrigin(.5, 0).setBlendMode(ADD).setTint(0xff2a4a).setScale(1.6, 4).setAlpha(.12).setDepth(3.38));
+          const L = this.light(x, r.top + 50, 160, 0xff2a4a, 1);
+          this.warnLamps.push({ beam, L, ph: k * 1.3 });
+        }
+      }
+      // 바닥 증기 배출구
+      for (let x = r.left + 100, k = 0; x < r.right - 60; x += 190 + (k * 29) % 70, k++) {
+        const tx = Math.floor(x / TILE);
+        if (this.level.grid[r.F][tx] !== 'S' || this.level.grid[r.F - 1][tx] !== '.') continue;
+        if (r.plantGate && Math.abs(x - (r.doorTx * TILE + 8)) < 150) continue;
+        this.lit(s.add.image(x, Y + 1, ventArt(s)).setOrigin(.5, 1).setDepth(10.36));
+        this.vents.push({ x, y: Y - 4, t: (k * .7) % 2.4 });
+      }
+      this.light(r.cx, r.top + 40, Math.max(300, W * .6), 0xff5a7a, .45);
+      if (r.plantGate) {   // 플랜트 최종 격리 게이트
+        const { gx, Y: GY } = this.facade(r, plantGateArt(s)), core = GY - 220, vy = GY - 100;
+        const cg = this.add(s.add.image(gx, core, 'glow').setBlendMode(ADD).setTint(0xff3a5a).setScale(2.4).setAlpha(.45).setDepth(3.45));
+        const crack = this.add(s.add.image(gx, vy, 'glow').setBlendMode(ADD).setTint(0xff2a4a).setScale(.5, 3.6).setAlpha(.5).setDepth(3.45));
+        this.pulses.push({ o: cg, base: .4, amp: .18, sp: 2.6 }, { o: crack, base: .45, amp: .2, sp: 2.6 });
+        this.tag(gx, GY - 150, '플랜트 최종 격리 게이트', '#ffd0d8', '#2a0610');
+        this.light(gx, core, 220, 0xff3a5a, 1.1); this.light(gx, vy, 200, 0xff2a4a, .9);
+        if (r.portalTo) this.interacts.push({ kind: 'door', pair: 'plant', side: 'out', face: -1, x: gx, y: GY, range: 70, used: false, repeat: true, prompt: '[F 또는 ↑ : 최종 격리 게이트 안으로 들어가기]', promptY: GY - 118, door: null, glowAt: { x: gx, y: vy } });
+      }
+      if (r.plantHeart) {
+        if (r.portalFrom) this.innerDoor(r, plantInnerDoorArt(s), 'plant', '출구 · 격리 게이트', '[F 또는 ↑ : 격리 게이트 밖으로 나가기]', 0xff5a7a);
+        this.buildRedCore(r);
+      }
+    }
+  }
+  // 블랙나이트의 심장 한가운데 뒤편: 검붉은 결정 기둥 + 사슬에 묶여 창백해진 레드 (눈을 감고 있다)
+  buildRedCore(r) {
+    const s = this.s, x = r.cx, Y = r.F * TILE, feet = Y - 22;
+    makeTrainerArt(s, 'red');
+    const halo = this.add(s.add.image(x, Y - 90, 'glow').setBlendMode(ADD).setTint(0xff1a3a).setScale(4, 6).setAlpha(.3).setDepth(3.48));
+    const back = this.add(s.add.image(x, Y + 2, redCrystalArt(s, false)).setOrigin(.5, 1).setDepth(3.5));
+    const red = this.add(s.add.image(x, feet, 'trainer:red:sleep').setOrigin(.5, 1).setScale(2).setDepth(3.52).setTint(0xb8b0c8).setAlpha(.92));
+    const chains = this.add(s.add.graphics().setDepth(3.54));
+    // 사슬: 결정 안쪽 모서리 → 두 손목 · 두 발목 (고리 무늬)
+    const link = (x0, y0, x1, y1) => {
+      const n = Math.max(2, Math.round(Math.hypot(x1 - x0, y1 - y0) / 5));
+      chains.lineStyle(2, 0x2a2026, 1); chains.lineBetween(x0, y0, x1, y1);
+      for (let k = 0; k <= n; k++) { const t = k / n, cx = x0 + (x1 - x0) * t, cy = y0 + (y1 - y0) * t; chains.fillStyle(k % 2 ? 0x6a5a64 : 0x4a3e46, 1); chains.fillRect(cx - 1.5, cy - 1.5, 3, 3); }
+    };
+    link(x - 40, feet - 110, x - 16, feet - 42); link(x + 40, feet - 110, x + 14, feet - 38);
+    link(x - 38, feet + 10, x - 8, feet - 4); link(x + 38, feet + 10, x + 8, feet - 4);
+    const front = this.add(s.add.image(x, Y + 2, redCrystalArt(s, true)).setOrigin(.5, 1).setDepth(3.56));
+    const core = this.add(s.add.image(x, feet - 50, 'glow').setBlendMode(ADD).setTint(0xff5a7a).setScale(1.4, 2.2).setAlpha(.3).setDepth(3.57));
+    this.pulses.push({ o: halo, base: .26, amp: .1, sp: 1.1 }, { o: core, base: .26, amp: .12, sp: 1.1 });
+    const L = this.light(x, feet - 60, 260, 0xff2a4a, 1.3);
+    this.redCore = { x, Y, feet, top: Y - 174, back, front, red, chains, halo, core, light: L };
+  }
+  // 증기 · 경고등 회전 (화면 안에서만)
+  updateGalar(dt, view) {
+    const s = this.s, t = s.time.now / 1000;
+    for (const w of this.warnLamps || []) { const k = (Math.sin(t * 5 + w.ph) + 1) / 2; w.beam.setAlpha(.04 + k * .16).setScale(1.2 + k * .8, 4); if (w.L) w.L.setIntensity(.4 + k * .9); }
+    for (const v of this.vents || []) {
+      if (v.x < view.x - 30 || v.x > view.right + 30 || v.y < view.y - 30 || v.y > view.bottom + 60) continue;
+      if ((v.t -= dt) > 0) continue;
+      v.t = 2 + Math.random() * 1.6;
+      s.fx.burst(v.x, v.y, [0xd8c8cc, 0xa89098, 0xffffff], 10, 50, { angle: -Math.PI / 2, spread: .35, up: 70, grav: -30, bounce: false, life: 1.1, size: 3, drag: .97 });
+    }
+  }
+
   // 상승 기류 · 전자기장 효과 · 유리 계단 공명 · 뇌전 코일 스파크
   updateHeroes(dt, view) {
     const s = this.s, p = s.player;
@@ -2262,6 +2480,7 @@ export class Props {
     this.updateBellTower(view);
     this.updateSinnoh(dt, view);
     this.updateHeroes(dt, view);
+    this.updateGalar(dt, view);
     for (const w of this.waves || []) w.tilePositionX += dt * 18;   // 출렁이는 바닷물 · 파도
     if (this.runes) {   // 하늘기둥 델타 룬: 황금 ↔ 에메랄드로 천천히 맥동
       const c = Phaser.Display.Color.Interpolate.RGBWithRGB(255, 224, 128, 74, 255, 176, 100, (Math.sin(time / 700) + 1) * 50);

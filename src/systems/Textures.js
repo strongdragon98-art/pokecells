@@ -403,7 +403,10 @@ export function generateBaseTextures(scene) {
   makeHudTextures(scene);
   makeCutsceneTextures(scene);
   for (const id of Object.keys(ITEMS)) itemIcon(scene, id);
-  STAGES.forEach((st, i) => { makeTileset(scene, i, st.palette); makeBackgrounds(scene, i, st.palette); makeCaveBg(scene, i, st.palette); });
+  STAGES.forEach((st, i) => {
+    makeTileset(scene, i, st.palette); makeBackgrounds(scene, i, st.palette); makeCaveBg(scene, i, st.palette);
+    st.areas.forEach((a, ai) => { if (a.palette) makeTileset(scene, i, Object.assign({}, st.palette, a.palette), `tiles:${i}:${ai}`, 'plat' in a ? a.plat : st.plat); });   // 지역만 다른 타일 색 (하나의 천계)
+  });
 }
 
 // ---------------- 할로우 나이트풍 UI 부품 (입체감 있는 고해상도 그림) ----------------
@@ -603,10 +606,9 @@ function makeCutsceneTextures(scene) {
 export const TILE_MARGIN = 1, TILE_SPACING = 2;
 //  3 통과 발판: 나무다리(널빤지 + 아래 받침) 또는 철제 격자 · 5 보이지 않는 통과 발판(집 지붕·발코니)
 //  8+mask 벽: 돌벽돌 몸통 + 트인 방향마다 — 위: 네온 이끼 테두리와 늘어진 이끼 / 아래: 짙은 그림자 / 옆: 외곽선과 반사광, 트인 모서리는 둥글게
-function makeTileset(scene, si, p) {
-  const key = `tiles:${si}`;
+function makeTileset(scene, si, p, key = `tiles:${si}`, plat = STAGES[si].plat) {
   if (scene.textures.exists(key)) return;
-  const st = STAGES[si], src = document.createElement('canvas');   // 먼저 붙여서 그린 뒤 → 칸마다 테두리를 복제해 옮겨 담는다
+  const src = document.createElement('canvas');   // 먼저 붙여서 그린 뒤 → 칸마다 테두리를 복제해 옮겨 담는다
   src.width = 24 * 16; src.height = 16;
   const c = src.getContext('2d');
   const fill = (x, y, w, h, col, a = 1) => { c.globalAlpha = a; c.fillStyle = css(col); c.fillRect(x, y, w, h); c.globalAlpha = 1; };
@@ -615,7 +617,7 @@ function makeTileset(scene, si, p) {
   // 통과 발판
   {
     const ox = 3 * 16;
-    if (st.plat === 'metal') {
+    if (plat === 'metal') {
       const m = 0x6a6a74;
       fill(ox, 0, 16, 4, m); fill(ox, 0, 16, 1, shade(m, 1.6)); fill(ox, 3, 16, 1, shade(m, .45));
       for (let x = 1; x < 16; x += 3) fill(ox + x, 1, 2, 2, shade(m, .55));            // 격자 구멍
@@ -1057,11 +1059,24 @@ const LANDMARKS = {
     for (let k = 0; k < 4; k++) F(cx - 6, 120 + k * 60, 12, 16, 0x4a8aff, .22);
     for (let k = 0; k < 30; k++) F(r() * W, H - 64 + r() * 54, 60 + r() * 60, 8, 0x6a6a7a, .12);
   },
-  // N의 성 · 심연의 왕좌: 성벽과 첨탑 실루엣을 뚫고 솟은 거대한 붉은 에너지 결정
-  core({ F, W, H, mc, r, glow }) {
-    F(0, H - 140, W, 140, mc); for (let x = 0; x < W; x += 20) F(x, H - 150, 12, 10, mc);
-    for (const x of [60, 320, 580]) { F(x, H - 260, 60, 260, mc); for (let j = 0; j < 40; j++) { const w = j * 1.5; F(x + 30 - w / 2, H - 300 + j, w, 1, mc); } F(x + 26, H - 220, 8, 14, 0xff2a5a, .35); }
-    for (let k = 0; k < 6; k++) {
+  // 너클시티 지하 에너지 플랜트: 겹겹이 지나가는 굵은 다이맥스 파이프 · 원통형 저장 탱크 · 철골 통로 · 청록 홀로그램 창 · 붉은 경고등
+  plant({ F, W, H, mc, ml, r, glow }) {
+    for (let k = 0; k < 5; k++) { const x = 30 + k * 150 + r() * 40, w = 50 + r() * 30, h = 150 + r() * 90;   // 원통형 탱크
+      F(x, H - h, w, h, mc); F(x + 4, H - h, 3, h, ml); for (let y = H - h + 14; y < H; y += 22) F(x, y, w, 2, ml); for (let j = 0; j < w; j += 2) { const t = j / w; F(x + j, H - h - Math.sin(t * Math.PI) * 10, 2, 10, mc); }
+      F(x + w / 2 - 4, H - h + 30, 8, 8, 0xff2a4a, .55); glow(x + w / 2, H - h + 34, 26, 'rgba(255,40,70,.18)'); }
+    for (let k = 0; k < 4; k++) { const y = 40 + k * 46 + r() * 14, t = 8 + r() * 8;   // 가로지르는 굵은 파이프 (검붉게 빛나는 이음매)
+      F(0, y, W, t, mc); F(0, y, W, 2, ml); for (let x = r() * 60; x < W; x += 70 + r() * 50) { F(x, y - 3, 8, t + 6, ml); F(x + 2, y + t / 2 - 1, 4, 3, 0xff3a5a, .7); } }
+    for (let k = 0; k < 3; k++) { const y = H - 90 - k * 70; F(0, y, W, 3, ml); for (let x = 0; x < W; x += 16) F(x, y + 3, 1, 12, ml, .6); }   // 철골 통로
+    for (let k = 0; k < 7; k++) { const x = r() * W, y = 60 + r() * 160; F(x, y, 30, 18, 0x4af0ff, .12); F(x, y, 30, 1, 0x8af8ff, .45); for (let j = 0; j < 3; j++) F(x + 4, y + 4 + j * 4, 10 + r() * 14, 1, 0x8af8ff, .4); }   // 청록 홀로그램 창
+    for (let k = 0; k < 10; k++) { const x = r() * W, y = 20 + r() * 220; F(x, y, 3, 3, 0xff2a4a, .8); glow(x + 1, y + 1, 14, 'rgba(255,40,70,.2)'); }   // 경고등
+  },
+  // 블랙나이트의 심장: 거대한 반응로 고리 · 한가운데로 모여드는 파이프 · 바닥을 뚫고 솟은 검붉은 다이맥스 에너지 결정
+  heart({ F, W, H, mc, r, glow }) {
+    const cx = W * .5, cy = 110;
+    glow(cx, cy, 170, 'rgba(255,30,70,.26)');
+    for (const [rad, w, a] of [[96, 8, .55], [112, 3, .5], [130, 1, .35]]) for (let k = 0; k < 360; k++) { const t = k / 360 * Math.PI * 2; F(cx + Math.cos(t) * rad * 1.4, cy + Math.sin(t) * rad * .5, w, w, k % 30 < 3 ? 0xff5a7a : 0x6a1424, a); }   // 반응로 고리
+    for (let k = 0; k < 10; k++) { const a = k / 10 * Math.PI * 2, x0 = cx + Math.cos(a) * 420, y0 = cy + Math.sin(a) * 260; for (let t = 0; t < 1; t += .01) F(x0 + (cx - x0) * t, y0 + (cy - y0) * t, 6, 6, mc, .8); }   // 모여드는 파이프
+    for (let k = 0; k < 6; k++) {   // 검붉은 에너지 결정
       const x = 40 + k * 120 + r() * 30, h = 120 + r() * 200, w = 24 + r() * 20, lean = (r() - .5) * .4;
       for (let y = 0; y < h; y++) { const t = y / h, ww = t > .82 ? w * (1 - t) / .18 : w; F(x + y * lean - ww / 2, H - y, ww, 1, 0xa0102a, .85); }
       for (let y = 0; y < h * .8; y++) F(x + y * lean - 2, H - y, 2, 1, 0xff8aa8, .5);
@@ -1186,23 +1201,18 @@ function unovaSky(cf, p, r) {
   for (let b = 0; b < 3; b++) { let x = 60 + b * 250 + r() * 60, y = 110; while (y < 250) { F(x, y, 2, 5, 0xff4a6a, .3); x += (r() - .5) * 10; y += 5; } }
   ridgeLine(cf, shade(p.far, .5), W, H, 50, 16, .015);
 }
-// 최종장 · 천계: 짙은 남보라 우주에서 지평선의 황금빛 · 은빛으로 · 성운 · 별 · 멀리 하늘로 뻗은 빛의 유리 계단 · 꼭대기의 천륜
-function heavenSky(cf, p, r) {
+// 가라르 · 너클시티 지하: 검붉게 달아오른 지하 천장 · 천장을 기는 파이프 실루엣 · 멀리 다이맥스 반응로의 붉은 빛 · 떠도는 증기
+function galarSky(cf, p, r) {
   const W = BG_W, H = BG_H, F = (...a) => bgF(cf, ...a);
-  const g = cf.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#1e1a40'); g.addColorStop(.42, '#5a4e8e'); g.addColorStop(.74, '#e0c08a'); g.addColorStop(1, '#fff2dc'); cf.fillStyle = g; cf.fillRect(0, 0, W, H);
-  for (let k = 0; k < 9; k++) glowAt(cf, r() * W, 30 + r() * 150, 60 + r() * 90, k % 2 ? 'rgba(255,214,140,.2)' : 'rgba(210,222,255,.18)');   // 황금빛 · 은빛 성운
-  for (let k = 0; k < 160; k++) F(r() * W, r() * H * .55, r() < .2 ? 2 : 1, 1, r() < .3 ? 0xffe8a8 : 0xffffff, .5 + r() * .5);   // 별
-  const cx = W * .5, cy = 46;   // 천륜 (아르세우스의 황금 고리)
-  cf.strokeStyle = 'rgba(255,224,150,.5)'; cf.lineWidth = 3; cf.beginPath(); cf.arc(cx, cy, 34, 0, Math.PI * 2); cf.stroke();
-  cf.lineWidth = 1; cf.beginPath(); cf.arc(cx, cy, 42, 0, Math.PI * 2); cf.stroke();
-  for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + Math.PI / 4; F(cx + Math.cos(a) * 38 - 3, cy + Math.sin(a) * 38 - 3, 6, 6, 0xffe08a, .7); }
-  glowAt(cf, cx, cy, 70, 'rgba(255,240,200,.3)');
-  for (const [x0, dir] of [[W * .12, 1], [W * .82, -1]]) for (let k = 0; k < 26; k++) {   // 멀리 하늘로 뻗은 빛의 유리 계단
-    const x = x0 + dir * k * 9, y = H - 20 - k * 8;
-    F(x, y, 14, 3, 0xd8f0ff, .35 - k * .01); F(x, y, 14, 1, 0xffffff, .5 - k * .015);
-  }
+  const g = cf.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#0a0406'); g.addColorStop(.5, '#24080e'); g.addColorStop(1, css(p.far)); cf.fillStyle = g; cf.fillRect(0, 0, W, H);
+  glowAt(cf, W * .5, H * .62, 220, 'rgba(255,40,70,.2)');
+  for (let k = 0; k < 6; k++) { const y = 8 + k * 16 + r() * 6; F(0, y, W, 5, 0x1a080c, .9); for (let x = r() * 40; x < W; x += 60 + r() * 40) { F(x, y - 2, 5, 9, 0x2a1016, .9); F(x + 1, y + 1, 3, 2, 0xff3a5a, .45); } }   // 천장 파이프
+  for (let k = 0; k < 14; k++) { const x = r() * W, h = 30 + r() * 80; F(x, 0, 2, h, 0x2a1016, .8); F(x - 2, h, 6, 4, 0x3a141c, .8); }   // 늘어진 케이블
+  for (let k = 0; k < 40; k++) F(r() * W - 40, 120 + r() * 140, 60 + r() * 120, 5, 0x6a3a44, .08);   // 증기
+  for (let i = 0; i < 60; i++) F(r() * W, r() * H, 1, 1, r() < .4 ? 0xff5a7a : 0x8a5a64, .3 + r() * .4);
+  ridgeLine(cf, shade(p.far, .5), W, H, 46, 10, .02);
 }
-const SKIES = [stormSky, johtoSky, hoennSky, sinnohSky, unovaSky, heavenSky];
+const SKIES = [stormSky, johtoSky, hoennSky, sinnohSky, unovaSky, galarSky];
 
 function makeBackgrounds(scene, si, p) {
   const W = BG_W, H = BG_H;

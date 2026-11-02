@@ -2,23 +2,49 @@
 //  갈고리: hit(적중 · Combat.damageEnemy) · amp(피해 배율) · cast(기술 시전 · Player.useSkill) · dash · dive · revive(쓰러지는 순간)
 //          projectile(투사체가 생길 때 · Combat.spawnProjectile) · tick(매 프레임 · Player.update) · hurtMul(받는 피해)
 //          parry(패링 성공 · Player.doParry) · critMul(급소 피해 배율) · allPlate(모든 공격 약점 판정 — 아르세우스)
+//  유대의 불꽃 오버드라이브(GameScene.overdrive · 가라르 진 최종전)도 여기서: 황금빛 · 진홍빛 오라 · 맞힌 자리마다 화염 폭발 · 투사체 색 (피해 2배는 Combat.damageEnemy)
 import Phaser from 'phaser';
 import { Sfx } from '../systems/Audio.js';
 import { SKILLS } from '../data/pokemon.js';
 import { bolt } from './Perks.js';
 import { magmaEruption } from './Spectacle.js';
+import { makeTrainerArt } from './Trainer.js';
 
 const RAINBOW = [0xff4a4a, 0xff9a2a, 0xffe04a, 0x6aff6a, 0x4ac8ff, 0x8a6aff, 0xff6ad8];
 const has = (p, f) => !!(p && p.mods && p.mods.core && p.mods.core[f]);
 const anyStatus = e => { const st = e.status || {}; return st.burn > 0 || st.poison > 0 || st.slow > 0 || st.root > 0 || st.stun > 0 || st.curse > 0; };
 const MELEE = /claw|slash|chop|punch|kick|fang|bite|tackle|tail|blade|cut|strike/;   // 근접(물리) 기술 이름 (한카리아스 · 제크로무 코어)
 const BLUE_FLARE = 0x5ab0ff;
+const GOLD = 0xffc040, CRIMSON = 0xff3a4a, DMAX = 0xff2a5a;   // 유대의 불꽃 · 다이맥스포
+const SKILL_SLOTS = new Set(['x', 'c', 'ult', 'zmove']);
+const skillNow = p => !!(p.action && !p.action.comboStep && SKILL_SLOTS.has(p.action.slot));   // 지금 쓰는 기술(X · C · 메가 필살기 · Z기술) — 평타 연타는 빼고
 
 export const Cores = {
   // ---- 적중: o.proc(코어·특성이 만든 추가 타격)는 다시 일으키지 않는다 ----
   hit(combat, e, d, type, o) {
     const p = combat.p, sc = combat.s, now = sc.time.now;
     if (!p || o.proc || o.dot) return;
+    // 유대의 불꽃 오버드라이브: 맞힌 자리마다 황금빛 · 진홍빛 화염 폭발 (같은 적은 0.11초에 한 번)
+    if (sc.overdrive && now - (e.odAt || -999) > 110) {
+      e.odAt = now;
+      const x = o.hx ?? e.x, y = o.hy ?? e.y;
+      sc.time.delayedCall(40, () => {
+        if (!sc.combat || !sc.player) return;
+        sc.combat.hitCircle(x, y, 28, .35, 'fire', { proc: true, kbx: 0, kby: -40, hs: 0 });
+        sc.fx.ring(x, y, 28, GOLD, 240); sc.fx.glow(x, y, 28, CRIMSON, 220, .9);
+        sc.fx.burst(x, y, [GOLD, CRIMSON, 0xffffff], 14, 180, { glow: true, up: 60, life: .45 });
+      });
+    }
+    // 레드의 유대의 불꽃: 기술마다 황금빛 추가 화염 타격 (같은 적은 0.15초에 한 번)
+    if (has(p, 'bond') && skillNow(p) && now - (e.bondHitAt || -999) > 150) {
+      e.bondHitAt = now;
+      sc.time.delayedCall(70, () => {
+        if (!e.alive || !sc.combat) return;
+        sc.combat.damageEnemy(e, p.atk * .5, 'fire', { proc: true, hs: 0, kb: 0, kby: -30 });
+        sc.fx.burst(e.x, e.y, [GOLD, 0xffe8a0, 0xffffff], 10, 120, { angle: -Math.PI / 2, spread: 1, up: 80, glow: true, life: .45 });
+        sc.fx.glow(e.x, e.y, 22, GOLD, 200, .9);
+      });
+    }
     // 칠색조: 불꽃·비행 → 강한 화상 100%
     if (has(p, 'hooh') && (type === 'fire' || type === 'flying')) { combat.applyStatus(e, { burn: 5 }); e.burnDps = Math.max(e.burnDps || 0, p.atk * .45); }
     // 스이쿤: 물·얼음 → 오로라 파동 (둘레 적 둔화)
@@ -84,8 +110,9 @@ export const Cores = {
   // 피해 배율 · 흡혈 (다크라이: 상태이상 걸린 적 +45%)
   amp(combat, e, d) {
     const p = combat.p;
-    if (has(p, 'darkrai') && anyStatus(e)) { p.heal(d * 1.45 * .08, true); return 1.45; }
-    return 1;
+    let k = has(p, 'dynamax') && e.boss ? 1.5 : 1;   // 무한다이노의 다이맥스 코어: 보스에게 주는 피해 +50%
+    if (has(p, 'darkrai') && anyStatus(e)) { p.heal(d * k * 1.45 * .08, true); k *= 1.45; }
+    return k;
   },
   // ---- 투사체가 생길 때 ----
   projectile(combat, q) {
@@ -94,6 +121,12 @@ export const Cores = {
     if (has(p, 'hooh') && (q.type === 'fire' || q.type === 'flying')) { q.color = RAINBOW[(Math.random() * RAINBOW.length) | 0]; q.rainbow = true; }   // 무지갯빛 성스러운 불꽃
     if (has(p, 'palkia') && (q.type === 'water' || q.type === 'dragon')) { q.life *= 1.5; q.r *= 1.5; q.pierce = 99; if (q.boom) q.boom = Object.assign({}, q.boom, { r: q.boom.r * 1.5 }); }
     if (p.deltaT > 0) { q.vx *= 1.5; q.vy *= 1.5; q.r *= 1.5; }   // 레쿠쟈: 델타스트림
+    if (has(p, 'dynamax') && (combat.chargeSpawn || skillNow(p)) && !q.bonus) {   // 무한다이노: 차징 샷 · 기술이 거대한 다이맥스포로 — 굵게 · 멀리 · 관통 · 폭발 범위 2배 (폭발탄이 아니면 사라지는 자리에서 터진다)
+      q.color = DMAX; q.r *= 1.8; q.life *= 1.3; q.pierce = Math.max(q.pierce, 6); q.dmax = true;
+      if (q.boom) q.boom = Object.assign({}, q.boom, { r: q.boom.r * 2 });
+      else { const end = q.onExpire; q.onExpire = qq => { if (end) end(qq); this.dmaxBlast(combat.s, qq.x, qq.y, qq.type); }; }
+    }
+    if (combat.s.overdrive && !q.blueFlare && !q.dmax) q.color = Math.random() < .5 ? GOLD : CRIMSON;   // 유대의 불꽃 오버드라이브: 황금빛 · 진홍빛 탄
     if (has(p, 'reshiram') && (q.type === 'fire' || q.type === 'dragon' || combat.chargeSpawn)) {   // 레시라무: 초고온의 푸른 불꽃 — 반감 · 무효 · 방어 자세 무시 · 떨어진 자리에 푸른 화염 장판
       q.color = BLUE_FLARE; q.blueFlare = true;
       q.status = Object.assign({}, q.status, { ignoreResist: true, pierceGuard: true });
@@ -112,10 +145,36 @@ export const Cores = {
       onTick: z => sc.combat.hitRect({ x: z.x, y: z.y - 6, w: z.w, h: z.h + 6 }, .25, 'fire', { proc: true, burn: 2, ignoreResist: true, pierceGuard: true, kbx: 0, kby: 0, hs: 0 }) });
     sc.fx.burst(x, gy - 4, [BLUE_FLARE, 0xd8f0ff, 0xffffff], 8, 80, { angle: -Math.PI / 2, spread: .8, up: 50, glow: true, life: .5 });
   },
+  // 무한다이노: 다이맥스포가 사라지는 자리의 폭발 (반지름 2배 · 0.12초에 한 번)
+  dmaxBlast(sc, x, y, type) {
+    const p = sc.player, now = sc.time.now;
+    if (!p || !sc.combat || now - (p.dmaxBoomAt || -999) < 120) return;
+    p.dmaxBoomAt = now;
+    sc.combat.hitCircle(x, y, 40, .6, type, { proc: true, kbx: 160, kby: -160, hs: 0 });
+    sc.fx.ring(x, y, 40, DMAX, 280); sc.fx.glow(x, y, 40, DMAX, 260, .9);
+    sc.fx.burst(x, y, [DMAX, 0xff8aa0, 0xffffff], 18, 200, { glow: true, up: 60, life: .5 });
+    Sfx.play('boom');
+  },
+  // 무한다이노: 기술을 쓰면 앞으로 거대한 다이맥스포 광선 (벽에서 멈춘다 · 끝에서 폭발)
+  dynamaxBeam(p) {
+    const sc = p.scene, now = sc.time.now;
+    if (now - (p.dmaxAt || -999) < 300) return;
+    p.dmaxAt = now;
+    const f = p.face, x0 = p.x + f * 8, y = p.y - 4;
+    let len = 0; while (len < 320 && !sc.isSolidAt(x0 + f * (len + 8), y)) len += 8;
+    const x1 = x0 + f * len, g = sc.add.graphics().setDepth(31).setBlendMode(Phaser.BlendModes.ADD);
+    for (const [w, col, a] of [[26, DMAX, .22], [14, DMAX, .7], [6, 0xffd0d8, .95], [2, 0xffffff, 1]]) { g.lineStyle(w, col, a); g.lineBetween(x0, y, x1, y); }
+    sc.tweens.add({ targets: g, alpha: 0, duration: 340, onComplete: () => g.destroy() });
+    if (len > 0) sc.combat.hitRect({ x: Math.min(x0, x1), y: y - 13, w: len, h: 26 }, .8, p.types[0], { proc: true, kbx: 200, kby: -60, hs: 30, heavy: true, fromX: p.x });
+    this.dmaxBlast(sc, x1, y, p.types[0]);
+    sc.fx.ring(x0, y, 18, DMAX, 200); sc.fx.shake(.008, 160);
+    Sfx.play('beam');
+  },
   // ---- 기술 시전 (Z 연타 제외) ----
   cast(p, id) {
     const sk = SKILLS[id], sc = p.scene;
     if (!sk) return;
+    if (has(p, 'dynamax')) this.dynamaxBeam(p);
     if (has(p, 'entei') && sk.type === 'fire') this.lava(p);
     if (has(p, 'rayquaza') && (sk.type === 'dragon' || sk.type === 'flying')) {
       if (!(p.deltaT > 0)) { sc.fx.floatText(p.x, p.b.y - 16, '델타스트림!', '#8affb0', 10); Sfx.play('wind'); }
@@ -146,8 +205,9 @@ export const Cores = {
     sc.fx.ring(x, y, R, 0x6ab0ff, 260); sc.fx.glow(x, y, 30, 0xb8d8ff, 200, .9);
     Sfx.play('zap');
   },
-  // ---- 패링 성공 (제크로무: 화면 안 모든 적에게 낙뢰 · 5초간 공격 속도 +40%) ----
+  // ---- 패링 성공 (제크로무: 화면 안 모든 적에게 낙뢰 · 5초간 공격 속도 +40% · 레드의 유대의 불꽃: 레드의 환영이 합동 카운터) ----
   parry(p) {
+    if (has(p, 'bond')) this.bondCounter(p);
     if (!has(p, 'zekrom')) return;
     const sc = p.scene, v = sc.cameras.main.worldView;
     p.boltT = 5;
@@ -158,6 +218,32 @@ export const Cores = {
     }
     sc.cameras.main.flash(120, 120, 170, 255, true); Sfx.play('thunder');
     sc.fx.floatText(p.x, p.b.y - 34, '⚡ 크로스썬더 · 공격 속도 +40%', '#8ac8ff', 10);
+  },
+  // 레드의 유대의 불꽃: 패링 순간 등 뒤에 레드의 황금빛 환영이 나타나, 가장 가까운 보스(없으면 적)에게 화염 합동 일격 (1.2초에 한 번)
+  bondCounter(p) {
+    const sc = p.scene, now = sc.time.now;
+    if (now - (p.bondAt || -999) < 1200 || !sc.combat) return;
+    const tgt = (sc.bosses || []).find(b => b.alive && !b.intangible) || sc.combat.nearest(p.x, p.y, 1, 420)[0];
+    if (!tgt) return;
+    p.bondAt = now;
+    makeTrainerArt(sc, 'red');
+    const gx = p.x - p.face * 26, gy = p.bottom, right = tgt.x > gx;
+    const ghost = sc.add.image(gx, gy, 'trainer:red:free').setOrigin(.5, 1).setScale(2).setTintFill(0xffd070).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD).setDepth(30).setFlipX(right);
+    sc.tweens.add({ targets: ghost, alpha: .75, duration: 140 });
+    sc.fx.floatText(gx, gy - 100, '레드: 지금이다!', '#ffd070', 10);
+    sc.time.delayedCall(260, () => {
+      if (!ghost.scene) return;
+      sc.tweens.add({ targets: ghost, alpha: 0, y: gy - 12, delay: 260, duration: 400, onComplete: () => ghost.destroy() });
+      if (!tgt.alive || !sc.combat) return;
+      const hx = gx + (right ? 14 : -14), hy = gy - 56, g = sc.add.graphics().setDepth(31).setBlendMode(Phaser.BlendModes.ADD);
+      for (const [w, col, a] of [[14, CRIMSON, .35], [7, GOLD, .85], [2, 0xffffff, 1]]) { g.lineStyle(w, col, a); g.lineBetween(hx, hy, tgt.x, tgt.y); }
+      sc.tweens.add({ targets: g, alpha: 0, duration: 380, onComplete: () => g.destroy() });
+      sc.combat.damageEnemy(tgt, p.atk * 3, 'fire', { proc: true, hs: 70, heavy: true, kb: 0, kby: 0, hx: tgt.x, hy: tgt.y });
+      if (tgt.boss && tgt.addStaggerRaw) tgt.addStaggerRaw(12);
+      sc.fx.ring(tgt.x, tgt.y, 50, GOLD, 380); sc.fx.ring(tgt.x, tgt.y, 30, CRIMSON, 300);
+      sc.fx.burst(tgt.x, tgt.y, [GOLD, CRIMSON, 0xffffff], 30, 240, { glow: true, up: 80, life: .6 });
+      Sfx.play('fire'); Sfx.play('boom');
+    });
   },
   dash(p) {
     if (has(p, 'entei')) this.lava(p);
@@ -193,6 +279,7 @@ export const Cores = {
   },
   // ---- 매 프레임 ----
   tick(p, dt) {
+    this.bondAura(p, dt);
     if (p.boltT > 0) { p.boltT -= dt; if (Math.random() < .3) p.scene.fx.burst(p.x + (Math.random() - .5) * 24, p.y + (Math.random() - .5) * 24, [0x8ac8ff, 0xffffff], 1, 50, { up: 0, grav: 0, bounce: false, glow: true, life: .15, size: 1 }); }   // 제크로무: 공격 속도 +40%
     if (p.deltaT > 0) {
       p.deltaT -= dt;
@@ -200,6 +287,15 @@ export const Cores = {
       if (Math.random() < .5) p.scene.fx.burst(p.x + (Math.random() - .5) * 30, p.y + (Math.random() - .5) * 30, [0x8affb0, 0xffffff], 1, 40, { grav: -10, bounce: false, glow: true, life: .5 });
     }
     if (p.chompT > 0) { p.chompT -= dt; if (p.chompT <= 0) p.chomp = 0; }
+  },
+  // 유대의 불꽃 오라 (레드의 유대의 불꽃 유물 · 오버드라이브): 몸을 감싸 일렁이는 황금빛 · 진홍빛 두 겹 + 피어오르는 불티 (오버드라이브는 더 짙게)
+  bondAura(p, dt) {
+    const sc = p.scene, od = !!sc.overdrive, on = od || has(p, 'bond');
+    if (!on && !p.bondGlow) return;
+    if (!p.bondGlow || !p.bondGlow[0].scene) p.bondGlow = [GOLD, CRIMSON].map(c => sc.add.image(p.x, p.y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(c).setAlpha(0).setDepth(19.4));
+    const t = sc.time.now / 1000, k = on ? (od ? 1 : .6) : 0;
+    p.bondGlow.forEach((o, i) => o.setVisible(k > 0).setPosition(p.x, p.y - 4).setScale((i ? 1.5 : 1.15) * (1 + Math.sin(t * (3 + i)) * .08)).setAlpha(k * (i ? .22 : .3) * (.8 + Math.sin(t * 5 + i) * .2)));
+    if (k > 0 && Math.random() < (od ? .7 : .35)) sc.fx.burst(p.x + (Math.random() - .5) * 22, p.bottom - Math.random() * 26, [GOLD, CRIMSON, 0xffe8a0], 1, 30, { angle: -Math.PI / 2, spread: .6, up: 50, grav: -40, bounce: false, glow: true, life: .6, size: Math.random() < .3 ? 2 : 1 });
   },
   // 받는 피해 배율 (레쿠쟈: 델타스트림 중 공중이면 -30%)
   hurtMul(p) { return p.deltaT > 0 && !p.onGround ? .7 : 1; },

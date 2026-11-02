@@ -62,14 +62,17 @@ function red(F, pose, eye) {
   // 팔 (반팔 + 검은 소매)
   if (pose === 'cast') {   // 몬스터볼을 든 왼팔을 앞으로
     F(2, 16, 8, 3, jacket); F(1, 15, 3, 3, shirt); F(0, 14, 3, 3, white); F(0, 14, 3, 1, 0xd8282a); F(1, 15, 1, 1, 0x1a1414);
-  } else { F(6, 17, 3, 6, jacket); F(6, 23, 3, 5, shirt); F(6, 28, 3, 2, skin); }
+  } else if (pose === 'cap') { F(6, 13, 3, 5, jacket); F(5, 8, 3, 5, shirt); }   // 왼팔을 들어 모자 챙을 고쳐 쓴다
+  else { F(6, 17, 3, 6, jacket); F(6, 23, 3, 5, shirt); F(6, 28, 3, 2, skin); }
   F(20, 17, 3, 6, jacket); F(20, 23, 3, 5, shirt); F(20, 28, 3, 2, skin);
   // 얼굴 · 머리
   F(9, 6, 9, 9, skin); F(9, 13, 9, 2, skinD);
   F(8, 7, 2, 7, hair); F(17, 7, 3, 7, hair); F(9, 6, 9, 2, hair); F(18, 12, 2, 3, hair);
-  F(11, 10, 2, 1, eye); F(15, 10, 2, 1, eye); F(11, 9, 2, 1, shade(eye, .6)); F(15, 9, 2, 1, shade(eye, .6));
+  if (pose === 'sleep') { F(11, 10, 2, 1, 0x8a6a5a); F(15, 10, 2, 1, 0x8a6a5a); }   // 감은 눈
+  else { F(11, 10, 2, 1, eye); F(15, 10, 2, 1, eye); F(11, 9, 2, 1, shade(eye, .6)); F(15, 9, 2, 1, shade(eye, .6)); }
   // 모자 (앞판은 흰색, 챙은 왼쪽으로)
   F(9, 1, 11, 5, cap); F(11, 1, 6, 4, white); F(13, 2, 2, 2, cap); F(3, 5, 9, 2, cap); F(3, 6, 9, 1, capD); F(9, 0, 11, 1, capD);
+  if (pose === 'cap') { F(4, 4, 4, 3, skin); F(4, 6, 4, 1, skinD); }   // 챙을 잡은 손
 }
 
 const ART = { cynthia, red };
@@ -77,6 +80,10 @@ export function makeTrainerArt(scene, kind) {
   const draw = ART[kind];
   for (const [pose, eye, key] of [['idle', 0xff2a4a, 'idle'], ['cast', 0xff2a4a, 'cast'], ['idle', kind === 'red' ? 0x2a2a3a : 0x4a3a5a, 'free']])
     tex(scene, `trainer:${kind}:${key}`, F => draw(F, pose, eye));
+  if (kind === 'red') {   // 가라르 블랙나이트의 심장: 결정 속에 잠든 레드 · 깨어나 모자를 고쳐 쓰는 레드 (GameScene 의 유대의 불꽃 시네마틱)
+    tex(scene, 'trainer:red:sleep', F => draw(F, 'sleep', 0x2a2a3a));
+    tex(scene, 'trainer:red:cap', F => draw(F, 'cap', 0x2a2a3a));
+  }
   // 단상: 금 간 석판 두 단
   if (!scene.textures.exists('trainer:dais')) {
     const t = scene.textures.createCanvas('trainer:dais', 52, 12), c = t.getContext();

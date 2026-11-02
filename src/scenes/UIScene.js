@@ -231,6 +231,12 @@ export default class UIScene extends Phaser.Scene {
     darkBand(this.loreG, 70, 228, 500, 46, .85);
     this.tLore = hkText(this, 320, 251, '', 11, '#d8d0e8', { origin: .5, style: { align: 'center', wordWrap: { width: 440, useAdvancedWrap: true }, lineSpacing: 3 } });
     this.loreBox.add([this.loreG, fadeLine(this, 320, 230, 380, .5), fadeLine(this, 320, 272, 300, .35), this.tLore]);
+    // 이야기 자막 (화면 위쪽 가운데 · 유대의 불꽃 시네마틱 — 아레나 한가운데의 레드를 가리지 않게): 어둠 띠 위 황금빛 글이 떠올랐다 사라진다
+    this.captionBox = this.add.container(0, 0).setDepth(22).setAlpha(0);
+    this.captionG = this.add.graphics();
+    darkBand(this.captionG, 90, 58, 460, 52, .8);
+    this.tCaption = hkText(this, 320, 84, '', 12, '#ffe8b0', { origin: .5, bold: true, glow: true, glowColor: 'rgba(255,190,90,0.6)', style: { align: 'center', wordWrap: { width: 420, useAdvancedWrap: true }, lineSpacing: 4 } });
+    this.captionBox.add([this.captionG, fadeLine(this, 320, 60, 400, .6), fadeLine(this, 320, 108, 360, .45), this.tCaption]);
 
     // ── 도감 등록 팝업 (같은 포켓몬을 10번 정화했을 때)
     this.unlockBox = this.add.container(0, 0).setDepth(22).setVisible(false);
@@ -270,8 +276,9 @@ export default class UIScene extends Phaser.Scene {
       lore: s => this.showLore(s),
       hurt: k => { this.hurtK = Math.max(this.hurtK, k); },
       say: (who, s) => this.showLore(s, who),   // 트레이너 대사 (난천 · 레드)
+      caption: (s, ms) => this.showCaption(s, ms),   // 이야기 자막 (GameScene.bondFlameCinematic)
       boss: b => { if (b) this.bossTitle(b); },
-      clearTitles: () => { this.tweens.killTweensOf(this.loreBox); this.loreBox.setAlpha(0); this.bossTitleT = 0; },   // 테스트룸에서 보스를 바로 바꿀 때 앞 보스의 이름 · 트레이너 대사를 지운다
+      clearTitles: () => { this.tweens.killTweensOf([this.loreBox, this.captionBox]); this.loreBox.setAlpha(0); this.captionBox.setAlpha(0); this.bossTitleT = 0; },   // 테스트룸에서 보스를 바로 바꿀 때 앞 보스의 이름 · 트레이너 대사를 지운다
       unlock: (k, kind) => this.onUnlock(k, kind),
       killcount: (k, n) => { this.recent[k] = this.time.now; this.toast(`${SPECIES[k].name} 정화 진행도: ${n} / ${UNLOCK_KILLS}`); },
       pause: on => this.showPause(on),
@@ -341,6 +348,14 @@ export default class UIScene extends Phaser.Scene {
     this.areaBox.setAlpha(0).setY(6);
     this.tweens.add({ targets: this.areaBox, alpha: 1, y: 0, duration: 900, ease: 'Sine.easeOut' });
     this.tweens.add({ targets: this.areaBox, alpha: 0, duration: 1300, delay: 3700, ease: 'Sine.easeIn' });
+  }
+
+  showCaption(s, ms = 4200) {
+    this.tCaption.setText(s);
+    this.tweens.killTweensOf(this.captionBox);
+    this.captionBox.setAlpha(0).setY(6);
+    this.tweens.add({ targets: this.captionBox, alpha: 1, y: 0, duration: 700, ease: 'Sine.easeOut' });
+    this.tweens.add({ targets: this.captionBox, alpha: 0, duration: 900, delay: ms, ease: 'Sine.easeIn' });
   }
 
   showLore(s, who = null) {
@@ -1204,11 +1219,22 @@ export default class UIScene extends Phaser.Scene {
     g.fillStyle(0x1c1830, 1); g.fillRoundedRect(fx, fy, fw, fh, 6);
     g.fillStyle(0x2c2648, 1); g.fillRect(fx + 3, fy + fh - 22, fw - 6, 19);
     g.lineStyle(1, HK.goldN, .5); g.strokeRoundedRect(fx, fy, fw, fh, 6);
-    const key = npcArt(this, T.look, T.tint);
-    const face = this.add.image(fx + fw / 2, fy + fh + 30, key + ':open').setOrigin(.5, 1).setScale(3);
     const mk = this.make.graphics({ add: false }); mk.fillStyle(0xffffff); mk.fillRoundedRect(fx + 1, fy + 1, fw - 2, fh - 2, 5);
-    face.setMask(mk.createGeometryMask()); this.talkMask = mk;
-    L.add(face); this.talkFace = { img: face, key, t: 2 };
+    this.talkMask = mk;
+    const pt = T.portrait && this.textures.exists(T.portrait.key) ? T.portrait : null;
+    if (pt) {   // 텍스처 한 장을 칸에 맞춰 (아르세우스의 텔레파시 · 기밀 연구 일지 단말) — 눈은 깜빡이지 않는다
+      const face = this.add.image(fx + fw / 2, fy + fh / 2, pt.key, pt.frame);
+      face.setScale(Math.min((fw - 8) / face.width, (fh - 8) / face.height, pt.max || 3));
+      if (pt.tint) face.setTint(pt.tint);
+      face.setMask(mk.createGeometryMask());
+      const halo = this.add.image(fx + fw / 2, fy + fh / 2, 'glow').setBlendMode(ADD).setTint(pt.glow || 0xfff0c0).setScale(1.4).setAlpha(.35);
+      L.add([halo, face]); this.talkFace = null;
+    } else {
+      const key = npcArt(this, T.look, T.tint);
+      const face = this.add.image(fx + fw / 2, fy + fh + 30, key + ':open').setOrigin(.5, 1).setScale(3);
+      face.setMask(mk.createGeometryMask());
+      L.add(face); this.talkFace = { img: face, key, t: 2 };
+    }
     // 이름표
     const name = hkText(this, X + 24, Y - 1, T.name, 10.5, HK.gold, { bold: true, origin: [0, .5], ls: 1 });
     const nw = name.width + 24;
@@ -1929,9 +1955,10 @@ export default class UIScene extends Phaser.Scene {
     this.clearOverlay();
     const g = this.gOver, L = this.overlay.setVisible(true);
     g.fillStyle(0x05040a, .9); g.fillRect(0, 0, GAME_W, GAME_H);
-    L.add(hkText(this, 320, 44, r.won ? '심연 정화 완료' : '눈앞이 캄캄해졌다…', 26, r.won ? HK.gold : HK.ivory, { ls: 4, bold: true, origin: .5, glow: true }));
+    L.add(hkText(this, 320, 44, r.won ? '진 엔딩 · 유대의 불꽃' : '눈앞이 캄캄해졌다…', 26, r.won ? HK.gold : HK.ivory, { ls: 4, bold: true, origin: .5, glow: true }));
     L.add(fadeLine(this, 320, 70, 340));
-    L.add(hkText(this, 320, 86, r.won ? '무한다이노의 심연을 걷어 내고 시초의 방에서 창조신 아르세우스까지 정화했다' : `${r.stage}장 · ${r.stageName}에서 여정을 멈췄다`, 10, HK.dim, { origin: .5 }));
+    L.add(hkText(this, 320, 86, r.won ? '유대의 불꽃을 돌려받은 레드와 함께 심연의 지배자 아비스 네크로즈마를 쓰러뜨리고 세상을 구했다' : `${r.stage}장 · ${r.stageName}에서 여정을 멈췄다`, 10, HK.dim, { origin: .5 }));
+    if (r.won) L.add(hkText(this, 320, 99, '🔥 레드의 유대의 불꽃 — 다음 여정부터 처음부터 지니고 시작한다', 9, HK.gold, { origin: .5 }));
     const mm = Math.floor(r.time / 60), ss = String(Math.floor(r.time % 60)).padStart(2, '0');
     const rows = [['도달 챕터', `${r.stage} / ${STAGES.length}`], ['정화한 포켓몬', `${r.kills}마리`], ['획득 아이템', `${r.items}개`], ['플레이 시간', `${mm}:${ss}`]];
     rows.forEach(([k, v], i) => {

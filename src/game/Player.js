@@ -1381,7 +1381,7 @@ export class Player extends Actor {
     else sc.gameOver(false);
   }
 
-  destroy() { this.aura.destroy(); this.chgAura.destroy(); this.megaSym.destroy(); this.megaEye.destroy(); super.destroy(); }
+  destroy() { this.aura.destroy(); this.chgAura.destroy(); this.megaSym.destroy(); this.megaEye.destroy(); for (const o of this.bondGlow || []) o.destroy(); super.destroy(); }   // bondGlow: 유대의 불꽃 오라 (Cores.bondAura)
 }
 
 export { ITEMS };

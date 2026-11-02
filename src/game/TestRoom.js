@@ -10,7 +10,7 @@ import { STAGES } from '../data/stages.js';
 
 const WALL = 2, GROUND = 6;   // World.js 와 같은 벽 두께 · 바닥 밑 땅 두께
 // 이어서 나오는 보스(펄기아 · 라티오스 · 레드의 포켓몬)는 원래 함께 나오는 보스의 아레나에서
-const SAME_ARENA = { palkia: 'dialga', latios: 'latias', reshiram: 'zekrom', 'pikachu-red': 'eternatus', 'charizard-red': 'eternatus' };
+const SAME_ARENA = { palkia: 'dialga', latios: 'latias', reshiram: 'zekrom', necrozma: 'eternatus', 'pikachu-red': 'eternatus', 'charizard-red': 'eternatus' };
 
 // 보스가 원래 나오는 곳: { ci 지방, ai 지역, arena 아레나 주인, tall 2층 아레나 }
 export function bossHome(key) {

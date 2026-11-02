@@ -29,7 +29,14 @@ const DEFAULT_PROPS = { lamp: 2, tree: 1, statue: 1, fence: 1 };
 // 방 모양 [폭, 높이] (셀)
 const SHAPE = { start: [1, 1], wide: [2, 1], plaza: [2, 2], tower: [1, 3], abyss: [1, 3], stairs: [1, 2], bridge: [2, 1], hub: [2, 1], mini: [2, 1], boss: [2, 1], sanct: [2, 1] };
 const C_SHAPES = [[1, 1], [1, 1], [1, 1], [2, 1], [1, 2]];
-export const BIG_ARENA = new Set(['ho-oh', 'rayquaza', 'eternatus', 'latias', 'giratina', 'mewtwo', 'darkrai', 'arceus']);   // 날아다니는 보스는 2×2 아레나
+export const BIG_ARENA = new Set(['ho-oh', 'rayquaza', 'eternatus', 'latias', 'giratina', 'mewtwo', 'darkrai', 'arceus']);
+// 가라르 지하 플랜트의 기밀 연구 일지 (World 의 가라르 블록이 본 경로 전투방 곳곳에 세운다 · 조사하면 글 — Props 의 journal)
+const JOURNALS = [
+  '[기밀 연구 일지 1 · 유대의 불꽃] 레드를 생체 코어에 가두는 순간, 레드는 마지막 힘을 짜내어 자신의 「유대의 불꽃」을 전 지방의 포켓몬들에게 날려 보냈다. 그 불꽃을 이어받은 포켓몬들이 지금 우리의 침식 결계를 하나씩 정화하며 이곳으로 다가오고 있다...',
+  '[기밀 연구 일지 2 · 진짜 흑막의 정체] 우리는 속았다! 무한다이노가 폭주한 게 아니었어. 운석 속에 숨어 있던 외우주의 기생체 「아비스 네크로즈마」가 우리 연구원들을 조종해 레드를 가두게 만들고, 무한다이노를 숙주 삼아 전 세계의 에너지를 빨아들이고 있었던 거다!',
+  '[기밀 연구 일지 3 · 블랙나이트] 반응로 출력이 계측 한계를 넘었다. 생체 코어 속 레드의 생체 반응이 날마다 약해진다. 무한다이노의 눈은 이제 우리를 보지 않는다 — 그 뒤의 무언가를 보고 있다.',
+  '[기밀 연구 일지 4 · 최종 격리 게이트] 최종 격리 게이트를 봉쇄한다. 정신이 돌아온 몇 사람만 남았다. 누구든 이 기록을 읽는다면… 레드를, 그리고 그 불꽃을 부탁한다.'
+];   // 날아다니는 보스는 2×2 아레나
 const END = { tm: { shape: [1, 1], type: 'tm' }, treasure: { shape: [1, 1], type: 'treasure' }, potion: { shape: [1, 1], type: 'pocket' }, fake: { shape: [1, 1], type: 'pocket' }, sanctuary: { shape: [2, 1], type: 'sanctuary' } };
 
 // 아레나: 평평한 바닥 + 양옆·가운데 발판 (2층 높이면 위로 더) — 테스트룸(game/TestRoom.js)도 같은 배치를 쓴다
@@ -829,6 +836,41 @@ export function buildChapter(ch, ci, retry = 0) {
         templeGate(gate, hall, oi, { npcs: ['spacetime_guardian', 'sinnoh_heir'], faces: { spacetime_guardian: -1, sinnoh_heir: 1 }, name: '시초의 방' });
       }
     }
+    // 가라르 · 블랙나이트의 심장: 너클시티 지하 에너지 플랜트(bg 'plant' — 밝기 75% · 검붉은 다이맥스 파이프 · 홀로그램) → 최종 격리 게이트 앞 안전지대 → 블랙나이트의 심장(bg 'heart' — 결정 속 레드 · 무한다이노) — 난수를 쓰지 않는다
+    //  · 플랜트 본 경로 전투방 곳곳에 기밀 연구 일지(홀로그램 단말 · 조사하면 글 — Props 의 journal) 넷: 유대의 불꽃 · 진짜 흑막의 정체 · 블랙나이트 · 격리 게이트
+    //  · 심장 바로 앞 지역의 마지막 본 경로 방 = 최종 격리 게이트 앞 (몬스터 0 · 그린 · 정신을 차린 수석 연구원) · 게이트(포털) 너머가 곧 결전장
+    {
+      const hi = ch.areas.findIndex(a => a.bg === 'heart');
+      for (const r of rooms) { const bg = ch.areas[r.ai].bg; if (bg === 'plant') r.plant = true; if (r.ai === hi) r.plantHeart = true; }
+      if (hi > 0) {
+        const gate = rooms.filter(r => r.ai === hi - 1 && r.main && r.type === 'combat').sort((a, b) => a.id - b.id).pop();
+        const hall = rooms.filter(r => r.ai === hi && r.main).sort((a, b) => a.id - b.id)[0];
+        if (gate) { gate.plantGate = true; gate.peaceful = true; }
+        templeGate(gate, hall, hi, { npcs: ['green', 'chief_researcher'], faces: { green: -1, chief_researcher: 1 }, name: '최종 격리 게이트' });   // 그린은 게이트 왼쪽, 수석 연구원은 오른쪽
+        const route = rooms.filter(r => r.plant && r.main && r.type === 'combat' && !r.plantGate).sort((a, b) => a.id - b.id);
+        const used = new Set();
+        // 일지 자리: 디딜 면(바닥 · 언덕 위) 두 칸 + 머리 위 세 칸이 비어 있고 다른 소품과 겹치지 않는 곳 — 정한 방에 없으면 다음 방으로
+        const spotIn = (r, k) => {
+          const xs = [];
+          for (let y = r.F; y > r.ty0 + 3; y--) for (let x = r.tx0 + 6; x < r.tx1 - 6; x++) {
+            const ok = dx => grid[y][x + dx] === 'S' && grid[y - 1][x + dx] === '.' && grid[y - 2][x + dx] === '.' && grid[y - 3][x + dx] === '.';
+            if (ok(0) && ok(1) && !props.some(q => q.g === y && Math.abs(q.x - x) < 3)) xs.push([x, y]);
+          }
+          return xs.length ? xs[(k * 7) % xs.length] : null;
+        };
+        JOURNALS.forEach((text, k) => {
+          const i0 = Math.floor(k * route.length / JOURNALS.length);
+          for (let j = 0; j < route.length; j++) {
+            const r = route[(i0 + j) % route.length];
+            if (used.has(r)) continue;
+            const at = spotIn(r, k);
+            if (!at) continue;
+            used.add(r); props.push({ kind: 'journal', x: at[0], g: at[1], text, no: k + 1 });
+            break;
+          }
+        });
+      }
+    }
     // 호연 기상 이변 · 하늘기둥 (지역 bg 로 찾는다 · 난수를 쓰지 않는다)
     //  굴뚝산(volcano) 지상 = 가뭄 길 (붉은 화산재 · 일식 · 용암 균열) → 본 경로 마지막 방 끝에 대지의 동굴 입구
     //  해저동굴(seacave) 지상 = 폭우 해안 (빗줄기 · 푸른 번개 · 발밑 바닷물) → 본 경로 첫 지상 방 끝에 해저동굴 입구
@@ -881,7 +923,7 @@ export function buildChapter(ch, ci, retry = 0) {
 
   // ---- 적 자리: 전투방 바닥·발판 위 (방 넓이 × 챕터) ----
   for (const r of rooms) {
-    if (r.type !== 'combat' || ch.areas[r.ai].bg === 'distortion' || ch.areas[r.ai].bg === 'azure' || r.spearGate || r.spiralGate || r.originGate) continue;   // 깨어진 세계 · 천계의 공명로는 적이 없는 구역 · 창기둥 · 용나선탑 · 시초의 성문 앞 성역은 몬스터 0
+    if (r.type !== 'combat' || ch.areas[r.ai].bg === 'distortion' || ch.areas[r.ai].bg === 'azure' || r.spearGate || r.spiralGate || r.originGate || r.plantGate) continue;   // 깨어진 세계 · 천계의 공명로는 적이 없는 구역 · 창기둥 · 용나선탑 · 시초의 성문 앞 성역은 몬스터 0
     const n = Math.round(r.gw * r.gh * (2.6 + ci * .5) * (r.branch ? .7 : 1));
     for (let k = 0, tries = 0; k < n && tries < n * 12; tries++) {
       const x = ri(r.tx0 + 3, r.tx1 - 4), y0 = ri(r.ty0 + 1, r.F - 2);

@@ -88,7 +88,17 @@ export const TRACKS = {
           'Eb6 - - - C6 - G5 - | A5 - - - F#5 - D5 - | G5 - Bb5 - Eb6 - - - | D6 - C6 - A5 - F#5 -',
     drums: { k: 'x.x...x.x.x...x.', s: '....x.......x...', h: 'xxxxxxxxxxxxxxxx' }
   },
-  // 최종장 필드 — 천계의 피리 공명로, 맑고 경건하게 (하프처럼 오르내리는 분산화음)
+  // 진 최종전 — 유대의 불꽃 공명, 뜨겁고 영웅적으로 (아비스 네크로즈마)
+  boss_bond: {
+    bpm: 172, bass: 'gallop', arp: 'up16', inst: { lead: 'p50', arp: 'p25' },
+    chords: ['C', 'G', 'Am', 'F', 'C', 'G', 'F', 'G', 'Am', 'F', 'C', 'G', 'F', 'G', 'Ab', 'Bb'],
+    lead: 'E5 - G5 - C6 - - - | D6 - - - B5 - G5 - | C6 - E6 - A5 - - - | F5 - A5 - C6 - - - |' +
+          'G5 - C6 - E6 - G6 - | F6 - - - D6 - B5 - | A5 - C6 - F6 - - - | G6 - - - - - . . |' +
+          'E6 - - - C6 - A5 - | F6 - - - C6 - A5 - | E6 - G6 - C7 - - - | B6 - - - G6 - D6 - |' +
+          'C6 - - - A5 - F5 - | D6 - - - B5 - G5 - | C6 - Eb6 - Ab6 - - - | Bb6 - - - D7 - - -',
+    drums: { k: 'x.x...x.x.x...x.', s: '....x.......x...', h: 'x.xxx.xxx.xxx.xx' }
+  },
+  // 하나 · 천계 필드 — 천계의 피리 공명로, 맑고 경건하게 (하프처럼 오르내리는 분산화음)
   celestial: {
     bpm: 76, bass: 'drone', arp: 'updown8', inst: { lead: 'tri', arp: 'p12' },
     chords: ['D', 'A', 'Bm', 'G', 'D', 'Em7', 'G', 'A', 'G', 'A', 'F#m', 'Bm', 'Em7', 'A', 'G', 'A7'],

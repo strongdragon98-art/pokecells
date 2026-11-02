@@ -1,4 +1,5 @@
-// 5대 지방 + 최종장 = 6개 챕터: 침식된 관동 → 어둠에 잠긴 성도 → 폭풍의 호연 → 시공이 뒤틀린 신오 → 종언의 하나·무한다이노의 심연 → 최종장 천계(시초의 방 · 아르세우스)
+// 6개 챕터: 침식된 관동 → 어둠에 잠긴 성도 → 폭풍의 호연 → 시공이 뒤틀린 신오 → 하나(용나선탑 · 시초의 방 아르세우스) → 가라르(블랙나이트의 심장 — 무한다이노 · 유대의 불꽃 · 아비스 네크로즈마)
+// 이야기: 전설의 트레이너 레드가 무한다이노에게 붙잡히기 직전, 포켓몬들에게 마지막 희망 『유대의 불꽃』을 나누어 주었다 — 그 불꽃으로 심연에 물든 신들을 정화하며 가라르로 향해 레드에게 불꽃을 돌려준다
 // 챕터마다 메트로배니아식 2D 방 그래프를 만든다 (game/World.js). 지역(area)은 본길 순서대로 이어지고, 지역마다 샛길이 갈라진다.
 //  각 지방 첫 지역엔 결계에 지켜지는 안전한 시내(hub)가 있다 — 마을 사람들(data/npcs.js)이 이야기를 들려준다. 관동 입구는 오박사 연구소 안
 //  plan: 그 지역 본길의 방 차례. 토큰 —
@@ -10,7 +11,7 @@
 //  branches: 본길에서 갈라지는 샛길 — tm 기술머신 비밀방(카드 고르기 · 막다른 굴 일부를 바꿔 지방마다 2~3곳) · treasure 보물 · potion 상처약 · fake 막다른 굴 · hidden:보스 히든 전설 성소
 //   hidden 은 부서지는 벽 너머로 깊게(2~4방) 뻗고, hiddenDir 쪽(down 아래 · left 왼쪽 · up 위)을 좋아한다
 //  color: 지도·방 뒤 배경 색 · bg: 중경 배경 종류(town · road · city · forest · gym · default + 지역 랜드마크: museum · tower · silph · crystal · shrine · radio · burnt · belltower · lighthouse · volcano · seacave · skypillar · snowcity · temple · rift · spear · ferris · dragonspiral · core — systems/Textures.js 의 LANDMARKS) · city: 시내 이름(아머까오 목적지)
-//  boss(챕터): 지방 최종 보스 · pool: 야생 계열 · palette: 타일·조명 색
+//  boss(챕터): 지방 최종 보스 · pool: 야생 계열 · palette: 타일·조명 색 · 지역의 palette · plat: 그 지역만 다른 타일 색 (하나의 천계 — 빛의 유리 계단 · 시초의 방) · 지역의 bgm: 그 지역에 들어서면 바뀌는 곡
 //  bgm · bossBgm: 필드 / 지방 최종 보스전 배경음 (data/music.js 의 곡 이름 — 중간·히든 보스는 공용 boss_ruin)
 export const STAGES = [
   {
@@ -90,7 +91,7 @@ export const STAGES = [
     ]
   },
   {
-    name: '종언의 하나지방 · 무한다이노의 심연', region: '하나지방', short: '하나', boss: 'eternatus', bgm: 'spiretower', bossBgm: 'boss_final', pool: ['gastly', 'machop', 'zubat', 'pichu', 'rattata'],
+    name: '하나지방 · 용나선탑과 시초의 방', region: '하나지방', short: '하나', boss: 'arceus', bgm: 'spiretower', bossBgm: 'boss_origin', pool: ['gastly', 'machop', 'zubat', 'pichu', 'rattata'],
     terrain: { bridge: 3, ziggurat: 3, house: 2, pit: 2, island: 2, tiers: 2 }, props: { lamp: 3, statue: 2, fence: 1 }, stalactites: [1, 3],
     plat: 'metal', roofs: [0x5a2a3a, 0x3a2a3a, 0x6a3a4a, 0x2a2a3a],
     palette: { sky: 0x0e0408, far: 0x240a14, wall: 0x46202e, wall2: 0x2c121c, edge: 0xff4a6a, plat: 0x6a2a3a, light: 0xff6a8a, accent: 0xffa0b8, ambient: 0x52343e, moss: 0x8a2a4a },
@@ -103,22 +104,31 @@ export const STAGES = [
         lore: ['설화시티 — 겨울이면 습지가 얼어붙어, 고대 석조 다리만이 용나선탑으로 이어진다.'] },
       // 용나선탑 안(밝기 80%): 왼쪽 벽엔 진실의 백열 불꽃 · 오른쪽 벽엔 이상의 푸른 뇌전 · 전자기장(점프 1.5배) · 열기 상승 기류(위층으로 활공) — 꼭대기 = 흑과 백의 제단 (N의 성이 다리로 맞물린 절경)
       { name: '용나선탑', en: 'Dragonspiral Tower', color: 0x3d4452, bg: 'dragonspiral', plan: ['tower', 'c^', 'mini:zekrom^'], branches: ['hidden:kyurem-black', 'treasure'], hiddenDir: 'down',
-        terrain: { tiers: 4, ziggurat: 3 }, lore: ['용나선탑 — 검은 번개와 하얀 불꽃이 탑을 감싸고 돈다.'] },
-      { name: 'N의 성 · 심연의 왕좌', en: "N's Castle · Abyssal Throne", color: 0x3b1238, bg: 'core', plan: ['c', 'wide', 'abyss', 'boss:eternatus'], branches: ['tm'],
-        lore: ['N의 성 — 고대 성벽을 뚫고 붉은 결정이 자라났다.', '왕좌 앞에 낯익은 빨간 모자가 떨어져 있다.'] }
+        terrain: { tiers: 4, ziggurat: 3 }, sprites: ['reshiram'], lore: ['용나선탑 — 검은 번개와 하얀 불꽃이 탑을 감싸고 돈다.'] },
+      // 용나선탑 꼭대기에서 하늘로: 천계의 피리 공명로(빛의 유리 계단 · 밝기 95% · 완전 평화 구역) → 시초의 성문 앞(시공간의 수호자 · 고대 신오의 계승자) → 시초의 방(아르세우스)
+      //  아르세우스를 정화하면 텔레파시로 유대의 불꽃 · 진짜 흑막을 일러 주고 제단 오른쪽에 가라르로 가는 포털이 열린다 (GameScene.bossDefeated)
+      { name: '천계의 피리 공명로', en: 'Azure Stairway', color: 0x8a9ac8, bg: 'azure', bgm: 'celestial', plan: ['stairs', 'stairs', 'c', 'wide'], branches: [],
+        palette: { wall: 0x9a92b8, wall2: 0x6e6890, edge: 0xffe08a, plat: 0xd8e8ff, light: 0xfff0c0, accent: 0xffe8a0, moss: 0xffd8f0 }, plat: null,
+        lore: ['천계의 피리 공명로 — 한 걸음마다 유리 계단이 맑은 소리로 운다.', '하늘 끝, 모든 것이 시작된 방이 있다고 한다.'] },
+      { name: '시초의 방', en: 'Hall of Origin', color: 0xc8b070, bg: 'origin', bgm: 'celestial', plan: ['boss:arceus'], branches: [],
+        palette: { wall: 0x9a92b8, wall2: 0x6e6890, edge: 0xffe08a, plat: 0xd8e8ff, light: 0xfff0c0, accent: 0xffe8a0, moss: 0xffd8f0 }, plat: null,
+        lore: ['시초의 방 — 천 개의 팔로 우주를 빚었다는 신의 자리.'] }
     ]
   },
-  // 최종장: 무한다이노를 정화한 뒤 하늘로 열리는 성역 — 천계의 피리 공명로(빛의 유리 계단 · 밝기 95% · 완전 평화 구역) → 시초의 성문 앞(시공간의 수호자 · 고대 신오의 계승자) → 시초의 방(아르세우스)
+  // 가라르 · 블랙나이트의 심장 (최종 챕터): 너클시티 지하 에너지 플랜트 — 검붉은 다이맥스 파이프 · 홀로그램 (밝기 75%) · 곳곳의 기밀 연구 일지 (game/World.js 가 세운다)
+  //  → 최종 격리 게이트 앞 안전지대(그린 · 정신을 차린 수석 연구원) → 블랙나이트의 심장: 결정 기둥에 갇힌 레드 · 무한다이노 → 유대의 불꽃 → 아비스 네크로즈마 (진 최종전)
   {
-    name: '최종장 · 천계의 계단과 시초의 방', region: '천계', short: '천계', boss: 'arceus', bgm: 'celestial', bossBgm: 'boss_origin', pool: ['gastly', 'machop', 'zubat', 'pichu', 'rattata'],
-    terrain: { tiers: 3, ziggurat: 2, flat: 3, island: 2 }, props: { pillar: 3, statue: 1 }, stalactites: [0, 0],
-    roofs: [0xd8c890, 0xc8b8e8, 0xe8d8b0, 0xb8c8e8],
-    palette: { sky: 0xfff6e0, far: 0xe8dcc0, wall: 0x9a92b8, wall2: 0x6e6890, edge: 0xffe08a, plat: 0xd8e8ff, light: 0xfff0c0, accent: 0xffe8a0, ambient: 0xb8b0d0, moss: 0xffd8f0 },
+    name: '가라르 · 블랙나이트의 심장', region: '가라르지방', short: '가라르', boss: 'eternatus', bgm: 'cinder', bossBgm: 'boss_final', pool: ['gastly', 'machop', 'zubat', 'pichu', 'rattata'],
+    terrain: { tiers: 3, ziggurat: 2, pit: 2, island: 1, flat: 2 }, props: { lamp: 3, fence: 2 }, stalactites: [0, 1],
+    plat: 'metal', roofs: [0x4a2a34, 0x3a2a30, 0x5a3a44, 0x2a2228],
+    palette: { sky: 0x0c0608, far: 0x200a12, wall: 0x4a3238, wall2: 0x2c1a20, edge: 0xff3a5a, plat: 0x6a4a52, light: 0xff5a7a, accent: 0xff8aa0, ambient: 0x4a3438, moss: 0xb02a48 },
     areas: [
-      { name: '천계의 피리 공명로', en: 'Azure Stairway', color: 0x8a9ac8, bg: 'azure', plan: ['start', 'stairs', 'stairs', 'c', 'wide'], branches: [],
-        lore: ['천계의 피리 공명로 — 한 걸음마다 유리 계단이 맑은 소리로 운다.', '하늘 끝, 모든 것이 시작된 방이 있다고 한다.'] },
-      { name: '시초의 방', en: 'Hall of Origin', color: 0xc8b070, bg: 'origin', plan: ['boss:arceus'], branches: [],
-        lore: ['시초의 방 — 천 개의 팔로 우주를 빚었다는 신의 자리.'] }
+      { name: '너클시티 지하 에너지 플랜트', en: 'Hammerlocke Energy Plant', color: 0x5a2a34, bg: 'plant', city: '너클시티', plan: ['start', 'hub', 'c', 'wide', 'stairs'], branches: ['tm', 'potion', 'fake'],
+        lore: ['너클시티 — 성벽 아래로 붉은 파이프가 땅속 깊이 뻗어 있다.'] },
+      { name: '플랜트 심층 · 다이맥스 반응로', en: 'Plant Depths', color: 0x4a1a24, bg: 'plant', plan: ['c', 'abyss', 'c', 'wide'], branches: ['treasure', 'tm'],
+        lore: ['반응로 — 검붉은 에너지가 맥박처럼 파이프를 타고 흐른다.'] },
+      { name: '블랙나이트의 심장', en: 'Heart of the Black Knight', color: 0x3a0a18, bg: 'heart', plan: ['boss:eternatus'], branches: [], sprites: ['necrozma', 'charizard', 'pikachu'],
+        lore: ['블랙나이트의 심장 — 결정 속에서 누군가 잠들어 있다.'] }
     ]
   }
 ];

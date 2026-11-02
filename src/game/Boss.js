@@ -107,7 +107,8 @@ export class Boss extends Enemy {
       }
     }
     this.alert.setPosition(Math.round(this.x), Math.round(this.top - 6));
-    this.glowImg.setPosition(this.x, this.y).setScale(this.b.height / 20).setTint(this.phase === 2 ? 0xff5a9a : 0x9a7aff);
+    const gc = this.def.glow;   // 보스 고유 오라 색 [1페이즈, 2페이즈] (아비스 네크로즈마의 검붉은 심연빛)
+    this.glowImg.setPosition(this.x, this.y).setScale(this.b.height / 20).setTint(gc ? gc[this.phase - 1] : this.phase === 2 ? 0xff5a9a : 0x9a7aff);
     this.tint = st.stun > 0 ? 0xfff0a0 : st.curse > 0 ? 0xd0a0ff : null;
     const want = this.state === 'wind' || this.state === 'charge' ? 'Attack' : this.state === 'fire' || this.state === 'barrage' || this.state === 'blinkFire' ? 'Shoot' : Math.abs(this.b.velocity.x) > 10 || this.flying ? 'Walk' : 'Idle';
     if (want !== this.animName) this.play(want);
@@ -2435,7 +2436,8 @@ function pikaHop(e) {
   e.state = 'blinkOut'; e.timer = .18;
 }
 
-// ---- 무한다이노 (최종장 · 모든 것의 원흉) → 무한다이맥스 (체력 50%) ----
+// ---- 무한다이노 (가라르 · 블랙나이트의 심장 — 심연에 숙주로 삼켜진) → 무한다이맥스 (체력 50%) ----
+//  다이맥스포 연사: 붉은 핵에서 검붉은 에너지 구체를 세 갈래씩 빠르게 연사 (보스 탄 — 패링하면 그로기 +32 · 1페이즈의 주력기) · 무한다이맥스는 다섯 갈래
 //  다이맥스포: 붉은 핵에 빛을 모아 플레이어를 노리는 굵은 광선 (예고 동안 천천히 따라온다) · 독침 비: 떨어진 자리에 독 웅덩이
 //  크로스포이즌: 플레이어 자리에서 엇갈리는 X 베기 · 무한광선: 아레나 위로 올라가 기를 모았다가 아레나 전체를 가로지르는 굵은 광선 띠 (대시 무적 · 높이로 피한다)
 //  무한다이맥스: 몸이 커지고 하늘이 붉게 물든다 — 아레나 네 구석에 붉은 결정이 솟아 차례로 광선 · 다이맥스포 세 갈래
@@ -2483,7 +2485,7 @@ BOSS_AI.eternatus = function (e, dt, p) {
       b.setVelocity(Phaser.Math.Clamp((tx - e.x) * 1.4, -far, far), Phaser.Math.Clamp((ty - e.y) * 1.4, -110, 110));
       e.cd -= dt;
       if (e.cd > 0) break;
-      e.mode = e.choose(ph2 ? ['cannon', 'toxic', 'cross', 'eterna', 'crystals'] : ['cannon', 'toxic', 'cross', 'eterna']);
+      e.mode = e.choose(ph2 ? ['cannon', 'toxic', 'cross', 'eterna', 'crystals', 'maxbarrage'] : ['maxbarrage', 'cannon', 'maxbarrage', 'toxic', 'cross', 'eterna']);
       if (e.mode === 'eterna') { e.state = 'rise'; e.timer = 1.1; e.telegraph(true); break; }
       e.state = 'wind'; e.timer = ph2 ? .45 : .6; e.telegraph(true); b.setVelocity(0, 0);
       sc.fx.glow(e.x, e.y, 46, col, e.timer * 1000, .9);
@@ -2493,6 +2495,7 @@ BOSS_AI.eternatus = function (e, dt, p) {
       e.timer -= dt; b.setVelocity(b.velocity.x * .85, b.velocity.y * .85);
       if (e.timer > 0) break;
       e.telegraph(false);
+      if (e.mode === 'maxbarrage') { e.volleys = ph2 ? 4 : 3; e.state = 'barrage'; e.timer = 0; break; }
       if (e.mode === 'cannon') {   // 다이맥스포 (무한다이맥스는 세 갈래)
         dynamaxCannon(e, p);
         if (ph2) { dynamaxCannon(e, p, .35, 1); dynamaxCannon(e, p, -.35, 1); }
@@ -2508,6 +2511,17 @@ BOSS_AI.eternatus = function (e, dt, p) {
         for (const a of [.7, -.7]) lineHazard(e, () => ({ x1: cx - Math.cos(a) * 320, y1: cy - Math.sin(a) * 320, x2: cx + Math.cos(a) * 320, y2: cy + Math.sin(a) * 320 }), { delay: .6, life: .3, width: 18, color: 0xd04aff, type: 'poison', dmg: e.dmg * 1.2 });
         Sfx.play('swing'); e.state = 'fire'; e.timer = 1.1;
       } else { eternaCrystals(e, p); Sfx.play('boss'); e.state = 'fire'; e.timer = 2.6; }
+      break;
+    case 'barrage':   // 다이맥스포 연사
+      e.timer -= dt; b.setVelocity(b.velocity.x * .9, b.velocity.y * .9);
+      if (e.timer > 0) break;
+      if (e.volleys-- <= 0) { e.state = 'recover'; e.timer = .7; break; }
+      e.timer = ph2 ? .42 : .55; e.facePlayer(p);
+      { const n = ph2 ? 5 : 3, a0 = Math.atan2(p.y - e.y, p.x - e.x);
+        for (let k = 0; k < n; k++) { const a = a0 + (k - (n - 1) / 2) * .2; e.shot({ x: e.x + Math.cos(a) * 22, y: e.y + Math.sin(a) * 22, vx: Math.cos(a) * 250, vy: Math.sin(a) * 250, r: 8, kind: 'ball', color: k % 2 ? 0xff8aa0 : col, life: 2.2, type: 'dragon' }); }
+        sc.fx.ring(e.x, e.y, 34, col, 220); sc.fx.glow(e.x, e.y, 40, col, 200, .9); }
+      if (!e.barrageTold) { e.barrageTold = true; sc.events.emit('toast', '다이맥스포 연사 — 예비 섬광에 맞춰 ↓ + Z 로 쳐내면 크게 무너진다!'); }
+      Sfx.play('eshot');
       break;
     case 'rise': {   // 무한광선 준비: 아레나 위 가운데로
       e.timer -= dt;
@@ -2535,6 +2549,106 @@ BOSS_AI.eternatus = function (e, dt, p) {
       e.timer -= dt; b.setVelocity(b.velocity.x * .9, b.velocity.y * .9);
       if (e.timer <= 0) { e.state = 'idle'; e.cd = (ph2 ? .5 : .95) + Math.random() * .4; }
       break;
+  }
+};
+
+// ---- 아비스 네크로즈마 (가라르 · 블랙나이트의 심장 · 진 최종 보스 — 무한다이노마저 숙주로 삼았던 차원 너머의 심연의 지배자) ----
+//  검붉은 프리즘 조각이 몸 둘레를 돈다 (폭주하면 여덟) · 프리즘 레이저: 조각마다 플레이어를 노리는 광선 (폭주하면 좌우로 쓸어 간다)
+//  빛의 파편: 빠른 보스 탄 부채꼴 연사 (패링하면 그로기 +32) · 포톤가이저: 플레이어 발밑에서 양옆으로 차례로 솟는 빛기둥
+//  심연의 균열: 플레이어 자리에 검은 균열이 열렸다가 터지며 사방으로 파편 · 프리즘 돌진(폭주): 플레이어 높이로 아레나를 가로지른다
+const ABYSS = 0xff2a6a, ABYSS_D = 0x2a0614, ABYSS_V = 0xb04aff, PRISM = [ABYSS, ABYSS_V, 0xffd0e0];
+function prismOrbit(e, dt) {
+  const sc = e.scene, n = e.phase === 2 ? 8 : 6;
+  if (!e.prisms || e.prisms.length !== n) {
+    for (const g of e.prisms || []) g.destroy();
+    if (e.prisms) e.fxObjs = e.fxObjs.filter(o => !e.prisms.includes(o));
+    e.prisms = [];
+    for (let k = 0; k < n; k++) {
+      const g = own(e, sc.add.graphics().setDepth(19));
+      g.fillStyle(ABYSS_D, 1); g.fillTriangle(0, -10, 5, 0, -5, 0); g.fillTriangle(0, 10, 5, 0, -5, 0);
+      g.lineStyle(1, k % 2 ? ABYSS_V : ABYSS, 1); g.strokeTriangle(0, -10, 5, 0, -5, 0); g.strokeTriangle(0, 10, 5, 0, -5, 0);
+      g.fillStyle(0xffd0e0, .9); g.fillRect(-1, -6, 2, 4);
+      e.prisms.push(g);
+    }
+    e.prismA = e.prismA || 0;
+  }
+  e.prismA += dt * (e.phase === 2 ? 1.8 : 1.1);
+  const R = Math.max(44, e.b.width * .95);
+  e.prisms.forEach((g, k) => { const a = e.prismA + k / n * Math.PI * 2; g.setPosition(e.x + Math.cos(a) * R, e.y + Math.sin(a) * R * .6).setRotation(a + Math.PI / 2).setDepth(Math.sin(a) > 0 ? 19.5 : 17.5); });
+  if (Math.random() < .35) sc.fx.burst(e.x + (Math.random() - .5) * e.b.width, e.y + (Math.random() - .5) * e.b.height, [ABYSS, ABYSS_D, ABYSS_V], 1, 30, { angle: -Math.PI / 2, spread: 1, up: 30, grav: -20, bounce: false, glow: true, life: .7 });   // 몸에서 피어오르는 심연의 빛
+}
+BOSS_AI.necrozma = function (e, dt, p) {
+  const sc = e.scene, ph2 = e.phase === 2, b = e.b, room = e.room;
+  prismOrbit(e, dt);
+  switch (e.state) {
+    case 'idle': {
+      e.facePlayer(p);
+      const tx = p.x - Math.sign(p.x - e.x || 1) * 150, ty = p.y - 80 + Math.sin(e.t * 1.6) * 14;
+      b.setVelocity(Phaser.Math.Clamp((tx - e.x) * 1.5, -180, 180), Phaser.Math.Clamp((ty - e.y) * 1.5, -120, 120));
+      e.cd -= dt;
+      if (e.cd > 0) break;
+      e.mode = e.choose(ph2 ? ['prism', 'shards', 'geyser', 'rift', 'dash', 'prism'] : ['prism', 'shards', 'geyser', 'rift', 'shards']);
+      e.state = 'wind'; e.timer = (e.mode === 'geyser' ? .65 : .5) * (ph2 ? .8 : 1); e.telegraph(true); b.setVelocity(0, 0);
+      sc.fx.glow(e.x, e.y, 50, ABYSS, e.timer * 1000, .9);
+      break;
+    }
+    case 'wind':
+      e.timer -= dt; b.setVelocity(b.velocity.x * .85, b.velocity.y * .85);
+      if (Math.random() < .6) { const a = Math.random() * Math.PI * 2, r = 50 + Math.random() * 30; sc.fx.burst(e.x + Math.cos(a) * r, e.y + Math.sin(a) * r, PRISM, 1, 160, { angle: a + Math.PI, spread: .05, up: 0, grav: 0, bounce: false, glow: true, life: .3, drag: 1 }); }   // 빛을 빨아들인다
+      if (e.timer > 0) break;
+      e.telegraph(false);
+      if (e.mode === 'prism') {
+        const list = e.prisms.filter((_, k) => k % 2 === 0);
+        list.forEach((g, k) => {
+          const x0 = g.x, y0 = g.y, a = Math.atan2(p.y - y0, p.x - x0) + (k - (list.length - 1) / 2) * .12, sweep = ph2 ? (k % 2 ? .55 : -.55) : 0;
+          lineHazard(e, kk => { const aa = a + sweep * kk; return { x1: x0, y1: y0, x2: x0 + Math.cos(aa) * 1200, y2: y0 + Math.sin(aa) * 1200 }; }, { delay: .7 + k * .08, life: ph2 ? .7 : .45, width: 12, color: k % 2 ? ABYSS_V : ABYSS, type: 'psychic', dmg: e.dmg * 1.1 });
+        });
+        Sfx.play('beam'); e.state = 'fire'; e.timer = 1.5;
+      } else if (e.mode === 'shards') { e.volleys = ph2 ? 3 : 2; e.state = 'volley'; e.timer = 0; }
+      else if (e.mode === 'geyser') {
+        const gx = Phaser.Math.Clamp(p.x, room.left + 20, room.right - 20), n = ph2 ? 6 : 4;
+        const o = { gap: 48, step: .12, h: 150, w: 28, color: ABYSS, type: 'psychic', delay: .55, burst: (x, gy) => { sc.fx.burst(x, gy - 6, PRISM, 12, 220, { angle: -Math.PI / 2, spread: .5, up: 220, glow: true, life: .6 }); sc.fx.ring(x, gy - 6, 24, ABYSS, 260); } };
+        marchPillars(e, gx, 1, n, o); marchPillars(e, gx - 48, -1, n - 1, Object.assign({}, o, { delay: .67 }));
+        Sfx.play('mega'); e.state = 'fire'; e.timer = 1.6;
+      } else if (e.mode === 'rift') {
+        const x = p.x, y = p.y - 10, d = .8, g = own(e, sc.add.graphics().setDepth(17.6));
+        e.zone({ x: 0, y: 0, w: 0, h: 0, dmg: 0, life: d, draw: 'none',
+          onUpdate: z => { const k = Math.min(1, z.t / d); g.clear(); g.fillStyle(ABYSS, .25 * k); g.fillEllipse(x, y, 30 + k * 60, 50 + k * 80); g.fillStyle(0x000000, .9); g.fillEllipse(x, y, 8 + k * 34, 28 + k * 58); g.lineStyle(2, ABYSS, (Math.floor(z.t * 14) % 2) ? .95 : .5); g.strokeEllipse(x, y, 8 + k * 34, 28 + k * 58); },
+          dispose: () => g.destroy() });
+        sc.time.delayedCall(d * 1000, () => {
+          if (!live(e)) return;
+          e.zone({ x: x - 36, y: y - 36, w: 72, h: 72, delay: 0, life: .3, dmg: e.dmg * 1.3, type: 'dark', draw: 'burst', color: ABYSS });
+          const n = ph2 ? 10 : 8;
+          for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2; e.shot({ x, y, vx: Math.cos(a) * 170, vy: Math.sin(a) * 170, r: 5, kind: 'ball', color: k % 2 ? ABYSS_V : ABYSS, life: 1.6, type: 'dark' }); }
+          sc.fx.ring(x, y, 50, ABYSS, 360); sc.fx.burst(x, y, [ABYSS, 0x000000, ABYSS_V], 24, 220, { glow: true, life: .5 }); sc.fx.shake(.012, 240); Sfx.play('boom');
+        });
+        Sfx.play('rift'); e.state = 'fire'; e.timer = 1.4;
+      } else {
+        e.facePlayer(p); e.dashY = Phaser.Math.Clamp(p.y - 6, room.top + 30, room.bottom - 30);
+        b.setVelocity(0, (e.dashY - e.y) * 4); e.state = 'dashAim'; e.timer = .35;
+      }
+      break;
+    case 'volley':   // 빛의 파편 (보스 탄 — 1.42배 빠르고 0.2초 예비 동작)
+      e.timer -= dt; b.setVelocity(b.velocity.x * .9, b.velocity.y * .9);
+      if (e.timer > 0) break;
+      if (e.volleys-- <= 0) { e.state = 'recover'; e.timer = .6; break; }
+      e.timer = ph2 ? .45 : .6; e.facePlayer(p);
+      { const n = ph2 ? 7 : 5, a0 = Math.atan2(p.y - e.y, p.x - e.x), sp = 250;
+        for (let k = 0; k < n; k++) { const a = a0 + (k - (n - 1) / 2) * .15; e.shot({ x: e.x + Math.cos(a) * 20, y: e.y + Math.sin(a) * 20, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 6, kind: 'bolt', color: k % 2 ? 0xffd0e0 : ABYSS, life: 2, type: 'psychic' }); }
+        sc.fx.ring(e.x, e.y, 30, ABYSS, 240); }
+      Sfx.play('zap');
+      break;
+    case 'dashAim':
+      e.timer -= dt;
+      if (e.timer > 0) break;
+      b.setVelocity(e.face * 640, 0); e.state = 'lunge'; e.timer = 1.1; sc.fx.sonicBoom(e.x, e.y, e.face, 2); Sfx.play('dash');
+      break;
+    case 'lunge':   // 몸에 닿아도 피해 (STRIKE)
+      e.timer -= dt;
+      if (e.timer % .03 < dt) sc.fx.ghost(e.sprite, ABYSS, .55, 220);
+      if (e.timer <= 0 || b.blocked.left || b.blocked.right || e.x <= room.left + 30 || e.x >= room.right - 30) { b.setVelocity(0, 0); sc.fx.shake(.012, 200); sc.fx.ring(e.x, e.y, 50, ABYSS, 300); e.state = 'recover'; e.timer = .7; }
+      break;
+    case 'fire': case 'recover': recover(e, dt); break;
   }
 };
 

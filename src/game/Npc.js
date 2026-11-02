@@ -106,6 +106,9 @@ const LOOKS = {
   sage: t => ({ body: 'old', hair: 0xd8d4cc, hairStyle: 'swept', old: true, beard: 0xe8e4dc, shirt: 0x3a2a5a, sleeve: 0x2a1a4a, shawl: 0xd8b040, skirt: 0x3a2a5a, shoes: 0x1a1428, cane: true }),   // 고대 성채의 현자: 보랏빛 법의 · 금빛 견대 · 긴 흰 수염
   stguard: t => ({ hair: 0xd8dce8, hairStyle: 'long', longHair: true, coat: 0xe8ecf8, coatD: 0xb8c0e0, shirt: 0x3a5aa8, pants: 0x2a3a6a, shoes: 0x1a2040 }),   // 시공간의 수호자: 은발 · 흰 장포 · 푸른 안감 (디아루가 · 펄기아 빛)
   heir: t => ({ hair: 0xf0e0a0, hairStyle: 'long', longHair: true, coat: 0x22222c, coatD: 0xd8c070, shirt: 0x3a3a48, pants: 0x22222c, shoes: 0x1a1a22 }),   // 고대 신오의 계승자: 금발 · 검은 코트 · 금빛 깃
+  green: t => ({ hair: 0x8a5a2a, hairStyle: 'messy', shirt: 0x3a2a4a, sleeve: 0x2a1a3a, pants: 0x6a5a8a, shoes: 0x2a2030, pack: 0x5a3a2a }),   // 그린: 덥수룩한 밤색 머리 · 보랏빛 셔츠
+  researcher: t => ({ hair: 0x5a5a5a, hairStyle: 'short', glasses: 0x3a3a4a, coat: COAT, shirt: 0x8a2a3a, pants: 0x2a2a34, shoes: 0x1a1a22, board: true }),   // 수석 연구원: 흰 가운 · 안경 · 기록판
+  red: t => ({ hair: 0x1a1414, hairStyle: 'short', cap: 0xd8282a, shirt: 0xc8282a, sleeve: 0x16141a, pants: 0x2a4a8a, shoes: 0xc8282a }),   // 레드: 빨간 모자 · 빨간 재킷 · 청바지 (대화 초상)
   kimono: t => ({ hair: 0x1a1418, hairStyle: 'bun', pin: 0xe8c060, shirt: t || 0xc83a5a, skirt: t || 0xc83a5a, obi: 0xe8c060, shoes: 0x8a2a2a, legs: 0xf4f0e8 })
 };
 

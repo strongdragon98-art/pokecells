@@ -18,7 +18,7 @@ import { Props } from '../game/Props.js';
 import { Player } from '../game/Player.js';
 import { Enemy } from '../game/Enemy.js';
 import { Boss } from '../game/Boss.js';
-import { Trainer } from '../game/Trainer.js';
+import { Trainer, makeTrainerArt } from '../game/Trainer.js';
 import { Npcs } from '../game/Npc.js';
 import { Wanderer } from '../game/Wanderer.js';
 import { CLV_COLOR } from '../game/Enemy.js';
@@ -118,7 +118,7 @@ function kawaraArt(scene) {
   return key;
 }
 // 신오 랜드마크 하늘 (화면에 붙는 먼 하늘): 천관산 협곡은 시린 설산 하늘 · 창기둥은 연보랏빛 새벽하늘 · 깨어진 세계는 짙은 보랏빛 바탕 (성운은 따로)
-const skyKindOf = r => !r ? null : r.snowPeak ? 'coronet' : r.spear ? 'spear' : r.distortion ? 'distortion' : r.icirrus ? 'icirrus' : r.spiral ? 'spiral' : r.azure ? 'azure' : r.origin ? 'origin' : null;
+const skyKindOf = r => !r ? null : r.snowPeak ? 'coronet' : r.spear ? 'spear' : r.distortion ? 'distortion' : r.icirrus ? 'icirrus' : r.spiral ? 'spiral' : r.azure ? 'azure' : r.origin ? 'origin' : r.plantHeart ? 'heart' : r.plant ? 'plant' : null;
 const SKY_STOPS = {
   coronet: [[0, '#4a5a8e'], [.35, '#7a90c4'], [.7, '#c4d4ee'], [1, '#eef4ff']],
   spear: [[0, '#1e1a46'], [.4, '#4a3e86'], [.75, '#9a86c8'], [1, '#e8d0f0']],
@@ -126,8 +126,34 @@ const SKY_STOPS = {
   icirrus: [[0, '#46567e'], [.4, '#8298c4'], [.75, '#cad8ee'], [1, '#f2f6ff']],   // 설화시티 겨울 습지: 은빛 설원 하늘
   spiral: [[0, '#14162a'], [.45, '#2e3050'], [.8, '#5a5070'], [1, '#8a7a88']],   // 용나선탑: 검은 번개 구름이 도는 황혼
   azure: [[0, '#1e1a40'], [.42, '#5a4e8e'], [.74, '#e0c08a'], [1, '#fff2dc']],   // 천계의 피리 공명로: 황금빛 · 은빛 성운의 우주
-  origin: [[0, '#e8cf98'], [.4, '#f6dca8'], [.75, '#fbecd0'], [1, '#fff8ec']]   // 시초의 방: 끝없는 순백과 황금빛
+  origin: [[0, '#e8cf98'], [.4, '#f6dca8'], [.75, '#fbecd0'], [1, '#fff8ec']],   // 시초의 방: 끝없는 순백과 황금빛
+  plant: [[0, '#0c0608'], [.45, '#2a0c14'], [.8, '#4a1420'], [1, '#6a2030']],   // 너클시티 지하 에너지 플랜트: 검붉게 달아오른 지하
+  heart: [[0, '#08020a'], [.4, '#2a0614'], [.75, '#5a0a20'], [1, '#8a1a30']]    // 블랙나이트의 심장: 반응로의 핏빛
 };
+// ---------------- 유대의 불꽃 (하나 시초의 방 → 가라르 블랙나이트의 심장) ----------------
+const BOND_GOLD = 0xffc040, BOND_CRIMSON = 0xff3a4a;
+const ARCEUS_LINES = [
+  "그대의 가슴속에서 타오르는 그 따뜻한 빛... 그래, 전설의 트레이너 '레드'가 붙잡히기 직전 너희 포켓몬들에게 나누어 주었던 『유대의 불꽃』이로구나! 그 불꽃이 있었기에 그대가 지금까지 심연에 물든 신들을 정화할 수 있었던 것이다.",
+  '이제 너희가 키워낸 그 유대의 불꽃이 완전체에 가까워졌다. 내 창조의 힘으로 가라르 심연의 결계를 열어주마. 허나 조심하라... 무한다이노의 코어 뒤편에는 무한다이노마저 숙주로 삼은 차원 너머의 진짜 배후, 『심연의 지배자(아비스 네크로즈마)』가 도사리고 있다. 어서 가서 레드에게 그 불꽃을 돌려주고 세상을 구원하라!'
+];
+const BOND_CAPTION = '레드가 우리에게 나누어 주었던 유대의 불꽃이... 모든 정화의 여정을 거쳐 다시 레드에게로 돌아간다!';
+const RED_LINE = '...내가 남겼던 작은 불씨를 이렇게 거대한 태양으로 키워서 돌려주었구나. 고맙다, 친구들아! 이제 우리 모두의 유대의 불꽃을 하나로 합쳐 저 흑막을 완전히 불태워버리자!!';
+const RED_THANKS = [
+  '...끝났다. 네가 키워 낸 불꽃이 차원 너머의 심연까지 남김없이 태워 버렸어.',
+  '이 불꽃은 이제 너의 것이다. 어느 지방을 여행하든, 늘 네 곁에서 타오를 거야.',
+  '자, 돌아가자. 모두가 기다리는 맑은 하늘 아래로!'
+];
+const LEGEND_GHOSTS = ['mewtwo', 'ho-oh', 'rayquaza', 'dialga', 'palkia', 'giratina-origin', 'zekrom', 'reshiram', 'arceus'];   // 시네마틱에 나오는 정화한 전설들의 환영 (시트가 있는 것만)
+// 긴 대사를 대화창 한 쪽(약 n 글자)씩 문장 단위로 나눈다
+function pagesOf(text, n = 90) {
+  const out = [];
+  for (const s of text.match(/[.!?…]*[^.!?…]+(?:[.!?…]+|$)\s*/g) || [text]) {
+    const t = s.trim(), last = out[out.length - 1];
+    if (!t) continue;
+    if (last && last.length + t.length + 1 <= n) out[out.length - 1] = `${last} ${t}`; else out.push(t);
+  }
+  return out.length ? out : [text];
+}
 function regionSkyTexture(scene, kind) {
   const key = 'fx:sky:' + kind;
   if (scene.textures.exists(key)) return key;
@@ -227,6 +253,11 @@ export default class GameScene extends Phaser.Scene {
     this.combat = new Combat(this);
     this.buildWorld(rs ? rs.pos : null);
     if (rs) { restorePlayer(this.player, rs.player); this.resume = null; }
+    else if (!this.test && Save.data.bondFlame) this.time.delayedCall(1500, () => {   // 진 엔딩을 본 뒤의 새 여정: 레드의 유대의 불꽃을 처음부터 지닌다
+      if (!this.player || this.over) return;
+      this.player.addItem('core_red_bond');
+      this.events.emit('toast', '🔥 레드의 유대의 불꽃이 함께한다 — 진 엔딩의 유물 (장착 · 가방)', 'core_red_bond');
+    });
     this.scene.launch('UI');
     this.scene.bringToTop('UI');
     cam.fadeIn(350, 7, 6, 15);
@@ -283,9 +314,9 @@ export default class GameScene extends Phaser.Scene {
     this.explored = W.explored || (W.explored = new Uint8Array(level.cols * level.rows));   // 지도: 화면에 한 번이라도 들어온 칸
     this.exploredKey = '';
     // 방마다 작은 타일 지도 (빈 셀까지 큰 지도 하나로 만들면 타일 객체가 너무 많아진다)
-    const tsKey = `tiles:${si}`;
     this.layers = [];
     for (const r of level.rooms) {
+      const tsKey = st.areas[r.ai] && st.areas[r.ai].palette ? `tiles:${si}:${r.ai}` : `tiles:${si}`;   // 그 지역만 다른 타일 색 (하나의 천계 — systems/Textures.js)
       const map = this.make.tilemap({ data: level.data.slice(r.Y0, r.Y1).map(row => row.slice(r.X0, r.X1)), tileWidth: TILE, tileHeight: TILE });
       const ts = map.addTilesetImage(tsKey, tsKey, TILE, TILE, TILE_MARGIN, TILE_SPACING);   // 테두리를 복제해 둔 타일셋 (하얀 실선 방지 — systems/Textures.js)
       const layer = map.createLayer(0, ts, r.X0 * TILE, r.Y0 * TILE).setDepth(10);
@@ -327,7 +358,7 @@ export default class GameScene extends Phaser.Scene {
     }
     // 출입문 · 균열로만 들어가는 독립된 세계 (창기둥 안 · 깨어진 세계): 안에 있을 땐 둘레의 바깥 방을, 밖에 있을 땐 그 안을 암반으로 덮는다 (둘레 2셀까지만 — 화면에 걸리는 곳)
     this.realmCovers = [];
-    for (const key of ['spear', 'distortion', 'spiral', 'origin']) {
+    for (const key of ['spear', 'distortion', 'spiral', 'origin', 'plantHeart']) {
       const realm = new Set(level.rooms.filter(r => r[key]));
       if (!realm.size) continue;
       const cellsOf = r => { const out = []; for (let cy = r.gy; cy < r.gy + r.gh; cy++) for (let cx = r.gx; cx < r.gx + r.gw; cx++) out.push([cx, cy]); return out; };
@@ -456,6 +487,8 @@ export default class GameScene extends Phaser.Scene {
     if (room.spiral) return Math.min(.2, d);   // 용나선탑 안: 80% 백열 불꽃 · 푸른 뇌전
     if (room.azure) return 0;   // 천계의 피리 공명로: 95% 눈부신 성역
     if (room.origin) return Math.min(.1, d);   // 시초의 방
+    if (room.plant) return Math.min(.25, d);   // 너클시티 지하 에너지 플랜트: 75% · 검붉은 파이프 · 홀로그램
+    if (room.plantHeart) return Math.min(.3, d);   // 블랙나이트의 심장
     return d;
   }
   // 몹의 침식 단계 Ⅰ~Ⅳ: 보스방에 가까울수록 높다
@@ -468,6 +501,7 @@ export default class GameScene extends Phaser.Scene {
       let t = d < .4 ? lerpColor(0xfff0d8, 0xffffff, d / .4) : lerpColor(0xffffff, 0xa088a8, (d - .4) / .6);
       if (r.snowPeak || r.icirrus) t = 0xeef4ff; else if (r.spear) t = 0xf4f0ff; else if (r.distortion) t = 0xd8c4ff;   // 신오 · 하나: 눈빛 · 대리석 · 반물질의 보랏빛
       else if (r.spiral) t = 0xf0ecf4; else if (r.azure || r.origin) t = 0xfffaf0;   // 용나선탑 회랑 · 천계의 백금빛
+      else if (r.plant) t = 0xffe8ec; else if (r.plantHeart) t = 0xffd8e0;   // 가라르 지하: 검붉은 반사광
       r.layer.forEachTile(tile => { tile.tint = t; });
     }
   }
@@ -530,14 +564,20 @@ export default class GameScene extends Phaser.Scene {
       if (instant) t.setAlpha(k === kind ? .95 : 0);
       else this.tweens.add({ targets: t, alpha: k === kind ? .95 : 0, duration: 1100, ease: 'Sine.easeInOut' });
     }
+    if (!this.arenaRoom && !this.over && !this.cinema) Music.play(area.bgm || st.bgm);   // 지역마다 다른 곡 (하나의 천계) — 보스전 · 연출 중엔 그대로
+    if (kind === 'heart') Sprites.ensure(LEGEND_GHOSTS);   // 블랙나이트의 심장: 유대의 불꽃 시네마틱에 나올 정화한 전설들의 환영을 미리 받아 둔다
     if (this.areasSeen.has(room.ai)) return;
     this.areasSeen.add(room.ai);
     this.events.emit('area', { region: st.name, name: area.name, en: area.en, label: areaLabel(this.stageIdx, room.ai, area) });
   }
 
+  // 지금 방 지역의 곡 (지역마다 bgm 이 있으면 그것 · 없으면 지방 곡)
+  areaBgm() { const a = this.room && this.stage.areas[this.room.ai]; return (a && a.bgm) || this.stage.bgm; }
+
   clearWorld() {
     const dropCollider = c => { if (c && c.world) c.destroy(); };   // 이미 해제된 충돌체는 건너뜀
     if (this.trainer) { this.trainer.destroy(); this.trainer = null; }
+    this.endOverdrive(); this.cinema = false; this.storyWait = false; this.abyssTear = this.abyssSil = null;
     this.arenaRoom = null; this.chain = null;
     if (this.combat) this.combat.clearAll();
     for (const e of this.enemies) { (e.colliders || []).forEach(dropCollider); e.colliders = []; e.destroy(); }
@@ -840,6 +880,14 @@ export default class GameScene extends Phaser.Scene {
     if (this.trainer) { this.trainer.destroy(); this.trainer = null; }
     if (this.player && this.player.flipT > 0) this.player.flipT = .001;   // 뒤틀린 중력도 푼다
     this.boss = null; this.bosses = []; this.chain = null; this.arenaRoom = null; r.entered = false;
+    if (r.plantHeart) {   // 블랙나이트의 심장: 오버드라이브를 끄고 결정 속 레드부터 다시 (무한다이노부터 새로)
+      this.endOverdrive(); this.cinema = false;
+      if (this.player && this.player.inv > 100) this.player.inv = 1;   // 연출 중의 무적을 푼다
+      for (const o of [this.abyssSil, this.abyssTear && this.abyssTear.g]) if (o && o.scene) { this.tweens.killTweensOf(o); o.destroy(); }
+      this.abyssTear = this.abyssSil = null;
+      const core = this.props && this.props.redCore;
+      if (core && core.broken) this.props.buildRedCore(r);
+    }
     this.setGates(r, true);
     this.unlockArena();
     this.combat.clearAll();
@@ -918,9 +966,8 @@ export default class GameScene extends Phaser.Scene {
     this.events.emit('banner', '눈앞이 캄캄해졌다…', this.test ? '테스트룸 입구에서 다시 일어난다' : c ? (c.terminal ? '마지막으로 연결한 간이 회복기 앞에서 다시 일어난다' : '마지막으로 들른 포켓몬센터로 돌아간다') : '챕터 입구로 돌아간다');
     for (const m of p.members) { m.hp = m.maxhp; m.alive = true; }
     p.inv = 2.5;
-    Music.play(this.stage.bgm);
     const pos = c ? this.hubPos(c) : this.worldOf(this.stageIdx).level.start;
-    this.moveTo(c ? c.ci : this.stageIdx, { x: pos.x, y: pos.y }, () => { this.player.inv = 2; });
+    this.moveTo(c ? c.ci : this.stageIdx, { x: pos.x, y: pos.y }, () => { this.player.inv = 2; Music.play(this.areaBgm()); });
   }
   consumeInput() { for (const f of ['ultP', 'jumpP', 'dashP', 'zP', 'xP', 'cP', 'swapNext', 'swapPrev', 's1', 's2', 's3', 'mega', 'zmoveP', 'useP', 'upP', 'potionP']) this.inp[f] = false; }
 
@@ -960,6 +1007,7 @@ export default class GameScene extends Phaser.Scene {
     this.inp.jumpP = false;
     if (it.kind === 'lore') { if (this.time.now - (this.loreAt || 0) > 500) { this.loreAt = this.time.now; this.events.emit('lore', it.text); Sfx.play('select'); } return; }
     if (it.kind === 'npc') { this.talkTo(it); return; }   // 마을 사람 · 오박사와 대화
+    if (it.kind === 'journal') { this.readJournal(it); return; }   // 가라르 지하 플랜트의 기밀 연구 일지
     if (it.kind === 'door') { this.useDoor(it); return; }   // 오박사 연구소 문 (안 ↔ 밖)
     if (it.kind === 'tm') { this.openTM(it); return; }   // 카드를 확정해야 다 쓴 제단이 된다
     if (it.kind === 'taxi') { this.toggleOverlay('taxi'); Sfx.play('select'); return; }   // 아머까오 공중날기 (몇 번이고)
@@ -1013,7 +1061,7 @@ export default class GameScene extends Phaser.Scene {
     const p = this.player, cam = this.cameras.main, props = this.props;
     p.b.setVelocity(0, 0);
     props.openDoor(it); Sfx.play('door');
-    if (it.glowAt) { this.fx.glow(it.glowAt.x, it.glowAt.y, 70, { rift: 0xff3a5a, spear: 0xc8b8ff, spiral: 0xd8e8ff, origin: 0xfff0c0 }[it.pair] || 0xffd890, 420, .8); Sfx.play(it.pair === 'rift' ? 'rift' : 'resonate'); }
+    if (it.glowAt) { this.fx.glow(it.glowAt.x, it.glowAt.y, 70, { rift: 0xff3a5a, spear: 0xc8b8ff, spiral: 0xd8e8ff, origin: 0xfff0c0, plant: 0xff3a5a }[it.pair] || 0xffd890, 420, .8); Sfx.play(it.pair === 'rift' ? 'rift' : 'resonate'); }
     if (it.pair === 'rift') chromatic(this, .014, 700);   // 균열을 지날 땐 공간이 어긋난다
     this.time.delayedCall(230, () => {
       cam.fadeOut(240, 7, 6, 15);
@@ -1029,6 +1077,22 @@ export default class GameScene extends Phaser.Scene {
         this.time.delayedCall(260, () => { if (this.props === props) { props.shutDoor(dst); Sfx.play('doorshut'); } });
       });
     });
+  }
+
+  // 가라르 지하 플랜트의 기밀 연구 일지: 홀로그램 단말을 조사하면 대화창에 글 (제목은 일지 머리글 · 초상은 단말 그림)
+  readJournal(it) {
+    if (this.overlay || this.paused || this.time.now - (this.talkClosedAt || 0) < 300) return;
+    const m = /^\[(.+?)\]\s*/.exec(it.text);
+    this.talk = { name: m ? m[1] : `기밀 연구 일지 ${it.no}`, portrait: { key: 'prop:journal', max: 2.4, glow: 0x4af0ff }, lines: pagesOf(m ? it.text.slice(m[0].length) : it.text), page: 0, id: `journal${it.no}` };
+    Sfx.play('select');
+    this.toggleOverlay('talk');
+  }
+  // 이야기 대화 (아르세우스의 텔레파시 · 레드): 다른 창이 닫힐 때까지 기다렸다가 연다 · 긴 대사는 쪽으로 나눈다
+  openStory(talk) {
+    if (this.over) return;
+    if (this.overlay || this.paused || this.transitioning) { this.time.delayedCall(400, () => this.openStory(talk)); return; }
+    this.talk = Object.assign({ page: 0, id: 'story' }, talk, { lines: talk.lines.flatMap(l => pagesOf(l)) });
+    this.toggleOverlay('talk');
   }
 
   // ---------------- 대화: 마을 사람 · 오박사 (data/npcs.js) ----------------
@@ -1183,6 +1247,16 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
     if (this.transitioning) { this.fx.update(dt); return; }
+    if (this.cinema) {   // 이야기 연출 중 (유대의 불꽃): 주인공은 제자리에서 지켜본다 — 조작 · 적 · 투사체는 멈추고 연출 트윈 · 파티클 · 조명은 그대로
+      this.player.update(dt, {});
+      this.consumeInput();
+      if (this.promptText) this.promptText.setVisible(false);
+      this.props.update(time, dt);
+      this.updateResting();
+      this.updateLights(dt); this.updateAtmosphere(dt); this.updateWeather(dt);
+      this.fx.update(dt);
+      return;
+    }
 
     this.updateInteract();
     this.player.update(dt, this.inp);
@@ -1206,6 +1280,7 @@ export default class GameScene extends Phaser.Scene {
       if (!this.arenaRoom && this.room !== this.trainer.room) { this.trainer.destroy(); this.trainer = null; }   // 정화를 마치고 아레나를 떠나면
     }
     this.updatePortal(dt);
+    this.updateOverdrive(dt);
     this.updateLights(dt);
     this.updateAtmosphere(dt);
     this.updateWeather(dt);
@@ -1231,7 +1306,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.vignetteFx) { this.vignetteFx.radius = .98 - c * .06; this.vignetteFx.strength = .18 + c * .17; }
     // 햇빛 줄기: 화면 위에서 비스듬히 (깊어질수록 옅어지다 사라진다)
     const R0 = this.room, sky = R0 && !R0.under ? skyKindOf(R0) : null;
-    const sun = Phaser.Math.Clamp(1 - c / .45, 0, 1) * (R0 && (R0.under || R0.trailEnd) ? .25 : sky === 'coronet' || sky === 'icirrus' ? .4 : 1) * (R0 && (R0.seaBridge || R0.rain || R0.drought || R0.stratosphere || sky === 'spear' || sky === 'distortion' || sky === 'spiral') ? 0 : 1);   // 설산 · 습지엔 옅은 겨울 햇살 · 천계엔 금빛 햇살
+    const sun = Phaser.Math.Clamp(1 - c / .45, 0, 1) * (R0 && (R0.under || R0.trailEnd) ? .25 : sky === 'coronet' || sky === 'icirrus' ? .4 : 1) * (R0 && (R0.seaBridge || R0.rain || R0.drought || R0.stratosphere || sky === 'spear' || sky === 'distortion' || sky === 'spiral' || sky === 'plant' || sky === 'heart') ? 0 : 1);   // 설산 · 습지엔 옅은 겨울 햇살 · 천계엔 금빛 햇살 · 가라르 지하엔 없다
     if (!this.sunbeams) {
       sunbeamTexture(this);
       this.sunbeams = [0, 1, 2, 3, 4].map(i => this.add.image(0, 0, 'fx:sunbeam').setOrigin(.5, 0).setBlendMode(Phaser.BlendModes.ADD).setTint(0xfff0c0).setDepth(23.5).setAngle(-22).setAlpha(0));
@@ -1253,6 +1328,10 @@ export default class GameScene extends Phaser.Scene {
     if (R0 && R0.spearGate && Math.random() < .35) {   // 창기둥 대정문 소용돌이에서 푸른 · 분홍 빛 알갱이가 흘러나온다
       const gx = R0.doorTx * TILE + 8, gy = R0.F * TILE;
       this.fx.burst(gx + (Math.random() - .5) * 150, gy - 40 - Math.random() * 130, [0x8ac8ff, 0xff9ad8, 0xffffff], 1, 10, { angle: -Math.PI / 2, spread: 1, up: 8, grav: -8, bounce: false, glow: true, life: 2, size: 1, drag: .99 });
+    }
+    if (R0 && R0.plantGate && Math.random() < .35) {   // 플랜트 최종 격리 게이트 틈에서 검붉은 다이맥스 불티가 새어 나온다
+      const gx = R0.doorTx * TILE + 8, gy = R0.F * TILE;
+      this.fx.burst(gx + (Math.random() - .5) * 20, gy - 50 - Math.random() * 110, [0xff2a4a, 0xff8aa0, 0xffffff], 1, 14, { angle: Math.random() < .5 ? 0 : Math.PI, spread: .5, up: 6, grav: -6, bounce: false, glow: true, life: 1.8, size: 1, drag: .99 });
     }
     if (R0 && R0.trailEnd && Math.random() < .45) {   // 방울탑 정문 틈 · 균열에서 보랏빛 침식 홀씨가 새어 나온다
       const gx = R0.doorTx * TILE + 8, gy = R0.F * TILE;
@@ -1288,6 +1367,10 @@ export default class GameScene extends Phaser.Scene {
       if (R && R.icirrus) base = shade(lerpColor(lit0, 0xdce8ff, .3), .85);   // 설화시티 겨울 습지: 은빛 85%
       if (R && R.spiral) base = shade(lerpColor(lit0, 0xf0e4e8, .2), .8);   // 용나선탑 안: 80%
       if (R && (R.azure || R.origin)) base = shade(lerpColor(lit0, 0xfff4d8, .35), .95);   // 천계: 95% 눈부신 성역
+      const pure = this.level && this.level.purified;   // 진 엔딩 뒤엔 가라르 지하도 황금빛 새벽처럼 밝게
+      if (R && R.plant && !pure) base = shade(lerpColor(lit0, 0xff9aaa, .3), .75);   // 너클시티 지하 에너지 플랜트: 75% · 검붉은 다이맥스 빛
+      if (R && R.plantHeart && !pure) base = shade(lerpColor(lit0, 0xff6a80, .4), .72);   // 블랙나이트의 심장: 핏빛 반응로 (70% 남짓)
+      if (this.overdrive) base = lerpColor(base, 0xffd8a0, .3);   // 유대의 불꽃 오버드라이브: 황금빛이 아레나를 밝힌다
       const tgt = Phaser.Display.Color.IntegerToRGB(base), a = this.ambient, k = Math.min(1, dt * 1.5);
       a.setTo(Math.round(a.red + (tgt.r - a.red) * k), Math.round(a.green + (tgt.g - a.green) * k), Math.round(a.blue + (tgt.b - a.blue) * k));
       this.lights.setAmbientColor(a.color);
@@ -1627,6 +1710,11 @@ export default class GameScene extends Phaser.Scene {
     if (R && (R.azure || R.origin) && Math.random() < .35) this.fx.burst(v.x + Math.random() * v.width, v.y - 2, [0xfff0b0, 0xffffff, 0xd8e8ff], 1, 14, { angle: Math.PI / 2, spread: .6, up: -4, grav: 6, bounce: false, glow: true, life: 3.4, size: Math.random() < .3 ? 2 : 1, drag: .995 });   // 천계: 금빛 · 은빛 빛 가루가 천천히 내린다
     if (R && R.distortion && Math.random() < .55) this.fx.burst(v.x + Math.random() * v.width, v.y + v.height + 4, [0xc08aff, 0x8affe8, 0xffffff], 1, 18, { angle: -Math.PI / 2, spread: .4, up: 34, grav: -22, bounce: false, glow: true, life: 3.2, size: Math.random() < .3 ? 2 : 1, drag: .995 });   // 깨어진 세계: 빛 알갱이가 거꾸로 떠오른다
     if (R && R.spear && Math.random() < .25) this.fx.burst(v.x + Math.random() * v.width, v.y + Math.random() * v.height, [0xe8dcff, 0x8ac8ff, 0xff9ad8], 1, 8, { angle: -Math.PI / 2, spread: 1.2, up: 4, grav: -3, bounce: false, glow: true, life: 2.6, size: 1, drag: .995 });   // 창기둥 안: 결정빛 티끌
+    if (R && R.plant) {   // 지하 플랜트: 천장 배선에서 튀는 전기 불티 · 바닥에서 피어오르는 검붉은 티끌
+      if (Math.random() < .2) this.fx.burst(v.x + Math.random() * v.width, v.y + 4, [0xffd0a0, 0xff5a3a, 0xffffff], 2, 60, { angle: Math.PI / 2, spread: .8, up: -10, grav: 300, bounce: true, glow: true, life: .7, size: 1 });
+      if (Math.random() < .3) this.fx.burst(v.x + Math.random() * v.width, v.y + v.height * (.6 + Math.random() * .4), [0xff3a5a, 0xa01a3a], 1, 10, { angle: -Math.PI / 2, spread: .6, up: 14, grav: -10, bounce: false, glow: true, life: 2.4, size: 1, drag: .995 });
+    }
+    if (R && R.plantHeart && Math.random() < .5) this.fx.burst(v.x + Math.random() * v.width, v.y + v.height + 4, this.overdrive ? [BOND_GOLD, BOND_CRIMSON, 0xffffff] : [0xff2a4a, 0x6a0a1e, 0xff8aa0], 1, 16, { angle: -Math.PI / 2, spread: .4, up: 30, grav: -20, bounce: false, glow: true, life: 3, size: Math.random() < .3 ? 2 : 1, drag: .995 });   // 심장: 검붉은 빛 알갱이가 솟는다 (오버드라이브는 황금빛)
     if (R && R.stratosphere && Math.random() < .3) this.fx.burst(v.x + v.width + 4, v.y + Math.random() * v.height * .7, [0xa8ffe0, 0xffffff], 1, 120, { angle: Math.PI + .05, spread: .2, up: 0, grav: 0, bounce: false, glow: true, life: 2.6, size: 1, drag: 1 });   // 성층권 별바람
   }
   // 푸른 번개: 하늘에서 지그재그로 내리꽂히고 화면이 번쩍인다
@@ -1666,6 +1754,22 @@ export default class GameScene extends Phaser.Scene {
           objs.push(cl);
         }
         for (let k = 0; k < 14; k++) objs.push(this.add.image(ox + ((k * 89) % 997) / 997 * vw, oy + ((k * 53) % 409) / 409 * vh * .5, 'px').setTint(0xb8c8ff).setScale(.5).setAlpha(.5));
+      } else if (kind === 'plant' || kind === 'heart') {   // 가라르 지하: 천천히 맥동하는 검붉은 반응로 빛 기둥 · 떠도는 청록 홀로그램 티끌 (심장은 한가운데 거대한 붉은 핵이 맥동한다)
+        const n = kind === 'heart' ? 3 : 5;
+        for (let k = 0; k < n; k++) {
+          const col = this.add.image(ox + vw * (k + .5) / n, oy + vh, 'glow').setOrigin(.5, 1).setBlendMode(ADD).setTint(0xff2a4a).setScale(1.4, 6).setAlpha(.16);
+          this.tweens.add({ targets: col, alpha: .3, duration: 1400 + k * 300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+          objs.push(col);
+        }
+        if (kind === 'heart') {
+          const cx = ox + vw / 2, cy = oy + vh * .36, coreG = this.add.image(cx, cy, 'glow').setBlendMode(ADD).setTint(0xff1a3a).setScale(5).setAlpha(.35);
+          this.tweens.add({ targets: coreG, scale: 5.8, alpha: .5, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });   // 반응로의 심장 박동
+          objs.push(coreG);
+          for (let k = 0; k < 10; k++) {   // 핵 둘레를 도는 검붉은 육각 결정
+            const st = this.add.image(cx + Math.cos(k / 10 * Math.PI * 2) * 120, cy + Math.sin(k / 10 * Math.PI * 2) * 50, 'px').setTint(k % 2 ? 0xff5a7a : 0xa01a3a).setScale(2, 3).setAlpha(.8);
+            objs.push(st);
+          }
+        } else for (let k = 0; k < 30; k++) objs.push(this.add.image(ox + ((k * 97) % 1000) / 1000 * vw, oy + ((k * 61) % 1000) / 1000 * vh, 'px').setTint(k % 3 ? 0x4af0ff : 0xff5a7a).setScale(.5).setAlpha(.45));
       } else if (kind === 'distortion') {
         nebulaTexture(this);
         const n1 = this.add.tileSprite(ox, oy, vw, vh, 'fx:nebula').setOrigin(0).setAlpha(.95);
@@ -1764,14 +1868,14 @@ export default class GameScene extends Phaser.Scene {
     });
   }
   // 최종장: 아르세우스를 정화하면 온 세상의 심연이 황금빛 파동으로 걷힌다
-  originDawn(boss) {
+  originDawn(boss, title = '세상이 정화되었다', sub = '창조의 빛이 온 세상의 심연을 걷어 냈다 · 아르세우스가 본래의 순백색 빛을 되찾았다') {
     const cam = this.cameras.main, v = cam.worldView, x = boss.x, y = boss.y;
     Sfx.play('purify_world'); cam.flash(1200, 255, 246, 220, true); shockwave(this, x, y, .05, 1400);
     for (let k = 0; k < 8; k++) this.time.delayedCall(k * 180, () => { this.fx.ring(x, y, 120 + k * 120, k % 2 ? 0xffffff : 0xffd870, 1100); this.fx.glow(x, y, 80 + k * 30, 0xfff4d0, 600, .5); });
     for (let k = 0; k < 40; k++) this.time.delayedCall(k * 40, () => this.fx.burst(v.x + Math.random() * v.width, v.y + v.height, [0xffd870, 0xfff4d0, 0xffffff], 1, 40, { angle: -Math.PI / 2, spread: .4, up: 120, grav: -40, bounce: false, glow: true, life: 2, size: 2 }));
     this.level.purified = true;
     this.time.delayedCall(600, () => { this.tintRooms(); this.colorTorches(); });
-    this.time.delayedCall(900, () => this.events.emit('banner', '세상이 정화되었다', '창조의 빛이 온 세상의 심연을 걷어 냈다 · 아르세우스가 본래의 순백색 빛을 되찾았다'));
+    this.time.delayedCall(900, () => this.events.emit('banner', title, sub));
   }
   rooftopSky(r) {
     const W = r.right - r.left, H = r.bottom - r.top, ADD = Phaser.BlendModes.ADD;
@@ -1949,6 +2053,27 @@ export default class GameScene extends Phaser.Scene {
       this.time.delayedCall(5000, () => { for (const q of objs) if (q.scene) q.destroy(); });
       return true;
     }
+    if (key === 'eternatus') {   // 블랙나이트의 심장: 음악이 끊기고 → 레드를 가둔 결정 기둥 위 허공이 검붉게 찢어지며 → 무한다이노가 아공간 균열 속에서 천천히 내려온다
+      Music.stop();
+      Sprites.ensure(LEGEND_GHOSTS);   // 유대의 불꽃 시네마틱에 나올 정화한 전설들의 환영을 미리 받아 둔다
+      const core = this.props && this.props.redCore, ex = core ? core.x : cx, ey = Math.max(room.ty0 * TILE + 40, (core ? core.top : gy - 170) - 50);   // 결정 기둥 위 · 천장 타일 아래
+      const tear = this.abyssTearFx(ex, ey, 220, 0xff2a5a);
+      this.fx.shake(.008, 1400); Sfx.play('boss'); Sfx.play('rift'); chromatic(this, .012, 900);
+      this.events.emit('toast', '결정 속에 레드가 갇혀 있다 — 무한다이노를 정화하자!');
+      later(1200, () => spawn(ex, b => {
+        b.sprite.setAlpha(0); this.tweens.add({ targets: b.sprite, alpha: 1, duration: 700 });
+        b.introPath(ex, ey - 20, ex, ey + 70, 1300, 'Sine.easeInOut', () => {
+          Sfx.play('roar'); Sfx.play('boom');
+          shockwave(this, ex, ey + 70, .045, 900); chromatic(this, .016, 800); cam.flash(240, 255, 60, 90, true); this.fx.shake(.024, 700);
+          for (let k = 0; k < 4; k++) this.time.delayedCall(k * 110, () => this.fx.ring(ex, ey + 70, 60 + k * 50, k % 2 ? 0xffffff : 0xff2a5a, 560));
+          this.fx.burst(ex, ey + 70, [0xff2a5a, 0x2a0612, 0xffa0b8], 50, 300, { glow: true, life: .9 });
+          this.events.emit('toast', '무한다이노가 아공간에서 강림했다!');
+          tear.close();
+        });
+      }));
+      this.time.delayedCall(4000, () => { if (tear.g.scene && !tear.closing) tear.close(); });
+      return true;
+    }
     if (key === 'darkrai') {   // 바닥의 검은 그림자 늪에서 솟아오른다
       const pool = this.add.image(cx, gy - 1, 'glow').setTint(0x000000).setScale(0, .2).setAlpha(.9).setDepth(9.5);
       const rim = this.add.image(cx, gy - 1, 'glow').setBlendMode(ADD).setTint(0x8a4ac0).setScale(0, .15).setAlpha(.7).setDepth(9.6);
@@ -2011,6 +2136,7 @@ export default class GameScene extends Phaser.Scene {
     e.play('Idle', true);
     const aura = REST_AURA[e.bossKey], gira = !!aura, cols = aura ? aura.cols : [0xffe08a, 0x6af0d8, 0xffffff];   // 기라티나: 금빛 · 은빛 태고의 기운 · 아르세우스: 본래의 순백 · 황금빛
     for (const pl of e.plates || []) this.tweens.add({ targets: [pl.im, pl.gl], alpha: 0, scale: 0, duration: 900, ease: 'Cubic.easeIn' });   // 아르세우스: 전투의 플레이트가 빛으로 흩어진다
+    for (const g of e.prisms || []) this.tweens.add({ targets: g, alpha: 0, scale: 0, duration: 900, ease: 'Cubic.easeIn' });   // 아비스 네크로즈마: 검붉은 프리즘 조각이 흩어진다
     this.time.addEvent({ delay: 60, repeat: 26, callback: () => {
       if (!s.scene) return;
       this.fx.burst(e.x + (Math.random() - .5) * e.b.width, e.y + (Math.random() - .5) * e.b.height, cols, 2, 40, { angle: -Math.PI / 2, spread: .9, up: 50, grav: -40, bounce: false, glow: true, life: .9 });
@@ -2160,7 +2286,7 @@ export default class GameScene extends Phaser.Scene {
     // 아레나: 안쪽으로 조금 들어서면 문이 닫히고 보스전
     //  아래 방에서 사다리로 올라오는 통로(철창 아래 줄)도 이 방 칸에 걸쳐 있다 — 아레나 바닥 위로 올라선 뒤에만 시작한다
     //  (예전엔 통로 안에서 시작돼 철창 관문이 머리 위에서 닫혀 못 올라갔다 — 방울탑 옥상 칠색조 등)
-    if (!room.cleared && !room.entered && (room.type === 'mini' || room.type === 'boss' || room.type === 'sanctuary') && p.x > (room.originHall ? room.cx - 70 : room.left + 20) && p.x < room.right - 20 && p.y > room.top && p.y <= room.F * TILE) {   // 시초의 방은 제단 한가운데로 걸어가야
+    if (!room.cleared && !room.entered && (room.type === 'mini' || room.type === 'boss' || room.type === 'sanctuary') && p.x > (room.originHall || room.plantHeart ? room.cx - 70 : room.left + 20) && p.x < room.right - 20 && p.y > room.top && p.y <= room.F * TILE) {   // 시초의 방은 제단 한가운데로 걸어가야
       room.entered = true;
       this.setGates(room, false);
       this.startBoss(room);
@@ -2280,7 +2406,7 @@ export default class GameScene extends Phaser.Scene {
     }
     this.events.emit('boss', boss);   // UI 가 할로우 나이트식 보스 이름 타이틀을 띄운다
     this.fx.shake(.01, 500); Sfx.play('boss');
-    Music.play(def.tier === 'boss' ? this.stage.bossBgm : 'boss_ruin');   // 지방 최종 보스는 지방 전용곡, 중간·히든 보스는 공용 전투곡
+    Music.play(def.bgm || (def.tier === 'boss' ? this.stage.bossBgm : 'boss_ruin'));   // 보스 전용곡(아비스 네크로즈마) · 지방 최종 보스는 지방 전용곡, 중간·히든 보스는 공용 전투곡
   }
   // 이어 싸우기: 다음 보스가 나오는 연출
   nextInChain(prev) {
@@ -2294,6 +2420,25 @@ export default class GameScene extends Phaser.Scene {
     } else if (def.entrance === 'lightstone') {   // 라이트스톤이 내려와 갈라지며 백열의 불꽃을 두른 레시라무
       this.events.emit('banner', `${prev.name} 정화!`, def.intro || '');
       this.time.delayedCall(700, () => { if (this.arenaRoom === room) this.stoneSplit(room, true, x => this.beginBoss(key, room, x)); });
+    } else if (def.entrance === 'bondflame') {   // 유대의 불꽃 시네마틱 → 레드 소생 → 아비스 네크로즈마가 찢어진 하늘에서 내려온다 + 오버드라이브
+      this.events.emit('banner', `${prev.name} 정화!`, '레드를 가둔 결정에 금이 간다');
+      this.bondFlameCinematic(room, prev, () => {
+        if (this.arenaRoom !== room || this.over) return;
+        const t = this.abyssTear, sil = this.abyssSil, gy = this.groundBelow(room.cx, room.bottom - 24);
+        this.startOverdrive(room);
+        this.beginBoss(key, room, t ? t.x : room.cx);
+        const b = this.boss;
+        if (b && b.bossKey === key) {
+          b.sprite.setAlpha(0); this.tweens.add({ targets: b.sprite, alpha: 1, duration: 500 });
+          b.introPath(t ? t.x : room.cx, (t ? t.y : room.top + 60) + 10, room.cx + 60, gy - 110, 1000, 'Cubic.easeOut', () => {
+            Sfx.play('roar'); Sfx.play('boom'); shockwave(this, b.x, b.y, .05, 900); chromatic(this, .02, 900); this.fx.shake(.026, 700);
+            for (let k = 0; k < 4; k++) this.time.delayedCall(k * 110, () => this.fx.ring(b.x, b.y, 60 + k * 50, k % 2 ? 0xb04aff : 0xff2a6a, 560));
+          });
+        }
+        if (sil) { this.tweens.killTweensOf(sil); this.tweens.add({ targets: sil, alpha: 0, scale: .2, duration: 400, onComplete: () => sil.destroy() }); }
+        if (t) this.time.delayedCall(900, () => t.close());
+        this.abyssTear = this.abyssSil = null;
+      });
     } else if (def.entrance === 'abyss') {   // 트레이너가 풀려나고, 심연의 핵에서 솟아오른다
       this.events.emit('banner', `${prev.name} 정화!`, def.intro || '');
       if (tr) { tr.release(TRAINER_LINES[tr.kind].freed); this.time.delayedCall(800, () => this.events.emit('toast', TRAINER_LINES[tr.kind].toast)); }
@@ -2507,7 +2652,7 @@ export default class GameScene extends Phaser.Scene {
     }
     if (this.chain && this.chain.i < this.chain.list.length - 1) { this.nextInChain(boss); return; }   // 이어 싸우기 (디아루가 → 펄기아 · 레드의 포켓몬 → 무한다이노)
     if (this.test) { this.testBossDone(boss); return; }
-    const room = boss.room, final = room.type === 'boss', hidden = room.type === 'sanctuary', tr = this.trainer;
+    const room = boss.room, final = room.type === 'boss', hidden = room.type === 'sanctuary', tr = this.trainer, last = this.stageIdx >= STAGES.length - 1;
     this.boss = null; this.bosses = []; this.chain = null; this.arenaRoom = null;
     if (this.player.flipT > 0) this.player.flipT = .001;
     if (tr) {   // 세뇌된 트레이너가 정신을 차린다 (레드는 이미 풀려 있으면 마지막 한마디)
@@ -2531,17 +2676,282 @@ export default class GameScene extends Phaser.Scene {
       if (hidden) this.spawnPickup('megastone', boss.x, boss.y - 24);   // 숨겨진 심연의 균열: 다른 포켓몬용 메가스톤
       if (Math.random() < ITEM_DROP.boss) this.spawnPickup('item', boss.x + 14, boss.y - 10, pick(RANDOM_ITEM_KEYS));   // 보스는 강화 아이템 확정
       if (hidden) { this.spawnPickup('item', boss.x - 14, boss.y - 10, pick(RANDOM_ITEM_KEYS)); this.time.delayedCall(1500, () => this.openLegendCards()); }
-      if (final) this.spawnPortal(room.right - 40, this.groundBelow(room.right - 40, room.top + 8));
+      if (final && !room.originHall && !last) this.spawnPortal(room.right - 40, this.groundBelow(room.right - 40, room.top + 8));   // 시초의 방은 아르세우스의 텔레파시 뒤 · 마지막 장은 레드의 인사 뒤
     });
     Save.data.bestStage = Math.max(Save.data.bestStage, this.stageIdx + 1); Save.write();
     if (final) {   // 지방 최종 보스 정화 = 그 지방 클리어 → 클리어로 합류하는 특수 포켓몬 (가디안·마기라스·망나뇽)
       Save.data.cleared = Math.max(Save.data.cleared || 0, this.stageIdx + 1);
-      if (this.stageIdx < STAGES.length - 1) this.time.delayedCall(2600, () => this.purifyRegion());   // 지방 전체의 침식이 걷힌다
-      else this.time.delayedCall(1600, () => this.originDawn(boss));   // 최종장: 온 세상의 심연이 황금빛 파동으로 걷힌다 (포털로 들어가면 엔딩)
+      if (!last) this.time.delayedCall(2600, () => this.purifyRegion());   // 지방 전체의 침식이 걷힌다
+      else this.time.delayedCall(1600, () => this.trueEnding(boss, room));   // 진 최종전: 황금빛 새벽 · 레드의 인사 · 유대의 불꽃 영구 획득 (포털로 들어가면 진 엔딩)
+      if (room.originHall) { this.storyWait = true; this.time.delayedCall(7000, () => this.arceusTelepathy(room)); }   // 시초의 방: 엔딩 대신 아르세우스의 텔레파시 (합류 창은 그 뒤로)
       const joined = Save.newlyJoined();
       this.time.delayedCall(5600, () => this.announceJoin(joined));
     }
-    Music.play(this.stage.bgm);
+    Music.play(this.areaBgm());
+  }
+
+  // 시초의 방: 아르세우스를 정화하면 엔딩 대신 텔레파시 — 유대의 불꽃 · 가라르 심연의 결계 · 진짜 배후 → 제단 오른쪽에 가라르로 가는 포털
+  arceusTelepathy(room) {
+    if (this.over) return;
+    const arc = (this.restingBosses || []).find(e => e.bossKey === 'arceus' && e.sprite && e.sprite.scene);
+    if (arc) { this.fx.ring(arc.x, arc.y, 80, 0xfff0b0, 900); this.fx.ring(arc.x, arc.y, 50, 0xffffff, 700); this.fx.glow(arc.x, arc.y, 90, 0xffffff, 900, .7); }
+    this.cameras.main.flash(300, 255, 244, 214, true); Sfx.play('arceus');
+    const portrait = arc ? { key: arc.sprite.texture.key, frame: arc.sprite.frame.name, glow: 0xfff0b0, max: 1.4 } : { key: 'glow', tint: 0xfff0b0, max: 1 };
+    this.openStory({ name: '아르세우스 · 텔레파시', portrait, lines: ARCEUS_LINES, onEnd: () => {
+      this.storyWait = false;
+      if (this.over || !this.level) return;
+      const x = Math.min(room.right - 40, room.cx + 170), gy = this.groundBelow(x, room.top + 8);
+      this.cameras.main.flash(400, 255, 244, 210, true); Sfx.play('resonate');
+      for (let k = 0; k < 3; k++) this.time.delayedCall(k * 140, () => this.fx.ring(x, gy - 20, 30 + k * 30, 0xfff0b0, 500));
+      this.fx.burst(x, gy - 20, [0xfff0b0, 0xffffff, 0xff8aa0], 30, 200, { glow: true, up: 80, life: .8 });
+      this.spawnPortal(x, gy, `창조의 힘이 가라르 심연의 결계를 열었다 — 제단 오른쪽 포털로 ${STAGES[this.stageIdx + 1] ? STAGES[this.stageIdx + 1].region : '다음 지방'}에!`);
+    } });
+  }
+
+  // ---------------- 유대의 불꽃 (가라르 · 블랙나이트의 심장) ----------------
+  //  허공이 찢어진다: 가로로 들쭉날쭉한 검은 틈 · 검붉은 테 · 보랏빛 번짐 (close() 로 다시 닫힌다)
+  abyssTearFx(x, y, w, col = 0xff2a5a) {
+    const g = this.add.graphics().setDepth(7.8), o = { k: 0 }, jag = [];
+    for (let i = 0; i <= 24; i++) jag.push(Math.sin(i * 2.1) * 5 + Math.cos(i * 1.3) * 4);
+    const draw = () => {
+      g.clear();
+      if (o.k < .02) return;
+      const top = [], bot = [];
+      for (let i = 0; i <= 24; i++) { const t = i / 24, xx = x - w / 2 + w * t, h = Math.sin(t * Math.PI) * 26 * o.k + 1; top.push({ x: xx, y: y + jag[i] - h }); bot.push({ x: xx, y: y + jag[i] + h * .8 }); }
+      const poly = [...top, ...bot.reverse()];
+      g.fillStyle(0x8a2aff, .2); g.fillPoints(poly.map(q => ({ x: x + (q.x - x) * 1.08, y: y + (q.y - y) * 1.6 })), true);
+      g.fillStyle(0x000000, .95); g.fillPoints(poly, true);
+      g.lineStyle(3, col, .95); g.strokePoints(poly, true);
+      g.lineStyle(1, 0xffc0d0, .9); g.strokePoints(top, false);
+    };
+    this.tweens.add({ targets: o, k: 1, duration: 700, ease: 'Cubic.easeOut', onUpdate: draw });
+    this.worldObjs.push(g);
+    const tear = { x, y, g, closing: false, close: () => { if (tear.closing || !g.scene) return; tear.closing = true; this.tweens.add({ targets: o, k: 0, duration: 800, ease: 'Cubic.easeIn', onUpdate: draw, onComplete: () => g.destroy() }); } };
+    return tear;
+  }
+  // 포켓몬 도트 하나 (연출용 · 시트가 없으면 null): 발끝 (x, y) 에 서서 face 쪽을 본다
+  showMon(key, x, y, face = 1, depth = 8.4) {
+    const anim = `${key}:Idle:${face > 0 ? 'right' : 'left'}`;
+    if (!this.anims.exists(anim)) return null;
+    const meta = (this.registry.get('spriteMeta') || {})[key], oy = meta && meta.anims && meta.anims.Idle ? meta.anims.Idle.oy : .75;
+    const s = this.add.sprite(x, y, key).setOrigin(.5, oy).setDepth(depth);
+    s.play(anim);
+    this.worldObjs.push(s);
+    return s;
+  }
+  // 불꽃 구슬 하나: (x, y) 에서 피어올라 곡선을 그리며 tgt(레드의 가슴)로 빨려 든다
+  bondOrb(x, y, tgt, col) {
+    const o = this.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(col).setScale(.32).setDepth(31), k = { t: 0 };
+    const mx = (x + tgt.x) / 2 + (Math.random() - .5) * 160, my = Math.min(y, tgt.y) - 60 - Math.random() * 80;
+    this.tweens.add({ targets: k, t: 1, duration: 900 + Math.random() * 500, ease: 'Sine.easeIn',
+      onUpdate: () => {
+        const t = k.t, u = 1 - t;
+        o.setPosition(u * u * x + 2 * u * t * mx + t * t * tgt.x, u * u * y + 2 * u * t * my + t * t * tgt.y);
+        if (Math.random() < .35) this.fx.burst(o.x, o.y, [col, 0xffffff], 1, 10, { grav: 0, bounce: false, glow: true, life: .3, size: 1 });
+      },
+      onComplete: () => { o.destroy(); this.fx.glow(tgt.x, tgt.y, 16, col, 180, .8); } });
+  }
+  //  무한다이노 정화 → ① 레드를 가둔 결정에 금이 가고 산산조각 · 레드가 쓰러진다 → ② 주인공 · 파티 · 정화한 전설들의 환영에서 황금빛 · 진홍빛 불꽃 구슬이 피어올라 레드의 가슴으로 (화면 가운데 자막)
+  //  → ③ 진홍빛 오라가 터지며 레드가 눈을 뜨고 모자를 고쳐 쓴다 → ④ 무한다이노의 몸을 찢고 아비스 네크로즈마가 빠져나와 하늘을 가른다 → ⑤ 레드의 한마디 (대화창) → done (오버드라이브 + 진 최종전)
+  bondFlameCinematic(room, prev, done) {
+    const cam = this.cameras.main, p = this.player, ADD = Phaser.BlendModes.ADD, core = this.props && this.props.redCore;
+    const gy = core ? core.Y : room.F * TILE, cx = core ? core.x : room.cx, top = core ? core.top : gy - 170;   // gy: 결정 기둥이 선 바닥
+    const later = (ms, f) => this.time.delayedCall(ms, () => { if (this.arenaRoom === room && !this.over) f(); });
+    this.cinema = true; p.inv = 999; p.b.setVelocityX(0); Music.stop();
+    this.combat.clearAll();   // 남은 탄 · 장판(무한다이맥스의 붉은 하늘 등)을 걷는다
+    makeTrainerArt(this, 'red');
+    const red = core ? core.red : this.add.image(cx, gy - 22, 'trainer:red:sleep').setOrigin(.5, 1).setScale(2).setDepth(3.52).setTint(0xb8b0c8);
+    if (!core) this.worldObjs.push(red);
+    this.redAlly = { img: red, aura: [] };
+    const ghosts = [];
+    // ① 금 → 산산조각 → 쓰러진 레드
+    const cracks = this.add.graphics().setDepth(3.6).setBlendMode(ADD);
+    this.worldObjs.push(cracks);
+    const crack = n => { for (let i = 0; i < n; i++) { let x = cx + (Math.random() - .5) * 50, y = top + 40 + Math.random() * 110; const pts = [{ x, y }]; for (let k = 0; k < 4; k++) { x += (Math.random() - .5) * 26; y += (Math.random() - .5) * 26; pts.push({ x, y }); } cracks.lineStyle(2, 0xffd0d8, .95); cracks.strokePoints(pts, false); } };
+    later(900, () => { crack(4); this.fx.shake(.008, 300); Sfx.play('crack'); });
+    later(1500, () => { crack(6); this.fx.shake(.012, 300); Sfx.play('crack'); if (core && core.light) core.light.setIntensity(2.6); });
+    later(2200, () => {
+      cracks.destroy();
+      if (core) { core.broken = true; for (const o of [core.back, core.front, core.chains, core.halo, core.core]) if (o && o.scene) o.setVisible(false); if (core.light) core.light.setIntensity(0); }
+      const my = top + 90;
+      this.fx.shatter(cx, my, 90, 170, { n: 60, speed: 260, up: 140, scale: 2, depth: 46 });
+      this.fx.burst(cx, my, [0xff2a4a, 0xffa0b8, 0xffffff], 50, 260, { glow: true, life: .9 });
+      cam.flash(300, 255, 120, 150, true); this.fx.shake(.024, 600); shockwave(this, cx, my, .04, 900); Sfx.play('shatter'); Sfx.play('boom');
+      red.setOrigin(.5, .5).setPosition(red.x, red.y - 48);
+      this.tweens.add({ targets: red, y: gy - 14, angle: -90, duration: 650, ease: 'Bounce.easeOut' });   // 쓰러져 미동도 없다 (누우면 몸통 옆선이 도트 가운데에서 10px — 몸통이 바닥에 닿게)
+    });
+    // ② 유대의 불꽃이 돌아간다
+    later(3300, () => {
+      this.events.emit('caption', BOND_CAPTION, 5000);
+      Sfx.play('resonate');
+      const srcs = [{ x: p.x, y: p.y - 6 }];
+      p.members.forEach((m, i) => {   // 파티: 출전 중이 아닌 동료도 주인공 둘레에 황금빛 환영으로
+        if (i === p.idx) return;
+        const side = srcs.length % 2 ? -1 : 1, x = Phaser.Math.Clamp(p.x + side * (34 + 18 * Math.floor(srcs.length / 2)), room.left + 20, room.right - 20), s = this.showMon(m.key, x, this.groundBelow(x, p.y), p.face, 19);
+        if (!s) return;
+        s.setTint(0xffe8b0).setAlpha(0); this.tweens.add({ targets: s, alpha: .8, duration: 500 });
+        ghosts.push(s); srcs.push({ x, y: s.y - 14 });
+      });
+      const legends = LEGEND_GHOSTS.filter(k => this.anims.exists(`${k}:Idle:left`));
+      const v = cam.worldView, ly = Math.max(room.ty0 * TILE + 70, v.y + 80);   // 화면 위쪽 (아레나가 화면보다 높아도 보이게)
+      legends.forEach((k, i) => {   // 지금까지 정화한 전설들의 환영: 화면 위쪽에 줄지어
+        const x = v.x + 40 + (i + .5) * (v.width - 80) / legends.length, y = ly + (i % 2) * 30, s = this.showMon(k, x, y, x < cx ? 1 : -1, 7.9);
+        if (!s) return;
+        s.setTint(0xfff0c0).setBlendMode(ADD).setAlpha(0); this.tweens.add({ targets: s, alpha: .5, duration: 800, delay: i * 90 });
+        ghosts.push(s); srcs.push({ x, y: y - 24 });
+      });
+      let n = 0;
+      this.time.addEvent({ delay: 70, repeat: 52, callback: () => { if (this.arenaRoom === room && red.scene) { const s = srcs[n++ % srcs.length]; this.bondOrb(s.x, s.y, red, n % 2 ? BOND_GOLD : BOND_CRIMSON); } } });
+      for (let k = 0; k < 4; k++) this.time.delayedCall(k * 900, () => { if (red.scene) { this.fx.glow(red.x, red.y, 30 + k * 8, k % 2 ? BOND_CRIMSON : BOND_GOLD, 600, .7); Sfx.play('heal'); } });
+    });
+    // ③ 레드가 깨어난다
+    later(7800, () => {
+      for (const s of ghosts) this.tweens.add({ targets: s, alpha: 0, duration: 900, onComplete: () => s.destroy() });
+      cam.flash(400, 255, 90, 110, true); shockwave(this, red.x, red.y, .05, 1000); chromatic(this, .012, 700); this.fx.shake(.02, 600);
+      for (let k = 0; k < 5; k++) this.time.delayedCall(k * 120, () => this.fx.ring(red.x, red.y, 40 + k * 40, k % 2 ? BOND_GOLD : BOND_CRIMSON, 600));
+      this.fx.burst(red.x, red.y, [BOND_CRIMSON, BOND_GOLD, 0xffffff], 60, 300, { glow: true, up: 100, life: 1 });
+      Sfx.play('mega'); Sfx.play('purify_world');
+      red.clearTint();
+      this.tweens.add({ targets: red, angle: 0, y: gy - 48, duration: 600, ease: 'Back.easeOut', onComplete: () => red.setOrigin(.5, 1).setPosition(red.x, gy) });
+      this.redAlly.aura = [BOND_CRIMSON, BOND_GOLD].map((c, i) => { const a = this.add.image(red.x, gy - 48, 'glow').setBlendMode(ADD).setTint(c).setScale(i ? 1.6 : 2.4, i ? 2.4 : 3.2).setAlpha(0).setDepth(3.5); this.tweens.add({ targets: a, alpha: i ? .3 : .4, duration: 600 }); this.worldObjs.push(a); return a; });
+    });
+    later(8700, () => { red.setTexture('trainer:red:free'); this.fx.floatText(red.x, gy - 104, '……!', '#ffe8b0', 11); });   // 눈을 뜬다
+    later(9500, () => { red.setTexture('trainer:red:cap'); Sfx.play('select'); });   // 모자를 고쳐 쓴다
+    later(10200, () => red.setTexture('trainer:red:free'));
+    // ④ 무한다이노의 몸을 찢고 아비스 네크로즈마가
+    later(10600, () => this.abyssEmerge(room, prev));
+    // ⑤ 레드의 한마디 → 진 최종전
+    later(13600, () => this.openStory({ name: '레드', look: 'red', lines: [RED_LINE], onEnd: () => { this.cinema = false; done(); } }));
+  }
+  // 무한다이노의 몸을 찢고 아비스 네크로즈마가 빠져나와 하늘을 가른다 (아직 싸우지 않는다 — 검은 프리즘 실루엣이 찢어진 하늘 앞에 머문다)
+  abyssEmerge(room, prev) {
+    const cam = this.cameras.main, e = prev && prev.sprite && prev.sprite.scene ? prev : null;
+    const v = cam.worldView, ex = e ? e.sprite.x : room.cx, ey = e ? e.sprite.y : v.y + 120, tx = room.cx, ty = Math.max(room.ty0 * TILE + 44, v.y + 44);   // ty: 천장 타일 아래 · 화면 위쪽 허공
+    if (e) {
+      e.leaving = true;   // updateResting 이 손대지 않게
+      for (const tw of [e.breathTw, e.bobTw, e.swayTw]) if (tw) tw.stop();
+      this.tweens.add({ targets: e.sprite, x: ex + 3, duration: 50, yoyo: true, repeat: 12 });
+      e.sprite.setTint(0x6a1424);
+    }
+    Sfx.play('ghost'); Sfx.play('boss'); this.fx.shake(.01, 900);
+    const sil = this.add.graphics().setDepth(17.9).setPosition(ex, ey).setScale(.2).setAlpha(0);
+    sil.fillStyle(0xff2a6a, .3); sil.fillCircle(0, 0, 30);
+    for (let k = 0; k < 6; k++) {
+      const a = k / 6 * Math.PI * 2 - Math.PI / 2, P = d => [Math.cos(a) * 36, Math.sin(a) * 36, Math.cos(a + d) * 12, Math.sin(a + d) * 12];
+      const [x1, y1, x2, y2] = P(.35), [, , x3, y3] = P(-.35);
+      sil.fillStyle(0x12020a, 1); sil.fillTriangle(x1, y1, x2, y2, x3, y3);
+      sil.lineStyle(1, k % 2 ? 0xb04aff : 0xff2a6a, 1); sil.strokeTriangle(x1, y1, x2, y2, x3, y3);
+    }
+    sil.fillStyle(0x000000, 1); sil.fillCircle(0, 0, 13); sil.fillStyle(0xff2a6a, 1); sil.fillCircle(0, 0, 4);
+    this.worldObjs.push(sil); this.abyssSil = sil;
+    this.time.delayedCall(900, () => {
+      if (!sil.scene) return;
+      if (e && e.sprite && e.sprite.scene) {
+        this.fx.burst(ex, ey, [0xff2a6a, 0x000000, 0xb04aff], 50, 260, { glow: true, life: .9 });
+        for (const o of e.auraImgs || []) o.destroy();
+        e.auraImgs = null;
+        this.tweens.add({ targets: e.sprite, alpha: 0, scaleX: e.sprite.scaleX * .6, scaleY: e.sprite.scaleY * .6, duration: 900, onComplete: () => { e.destroy(); this.enemies = this.enemies.filter(q => q !== e); this.restingBosses = (this.restingBosses || []).filter(q => q !== e); } });
+      }
+      cam.flash(260, 120, 0, 40, true); Sfx.play('shatter');
+      sil.setAlpha(1);
+      this.tweens.add({ targets: sil, scale: 1.4, duration: 500, ease: 'Back.easeOut' });
+      this.tweens.add({ targets: sil, angle: 360, duration: 4000, repeat: -1 });
+    });
+    this.time.delayedCall(1600, () => {
+      if (!sil.scene) return;
+      this.abyssTear = this.abyssTearFx(tx, ty, 360, 0xff2a6a);
+      chromatic(this, .026, 1400); shockwave(this, tx, ty, .05, 1000); this.fx.shake(.026, 1100); cam.flash(220, 160, 20, 60, true);
+      Sfx.play('rift'); Sfx.play('roar');
+      this.tweens.add({ targets: sil, x: tx, y: ty + 40, duration: 1200, ease: 'Cubic.easeInOut' });
+      this.events.emit('banner', '아비스 네크로즈마', '무한다이노를 숙주로 삼았던 차원 너머의 진짜 배후 — 심연의 지배자가 하늘을 가른다');
+    });
+  }
+  // 유대의 불꽃 오버드라이브 (진 최종전): 파티 전원 체력 100% · 황금빛 · 진홍빛 오라(Cores.bondAura) · 모든 공격 2배 + 맞힌 자리마다 화염 폭발 (Combat · Cores)
+  //  아레나 뒤편에서 레드 · 리자몽 · 피카츄가 5초마다 블래스트번 + 볼트태클 합동 공격 (updateOverdrive)
+  startOverdrive(room) {
+    const p = this.player, cam = this.cameras.main, ra = this.redAlly, red = ra && ra.img, gy = this.groundBelow(room.cx, room.bottom - 24);
+    for (const m of p.members) { m.alive = true; m.hp = m.maxhp; }
+    p.inv = Math.max(p.inv > 100 ? 0 : p.inv, 2);
+    const rx = Math.max(room.left + 90, room.cx - 170);
+    if (red && red.scene) { red.setFlipX(true); this.tweens.add({ targets: red, x: rx, duration: 700, ease: 'Sine.easeInOut' }); }   // 레드는 보스 쪽(오른쪽)을 본다
+    const zard = this.showMon('charizard', rx + 46, gy - 34, 1, 3.55), pika = this.showMon('pikachu', rx - 30, gy, 1, 3.55);
+    for (const [s, x, y] of [[zard, rx + 46, gy - 50], [pika, rx - 30, gy - 10]]) { if (s) s.setAlpha(0); this.fx.ring(x, y, 30, 0xffffff, 300); this.fx.glow(x, y, 34, 0xffffff, 300, 1); if (s) this.tweens.add({ targets: s, alpha: 1, duration: 300 }); }   // 몬스터볼에서
+    this.overdrive = { room, t: 2.5, red, zard, pika, rx, gy };
+    this.events.emit('banner', '🔥 유대의 불꽃 오버드라이브!', '모든 공격 2배 · 맞힌 자리마다 화염 폭발 · 5초마다 레드 · 리자몽 · 피카츄의 합동 공격');
+    cam.flash(500, 255, 210, 140, true); shockwave(this, p.x, p.y, .04, 900); this.fx.shake(.018, 500);
+    for (let k = 0; k < 4; k++) this.time.delayedCall(k * 120, () => this.fx.ring(p.x, p.y, 30 + k * 30, k % 2 ? BOND_CRIMSON : BOND_GOLD, 500));
+    this.fx.burst(p.x, p.y, [BOND_GOLD, BOND_CRIMSON, 0xffffff], 50, 260, { glow: true, up: 100, life: .9 });
+    Sfx.play('mega'); Sfx.play('heal');
+  }
+  updateOverdrive(dt) {
+    const od = this.overdrive;
+    if (!od) return;
+    const t = this.time.now / 1000, ra = this.redAlly;
+    if (ra && od.red && od.red.scene) {
+      ra.aura.forEach((a, i) => { if (a.scene) a.setPosition(od.red.x, od.gy - 48).setAlpha((i ? .26 : .34) + Math.sin(t * 4 + i) * .08); });
+      if (Math.random() < .3) this.fx.burst(od.red.x + (Math.random() - .5) * 30, od.gy - Math.random() * 90, [BOND_GOLD, BOND_CRIMSON], 1, 20, { angle: -Math.PI / 2, spread: .6, up: 40, grav: -30, bounce: false, glow: true, life: .7 });
+    }
+    const boss = this.boss;
+    if (!boss || !boss.alive || boss.state === 'intro' || boss.room !== od.room) return;
+    if ((od.t -= dt) > 0) return;
+    od.t = 5;
+    this.jointAttack(od, boss);
+  }
+  // 레드 · 리자몽 · 피카츄 합동 공격: 블래스트번(리자몽에서 보스까지 굵은 화염 줄기 · 보스 자리 화염 폭발) → 볼트태클(피카츄가 번개를 두르고 보스에게 돌진했다 돌아온다)
+  jointAttack(od, boss) {
+    const p = this.player, ADD = Phaser.BlendModes.ADD, alive = () => boss.alive && this.boss === boss && this.combat;
+    if (od.red && od.red.scene) this.fx.floatText(od.red.x, od.gy - 104, '리자몽, 블래스트번! 피카츄, 볼트태클!', '#ffe8b0', 9);
+    Sfx.play('select');
+    const zx = od.zard && od.zard.scene ? od.zard.x : od.rx + 46, zy = od.zard && od.zard.scene ? od.zard.y - 16 : od.gy - 70;
+    this.time.delayedCall(250, () => {
+      if (!alive()) return;
+      const g = this.add.graphics().setDepth(31).setBlendMode(ADD);
+      for (const [w, col, a] of [[26, 0xff3a1a, .3], [14, 0xff8a2a, .75], [5, 0xffe0a0, 1]]) { g.lineStyle(w, col, a); g.lineBetween(zx, zy, boss.x, boss.y); }
+      this.tweens.add({ targets: g, alpha: 0, duration: 450, onComplete: () => g.destroy() });
+      this.combat.damageEnemy(boss, p.atk * 2.5, 'fire', { proc: true, heavy: true, hs: 40, kb: 0, kby: 0, hx: boss.x, hy: boss.y });
+      for (let k = 0; k < 3; k++) this.time.delayedCall(k * 90, () => this.fx.ring(boss.x, boss.y, 40 + k * 26, k % 2 ? 0xffd040 : 0xff5a1a, 420));
+      this.fx.burst(boss.x, boss.y, [0xff3a1a, 0xff8a2a, 0xffe0a0, 0xffffff], 40, 260, { glow: true, up: 100, life: .7 });
+      this.fx.floatText(boss.x, boss.top - 34, '블래스트번!', '#ff9a4a', 12);
+      this.fx.shake(.012, 260); Sfx.play('fire'); Sfx.play('boom');
+    });
+    this.time.delayedCall(750, () => {
+      if (!alive()) return;
+      const pk = od.pika && od.pika.scene ? od.pika : null, hit = () => {
+        if (!alive()) return;
+        this.combat.damageEnemy(boss, p.atk * 2.5, 'electric', { proc: true, heavy: true, hs: 40, kb: 0, kby: 0, paralyze: .2, hx: boss.x, hy: boss.y });
+        this.fx.floatText(boss.x, boss.top - 48, '볼트태클!', '#ffe040', 12);
+        this.fx.ring(boss.x, boss.y, 50, 0xffe040, 360); this.fx.burst(boss.x, boss.y, [0xffe040, 0xffffff, 0x6ad8ff], 30, 240, { glow: true, up: 60, life: .5 });
+      };
+      Sfx.play('thunder');
+      if (!pk) { hit(); return; }
+      const x0 = pk.x, y0 = pk.y;
+      this.tweens.add({ targets: pk, x: boss.x, y: boss.y, duration: 260, ease: 'Quad.easeIn',
+        onUpdate: () => { this.fx.ghost(pk, 0xffe040, .5, 160); this.fx.burst(pk.x, pk.y - 8, [0xffe040, 0xffffff], 2, 80, { up: 0, grav: 0, bounce: false, glow: true, life: .2 }); },
+        onComplete: () => { hit(); if (pk.scene) this.tweens.add({ targets: pk, x: x0, y: y0, duration: 380, ease: 'Quad.easeOut' }); } });
+    });
+  }
+  // 오버드라이브를 끈다 (진 엔딩 · 보스전 초기화 · 월드를 떠날 때): 리자몽 · 피카츄는 사라지고, keepRed 면 레드는 남는다
+  endOverdrive(keepRed = false) {
+    const od = this.overdrive;
+    this.overdrive = null;
+    if (od) for (const s of [od.zard, od.pika]) if (s && s.scene) { this.tweens.killTweensOf(s); this.tweens.add({ targets: s, alpha: 0, duration: 600, onComplete: () => s.destroy() }); }
+    if (!keepRed && this.redAlly) { for (const o of [this.redAlly.img, ...this.redAlly.aura]) if (o && o.scene) { this.tweens.killTweensOf(o); o.destroy(); } this.redAlly = null; }
+  }
+  // 진 엔딩: 아비스 네크로즈마 정화 → 오버드라이브가 잦아들고 황금빛 새벽 → 레드의 인사 → 유대의 불꽃 영구 획득 → 포털 (들어가면 진 엔딩 화면)
+  trueEnding(boss, room) {
+    if (this.over) return;
+    this.endOverdrive(true);
+    Music.play('celestial');
+    this.originDawn(boss, '세상이 구원되었다', '모두의 유대의 불꽃이 심연의 지배자를 불태웠다 · 전 지방의 하늘이 맑게 갠다');
+    Save.data.bondFlame = true; Save.write();
+    const red = this.redAlly && this.redAlly.img;
+    if (red && red.scene) { this.tweens.add({ targets: red, x: Math.min(room.right - 160, Math.max(room.left + 90, this.player.x + 70)), duration: 1400, ease: 'Sine.easeInOut' }); red.setFlipX(false); }
+    this.time.delayedCall(3600, () => this.openStory({ name: '레드', look: 'red', lines: RED_THANKS, onEnd: () => {
+      if (this.over || !this.level) return;
+      this.events.emit('toast', '🔥 레드의 유대의 불꽃을 얻었다 — 다음 여정부터 처음부터 지니고 시작한다', 'core_red_bond');
+      const x = Math.min(room.right - 40, room.cx + 170);
+      this.spawnPortal(x, this.groundBelow(x, room.top + 8), '포털로 들어가 여정을 마치자 — 진 엔딩');
+    } }));
   }
 
   // 폼체인지 아이템을 지닌 전설 보스(디아루가·펄기아·기라티나)는 정화하면 그 아이템을 떨어뜨린다
@@ -2565,7 +2975,7 @@ export default class GameScene extends Phaser.Scene {
   }
   nextJoin() {
     if (!this.joinQueue || !this.joinQueue.length || this.overlay === 'join') return;
-    if (this.overlay || this.over || this.transitioning || this.paused) {   // 다른 창(기술머신 카드 등)이 닫히길 기다린다
+    if (this.overlay || this.over || this.transitioning || this.paused || this.cinema || this.storyWait) {   // 다른 창(기술머신 카드 등) · 이야기 연출 · 텔레파시가 끝나길 기다린다
       if (!this.joinWait) { this.joinWait = true; this.time.delayedCall(600, () => { this.joinWait = false; this.nextJoin(); }); }
       return;
     }
@@ -2705,11 +3115,11 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // ---------------- 출구 포털 / 스테이지 전환 ----------------
-  spawnPortal(x, gy) {
+  spawnPortal(x, gy, msg = null) {
     const g = this.add.graphics().setDepth(13).setBlendMode(Phaser.BlendModes.ADD);
     const glow = this.add.image(x, gy - 20, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(0x9a7aff).setScale(1.4).setDepth(12);
     this.portal = { x, y: gy - 20, g, glow, t: 0 };
-    this.events.emit('toast', this.stageIdx >= STAGES.length - 1 ? '창조의 빛이 온 세상을 덮었다! 포털로 들어가 여정을 마치자' : `${STAGES[this.stageIdx + 1].region}로 가는 포털이 열렸다!`);
+    this.events.emit('toast', msg || (this.stageIdx >= STAGES.length - 1 ? '포털로 들어가 여정을 마치자' : `${STAGES[this.stageIdx + 1].region}으로 가는 포털이 열렸다!`));
   }
 
   updatePortal(dt) {
@@ -2865,6 +3275,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.player.flipT > 0) this.player.flipT = .001;
     if (tr && !tr.freed) tr.release(TRAINER_LINES[tr.kind].freed);
     this.events.emit('boss', null);
+    this.endOverdrive();
     this.events.emit('banner', `${boss.name} 정화!`, `테스트룸 · ${this.touchInput && this.touchInput.on ? '테스트 버튼' : 'T'}로 다른 보스 · 포켓몬을 고른다`);
     this.fx.hitStop(220);
     this.time.delayedCall(700, () => this.unlockArena());

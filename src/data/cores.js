@@ -32,6 +32,11 @@ export const BOSS_CORES = {
     desc: '🔥 불꽃·드래곤 기술 · 차징 샷(Z 홀드)의 화염이 초고온의 푸른 불꽃으로 — 반감 · 무효 · 보스의 방어 자세까지 무시하고 관통 · 맞은 자리(근접은 앞 바닥)에 3초간 타오르는 푸른 화염 장판' },
   'kyurem-black': { id: 'core_kyurem_black', name: '큐레무의 절대영도 코어', color: 0xbff0ff, flag: 'kyurem',
     desc: '❄️ 얼음·드래곤 기술이 맞으면 35% 확률로 즉시 빙결(보스는 짧게) · 빙결되거나 둔화된 적에게 주는 급소 피해 +60%' },
+  eternatus: { id: 'core_eternatus', name: '무한다이노의 다이맥스 코어', color: 0xff2a5a, flag: 'dynamax',
+    desc: '☄️ 차징 샷과 기술(X · C)이 거대한 다이맥스포 광선으로 — 폭발 범위 2배 · 보스에게 주는 피해 +50%' },
+  // 아비스 네크로즈마(진 최종 보스)를 쓰러뜨리면: 레드가 돌려준 유대의 불꽃 — 진 엔딩 클리어로 영구 획득 (다음 여정부터 가방에 · GameScene)
+  necrozma: { id: 'core_red_bond', name: '🔥 레드의 유대의 불꽃', color: 0xffb040, flag: 'bond',
+    desc: '🔥 진 엔딩 궁극 유물 — 몸 둘레에 늘 유대의 불꽃이 감돌고 모든 기술에 황금빛 추가 화염 타격 · 패링(↓ + Z)에 성공하면 레드의 환영이 나타나 가장 가까운 적(보스)에게 합동 카운터 일격' },
   arceus: { id: 'core_arceus', name: '아르세우스의 창조 코어', color: 0xfff0b0, flag: 'arceus',
     desc: '🌟 올라운드 플레이트 — 모든 공격이 상대 속성에 맞춰 「효과가 굉장했다」(약점) 판정으로 바뀐다 · 기술을 쓸 때마다 심판의뭉치 빛의 탄환 3발이 유도탄으로 함께 날아간다 (최종 궁극 유물)' },
   // ── 고유 효과가 없는 보스: 그 보스의 속성 투사체 +1 · 그 속성 피해 +20%
@@ -43,7 +48,6 @@ export const BOSS_CORES = {
   latias: { id: 'core_latias', name: '라티아스의 꿈 코어', color: 0xff8aa8, proj: ['dragon', 'psychic'], boost: ['dragon', 'psychic'] },
   latios: { id: 'core_latios', name: '라티오스의 유성 코어', color: 0x6a9aff, proj: ['dragon', 'psychic'], boost: ['dragon', 'psychic'] },
   groudon: { id: 'core_groudon', name: '그란돈의 대지 코어', color: 0xff6a2a, proj: ['ground', 'fire'], boost: ['ground', 'fire'] },
-  eternatus: { id: 'core_eternatus', name: '무한다이노의 무한 코어', color: 0xff2a5a, proj: ['poison', 'dragon'], boost: ['poison', 'dragon'] },
   'pikachu-red': { id: 'core_pikachu_red', name: '레드의 피카츄 코어', color: 0xffe040, proj: ['electric'], boost: ['electric'] },
   'charizard-red': { id: 'core_charizard_red', name: '레드의 리자몽 코어', color: 0xff7a2a, proj: ['fire', 'flying'], boost: ['fire', 'flying'] }
 };
