@@ -2846,6 +2846,42 @@
       "portrait": "sprites/darkrai-mega/portrait.png",
       "icon": "sprites/darkrai-mega/pokeapi.png",
       "artwork": "sprites/darkrai-mega/artwork.png"
+    },
+    "reshiram": {
+      "key": "reshiram",
+      "dex": "0643",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/reshiram/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/reshiram/Walk-Anim.png",
+        "Attack": "sprites/reshiram/Attack-Anim.png",
+        "Shoot": "sprites/reshiram/Shoot-Anim.png",
+        "Hurt": "sprites/reshiram/Hurt-Anim.png",
+        "Idle": "sprites/reshiram/Idle-Anim.png",
+        "Strike": "sprites/reshiram/Attack-Anim.png"
+      },
+      "portrait": "sprites/reshiram/portrait.png",
+      "icon": "sprites/reshiram/pokeapi.png",
+      "artwork": "sprites/reshiram/artwork.png"
+    },
+    "arceus": {
+      "key": "arceus",
+      "dex": "0493",
+      "form": null,
+      "role": "보스",
+      "animData": "sprites/arceus/AnimData.xml",
+      "anims": {
+        "Walk": "sprites/arceus/Walk-Anim.png",
+        "Attack": "sprites/arceus/Attack-Anim.png",
+        "Charge": "sprites/arceus/Charge-Anim.png",
+        "Hurt": "sprites/arceus/Hurt-Anim.png",
+        "Idle": "sprites/arceus/Idle-Anim.png",
+        "Shoot": "sprites/arceus/Charge-Anim.png"
+      },
+      "portrait": "sprites/arceus/portrait.png",
+      "icon": "sprites/arceus/pokeapi.png",
+      "artwork": "sprites/arceus/artwork.png"
     }
   },
   "icons": {
