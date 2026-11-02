@@ -4,9 +4,15 @@ import { Cores } from './Cores.js';
 import { typeMultiplier, effectiveness, typeColor } from '../data/types.js';
 import { Sfx } from '../systems/Audio.js';
 import { ProjectileRenderer } from '../systems/ProjectileRenderer.js';
+import { shockwave } from '../systems/PostFX.js';
 import { onHit as perkHit } from './Perks.js';
 import { txt } from '../config.js';
 const GROGGY_MUL = 1.35;   // game/Boss.js GROGGY_MUL 과 같은 값 (Boss → Combat 순환 import 를 피해 따로 둔다)
+// 보스 · 엘리트 탄 (fast — Boss.shot · Enemy 엘리트): 탄속 ×ENEMY_FAST (같은 궤적 · 같은 사거리로 더 빨리) · 쏘기 직전 SHOT_HOLD 초 예비 동작(입·손 앞의 날카로운 섬광 · 충전음)
+//  → 보고 피하기보다 예비 동작을 읽고 타이밍으로 쳐내야 한다 (패링 난이도 ↑)
+export const ENEMY_FAST = 1.42, SHOT_HOLD = .2;
+// 패링으로 되받아친 탄 (parried): 맞힌 상대 속성과 상관없이 '효과가 굉장했다'(약점) 판정 · 보스 그로기 게이지 PARRY_STAGGER 를 한 번에 (일반 약점 한 방의 최대치 약 4.5배)
+const PARRY_STAGGER = 32;
 
 // 다단히트 합계 글자 모양
 const txtStack = () => txt(11, '#ffe08a', { stroke: '#3a1a00', strokeThickness: 3, fontStyle: 'bold' });
@@ -33,7 +39,7 @@ export class Combat {
     const p = this.p, mods = p.mods;
     this.applyStatus(e, o);
     if (base <= 0) return 0;
-    const m0 = typeMultiplier(type, e.types), m = o.ignoreResist ? Math.max(1, m0) : m0;   // 깨물어부수기: 반감 무시
+    const m0 = typeMultiplier(type, e.types), m = o.parried ? Math.max(2, m0) : o.ignoreResist ? Math.max(1, m0) : m0;   // 깨물어부수기: 반감 무시 · 패링 반사탄: 무조건 약점
     const eff = effectiveness(m);
     let d = base * m * mods.all * (1 + (mods.typeBoost[type] || 0));
     if (e.status.curse > 0) d *= 1.3;
@@ -68,12 +74,27 @@ export class Combat {
       Cores.hit(this, e, d, type, o);   // 보스의 코어 (game/Cores.js)
       const steal = (mods.lifesteal || 0) + (o.lifesteal || 0);
       if (steal > 0) p.heal(d * steal, true);
+      if (o.parried) this.parryCounter(e, hx, hy, type);
+      if (!o.proc && !o.parried && p.action && p.action.comboStep && !p.onGround) p.airHitHop();   // 공중 평타 적중: 반동으로 한 번 더 체공
     }
-    if (e.boss && e.addStagger && !o.dot) e.addStagger(m === 0 ? 'immune' : eff, d * (o.stagMul || 1));   // 보스 그로기 게이지 (약점 속성 공격만 · 준 피해에 비례 — Boss.addStagger) · stagMul: 차징 임팩트 웨이브 2배
+    if (e.boss && o.parried && e.addStaggerRaw) e.addStaggerRaw(PARRY_STAGGER);   // 패링 반사탄: 그로기 게이지가 뭉텅이로
+    else if (e.boss && e.addStagger && !o.dot) e.addStagger(m === 0 ? 'immune' : eff, d * (o.stagMul || 1));   // 보스 그로기 게이지 (약점 속성 공격만 · 준 피해에 비례 — Boss.addStagger) · stagMul: 차징 임팩트 웨이브 2배
     if (e.hp > 0) perkHit(this, e, d, type, o);
     if (p.castGrade && !o.proc && !o.dot && e.alive) this.gradeBurst(e, type, p.castGrade === '전설');   // 유니크·전설 기술 카드: 맞힌 자리마다 연쇄 폭발   // 특성 카드: 화상·빙결·마비·독·저주 부여 · 연쇄 번개 · 장판 · 블랙홀
     if (e.hp <= 0 && !(e.cheatDeath && e.cheatDeath())) this.s.killEnemy(e);   // 칠색조 부활처럼 한 번 버티는 보스
     return d;
+  }
+
+  // 패링 반사탄이 꽂힌 자리: 「💥 PARRY COUNTER! (약점 강타!)」 · 묵직한 황금빛 폭발 · 화면 왜곡 충격파
+  parryCounter(e, x, y, type) {
+    const fx = this.fx;
+    fx.floatText(e.x, e.top - 30, '💥 PARRY COUNTER! (약점 강타!)', '#ffd040', 13);
+    fx.starburst(x, y, 0xffe36a, 1.8, { debris: true });
+    fx.ring(x, y, 34, 0xffffff, 240); fx.ring(x, y, 58, 0xffb040, 380); fx.glow(x, y, 54, 0xffd040, 320, 1);
+    fx.burst(x, y, [0xffe36a, 0xffffff, typeColor(type), 0xff8a2a], 34, 260, { glow: true, up: 80, life: .6 });
+    fx.shake(.016, 300, 'hit'); fx.hitStop(110);
+    shockwave(this.s, x, y, .035, 600);
+    Sfx.play('boom'); Sfx.play('hit_super');
   }
 
   // 유니크·전설 등급 기술이 맞힌 자리: 속성색 연쇄 폭발 (같은 적은 0.12초에 한 번)
@@ -205,6 +226,11 @@ export class Combat {
     }
     const q = Object.assign({ owner: 'player', vx: 0, vy: 0, r: 4, life: 1, pierce: 1, grav: 0, t: 0, hit: new Set(), status: {} }, c);
     q.color = color;
+    if (q.owner === 'enemy' && q.fast) {
+      q.vx *= ENEMY_FAST; q.vy *= ENEMY_FAST;
+      if (!q.update) { q.grav *= ENEMY_FAST * ENEMY_FAST; q.life /= ENEMY_FAST; q.hold = SHOT_HOLD; }   // 같은 궤적 · 같은 사거리로 더 빨리 + 예비 동작
+      // 스스로 움직이는 탄(떨어지는 바위 · 떠올라 기다리다 날아오는 파편 · 조여 오는 손톱 · 도는 구슬)은 제 예비 동작이 따로 있다 — 날아가는 속도만 (Boss 의 update 가 ENEMY_FAST 를 곱한다)
+    }
     Cores.projectile(this, q);   // 보스의 코어: 무지갯빛 불꽃 · 백옥 사거리 · 델타스트림 (game/Cores.js)
     if (q.owner === 'player') {
       const pa = this.p.action;
@@ -225,7 +251,12 @@ export class Combat {
     }
     q.seed = Math.random() * 3;
     this.pr.attach(q);                                   // 속성별 도트 투사체
-    if (q.muzzle !== false) this.pr.muzzle(q);           // 발사 섬광
+    if (q.hold > 0) {   // 예비 동작: 탄은 숨겨 두고 그 자리에 섬광이 모인다 (updateProjectiles 에서 놓는다)
+      for (const o of [q.spr, q.glow, q.aura]) if (o) o.setVisible(false);
+      this.pr.charge(q, q.hold);
+      const now = s.time.now;
+      if (now - (this.chargeSfxAt || -999) > 180) { this.chargeSfxAt = now; Sfx.play('echarge'); }
+    } else if (q.muzzle !== false) this.pr.muzzle(q);    // 발사 섬광
     if (q.light) q.lightObj = this.takeLight(q.x, q.y, 70 + q.r * 4, color, 1.4);
     this.projs.push(q);
     return q;
@@ -242,6 +273,11 @@ export class Combat {
     this.pr.tick(this.projs);
     for (let i = this.projs.length - 1; i >= 0; i--) {
       const q = this.projs[i];
+      if (q.hold > 0) {   // 보스 · 엘리트 탄 예비 동작 중: 움직이지도 맞지도 않는다 → 다 되면 발사 섬광과 함께 날아간다
+        q.hold -= dt;
+        if (q.hold <= 0) { for (const o of [q.spr, q.glow, q.aura]) if (o) o.setVisible(true); if (q.muzzle !== false) this.pr.muzzle(q); }
+        continue;
+      }
       q.t += dt; q.life -= dt;
       if (q.update) q.update(q, dt);
       if (q.homing && q.t < q.homing) {
@@ -283,7 +319,7 @@ export class Combat {
       } else if (!dead && q.owner === 'enemy' && p.parryZone() && p.inParry(p.parryZone(), q.x, q.y, q.r)) {
         // 패링 자세(지상 ↓ + Z) → 반사: 아군 황금빛 탄이 되어 2배 속도 · 250% 피해로 되돌아간다
         q.owner = 'player'; q.vx = -q.vx * 2; q.vy = -q.vy * 2; q.grav = 0; q.dmg = Math.max(q.dmg * 2.5, p.atk * 2.5); q.hit = new Set(); q.life = 1.5; q.homing = 0; q.tier = 3; q.ghost = false;
-        q.color = 0xffe36a; q.status = { kb: 0 };
+        q.color = 0xffe36a; q.status = { kb: 0, parried: true }; q.parried = true;   // 맞히면 무조건 약점 · 그로기 뭉텅이 (damageEnemy)
         p.doParry(q.x, q.y, 'proj');
         continue;
       } else if (!dead && q.owner === 'enemy' && circRect(q.x, q.y, q.r, p.bounds())) {

@@ -62,6 +62,10 @@ const CHG_FAST = [1, .65, .52, .4];   // 고속 축전 코일 장 수 → 차징
 // 평타(Z 연타) 3타 콤보 리듬: 템포를 늦추고(동작 시간 ×COMBO_TEMPO · 공격 속도 약 -33%) 한 방을 키운다 (기본 ×1.35 · 1타 1 → 2타 1.2 → 3타 1.6)
 //  3타 피니시 뒤 COMBO_RECOVER 초 숨 고르기 (대시 · 점프 · X · C · 메가 · Z기술 입력으로 즉시 캔슬)
 const COMBO_TEMPO = 1.5, COMBO_DMG = 1.35, COMBO_STEP = [1, 1.2, 1.6], COMBO_RECOVER = .42;
+// 공중 평타 체공 (Air Stall): 공중에서 평타(Z 콤보)를 칠 때마다 떨어지던 속도를 끊고 살짝 떠오른 뒤(AIR_HOP) AIR_STALL_T 초 동안 중력이 AIR_STALL_G 배로 준다
+//  적에게 맞히면 반동으로 한 번 더 떠오른다(AIR_HIT_HOP) · 한 번 뜬 동안 AIR_STALLS 번(3타 콤보 한 바퀴)까지 온전히, 그 뒤로는 번마다 약해져 자연스럽게 내려앉는다
+//  (땅에 닿거나 대시 · 2단 점프를 하면 다시 채워진다 — 허공에서 Z 만 눌러 천장까지 떠오르지 못하게)
+const AIR_HOP = 75, AIR_HIT_HOP = 110, AIR_STALL_T = .26, AIR_STALL_G = .18, AIR_STALLS = 3, AIR_FADE = .35;
 // 패링 자세 (지상 ↓ + Z 전용 — 평타에는 패링 판정이 없다): PARRY_WIN 초 동안 몸 둘레 PARRY_R px 의 근접 공격 · 적 투사체를 받아친다
 //  헛방이면 WHIFF_T 초 자세 무너짐 + 재사용 PARRY_CD 초 · 성공하면 둘 다 즉시 0 (연속 패링)
 //  성공: 피해 무효 + 0.35초 무적 · 투사체 반사(2배 속도 · 250%) · 근접 카운터(충격파 · 보스 그로기 +30 · X·C·필살기 쿨 -2초 · 다음 한 방 확정 치명타)
@@ -87,6 +91,7 @@ export class Player extends Actor {
     this.shopStats = { bought: 0, sold: 0, spent: 0, earned: 0 };
     this.inv = 0; this.dash = null; this.dashCd = 0; this.airDash = true; this.swapCd = 0;
     this.launchT = 0;   // 차원 도약 수정으로 솟구치는 중 (launch)
+    this.airStalls = 0; this.stallT = 0;   // 공중 평타 체공 횟수 · 남은 저중력 시간 (airStall)
     this.jumpsUsed = 0; this.coyote = 0; this.jbuf = 0; this.dropT = 0; this.hurtT = 0; this.speedBuff = 0;
     this.action = null; this.combo = 0; this.comboT = 0; this.zBuf = 0;
     this.chg = { t: 0, lvl: 0, st: 0 }; this.diveCd = 0;   // Z 홀드 차징 · 공중 내려찍기
@@ -475,7 +480,7 @@ export class Player extends Actor {
     // 대시(회피) — 파괴광선 반동 등(action.noDash)은 끊을 수 없다. 랄토스 계열은 순간이동
     const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
     if (inp.dashP && this.dashCd <= 0 && !this.dash && (this.onGround || this.airDash) && !(this.action && this.action.noDash)) {
-      if (!this.onGround) this.airDash = false;
+      if (!this.onGround) { this.airDash = false; this.airStalls = 0; }   // 공중 대시: 공중 평타 체공 횟수를 다시 채운다
       if (this.action) this.endAction(true);   // 스킬의 end() 로 남은 이펙트·상태를 정리
       this.dash = { t: 0, dir: dir || this.face };
       this.face = this.dash.dir; this.refacing();
@@ -516,6 +521,7 @@ export class Player extends Actor {
     this.windT = (this.windT || 0) - dt;
     if (this.flipT > 0 && (this.flipT -= dt) <= 0) { this.b.setGravityY(0); this.sprite.setFlipY(false); }
     if (this.launchT > 0 && ((this.launchT -= dt) <= 0 || this.b.velocity.y >= 0)) { this.launchT = 0; this.b.setMaxVelocity(700, 640); }   // 꼭대기에 닿으면 원래 낙하 속도 한도로
+    if (this.stallT > 0 && ((this.stallT -= dt) <= 0 || this.onGround || this.flipT > 0)) { this.stallT = 0; if (!(this.flipT > 0)) this.b.setGravityY(0); }   // 공중 평타 저중력이 끝났다
     const speed = sp.speed * this.mods.speedMul * (this.speedBuff > 0 ? 1.25 : 1) * slow * (this.mega.active ? 1.1 : 1) * this.statOf('speed') * this.buffMul('speed') * Cores.speedMul(this);
     if (this.dash && this.dash.tele) {   // 순간이동: 이미 옮겨졌다. 잠깐 멈춰 잔상만 남긴다
       this.dash.t += dt;
@@ -545,7 +551,7 @@ export class Player extends Actor {
 
     // 점프 (코요테 타임 + 입력 버퍼 + 다단 점프 + 발판 내려가기)
     const ground = this.onGround;
-    if (ground) { this.coyote = .1; this.jumpsUsed = 0; this.airDash = true; } else this.coyote -= dt;
+    if (ground) { this.coyote = .1; this.jumpsUsed = 0; this.airDash = true; this.airStalls = 0; } else this.coyote -= dt;
     if (inp.jumpP) { this.jbuf = .12; this.jbufDown = !!(inp.downAim ?? inp.down); } else this.jbuf -= dt;
     if (this.jbuf > 0 && !this.dash && !(a && a.mm === 0)) {
       // 하향 점프(↓ + 점프)는 일반 점프와 완전히 따로: 이 분기에 들어오면 위로 뛰는 점프는 절대 하지 않는다
@@ -584,6 +590,7 @@ export class Player extends Actor {
   jump(v, air) {
     this.b.setVelocityY(-v);
     this.jumpsUsed = air ? this.jumpsUsed + 1 : 1;
+    if (air) this.airStalls = 0;   // 2단 점프: 공중 평타 체공 횟수를 다시 채운다
     this.coyote = 0; this.jbuf = 0;
     this.squash(.72, 1.32);
     if (air) { this.scene.fx.ring(this.x, this.bottom, 10, 0xffffff, 200); Sfx.play('djump'); }
@@ -722,6 +729,27 @@ export class Player extends Actor {
       Cores.cast(this, id);   // 보스의 코어: 분화 용암 · 델타스트림 · 모래폭풍 검기
     }
     this.startAction(action, slot);
+    if (combo && !this.onGround) this.airStall(action);
+  }
+
+  // 공중 평타 체공: 떨어지던 속도를 끊고 살짝 떠오른 뒤 잠깐 저중력 (AIR_STALLS 번 뒤로는 번마다 AIR_FADE 씩 약해진다)
+  airStall(a) {
+    if (a.ctrl || a.noGrav || this.flipT > 0 || this.launchT > 0) return;   // 속도를 직접 다루는 기술 · 뒤틀린 중력 · 도약 수정으로 솟구치는 중엔 그대로
+    const n = ++this.airStalls, k = n <= AIR_STALLS ? 1 : Math.max(0, 1 - (n - AIR_STALLS) * AIR_FADE);
+    if (k <= 0) return;
+    a.airK = k;
+    this.b.setVelocityY(Math.min(this.b.velocity.y, -AIR_HOP * k));
+    this.stallT = AIR_STALL_T * k;
+    this.b.setGravityY(-900 * (1 - AIR_STALL_G) * k);   // 월드 중력 900 의 AIR_STALL_G 배만 남긴다
+  }
+  // 공중 평타가 적에게 맞았다 (Combat.damageEnemy): 반동으로 한 번 더 떠오르고 저중력을 조금 늘린다 (그 평타에 한 번)
+  airHitHop() {
+    const a = this.action;
+    if (!a || !a.comboStep || !a.airK || a.airHop || this.onGround || this.flipT > 0) return;
+    a.airHop = true;
+    this.b.setVelocityY(Math.min(this.b.velocity.y, -AIR_HIT_HOP * a.airK));
+    this.stallT = Math.max(this.stallT, AIR_STALL_T * a.airK);
+    this.b.setGravityY(-900 * (1 - AIR_STALL_G) * a.airK);
   }
 
   // 스킬 강화 카드(data/tm.js BOOSTS): 이 기술을 쓰는 동안 피해 ×(1+위력) · 판정 · 투사체 크기 ×(1+광역) · 분열탄 n갈래 (연타 기본기는 3타째에만)

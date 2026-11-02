@@ -382,6 +382,15 @@ export class ProjectileRenderer {
     }
   }
 
+  // 보스 · 엘리트 탄의 예비 동작 (t 초): 입·손 앞에 날카로운 십자 섬광이 조여들며 빛이 모인다 → 다 모이면 muzzle 과 함께 발사 (Combat)
+  charge(q, t) {
+    const s = this.s, col = q.kind === 'shadow' ? 0xb07aff : q.color, k = Phaser.Math.Clamp(q.r / 4, .7, 4);
+    const im = this.pool.get(q.x, q.y, 'pj-flash').setBlendMode(ADD).setTint(0xffffff).setDepth(32).setScale(k * 1.8).setAngle(0).setAlpha(.35);
+    s.tweens.add({ targets: im, scale: k * .45, angle: 90, alpha: 1, duration: t * 1000, ease: 'Quad.easeIn', onComplete: () => this.pool.release(im) });
+    const halo = this.pool.get(q.x, q.y, 'glow').setBlendMode(ADD).setTint(col).setDepth(31).setScale(Math.max(.6, q.r / 5)).setAlpha(.2);
+    s.tweens.add({ targets: halo, alpha: .9, scale: Math.max(.3, q.r / 9), duration: t * 1000, ease: 'Quad.easeIn', onComplete: () => this.pool.release(halo) });
+  }
+
   // 발사 섬광: 입·손 앞에서 0.1초 번쩍
   muzzle(q) {
     const s = this.s, col = q.kind === 'shadow' ? 0xb07aff : q.color, x = q.x - q.vx * .01, y = q.y - q.vy * .01;

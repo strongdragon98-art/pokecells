@@ -72,7 +72,7 @@ export class Enemy extends Actor {
     for (let k = 0; k < n; k++) this.scene.time.delayedCall(k * 120, () => {
       if (!this.alive || !this.scene) return;
       const a = Math.atan2(p.y - this.y, p.x - this.x) + (n > 1 ? (k - 1) * fan : 0);
-      this.scene.combat.spawnProjectile(Object.assign({}, s, { owner: 'enemy', x: this.x + this.face * 6, y: this.y - 2, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, dmg: this.dmg, tier: this.stage || 0, stream: n > 1 }));
+      this.scene.combat.spawnProjectile(Object.assign({}, s, { owner: 'enemy', x: this.x + this.face * 6, y: this.y - 2, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, dmg: this.dmg, tier: this.stage || 0, stream: n > 1, fast: !!this.elite }));   // 엘리트: 보스처럼 빠른 탄 + 예비 동작
       Sfx.play(s.type === 'ghost' ? 'ghost' : 'eshot');
     });
   }
@@ -228,7 +228,7 @@ function shootAt(e, a, o = {}) {
   const s = e.def.shot;
   if (!s || !e.alive) return;
   const sp = o.speed ?? s.speed;
-  e.scene.combat.spawnProjectile(Object.assign({}, s, { owner: 'enemy', x: e.x + e.face * 6, y: e.y - 2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: e.dmg * (o.mul ?? 1), tier: e.stage || 0 }, o.extra || {}));
+  e.scene.combat.spawnProjectile(Object.assign({}, s, { owner: 'enemy', x: e.x + e.face * 6, y: e.y - 2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: e.dmg * (o.mul ?? 1), tier: e.stage || 0, fast: !!e.elite }, o.extra || {}));
 }
 // 플레이어가 움직이는 쪽을 조금 앞질러 겨눈 각도 (k: 몇 초 뒤를 내다보나)
 function leadAngle(e, p, k) {

@@ -5,7 +5,7 @@ import Phaser from 'phaser';
 import { Enemy } from './Enemy.js';
 import { BOSSES } from '../data/pokemon.js';
 import { Sfx } from '../systems/Audio.js';
-import { overlap } from './Combat.js';
+import { overlap, ENEMY_FAST } from './Combat.js';
 import { bolt } from './Perks.js';
 import { shockwave } from '../systems/PostFX.js';
 
@@ -53,7 +53,7 @@ export class Boss extends Enemy {
 
   zone(c) { return this.scene.combat.spawnZone(Object.assign({ owner: 'enemy', dmg: this.dmg, type: this.types[0] }, c)); }
   // 보스 투사체: 최종 진화형(3단, 메가진화 후엔 메가)으로 맞대결한다. 연발 탄막은 연속 투사체, 폭발하는 큰 탄(boom)은 단발
-  shot(c) { return this.scene.combat.spawnProjectile(Object.assign({ owner: 'enemy', dmg: this.dmg, type: this.types[0], tier: this.megaForm ? 3 : 2, stream: !c.boom }, c)); }
+  shot(c) { return this.scene.combat.spawnProjectile(Object.assign({ owner: 'enemy', dmg: this.dmg, type: this.types[0], tier: this.megaForm ? 3 : 2, stream: !c.boom, fast: true }, c)); }   // fast: 탄속 ×1.42 + 0.2초 예비 동작 (Combat)
   groundY() { return this.scene.level ? this.scene.groundBelow(this.x, this.b.y) : this.bottom; }
 
   update(dt, p) {
@@ -807,7 +807,7 @@ function alakazamMove(e, p) {
           update: (q, dt) => {
             if (q.t < .55) { q.vx *= 1 - dt * 2.2; q.vy *= 1 - dt * 2.2; return; }   // 날아가며 느려진다
             if (!live(e)) { q.life = 0; return; }
-            const dx = e.x - q.x, dy = e.y - q.y, d = Math.hypot(dx, dy) || 1, sp = 290;
+            const dx = e.x - q.x, dy = e.y - q.y, d = Math.hypot(dx, dy) || 1, sp = 290 * ENEMY_FAST;
             q.vx += (dx / d * sp - q.vx) * Math.min(1, dt * 5); q.vy += (dy / d * sp - q.vy) * Math.min(1, dt * 5);
             if (q.t > .8 && d < 14) q.life = 0;   // 손에 돌아왔다
           } });
@@ -845,7 +845,7 @@ function alakazamMove(e, p) {
           update: q => {
             if (!live(e)) { q.life = 0; return; }
             if (q.t < hold) { const a = a0 + q.t * (2.5 + q.t * 2); q.x = e.x + Math.cos(a) * R; q.y = e.y + Math.sin(a) * R; q.vx = 0; q.vy = 0; return; }
-            if (!q.launched) { q.launched = true; q.ghost = false; const a = a0 + hold * (2.5 + hold * 2) + .5; q.vx = Math.cos(a) * 190; q.vy = Math.sin(a) * 190; }
+            if (!q.launched) { q.launched = true; q.ghost = false; const a = a0 + hold * (2.5 + hold * 2) + .5; q.vx = Math.cos(a) * 190 * ENEMY_FAST; q.vy = Math.sin(a) * 190 * ENEMY_FAST; }
           } });
       }
       e.b.setVelocity(0, 0);
@@ -974,7 +974,7 @@ function mewtwoMove(e, p) {
             if (q.t < launch) { q.vx = 0; q.vy = (hoverY - q.y) * 4 + Math.sin(q.t * 6 + k) * 6; return; }   // 떠올라 흔들리며 기다린다
             if (!q.launched) {
               q.launched = true; q.ghost = false;
-              const pl = sc.player, a = Math.atan2(pl.y - q.y, pl.x - q.x), sp = ph2 ? 400 : 330;
+              const pl = sc.player, a = Math.atan2(pl.y - q.y, pl.x - q.x), sp = (ph2 ? 400 : 330) * ENEMY_FAST;
               q.vx = Math.cos(a) * sp; q.vy = Math.sin(a) * sp; Sfx.play('swing');
             }
           } });
@@ -1946,7 +1946,7 @@ BOSS_AI.darkrai = function (e, dt, p) {
         for (let k = 0; k < n; k++) {
           const a = k / n * Math.PI * 2;
           e.shot({ x: cx + Math.cos(a) * R, y: cy + Math.sin(a) * R, vx: 0, vy: 0, r: 6, kind: 'wave', type: 'dark', color: 0x8a3aff, life: 2.4, ghost: true, muzzle: false,
-            update: q => { if (q.t < .8) { q.vx = 0; q.vy = 0; return; } if (!q.go) { q.go = true; const a2 = Math.atan2(cy - q.y, cx - q.x); q.vx = Math.cos(a2) * 230; q.vy = Math.sin(a2) * 230; } } });
+            update: q => { if (q.t < .8) { q.vx = 0; q.vy = 0; return; } if (!q.go) { q.go = true; const a2 = Math.atan2(cy - q.y, cx - q.x); q.vx = Math.cos(a2) * 230 * ENEMY_FAST; q.vy = Math.sin(a2) * 230 * ENEMY_FAST; } } });
         }
         Sfx.play('ghost'); e.state = 'fire'; e.timer = 1.1;
       } else {   // 악의파동
