@@ -344,6 +344,29 @@ export function rollCards(p, o = {}) {
   return shuffle(out).slice(0, TM_CARDS).map(c => dressCard(p, c));
 }
 
+// 🃏 카드 샌드박스 (테스트 모드 · UIScene 테스트 패널 '카드' 탭): 제약 없이 모든 카드 — group 으로 분류
+//  move: 액티브 기술 (기술머신 45종 + 계열 전용 · 대시 같은 돌진 기술 제외) · boost: 원작 개조 + 출전 중인 포켓몬의 Z·X·C 스킬 강화(갈래 × 레어 · 유니크 · 전설)
+//  charge: 2 · 3단 차징 해금 등 차징 카드 · dash: 대시 진화 · perk: 그 밖의 특성(능력치 · 기동 · 속성 부여 · 스킬 변이 · 유물 · 유틸) · mastery: 숙련
+export const SANDBOX_GROUPS = [['all', '전체'], ['move', '액티브 기술'], ['boost', '기술 강화'], ['charge', '차징'], ['dash', '대시 진화'], ['perk', '특성 · 스탯'], ['mastery', '숙련']];
+export function sandboxCards(p) {
+  const out = [], m = p.m;
+  const ids = [...new Set([...Object.keys(TM_LEARN), ...Object.values(TM_POOL).flat()])].filter(id => SKILLS[id] && !DASH_ONLY.has(id) && SKILLS[id].arch !== 'dash');
+  for (const id of ids) { const s = SKILLS[id]; out.push({ group: 'move', kind: 'move', id, name: s.name, type: s.type, grade: moveGrade(id), desc: s.desc, cd: s.cd, cat: '새 기술 · 습득' }); }
+  for (const [id, u] of Object.entries(UPGRADES)) if (SKILLS[u.skill]) out.push({ group: 'boost', kind: 'up', id, name: u.name, type: SKILLS[u.skill].type, grade: u.grade, desc: u.desc, skill: u.skill, cat: '원작 개조' });
+  for (const slot of ['z', 'x', 'c']) {
+    const sid = m.skills[slot], sk = SKILLS[sid];
+    if (!sk) continue;
+    for (const bk of Object.keys(BOOSTS)) {
+      if (BOOSTS[bk].cdOnly && !sk.cd) continue;
+      for (const grade of ['레어', '유니크', '전설']) out.push(Object.assign(boostCard({ bk, skill: sid, owner: m.key, grade, amt: BOOSTS[bk].amt[grade] }, slot), { group: 'boost', who: [m.key] }));
+    }
+  }
+  for (const [id, pk] of Object.entries(PERKS)) out.push({ group: pk.cat === '차징' ? 'charge' : pk.cat === '대시 진화' ? 'dash' : 'perk', kind: 'perk', id, name: pk.name, type: PERK_TYPE[id] || 'normal', grade: pk.grade, desc: pk.desc, cat: pk.cat, max: pk.max });
+  for (const [id, c] of Object.entries(MASTERY)) out.push({ group: 'mastery', kind: 'mastery', id, name: c.name, type: 'normal', grade: c.grade, desc: c.desc, cat: '숙련' });
+  const gi = c => SANDBOX_GROUPS.findIndex(g => g[0] === c.group);
+  return out.sort((a, b) => gi(a) - gi(b) || GRADES.indexOf(b.grade) - GRADES.indexOf(a.grade) || (a.kind === 'boost' && b.kind === 'boost' ? 0 : a.name.localeCompare(b.name, 'ko')));
+}
+
 // 고른 카드 적용. move 는 바꿀 슬롯(z·x·c)이 필요하다. 바뀐 내용을 글로 돌려준다
 export function applyCard(player, m, card, slot) {
   const from = heldLv(m, card);

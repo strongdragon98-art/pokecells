@@ -5,7 +5,7 @@
 //  방 둘레엔 한 셀씩 바위를 두른다 — 보스전 카메라가 아레나보다 넓게 당겨져도 월드처럼 바위가 보이게
 import { TILE } from '../config.js';
 import { T } from './Level.js';
-import { CW, CH, BIG_ARENA, arenaPlatforms } from './World.js';
+import { CW, CH, BIG_ARENA, arenaPlatforms, roomAt } from './World.js';
 import { STAGES } from '../data/stages.js';
 
 const WALL = 2, GROUND = 6;   // World.js 와 같은 벽 두께 · 바닥 밑 땅 두께
@@ -55,3 +55,20 @@ export function buildTestRoom(o) {
     start: { x: (r.tx0 + 5) * TILE, y: r.F * TILE - 12, room: r }, surfaceRow: 1
   };
 }
+
+// ---------------- 테스트 모드: 실제 지방 맵의 랜드마크로 워프 (GameScene.testWarpLandmark · UIScene 테스트 패널 「랜드마크」 탭) ----------------
+const firstOf = (lv, f) => { const rs = lv.rooms.filter(f).sort((a, b) => a.id - b.id); return rs.find(r => r.main) || rs[0]; };   // 본 경로 방 먼저 (방 번호 = 본 경로 순서 · 곁방은 뒤 번호)
+const spotAt = (room, x) => (room ? { room, x: x ?? room.left + 70 } : null);
+const gateSpot = room => (room ? { room, x: room.doorTx ? room.doorTx * TILE - 60 : room.right - 110 } : null);   // 정문 한가운데(doorTx) 왼쪽 — F / ↑ 로 포털 확인
+// 🗺️ 주요 랜드마크 입구 & 길목: 지방은 그 랜드마크 지역의 bg 로 찾는다 · path 진입로 길목 · gate 정문 앞 → { room, x }
+//  방울탑 진입로 = 정문 앞 방과 문으로 이어진 방울로드(단풍 가로수길) 방 → 없으면 다른 방울로드 방 → 그래도 없으면 정문 앞 방 들머리
+export const TEST_LANDMARKS = [
+  { name: '방울탑', desc: '단풍나무 진입로 · 1층 정문 앞', bg: 'belltower', path: lv => { const g = firstOf(lv, r => r.trailEnd); return spotAt(lv.rooms.find(r => r.trail && !r.trailEnd && g && g.links.has(r.id)) || firstOf(lv, r => r.trail && !r.trailEnd) || g); }, gate: lv => gateSpot(firstOf(lv, r => r.trailEnd)) },
+  { name: '하늘기둥', desc: '131번 수로 돌다리 · 외벽 정문 앞', bg: 'skypillar', path: lv => spotAt(firstOf(lv, r => r.seaBridge)), gate: lv => { const r = firstOf(lv, q => q.seaBridge); return r ? { room: r, x: r.right - 110 } : null; } },
+  { name: '창기둥', desc: '천관산 만년설 협곡 · 창기둥 정문 앞', bg: 'coronet', path: lv => spotAt(firstOf(lv, r => r.snowPeak && !r.spearGate)), gate: lv => gateSpot(firstOf(lv, r => r.spearGate)) },
+  { name: '깨어진 세계', desc: '반물질 플랫포밍 구간 · 왕좌 앞', bg: 'distortion', path: lv => spotAt(firstOf(lv, r => r.distortion && r.type !== 'sanctuary')), gate: lv => { const th = lv.rooms.find(q => q.throne), r = th && lv.rooms.find(q => q.distortion && q !== th && th.links.has(q.id)); return r ? { room: r, x: th.left >= r.right - 16 ? r.right - 90 : r.left + 90 } : null; } },   // 반물질의 왕좌(기라티나 성소)와 문으로 이어진 방 — 왕좌 쪽 끝
+  { name: '용나선탑', desc: '설화시티 고대 다리 · 용나선탑 정문 앞', bg: 'icirrus', path: lv => spotAt(firstOf(lv, r => r.icirrus && !r.spiralGate)), gate: lv => gateSpot(firstOf(lv, r => r.spiralGate)) },
+  { name: '시초의 방', desc: '천계의 유리 계단 · 시초의 성문 앞', bg: 'azure', path: lv => spotAt(firstOf(lv, r => r.azure && !r.originGate)), gate: lv => gateSpot(firstOf(lv, r => r.originGate)) },
+  { name: '블랙나이트의 심장', desc: '플랜트 연구 일지 복도 · 최종 격리 게이트 앞', bg: 'plant', path: lv => { const j = (lv.props || []).find(q => q.kind === 'journal' && q.no === 1), r = j && roomAt(lv, j.x * TILE + 8, j.g * TILE - 4); return r ? { room: r, x: j.x * TILE - 30 } : spotAt(firstOf(lv, q => q.plant && q.main)); }, gate: lv => gateSpot(firstOf(lv, r => r.plantGate)) }
+];
+export const landmarkCi = L => STAGES.findIndex(st => st.areas.some(a => a.bg === L.bg));

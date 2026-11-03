@@ -10,7 +10,7 @@ import { ITEMS, MAX_EQUIP } from '../data/items.js';
 import { POTION_MAX, POTION_CD } from '../data/shop.js';
 import { STAGES, areaLabel } from '../data/stages.js';
 import { typeName, typeColor, hex, matchups } from '../data/types.js';
-import { GRADE_STYLE, UPGRADES, BOOSTS, TM_CARDS, rollCards, heldLv, mergePreview, lvTag, CARD_MAX_LV, MAX_BONUS } from '../data/tm.js';
+import { GRADE_STYLE, UPGRADES, BOOSTS, TM_CARDS, rollCards, heldLv, mergePreview, lvTag, CARD_MAX_LV, MAX_BONUS, sandboxCards, SANDBOX_GROUPS, GRADES } from '../data/tm.js';
 
 // 특성 카드 분류 → 카드 가운데 아이콘 글자 (기술 아이콘이 없는 카드)
 const TM_K = .88, TM_GAP = 150;   // 기술머신 카드 4장: 크기 배율 · 카드 사이 간격 (한 줄 590px 안)
@@ -27,7 +27,11 @@ import { CHARGE_SIG } from '../game/Signature.js';
 import { installGameMenu } from './GameMenu.js';
 import { installShopMenu } from './ShopMenu.js';
 import { npcArt } from '../game/Npc.js';
-import { bossHome } from '../game/TestRoom.js';
+import { bossHome, TEST_LANDMARKS, landmarkCi } from '../game/TestRoom.js';
+// 🃏 카드 샌드박스 적용 단계 (0 명함 · 1~3 강화 — data/tm.js applyCard 를 그 단계까지 거듭한다)
+const SANDBOX_LV = ['명함', '+1강', '+2강', '+3강 ★초월'];
+const SB_PER = 21;   // 카드 샌드박스 한 쪽 (3열 × 7줄)
+const TEST_TABS = [['mon', '🧪 포켓몬 · 진화'], ['boss', '👑 보스방 워프'], ['land', '🗺️ 랜드마크 입구 & 길목'], ['cards', '🃏 카드 샌드박스']];
 import { Save } from '../systems/Save.js';
 import { RosterPanel } from '../systems/RosterPanel.js';
 import { Sfx } from '../systems/Audio.js';
@@ -184,6 +188,7 @@ export default class UIScene extends Phaser.Scene {
       return { t, s, act };
     });
     this.tTip = this.add.text(MASK_X - 8, 104, '', txt(10, HK.ivory, { backgroundColor: '#0d0c16ee', padding: { x: 7, y: 5 }, lineSpacing: 3 })).setDepth(30);
+    if (this.gs.test) this.buildDebugBar();   // 테스트 모드: 오른쪽 위 퀵 디버그 바
 
     // ── 스킬 바: 사각 카드 칸 (대시 · Z · X · C · Q Z기술) — 디자인은 설정 → 스킬 UI 스타일 (샘플 A · B · C)
     tagIcon(this, 'normal');
@@ -288,7 +293,7 @@ export default class UIScene extends Phaser.Scene {
       banner: (a, b) => this.banner(a, b),
       area: a => this.areaTitle(a),
       overlay: kind => kind === 'map' ? this.showMap() : kind === 'inv' ? (this.invMember = null, this.showInv()) :   // 가방은 열 때마다 출전 중인 포켓몬부터
-         kind === 'tm' ? (this.tmModal = null, this.showTM())
+         kind === 'tm' ? (this.tmModal = this.gs.tmActive && this.gs.tmActive.sandbox ? { step: 'who', target: null, tip: null } : null, this.showTM())   // 🃏 카드 샌드박스: 카드를 누른 순간 실전과 같은 포켓몬 지정 창
         : kind === 'shop' ? (this.shopMoneyShown = null, this.shopQty = 1, this.shopConfirm = null, this.showShop())   // 포켓샵 (scenes/ShopMenu.js)
         : kind === 'taxi' ? this.showTaxi() : kind === 'talk' ? this.showTalk() : kind === 'debug' ? this.showDebug() : kind === 'test' ? this.showTest() : kind === 'settings' ? this.showSettings(0) : kind === 'box' ? this.showBox() : kind === 'join' ? this.showJoin() : this.clearOverlay(),
       lore: s => this.showLore(s),
@@ -349,7 +354,10 @@ export default class UIScene extends Phaser.Scene {
     if (k) this.toastIcon.setTexture(k).setScale(1 / RES);
   }
   // 지역 타이틀: 작은 머리글 + 커다란 이름 + 아래 가는 선이 천천히 떠올랐다 사라진다
-  banner(a, b) { this.tBanner.setText(a); this.tBannerSub.setText(b || ''); this.bannerT = 2.8; }
+  banner(a, b) {
+    const ls = s => (/[\uD800-\uDFFF]/.test(s) ? 0 : 4);   // 자간은 글자를 한 칸씩 그려 이모지(🔥 🔨 …)를 반으로 쪼갠다 → 이모지가 든 줄은 자간 없이
+    this.tBanner.setLetterSpacing(ls(a)).setText(a); this.tBannerSub.setLetterSpacing(ls(b || '')).setText(b || ''); this.bannerT = 2.8;
+  }
   // 지역 타이틀: 0.9초 동안 떠오르고 2.8초 머문 뒤 1.3초에 걸쳐 사라진다
   areaTitle(a) {
     this.tAreaLabel.setText(a.label);
@@ -600,7 +608,8 @@ export default class UIScene extends Phaser.Scene {
     // ===== 오른쪽 위: 스테이지 · 방 · 정화 진행도 =====
     const st = gs.stage, arenas = gs.level ? gs.level.rooms.filter(r => r.type === 'mini' || r.type === 'boss' || (r.type === 'sanctuary' && (r.entered || r.cleared))) : [];
     const ar = gs.room ? st.areas[gs.room.ai] : st.areas[0];
-    this.tStage.setText(gs.test ? `테스트룸 · ${st.short} ${ar.name}` : `${areaLabel(gs.stageIdx, gs.room ? gs.room.ai : 0, ar)}   ${ar.name}`);
+    this.tStage.setText(gs.test ? `${gs.testReal ? '테스트 · 실제 맵' : '테스트룸'} · ${st.short} ${ar.name}` : `${areaLabel(gs.stageIdx, gs.room ? gs.room.ai : 0, ar)}   ${ar.name}`);
+    if (this.dbgBar) this.updateDebugBar();
     arenas.forEach((r, i) => {   // 이 지방의 보스 아레나: 정화하면 회색 (지방 보스는 크게 · 찾은 히든은 보라)
       const cur = r === gs.room, big = r.type === 'boss', x = 627 - (arenas.length - 1 - i) * 11;
       const col = r.cleared ? 0x9a96ac : r.type === 'sanctuary' ? 0xd08aff : big ? 0xff6a6a : 0xffb07a, rad = big ? 3.4 : 2.6;
@@ -699,22 +708,23 @@ export default class UIScene extends Phaser.Scene {
     const gs = this.gs, it = gs.tmActive;
     if (!it) return;
     // 카드가 4장이 아니거나 빈 칸이 섞였으면(예전 3장 저장·오류) 그 포켓몬 기준으로 다시 뽑는다 — 어떤 경우에도 4장
-    if (!Array.isArray(it.cards) || it.cards.length !== TM_CARDS || it.cards.some(c => !c || !c.name)) { it.cards = rollCards(this.gs.player, it.legend ? { floor: '유니크', legend: true } : {}); it.flipped = Array(TM_CARDS).fill(false); it.sel = -1; }
-    if (!Array.isArray(it.flipped) || it.flipped.length !== TM_CARDS) it.flipped = Array(TM_CARDS).fill(false);
+    if (!it.sandbox && (!Array.isArray(it.cards) || it.cards.length !== TM_CARDS || it.cards.some(c => !c || !c.name))) { it.cards = rollCards(this.gs.player, it.legend ? { floor: '유니크', legend: true } : {}); it.flipped = Array(TM_CARDS).fill(false); it.sel = -1; }   // 🃏 샌드박스 카드는 고른 한 장 그대로
+    const N = it.cards.length;
+    if (!Array.isArray(it.flipped) || it.flipped.length !== N) it.flipped = Array(N).fill(false);
     this.clearOverlay();
     this.toastT = 0; this.tmAnims = [];
     if (flip < 0) this.tmBusy = false;   // 뒤집기 도중 창을 닫았다 열어도 입력이 막히지 않게
     const g = this.gOver, L = this.overlay.setVisible(true), p = gs.player, m = it.member;
     const allOpen = it.flipped.every(Boolean), W = 150, H = 200, CY = 170;
-    if (it.sel < 0 || it.sel >= TM_CARDS) it.sel = Math.max(0, it.flipped.indexOf(false));
+    if (it.sel < 0 || it.sel >= N) it.sel = Math.max(0, it.flipped.indexOf(false));
     g.fillStyle(0x05040a, .9); g.fillRect(0, 0, GAME_W, GAME_H);
     L.add(this.add.image(320, CY, 'glow').setBlendMode(ADD).setTint(0x4a7aff).setScale(9, 5).setAlpha(.16));
-    L.add(hkText(this, 320, 20, it.legend ? '전설의 기술 카드' : '기술머신', 18, it.legend ? HK.gold : HK.ivory, { bold: true, ls: it.legend ? 5 : 8, origin: .5, glow: true }));
+    L.add(hkText(this, 320, 20, it.sandbox ? '🃏 카드 샌드박스' : it.legend ? '전설의 기술 카드' : '기술머신', 18, it.legend || it.sandbox ? HK.gold : HK.ivory, { bold: true, ls: it.legend || it.sandbox ? 5 : 8, origin: .5, glow: true }));
     L.add(fadeLine(this, 320, 38, 320, .8));
-    L.add(hkText(this, 320, 50, `파티 전체(${p.members.map(q => p.formName(q)).join(' · ')})에게 맞춰진 고대 석판 · ${allOpen ? '마음에 드는 카드 1장을 고르세요' : `카드를 눌러 하나씩 뒤집으세요 (남은 ${it.flipped.filter(f => !f).length}장)`}`, 9.5, HK.dim, { origin: .5 }));
+    L.add(hkText(this, 320, 50, it.sandbox ? `테스트 모드 · 「${SANDBOX_LV[it.cards[0].sandboxLv || 0]}」 단계로 바로 적용 · 쓸 수 있는 포켓몬 제한 없음` : `파티 전체(${p.members.map(q => p.formName(q)).join(' · ')})에게 맞춰진 고대 석판 · ${allOpen ? '마음에 드는 카드 1장을 고르세요' : `카드를 눌러 하나씩 뒤집으세요 (남은 ${it.flipped.filter(f => !f).length}장)`}`, 9.5, HK.dim, { origin: .5 }));
     this.tmTextures(W, H);
     it.cards.forEach((card, i) => {
-      const x = 320 + (i - (TM_CARDS - 1) / 2) * TM_GAP, chosen = allOpen && it.sel === i, focus = !allOpen && it.sel === i && !it.flipped[i], open = it.flipped[i] && i !== flip;
+      const x = 320 + (i - (N - 1) / 2) * TM_GAP, chosen = allOpen && it.sel === i, focus = !allOpen && it.sel === i && !it.flipped[i], open = it.flipped[i] && i !== flip;
       const st = GRADE_STYLE[card.grade] || GRADE_STYLE.커먼, col = st.glow;
       // 등급 오라 (열린 카드) · 전설은 뒷면부터 빛줄기
       if ((open && card.grade !== '커먼') || card.grade === '전설') this.tmAura(L, x, CY, W * TM_K, H * TM_K, card.grade, open);
@@ -741,9 +751,9 @@ export default class UIScene extends Phaser.Scene {
       const card = it.cards[it.sel];
       glassButton(this, 320 - 100, BY, 200, 28, card.kind === 'move' ? '이 기술 배우기  (Enter · Z)' : '이 카드로 결정  (Enter · Z)', () => this.tmConfirm(), { size: 10.5, layer: L, primary: true });
     } else {
-      L.add(hkText(this, 320, BY + 10, `카드를 누르거나 1~${TM_CARDS}  ·  ← → 고르고 Enter · Space · Z 로 뒤집기  ·  ${TM_CARDS}장을 다 열어 본 뒤 1장을 고른다`, 9, HK.dim, { origin: .5 }));
+      L.add(hkText(this, 320, BY + 10, `카드를 누르거나 1~${N}  ·  ← → 고르고 Enter · Space · Z 로 뒤집기  ·  ${N}장을 다 열어 본 뒤 1장을 고른다`, 9, HK.dim, { origin: .5 }));
     }
-    L.add(hkText(this, 320, 348, 'Esc 닫기 (고른 내용은 제단에 남는다)', 8, HK.faint, { origin: .5 }));
+    L.add(hkText(this, 320, 348, it.sandbox ? 'Esc 닫기 · 「← 다른 카드」는 카드 샌드박스 목록으로' : 'Esc 닫기 (고른 내용은 제단에 남는다)', 8, HK.faint, { origin: .5 }));
     glassButton(this, 566, 8, 64, 20, '✕  닫기', () => gs.toggleOverlay('tm'), { size: 9, layer: L });
     if (this.tmModal && allOpen && it.sel >= 0) this.tmDrawModal(L, it.cards[it.sel]);   // 카드를 고르면 화면 한가운데 [포켓몬 지정 → (새 기술이면) 바꿀 기술 자리] 창
     if (this.tmAnims.length) this.tmEvents.push(this.time.addEvent({ delay: 16, loop: true, callback: () => { const t = this.time.now / 1000; for (const f of this.tmAnims) f(t); } }));
@@ -776,7 +786,8 @@ export default class UIScene extends Phaser.Scene {
     const tgt = slotStep && p.members.find(q => q.key === md.target);
     const title = slotStep ? `${p.formName(tgt)}의 어느 기술을 「${card.baseName || card.name}」(으)로 바꿀까요?` : `「${card.name}」 ${isNew ? '누구에게 가르칠까요?' : '누구에게 적용할까요?'}`;
     L.add(fitText(hkText(this, 320, PY + 16, title, 12, HK.gold, { origin: .5, bold: true, glow: true }), PW - 40));
-    if (slotStep || isNew) L.add(hkText(this, 320, PY + 32, slotStep ? '기술 자리에 마우스를 올리면(모바일: 한 번 탭) 비교 · 누르면(다시 탭) 교체' : '배울 수 있는 포켓몬을 고르면 바꿀 기술 자리가 펼쳐진다', 8.5, HK.dim, { origin: .5 }));
+    const sbLv = card.sandboxLv != null ? `🃏 샌드박스 · 「${SANDBOX_LV[card.sandboxLv]}」 단계까지 바로 합성 · ` : '';
+    if (slotStep || isNew || sbLv) L.add(fitText(hkText(this, 320, PY + 32, sbLv + (slotStep ? '기술 자리에 마우스를 올리면(모바일: 한 번 탭) 비교 · 누르면(다시 탭) 교체' : isNew ? '배울 수 있는 포켓몬을 고르면 바꿀 기술 자리가 펼쳐진다' : '포켓몬을 누르면 바로 적용'), 8.5, sbLv ? HK.gold : HK.dim, { origin: .5 }), PW - 30));
     // ① 파티 포켓몬
     const ms = this.tmModalMembers(card), CYm = slotStep ? 140 : 152;
     ms.forEach((e, j) => {
@@ -927,7 +938,9 @@ export default class UIScene extends Phaser.Scene {
     const md = this.tmModal;
     if (!md || this.tmBusy) return;
     Sfx.play('select');
-    if (md.step === 'slot') { md.step = 'who'; md.target = null; md.tip = null; md.touchTip = null; } else this.tmModal = null;
+    if (md.step === 'slot') { md.step = 'who'; md.target = null; md.tip = null; md.touchTip = null; }
+    else if (this.gs.tmActive && this.gs.tmActive.sandbox) { this.tmModal = null; this.gs.tmActive = null; this.gs.toggleOverlay('tm'); this.gs.openTestTab('cards'); return; }   // 🃏 샌드박스: 다른 카드 = 카드 목록
+    else this.tmModal = null;
     this.showTM();
   }
   // 포켓몬 고르기: 새 기술이면 자리 고르기로 · 아니면 바로 적용 (반짝임 → 닫기)
@@ -1133,7 +1146,7 @@ export default class UIScene extends Phaser.Scene {
   // 카드 누르기: 뒷면이면 뒤집고, 4장을 다 열었으면 고른다 (이미 고른 카드를 한 번 더 누르면 결정)
   tmPress(i) {
     const it = this.gs.tmActive;
-    if (!it || this.tmBusy || this.tmModal || i < 0 || i >= TM_CARDS) return;
+    if (!it || this.tmBusy || this.tmModal || i < 0 || i >= it.cards.length) return;
     if (!it.flipped[i]) { it.flipped[i] = true; it.sel = i; this.showTM(i); return; }
     if (!it.flipped.every(Boolean)) { it.sel = i; Sfx.play('deny'); return; }
     if (it.sel === i) { this.tmConfirm(); return; }
@@ -1532,16 +1545,17 @@ export default class UIScene extends Phaser.Scene {
     this.testTab = tab;
     g.fillStyle(0x05040a, .94); g.fillRect(0, 0, GAME_W, GAME_H);
     L.add(hkText(this, 16, 7, '테스트룸', 13, HK.gold, { bold: true, ls: 3, glow: true }));
-    L.add(hkText(this, 100, 11, '저장 · 도감에 남지 않는 연습 공간', 8, HK.faint));
+    L.add(hkText(this, 100, 11, gs.testReal ? `실제 맵 워프 중 · ${STAGES[gs.stageIdx].short}` : '저장 · 도감에 남지 않는 연습 공간', 8, gs.testReal ? '#8ad8ff' : HK.faint));
     glassButton(this, 566, 8, 64, 20, '✕  닫기', () => gs.toggleOverlay('test'), { size: 9, layer: L });
-    [['mon', '🧪 포켓몬 · 진화'], ['boss', '👑 보스 대결']].forEach(([id, label], i) => {
-      const x = 16 + i * 128, on = id === tab, t = hkText(this, x, 32, label, 10, on ? HK.ivory : HK.dim, { bold: true });
+    TEST_TABS.reduce((x, [id, label]) => {
+      const on = id === tab, t = hkText(this, x, 32, label, 10, on ? HK.ivory : HK.dim, { bold: true });
       L.add(t);
       if (on) L.add(fadeLine(this, x + t.width / 2, 48, t.width + 26, .9));
       const z = this.add.zone(x - 4, 28, t.width + 8, 22).setOrigin(0).setInteractive({ useHandCursor: true });
       z.on('pointerdown', () => this.testSetTab(id));
       L.add(z);
-    });
+      return x + t.width + 28;
+    }, 16);
     // 바로 반영되는 도구 (켜져 있으면 금빛)
     const tools = [
       ['샌드백', !!gs.dummy, () => { const had = !!gs.dummy, on = gs.testDummy(); return had ? '샌드백을 치웠어요' : on ? '샌드백을 놓았어요 — 맞히면 오른쪽 위에 5초 피해 · 초당 피해' : '보스전 중에는 샌드백을 놓을 수 없어요'; }],
@@ -1549,12 +1563,14 @@ export default class UIScene extends Phaser.Scene {
       ['쿨타임 0', gs.testNoCd, () => { gs.testNoCd = !gs.testNoCd; return gs.testNoCd ? '쿨타임 없음 — 기술 · Z기술을 바로 다시 쓸 수 있어요' : '쿨타임을 되돌렸어요'; }],
       ['파티 회복', null, () => { gs.testHeal(true); return '파티 전원을 회복했어요'; }]
     ];
-    tools.forEach(([label, on, fn], i) => glassButton(this, 300 + i * 66, 30, 62, 18, on == null ? label : `${label} ${on ? 'ON' : 'OFF'}`, () => { Sfx.play('select'); this.showTest(this.testTab, fn()); }, { size: 8, ls: 0, layer: L, primary: !!on }));
+    tools.forEach(([label, on, fn], i) => glassButton(this, 296 + i * 66, 8, 62, 18, on == null ? label : `${label} ${on ? 'ON' : 'OFF'}`, () => { Sfx.play('select'); this.showTest(this.testTab, fn()); }, { size: 8, ls: 0, layer: L, primary: !!on }));
     const hint = tab === 'mon'
-      ? (touch ? '카드를 고르고 아래 모습 버튼을 누르면 그 자리에 바로 출전 · 카드를 한 번 더 누르면 1단으로' : '←→↑↓ 카드 · Q/E 분류 · 0~9 세대 · Z X C V B 모습 · A S D 자리 · Enter 1단으로 · Tab 보스 대결 · T · Esc 닫기')
-      : (touch ? '카드를 고르고 한 번 더 누르거나 「대결 시작」 · 보스의 원래 아레나에서 바로 싸운다' : '←→↑↓ 보스 · Enter 대결 시작 · H 보스 체력 50% · Tab 포켓몬 · T · Esc 닫기');
+      ? (touch ? '카드를 고르고 아래 모습 버튼을 누르면 그 자리에 바로 출전 · 카드를 한 번 더 누르면 1단으로' : '←→↑↓ 카드 · Q/E 분류 · 0~9 세대 · Z X C V B 모습 · A S D 자리 · Enter 1단으로 · Tab 다음 탭 · T · Esc 닫기')
+      : tab === 'boss' ? (touch ? '보스를 고르고 한 번 더 누르거나 「보스방 워프」 · 실제 지방 맵의 보스방에서 등장 연출부터 싸운다' : '←→↑↓ 보스 · Enter 보스방 워프 · A 허브 아레나 · H 보스 체력 50% · Tab 다음 탭 · T · Esc 닫기')
+      : tab === 'land' ? (touch ? '길목 · 정문 앞 버튼을 누르면 실제 지방 맵 그 자리로 · 정문 앞에서 F(조사)로 출입문 포털 확인' : '↑↓ 랜드마크 · ← → 길목 / 정문 · Enter 워프 · 1~7 바로 · Tab 다음 탭 · T · Esc 닫기')
+      : (touch ? '카드를 누르면 실전과 같은 포켓몬 지정 창 · 위에서 분류 · 등급 · 적용 단계를 고른다' : '←→↑↓ 카드 · Enter 적용 · Q/E 분류 · G 등급 · 1~4 단계 · PgUp/PgDn 쪽 · R 초기화 · F1 · Esc 닫기');
     L.add(hkText(this, 320, 351, msg || hint, 8, msg ? HK.gold : HK.faint, { origin: .5 }));
-    if (tab === 'mon') this.testMonTab(L); else this.testBossTab(L);
+    if (tab === 'mon') this.testMonTab(L); else if (tab === 'boss') this.testBossTab(L); else if (tab === 'land') this.testLandTab(L); else this.testCardTab(L);
     this.input.keyboard.on('keydown', this.onOverlayKey, this);
     this.overlayMode = 'test';
   }
@@ -1607,7 +1623,7 @@ export default class UIScene extends Phaser.Scene {
     this.testBossRows = rows; this.testBossList = rows.flat();
     if (!BOSSES[this.testBossKey]) this.testBossKey = this.testBossList[0];
     rows.forEach((keys, ci) => {
-      const y = 76 + ci * 38;
+      const y = 72 + ci * 32.5;   // 6지방이 아래 정보 줄(266~)과 겹치지 않게
       L.add(hkText(this, 16, y, STAGES[ci].short, 10, HK.dim, { bold: true, origin: [0, .5] }));
       keys.forEach((k, i) => {
         const def = BOSSES[k], x = 70 + i * 112, on = k === this.testBossKey, [tag, col] = BOSS_TIER[def.tier];
@@ -1628,7 +1644,8 @@ export default class UIScene extends Phaser.Scene {
     const k = this.testBossKey, def = BOSSES[k], home = bossHome(k), st = STAGES[home.ci];
     L.add(fadeLine(this, 320, 266, 600, .35));
     L.add(hkText(this, 18, 274, `${this.testBossName(k)}${def.title ? '  —  ' + def.title : ''}`, 11, HK.ivory, { bold: true }));
-    L.add(hkText(this, 18, 291, `${st.short} · ${st.areas[home.ai].name} · ${home.tall ? '2×2' : '2×1'} 아레나`, 8, HK.dim));
+    const real = gs.testBossTarget(k);
+    L.add(hkText(this, 18, 291, `${st.short} · ${st.areas[home.ai].name} · ${real ? '실제 보스방 (지형 · 배경 · 조명 · 기믹 그대로)' : '실제 보스방 없음 → 허브 아레나'}`, 8, real ? '#8ad8ff' : HK.dim));
     let tx = 18;
     for (const t of def.types) tx += typePill(this, L, tx, 306, t, 8) + 4;
     L.add(hkText(this, tx + 4, 306, `체력 ${def.hp} · 공격 ${def.dmg}`, 8, HK.dim));
@@ -1636,16 +1653,15 @@ export default class UIScene extends Phaser.Scene {
     if (def.megaName || def.rage) notes.push(`체력 50%에서 ${def.megaName ? def.megaName + '(으)로' : '폭주'}`);
     if (def.pair) notes.push(`${BOSSES[def.pair].name}와(과) 함께`);
     if (def.trainer) notes.push(def.trainer === 'red' ? '레드가 지시' : '난천이 지시');
-    if (def.prelude) notes.push(`이어 싸우기: ${def.prelude.map(q => BOSSES[q].name).join(' → ')} → ${def.name}`);
-    if (def.then) notes.push(`이어 싸우기: ${def.name} → ${BOSSES[def.then].name}`);
+    if (def.then) notes.push(`실제 보스방: ${def.name} → ${BOSSES[def.then].name}`);
+    if (real && real.skip) notes.push(`${BOSSES[real.arena].name}은(는) 등장 뒤 바로 정화되고 실제 전환 연출로 이어진다`);
     if (notes.length) L.add(hkText(this, 18, 322, notes.join('  ·  '), 8, '#8ad8ff', { style: { wordWrap: { width: 360, useAdvancedWrap: true } } }));
-    const fighting = !!(gs.bosses && gs.bosses.some(b => b.alive)), chainable = !!(def.prelude || def.then);
-    glassButton(this, 400, 272, 112, 26, `⚔  ${fighting ? '다시 대결' : '대결 시작'}`, () => this.testFight(), { size: 10, ls: 0, bold: true, layer: L, primary: true });
-    const cb = glassButton(this, 518, 272, 112, 26, `이어 싸우기 ${this.testChainOn ? 'ON' : 'OFF'}`, () => { this.testChainOn = !this.testChainOn; Sfx.play('select'); this.showTest('boss'); }, { size: 8.5, ls: 0, layer: L, primary: chainable && !!this.testChainOn });
-    cb.setEnabled(chainable);
+    const fighting = !!(gs.bosses && gs.bosses.some(b => b.alive));
+    glassButton(this, 400, 272, 112, 26, real ? '🗺️  보스방 워프' : '⚔  허브에서 대결', () => this.testFight(), { size: 10, ls: 0, bold: true, layer: L, primary: true });
+    glassButton(this, 518, 272, 112, 26, '🏟️ 허브 아레나에서', () => this.testHubFight(), { size: 8.5, ls: 0, layer: L });   // 맵 없이 패턴만 (그 보스의 원래 타일 · 크기)
     const hb = glassButton(this, 400, 304, 112, 22, '보스 체력 50%', () => this.testHalf(), { size: 8.5, ls: 0, layer: L });
-    const qb = glassButton(this, 518, 304, 112, 22, '보스전 그만두기', () => { Sfx.play('select'); gs.testReset(false); }, { size: 8.5, ls: 0, layer: L });
-    hb.setEnabled(fighting); qb.setEnabled(!!gs.arenaRoom || fighting);
+    glassButton(this, 518, 304, 112, 22, '🏠 테스트룸 허브', () => { Sfx.play('select'); gs.testHub(); }, { size: 8.5, ls: 0, layer: L });
+    hb.setEnabled(fighting);
   }
   // 그 포켓몬이 될 수 있는 모습: 1단 · 2단 · 3단 + 메가(폼체인지 · 유대변화) 또는 각성
   testForms(key) {
@@ -1672,7 +1688,166 @@ export default class UIScene extends Phaser.Scene {
     gs.testForm(slot, key, tier, mega);
     this.testSlot = gs.player.idx;   // 다음에 열면 지금 출전 중인 자리부터
   }
-  testFight() { if (!this.testBossKey) return; Sfx.play('swap'); this.gs.testBoss(this.testBossKey, !!this.testChainOn); }
+  testFight() { if (!this.testBossKey) return; Sfx.play('swap'); this.gs.testWarpBoss(this.testBossKey); }   // 실제 지방 맵의 보스방으로 (없으면 허브 아레나)
+  testHubFight() { if (!this.testBossKey) return; Sfx.play('swap'); this.gs.testBoss(this.testBossKey); }
+
+  // ---------------- 🗺️ 주요 랜드마크 입구 & 길목 바로가기 (실제 지방 맵 · 고정 시드) ----------------
+  testLandTab(L) {
+    const gs = this.gs, sel = this.testLand || (this.testLand = { i: 0, part: 'gate' });
+    TEST_LANDMARKS.forEach((lm, i) => {
+      const y = 58 + i * 35, ci = landmarkCi(lm), on = i === sel.i, here = gs.testReal && gs.stageIdx === ci;
+      const g = this.add.graphics(); L.add(g);
+      glassPanel(g, 16, y, 608, 31, { r: 7, border: on ? HK.goldN : HK.ivoryN, borderAlpha: on ? .6 : .14, alpha: on ? .85 : .6 });
+      if (on) L.add(this.add.image(160, y + 15, 'glow').setBlendMode(ADD).setTint(0xffd27a).setDisplaySize(300, 30).setAlpha(.18));
+      L.add(hkText(this, 30, y + 15, String(i + 1), 11, on ? HK.gold : HK.faint, { bold: true, origin: .5 }));
+      L.add(hkText(this, 44, y + 4, lm.name, 10.5, on ? HK.ivory : HK.dim, { bold: true }));
+      L.add(fitText(hkText(this, 44, y + 18, `${ci >= 0 ? STAGES[ci].short + ' · ' : ''}${lm.desc}${here ? ' · 지금 이 지방' : ''}`, 7.5, here ? '#8ad8ff' : HK.faint), 340));
+      const z = this.add.zone(16, y, 384, 31).setOrigin(0).setInteractive({ useHandCursor: true }); L.add(z);
+      z.on('pointerdown', () => { if (this.testLand.i === i) this.testLandGo(i, this.testLand.part); else { this.testLand = { i, part: this.testLand.part }; Sfx.play('select'); this.showTest('land'); } });
+      [['path', '🚶 진입로 길목'], ['gate', '🏛️ 정문 앞']].forEach(([part, label], k) => glassButton(this, 404 + k * 110, y + 6, 104, 19, label, () => this.testLandGo(i, part), { size: 8.5, ls: 0, layer: L, primary: on && sel.part === part }));
+    });
+    L.add(hkText(this, 320, 309, '정문 앞에서 F(조사) · ↑ 로 들어가면 실제 출입문 포털 · 수문장 대사가 그대로 작동 · 지방 맵은 고정 시드라 늘 같은 지형', 7.5, HK.dim, { origin: .5 }));
+  }
+  testLandGo(i, part) { this.testLand = { i, part }; Sfx.play('swap'); this.gs.testWarpLandmark(i, part); }
+  testLandKey(e) {
+    const s = this.testLand || (this.testLand = { i: 0, part: 'gate' }), n = TEST_LANDMARKS.length, d = /^(Digit|Numpad)[1-9]$/.test(e.code) ? +e.code.slice(-1) : 0;
+    if (d && d <= n) { this.testLandGo(d - 1, s.part); return; }
+    if (e.code === 'ArrowUp' || e.code === 'ArrowDown') { s.i = (s.i + (e.code === 'ArrowDown' ? 1 : -1) + n) % n; Sfx.play('select'); this.showTest('land'); }
+    else if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') { s.part = s.part === 'gate' ? 'path' : 'gate'; Sfx.play('select'); this.showTest('land'); }
+    else if (e.code === 'Enter' || e.code === 'Space') this.testLandGo(s.i, s.part);
+  }
+
+  // ---------------- 🃏 올카드 샌드박스: 모든 기술머신 카드를 분류 · 등급별로 · 누르면 실전과 같은 포켓몬 지정 창 ----------------
+  //  위: 분류(액티브 기술 · 기술 강화 · 차징 · 대시 진화 · 특성 · 숙련) · 등급 · 적용 단계(명함 · +1강 · +2강 · +3강 ★초월)
+  //  가운데: 3열 × 7줄 카드 (보유 단계는 지금 출전 중인 포켓몬 기준) · 아래: 설명 · 쪽 넘기기 · 적용된 카드 전체 초기화
+  testCardTab(L) {
+    const gs = this.gs, p = gs.player, S = this.sb || (this.sb = { group: 'all', grade: 'all', lv: 0, page: 0, sel: 0 });
+    const all = sandboxCards(p), list = all.filter(c => (S.group === 'all' || c.group === S.group) && (S.grade === 'all' || c.grade === S.grade));
+    const pages = Math.max(1, Math.ceil(list.length / SB_PER));
+    S.sel = Phaser.Math.Clamp(S.sel, 0, Math.max(0, list.length - 1)); S.page = Math.floor(S.sel / SB_PER);
+    this.sbList = list; this.sbPages = pages;
+    // ① 분류
+    SANDBOX_GROUPS.reduce((x, [id, name]) => {
+      const n = id === 'all' ? all.length : all.filter(c => c.group === id).length;
+      return x + this.sbChip(L, x, 56, `${name} ${n}`, S.group === id, HK.goldN, () => { S.group = id; S.sel = 0; Sfx.play('select'); this.showTest('cards'); }) + 4;
+    }, 16);
+    // ② 등급 · 적용 단계
+    [['all', '전 등급'], ...GRADES.map(g => [g, g])].reduce((x, [id, name]) => x + this.sbChip(L, x, 76, name, S.grade === id, id === 'all' ? HK.goldN : GRADE_STYLE[id].glow, () => { S.grade = id; S.sel = 0; Sfx.play('select'); this.showTest('cards'); }) + 4, 16);
+    L.add(hkText(this, 366, 84, '적용 단계', 8, HK.dim, { bold: true, origin: [1, .5] }));
+    SANDBOX_LV.reduce((x, name, lv) => { const w = lv === 3 ? 78 : 50; glassButton(this, x, 76, w, 17, name, () => { S.lv = lv; Sfx.play('select'); this.showTest('cards'); }, { size: 8, ls: 0, layer: L, primary: S.lv === lv, bold: S.lv === lv }); return x + w + 4; }, 372);
+    // ③ 카드
+    const desc = hkText(this, 16, 304, '', 7.5, HK.dim, { style: { wordWrap: { width: 380, useAdvancedWrap: true } } });
+    const showDesc = c => desc.setText(c ? `${c.name}  —  ${c.desc}` : '조건에 맞는 카드가 없어요').setColor(c ? HK.ivory : HK.faint);
+    const cells = [];
+    for (let k = 0; k < SB_PER; k++) {
+      const idx = S.page * SB_PER + k, card = list[idx];
+      if (!card) break;
+      const x = 16 + (k % 3) * 204, y = 98 + Math.floor(k / 3) * 29, on = idx === S.sel, st = GRADE_STYLE[card.grade] || GRADE_STYLE.커먼;
+      const g = this.add.graphics(); L.add(g);
+      const draw = hot => { g.clear(); glassPanel(g, x, y, 200, 27, { r: 5, fill: hot ? 0x1e1a30 : 0x0d0c16, border: st.glow, borderAlpha: hot ? .95 : .3, alpha: .88 }); g.fillStyle(st.glow, hot ? 1 : .75); g.fillRect(x + 2, y + 4, 2.5, 19); };
+      draw(on); cells.push(draw);
+      const sid = card.kind === 'move' ? card.id : card.skill;
+      if (sid && SKILLS[sid]) L.add(this.add.image(x + 17, y + 13.5, skillIcon(this, sid)).setDisplaySize(20, 20));
+      else { const d = this.add.graphics(); d.fillStyle(0x000000, .5); d.fillCircle(x + 17, y + 14.5, 8); d.fillStyle(typeColor(card.type), 1); d.fillCircle(x + 17, y + 13.5, 7.5); d.fillStyle(0xffffff, .35); d.fillCircle(x + 15, y + 11, 2.6); L.add(d); L.add(hkText(this, x + 17, y + 13.5, card.kind === 'mastery' ? '✦' : card.group === 'charge' ? '⚡' : card.group === 'dash' ? '➤' : '◆', 8, '#ffffff', { bold: true, origin: .5 })); }
+      L.add(fitText(hkText(this, x + 31, y + 3, card.name, 8.5, on ? HK.gold : HK.ivory, { bold: true }), card.kind === 'up' || heldLv(p.m, card) >= 0 ? 118 : 160));
+      L.add(fitText(hkText(this, x + 31, y + 15.5, `${card.grade} · ${card.kind === 'boost' ? `${card.slot.toUpperCase()} 자리 스킬 강화` : card.cat}${card.kind === 'perk' && card.max > 1 ? ` · 최대 ${lvTag(Math.min(CARD_MAX_LV, card.max - 1))}` : ''}`, 6.5, '#' + st.glow.toString(16).padStart(6, '0')), 160));
+      const lv = heldLv(p.m, card), owned = lv >= 0 || (card.kind === 'up' && p.m.ups.has(card.id));
+      if (owned) L.add(hkText(this, x + 196, y + 4, lv >= 0 ? `보유 ${lvTag(lv)}` : '보유', 7, HK.gold, { bold: true, origin: [1, 0] }));
+      const z = this.add.zone(x, y, 200, 27).setOrigin(0).setInteractive({ useHandCursor: true }); L.add(z);
+      z.on('pointerover', () => { showDesc(card); draw(true); });
+      z.on('pointerout', () => { showDesc(list[S.sel]); draw(idx === S.sel); });
+      z.on('pointerdown', () => { S.sel = idx; this.testCardPick(card); });
+    }
+    L.add(desc); showDesc(list[S.sel]);
+    // ④ 쪽 · 초기화
+    glassButton(this, 404, 304, 22, 20, '◀', () => this.testCardPage(-1), { size: 9, ls: 0, layer: L }).setEnabled(S.page > 0);
+    L.add(hkText(this, 445, 314, `${S.page + 1} / ${pages}`, 8.5, HK.dim, { origin: .5 }));
+    glassButton(this, 464, 304, 22, 20, '▶', () => this.testCardPage(1), { size: 9, ls: 0, layer: L }).setEnabled(S.page < pages - 1);
+    glassButton(this, 492, 304, 132, 20, '🔄 적용된 카드 전체 초기화', () => this.testCardReset(), { size: 8, ls: 0, layer: L });
+    L.add(hkText(this, 624, 334, `보유 단계 · 스킬 강화 카드는 출전 중인 ${p.formName(p.m)} 기준`, 7, HK.faint, { origin: [1, .5] }));
+  }
+  // 작은 알약 버튼 (분류 · 등급) — 너비를 돌려준다
+  sbChip(L, x, y, label, on, col, onClick) {
+    const t = hkText(this, 0, y + 8.5, label, 8, on ? HK.ivory : HK.dim, { bold: on, origin: [0, .5] }), w = Math.round(t.width) + 16;
+    const g = this.add.graphics();
+    g.fillStyle(on ? 0x221e34 : 0x0f0d18, .9); g.fillRoundedRect(x, y, w, 17, 8.5);
+    g.lineStyle(1, col, on ? .9 : .28); g.strokeRoundedRect(x + .5, y + .5, w - 1, 16, 8);
+    if (on) { g.fillStyle(col, 1); g.fillCircle(x + 6, y + 8.5, 2); }
+    t.setX(x + (on ? 10 : 8));
+    const z = this.add.zone(x, y, w, 17).setOrigin(0).setInteractive({ useHandCursor: true });
+    z.on('pointerdown', onClick);
+    L.add([g, t, z]);
+    return w;
+  }
+  testCardPick(card) { if (!card) return; Sfx.play('select'); this.gs.testCardSandbox(card, (this.sb && this.sb.lv) || 0); }
+  testCardPage(d) { const S = this.sb; if (!S) return; const pg = Phaser.Math.Clamp(S.page + d, 0, (this.sbPages || 1) - 1); if (pg === S.page) return; S.sel = pg * SB_PER; Sfx.play('select'); this.showTest('cards'); }
+  testCardReset() { this.gs.testResetCards(); this.showTest('cards', '🔄 파티 모두 기술머신 카드 효과를 지우고 지금 모습의 기본 기술로 되돌렸어요'); }
+  testCardKey(e) {
+    const S = this.sb, list = this.sbList || [];
+    if (!S) return;
+    const d = /^(Digit|Numpad)[1-4]$/.test(e.code) ? +e.code.slice(-1) : 0, mv = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -3, ArrowDown: 3 }[e.code];
+    if (d) { S.lv = d - 1; Sfx.play('select'); this.showTest('cards'); }
+    else if (mv) { const n = Phaser.Math.Clamp(S.sel + mv, 0, Math.max(0, list.length - 1)); if (n !== S.sel) { S.sel = n; Sfx.play('select'); this.showTest('cards'); } }
+    else if (e.code === 'Enter' || e.code === 'Space') this.testCardPick(list[S.sel]);
+    else if (e.code === 'KeyQ' || e.code === 'KeyE') { const ids = SANDBOX_GROUPS.map(g => g[0]); S.group = ids[(ids.indexOf(S.group) + (e.code === 'KeyE' ? 1 : -1) + ids.length) % ids.length]; S.sel = 0; Sfx.play('select'); this.showTest('cards'); }
+    else if (e.code === 'KeyG') { const ids = ['all', ...GRADES]; S.grade = ids[(ids.indexOf(S.grade) + 1) % ids.length]; S.sel = 0; Sfx.play('select'); this.showTest('cards'); }
+    else if (e.code === 'PageUp' || e.code === 'PageDown') this.testCardPage(e.code === 'PageDown' ? 1 : -1);
+    else if (e.code === 'KeyR') this.testCardReset();
+  }
+
+  // ---------------- 퀵 디버그 바 (테스트 모드 — 허브 · 워프한 보스방 · 랜드마크 어디서든 오른쪽 위, 반투명) ----------------
+  //  🏠 허브 · 🗺️ 다른 보스방(드롭다운) · 🃏 카드 / 🐾 포켓몬 · ❤️ 완충 · 🛡️ 무적 — 창이 열려 있거나 이야기 연출 중엔 숨는다
+  buildDebugBar() {
+    const gs = this.gs, c = this.add.container(0, 0).setDepth(26), X = 446, Y = 52, BW = 60, BH = 16, GAP = 2;
+    const bg = this.add.graphics(); glassPanel(bg, X - 4, Y - 4, BW * 3 + GAP * 2 + 8, BH * 2 + GAP + 8, { r: 6, alpha: .42, borderAlpha: .16 }); c.add(bg);
+    const defs = [
+      ['🏠 허브', () => { this.closeBossDrop(); gs.testHub(); }],
+      ['🗺️ 보스방 ▾', () => this.toggleBossDrop()],
+      ['🃏 카드', () => { this.closeBossDrop(); gs.openTestTab('cards'); }],
+      ['🐾 포켓몬', () => { this.closeBossDrop(); gs.openTestTab('mon'); }],
+      ['❤️ 완충', () => { gs.testFull(); this.toast('❤️ 체력 · 상처약 · 쿨타임을 모두 채웠다'); }],
+      ['🛡️ 무적 OFF', () => { gs.testGod = !gs.testGod; this.toast(gs.testGod ? '🛡️ 무적 ON — 어떤 공격에도 피해가 없다' : '🛡️ 무적 OFF'); }]
+    ];
+    this.dbgGodOpt = { size: 7.5, ls: 0, layer: c };   // 무적이 켜지면 금빛 (glassButton 이 그릴 때마다 primary 를 읽는다)
+    this.dbgBtns = defs.map(([label, fn], i) => glassButton(this, X + (i % 3) * (BW + GAP), Y + Math.floor(i / 3) * (BH + GAP), BW, BH, label, () => { if (gs.overlay || gs.transitioning || gs.over) return; Sfx.play('select'); fn(); }, i === 5 ? this.dbgGodOpt : { size: 7.5, ls: 0, layer: c }));
+    this.dbgBar = c; this.dbgGod = null; this.dbgDrop = null;
+  }
+  updateDebugBar() {
+    const gs = this.gs, show = !gs.overlay && !gs.cinema && !gs.over;
+    this.dbgBar.setVisible(show);
+    if (!show) this.closeBossDrop();
+    if (this.dbgGod !== gs.testGod) { this.dbgGod = gs.testGod; const b = this.dbgBtns[5]; b.setLabel(gs.testGod ? '🛡️ 무적 ON' : '🛡️ 무적 OFF'); this.dbgGodOpt.primary = gs.testGod; b.draw(); }
+  }
+  // 🗺️ 다른 보스방으로 바로 이동: 지방 ◀ ▶ · 그 지방의 보스방 목록 (실제 보스방이 있는 보스만)
+  toggleBossDrop() { if (this.dbgDrop) this.closeBossDrop(); else { this.dropCi = this.dropCi ?? (this.gs.testReal ? this.gs.stageIdx : 0); this.drawBossDrop(); } }
+  closeBossDrop() { if (this.dbgDrop) { this.dbgDrop.destroy(true); this.dbgDrop = null; } }
+  drawBossDrop() {
+    const gs = this.gs, rows = STAGES.map(() => []);
+    for (const k of Object.keys(BOSSES)) if (gs.testBossTarget(k)) rows[bossHome(k).ci].push(k);
+    const has = rows.map((r, i) => (r.length ? i : -1)).filter(i => i >= 0);
+    if (!has.length) return;
+    if (!rows[this.dropCi] || !rows[this.dropCi].length) this.dropCi = has[0];
+    if (this.dbgDrop) this.dbgDrop.destroy(true);
+    const c = this.add.container(0, 0).setDepth(27), keys = rows[this.dropCi], X = 442, Y = 90, W = 192, RH = 16, H = 24 + keys.length * RH + 4;
+    const g = this.add.graphics(); glassPanel(g, X, Y, W, H, { r: 7, alpha: .94, border: HK.goldN, borderAlpha: .4 }); c.add(g);
+    const step = d => { const i = has.indexOf(this.dropCi); this.dropCi = has[(i + d + has.length) % has.length]; Sfx.play('select'); this.drawBossDrop(); };
+    [['◀', X + 4, -1], ['▶', X + W - 22, 1]].forEach(([s, x, d]) => {
+      c.add(hkText(this, x + 9, Y + 11, s, 9, HK.gold, { bold: true, origin: .5 }));
+      const z = this.add.zone(x, Y + 2, 18, 18).setOrigin(0).setInteractive({ useHandCursor: true }); z.on('pointerdown', () => step(d)); c.add(z);
+    });
+    c.add(hkText(this, X + W / 2, Y + 11, `${STAGES[this.dropCi].short} 보스방`, 9, HK.ivory, { bold: true, origin: .5 }));
+    keys.forEach((k, j) => {
+      const def = BOSSES[k], y = Y + 24 + j * RH, here = gs.boss && gs.boss.alive && gs.boss.bossKey === k, [tag, col] = BOSS_TIER[def.tier];
+      const hl = this.add.graphics(); c.add(hl);
+      const t = hkText(this, X + 12, y + RH / 2, this.testBossName(k), 8.5, here ? HK.gold : HK.ivory, { bold: here, origin: [0, .5] }); c.add(t);
+      c.add(hkText(this, X + W - 10, y + RH / 2, tag, 7, col, { origin: [1, .5] }));
+      const z = this.add.zone(X + 4, y, W - 8, RH).setOrigin(0).setInteractive({ useHandCursor: true }); c.add(z);
+      z.on('pointerover', () => { hl.clear(); hl.fillStyle(0xffd27a, .14); hl.fillRoundedRect(X + 4, y, W - 8, RH, 5); });
+      z.on('pointerout', () => hl.clear());
+      z.on('pointerdown', () => { if (gs.overlay || gs.transitioning) return; this.closeBossDrop(); Sfx.play('swap'); gs.testWarpBoss(k); });
+    });
+    this.dbgDrop = c;
+  }
   testHalf() { if (this.gs.testBossHalf()) { Sfx.play('select'); this.gs.toggleOverlay('test'); } else this.showTest('boss', '싸우는 보스가 없어요'); }
 
   // ---------------- 스킬 바 ----------------
@@ -2207,7 +2382,9 @@ export default class UIScene extends Phaser.Scene {
     if (this.overlayMode === 'box' && this.boxPanel) { this.boxPanel.key(e); return; }
     if (this.overlayMode === 'shop') { this.shopKey(e); return; }   // 포켓샵 (scenes/ShopMenu.js · Esc 는 GameScene 이 닫는다)
     if (this.overlayMode === 'test') {   // 테스트룸 패널 (닫기 T · F3 · Esc 는 GameScene 이 받는다)
-      if (e.code === 'Tab') { this.testSetTab(this.testTab === 'mon' ? 'boss' : 'mon'); return; }
+      if (e.code === 'Tab') { const ids = TEST_TABS.map(t => t[0]); this.testSetTab(ids[(ids.indexOf(this.testTab) + (e.shiftKey ? ids.length - 1 : 1)) % ids.length]); return; }
+      if (this.testTab === 'land') { this.testLandKey(e); return; }
+      if (this.testTab === 'cards') { this.testCardKey(e); return; }
       if (this.testTab === 'mon') {
         const fi = ['KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB'].indexOf(e.code), si = ['KeyA', 'KeyS', 'KeyD'].indexOf(e.code);
         if (fi >= 0) { const f = this.testForms(this.testFocus)[fi]; if (f) this.testPick(this.testFocus, f.tier, f.mega); }
@@ -2219,6 +2396,7 @@ export default class UIScene extends Phaser.Scene {
       if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') { const k = list[(list.indexOf(this.testBossKey) + (e.code === 'ArrowRight' ? 1 : -1) + list.length) % list.length]; if (k) this.testSelBoss(k); }
       else if (e.code === 'ArrowUp' || e.code === 'ArrowDown') { const nr = Phaser.Math.Clamp(r + (e.code === 'ArrowDown' ? 1 : -1), 0, rows.length - 1); if (nr !== r) this.testSelBoss(rows[nr][Math.min(c, rows[nr].length - 1)]); }
       else if (e.code === 'Enter' || e.code === 'Space') this.testFight();
+      else if (e.code === 'KeyA') this.testHubFight();
       else if (e.code === 'KeyH') this.testHalf();
       return;
     }
@@ -2273,7 +2451,7 @@ export default class UIScene extends Phaser.Scene {
         return;
       }
       if (n) this.tmPress(n - 1);
-      else if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && !this.tmBusy) { it.sel = ((it.sel < 0 ? 0 : it.sel + (e.code === 'ArrowRight' ? 1 : -1)) + TM_CARDS) % TM_CARDS; Sfx.play('select'); this.showTM(); }
+      else if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && !this.tmBusy) { it.sel = ((it.sel < 0 ? 0 : it.sel + (e.code === 'ArrowRight' ? 1 : -1)) + it.cards.length) % it.cards.length; Sfx.play('select'); this.showTM(); }
       else if (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyZ' || keyNameFromEvent(e) === Settings.key('z')) this.tmEnter();
       return;
     }

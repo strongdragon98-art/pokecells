@@ -11,7 +11,7 @@ import { NUGGETS, eliteNuggets, bossNuggets, martKey, POTION_MAX, POTION_HEAL, P
 import { typeColor } from '../data/types.js';
 import { PLAT_SET, groundYAt, T as TILE_ID } from '../game/Level.js';
 import { buildChapter, roomAt, CW, CH } from '../game/World.js';
-import { buildTestRoom, bossHome } from '../game/TestRoom.js';
+import { buildTestRoom, bossHome, TEST_LANDMARKS, landmarkCi } from '../game/TestRoom.js';
 
 const ARENA_ZOOM = 1;   // 보스전 월드 배율 (평소 ZOOM 1.25 → 화면에 아레나가 더 많이 들어온다)
 import { Props } from '../game/Props.js';
@@ -39,8 +39,8 @@ import { Settings, keyLabel } from '../systems/Settings.js';
 import { Save } from '../systems/Save.js';
 import { RunSave, seeded, newSeed, snapshotWorld, applyWorld, snapshotPlayer, restorePlayer } from '../systems/RunSave.js';
 import { itemArt, shade, TILE_MARGIN, TILE_SPACING } from '../systems/Textures.js';
-import { rollCards, applyCard, TM_CARDS } from '../data/tm.js';
-import { onKill as perkKill } from '../game/Perks.js';
+import { rollCards, applyCard, TM_CARDS, heldLv, dressCard, CARD_MAX_LV } from '../data/tm.js';
+import { PERKS, onKill as perkKill } from '../game/Perks.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[Math.floor(Math.random() * a.length)];
@@ -149,6 +149,7 @@ const CYNTHIA_LINES = [
   '무한다이노와 그 배후 세력이 레드의 에너지를 이용해 창기둥의 시공간마저 비틀어버렸어. 네 안의 『유대의 불꽃』이 처음보다 훨씬 거대하고 눈부시게 타오르고 있네... 기라티나마저 정화한다면, 마침내 레드가 갇힌 심장부로 갈 길이 열릴 거야!'
 ];
 const BOND_ATK = .03;   // 유대의 불꽃 정화 단계마다 모든 공격 피해 +3% (Combat.damageEnemy)
+const TEST_SEED = 4242;   // 테스트 모드의 실제 지방 맵 시드 (지방마다 + ci — 늘 같은 지형으로 검수)
 const LEGEND_GHOSTS = ['mewtwo', 'ho-oh', 'rayquaza', 'dialga', 'palkia', 'giratina-origin', 'zekrom', 'reshiram', 'arceus'];   // 시네마틱에 나오는 정화한 전설들의 환영 (시트가 있는 것만)
 // 긴 대사를 대화창 한 쪽(약 n 글자)씩 문장 단위로 나눈다
 function pagesOf(text, n = 90) {
@@ -232,16 +233,16 @@ export default class GameScene extends Phaser.Scene {
       this.bondStages = new Set(this.purifiedSet);   // 이어하기: 정화한 지방만큼 유대의 불꽃도 자라 있다
       Object.assign(this.runStats, { kills: rs.stats.kills, unlocked: rs.stats.unlocked.slice(), items: rs.stats.items, start: this.time.now - rs.stats.time * 1000 });
     }
-    if (this.test) { this.testOpt = { ci: 0, ai: 0, arena: null, tall: false }; this.testGod = false; this.testNoCd = false; this.testChain = false; this.dummy = null; }
+    if (this.test) { this.testOpt = { ci: 0, ai: 0, arena: null, tall: false }; this.testGod = false; this.testNoCd = false; this.testChain = false; this.dummy = null; this.testReal = false; this.testWorlds = []; this.testSkipTo = null; }   // testReal: 실제 지방 맵으로 워프해 있다 (testWorlds)
     this.webgl = this.renderer.type === Phaser.WEBGL;
     this.enemies = []; this.pickups = []; this.chests = []; this.worldObjs = []; this.wanderers = [];
     this.inp = {}; this.paused = false; this.transitioning = false; this.over = false; this.cleaned = false;
     this.dynLights = 0;
-    this.keys = this.input.keyboard.addKeys('ONE,TWO,THREE,ESC,P,F2,F3,F4,N' + (this.test ? ',T' : ''));   // 바꿀 수 없는 키 (나머지는 설정 → 키 설정, bindKeys) · 테스트룸은 T 패널
+    this.keys = this.input.keyboard.addKeys('ONE,TWO,THREE,ESC,P,F2,F3,F4,N' + (this.test ? ',T,F1' : ''));   // 바꿀 수 없는 키 (나머지는 설정 → 키 설정, bindKeys) · 테스트룸은 T 패널 · F1 카드 샌드박스
     this.bindKeys();
     const offKeys = Settings.on(k => { if (k === 'keys') this.bindKeys(); });
     this.events.once('shutdown', offKeys);
-    this.input.keyboard.addCapture('TAB,SPACE,UP,DOWN,LEFT,RIGHT,F2,F3,F4');
+    this.input.keyboard.addCapture('TAB,SPACE,UP,DOWN,LEFT,RIGHT,F2,F3,F4' + (this.test ? ',F1' : ''));   // F1: 브라우저 도움말 대신 카드 샌드박스
     this.input.keyboard.on('keydown', () => Sfx.unlock());
     this.input.on('pointerdown', () => Sfx.unlock());
 
@@ -288,6 +289,7 @@ export default class GameScene extends Phaser.Scene {
   //  at: { x, y } 도착 자리 (없으면 챕터 입구)
   //  지형은 챕터 시드로 만든다 (같은 시드 = 같은 지형). 이어하기면 저장해 둔 바뀐 것(연 상자·정화한 보스 등)을 덮어쓴다
   worldOf(ci) {
+    if (this.test && this.testReal) return this.testWorlds[ci] || (this.testWorlds[ci] = { seed: TEST_SEED + ci, level: seeded(TEST_SEED + ci, () => buildChapter(STAGES[ci], ci)), explored: null, areasSeen: new Set(), purified: false });   // 테스트 모드 워프: 실제 지방 맵 (저장 · 도감 · 보상 없음)
     if (this.worlds[ci]) return this.worlds[ci];
     if (this.test) return (this.worlds[ci] = { seed: 0, level: buildTestRoom({ ...this.testOpt, ci }), explored: null, areasSeen: new Set(STAGES[ci].areas.map((a, i) => i)), purified: true });   // 테스트룸: 밝고 맑은 빈 아레나
     const seed = this.seeds[ci] ?? (this.seeds[ci] = newSeed());
@@ -790,6 +792,7 @@ export default class GameScene extends Phaser.Scene {
     if (JD(k.F2)) this.debugToBoss();
     if (JD(k.F3)) this.toggleOverlay(this.test ? 'test' : 'debug');   // 챕터·보스 셀렉트 디버그 패널 (테스트룸은 테스트 패널)
     if (this.test && JD(k.T) && !Object.values(Settings.get('keys')).includes('T')) this.toggleOverlay('test');   // 조작키로 T 를 쓰고 있으면 F3 만
+    if (this.test && JD(k.F1)) this.openTestTab('cards');   // 🃏 카드 샌드박스 (테스트룸 허브 · 워프한 보스방 어디서든)
     if (JD(k.F4)) this.debugGrow();
   }
 
@@ -886,6 +889,7 @@ export default class GameScene extends Phaser.Scene {
   resetArenaFight() {
     const r = this.arenaRoom;
     if (!r) return;
+    this.arenaRun = (this.arenaRun || 0) + 1;
     const all = (this.bosses || []).slice();
     if (this.boss && !all.includes(this.boss)) all.push(this.boss);
     for (const q of all) { (q.colliders || []).forEach(c => c.destroy()); if (!q.gone) q.destroy(); }   // 먼저 정화돼 치워진 짝은 건너뛴다
@@ -977,6 +981,13 @@ export default class GameScene extends Phaser.Scene {
   respawn() {
     if (this.transitioning) return;
     const p = this.player, c = this.lastCenter;
+    if (this.test && this.testReal && this.testLast) {   // 테스트 모드 실제 맵: 마지막으로 워프한 보스방 · 랜드마크로 다시 (보스전은 처음부터)
+      for (const m of p.members) { m.hp = m.maxhp; m.alive = true; }
+      p.inv = 2.5;
+      this.events.emit('banner', '눈앞이 캄캄해졌다…', '테스트 모드 · 마지막으로 워프한 자리에서 다시');
+      this.testLast();
+      return;
+    }
     this.events.emit('banner', '눈앞이 캄캄해졌다…', this.test ? '테스트룸 입구에서 다시 일어난다' : c ? (c.terminal ? '마지막으로 연결한 간이 회복기 앞에서 다시 일어난다' : '마지막으로 들른 포켓몬센터로 돌아간다') : '챕터 입구로 돌아간다');
     for (const m of p.members) { m.hp = m.maxhp; m.alive = true; }
     p.inv = 2.5;
@@ -1211,8 +1222,13 @@ export default class GameScene extends Phaser.Scene {
   finishTM(i, slot, target) {
     const it = this.tmActive, p = this.player;
     if (!it || it.used) return;
-    const card = it.cards[i], m = p.members.find(q => q.key === target) || it.member || p.m, msg = applyCard(p, m, card, slot);
-    if (it.legend) it.used = true; else this.props.markUsed(it);   // 히든 전설 보상 카드는 제단이 없다
+    const card = it.cards[i], m = p.members.find(q => q.key === target) || it.member || p.m;
+    let msg = applyCard(p, m, card, slot);
+    if (it.sandbox && card.sandboxLv > 0 && (card.kind === 'move' || card.kind === 'boost' || card.kind === 'perk')) {   // 🃏 카드 샌드박스: 고른 강화 단계(+1 · +2 · ★MAX)까지 바로 합성
+      const cap = card.kind === 'perk' ? Math.min(CARD_MAX_LV, PERKS[card.id].max - 1) : CARD_MAX_LV;
+      for (let k = 0; k < CARD_MAX_LV && heldLv(m, card) < Math.min(card.sandboxLv, cap); k++) msg = applyCard(p, m, card, slot);
+    }
+    if (it.legend || it.sandbox) it.used = true; else this.props.markUsed(it);   // 히든 전설 보상 카드 · 샌드박스 카드는 제단이 없다
     this.tmActive = null;
     this.toggleOverlay('tm');
     const who = p.formName(m);
@@ -1916,7 +1932,7 @@ export default class GameScene extends Phaser.Scene {
   // 보스 고유 등장 연출: 처리했으면 true (그동안 아레나는 잠겨 있고, 끝나면 beginBoss)
   bossIntro(key, room) {
     const cx = room.cx, gy = this.groundBelow(cx, room.bottom - 24), ADD = Phaser.BlendModes.ADD, cam = this.cameras.main;
-    const later = (ms, f) => this.time.delayedCall(ms, () => { if (this.arenaRoom === room && !this.over) f(); });
+    const run = this.arenaRun, later = (ms, f) => this.time.delayedCall(ms, () => { if (this.arenaRoom === room && this.arenaRun === run && !this.over) f(); });   // 같은 아레나를 다시 시작해도 앞 판의 연출은 이어지지 않는다
     const spawn = (x, f) => later(0, () => { this.beginBoss(key, room, x); const b = this.boss; if (b && b.bossKey === key) f(b); });
     if (key === 'mewtwo') {   // 배양 캡슐 속 붉은 안광 → 사이코 파동 → 유리관이 산산조각 → 공중으로 떠오른다
       const cap = this.capsule && this.capsule.room === room ? this.capsule : null, x = cap ? cap.x : cx;
@@ -2387,18 +2403,19 @@ export default class GameScene extends Phaser.Scene {
   startBoss(room) {
     if (this.player) this.player.rebornUsed = false;   // 칠색조의 무지개 코어: 보스전마다 부활 1번
     const key = room.boss && BOSSES[room.boss] ? room.boss : 'mewtwo', def = BOSSES[key];
-    const solo = this.test && !this.testChain;   // 테스트룸: 고른 보스 하나만 (이어 싸우기를 켜면 본편처럼 앞뒤 보스까지)
+    const solo = this.test && !this.testReal && !this.testChain;   // 테스트룸 허브 아레나: 고른 보스 하나만 (실제 보스방 워프는 본편처럼 앞뒤 보스까지)
     const list = solo ? [key] : [...(def.prelude || []), key];
     if (!solo) for (let k = key; BOSSES[k].then; k = BOSSES[k].then) list.push(BOSSES[k].then);
     this.chain = { list, i: 0 };
     this.arenaRoom = room;
+    const run = this.arenaRun = (this.arenaRun || 0) + 1;   // 보스전 회차: 그만두거나 다시 시작하면 앞 판의 지연 연출(등장 · 전환 · 유대의 불꽃)은 버린다
     this.lockArena(room);
     const first = BOSSES[list[0]], tk = first.trainer;
     if (tk) {   // 세뇌된 트레이너: 단상에 서서 한마디 → 몬스터볼을 던져 첫 포켓몬을 내보낸다
       this.trainer = new Trainer(this, tk, room, room.cx + 100);   // 아레나 가운데 조금 오른쪽 단상 (왼쪽 입구에서 들어서자마자 화면에 보이게)
       this.trainer.say(TRAINER_LINES[tk].intro);
       const sx = room.cx;
-      this.time.delayedCall(1100, () => { if (this.arenaRoom === room && this.trainer) this.trainer.throwBall(sx, this.groundBelow(sx, room.bottom - 24) - 20, () => this.beginBoss(list[0], room, sx)); });
+      this.time.delayedCall(1100, () => { if (this.arenaRoom === room && this.arenaRun === run && this.trainer) this.trainer.throwBall(sx, this.groundBelow(sx, room.bottom - 24) - 20, () => this.beginBoss(list[0], room, sx)); });
       Sfx.play('boss');
       return;
     }
@@ -2411,6 +2428,7 @@ export default class GameScene extends Phaser.Scene {
   }
   beginBoss(key, room, x) {
     if (this.arenaRoom !== room || this.over) return;
+    if ((this.chain && this.chain.list[this.chain.i] !== key) || (this.boss && this.boss.alive && this.boss.bossKey === key)) return;   // 앞 판에서 걸어 둔 등장이 새 판에 끼어들지 않게 (이 판의 지금 차례 보스만 · 같은 보스를 둘 내지 않는다)
     const def = BOSSES[key], boss = this.spawnBoss(key, room, x);
     this.boss = boss; this.bosses = [boss];
     if (def.pair && BOSSES[def.pair]) {   // 짝 보스 (라티아스 & 라티오스): 반대편에서 함께 나온다
@@ -2622,7 +2640,7 @@ export default class GameScene extends Phaser.Scene {
       Sfx.play(big ? 'unlock' : 'purify');
     });
     // ④ 몬스터볼 빛줄기로 귀환
-    this.time.delayedCall(T.beam, () => (big && !this.test ? this.restBoss(e) : this.recallBeam(e, T.end - T.beam)));   // 보스: 정화된 모습으로 그 자리에 머문다
+    this.time.delayedCall(T.beam, () => (big && (!this.test || this.testReal) ? this.restBoss(e) : this.recallBeam(e, T.end - T.beam)));   // 보스: 정화된 모습으로 그 자리에 머문다 (테스트 모드도 실제 보스방이면)
   }
 
   // 안도의 하트가 톡 튀어나와 떠오르고, 양옆에서 반짝임이 터진다
@@ -2824,7 +2842,7 @@ export default class GameScene extends Phaser.Scene {
   bondFlameCinematic(room, prev, done) {
     const cam = this.cameras.main, p = this.player, ADD = Phaser.BlendModes.ADD, core = this.props && this.props.redCore;
     const gy = core ? core.Y : room.F * TILE, cx = core ? core.x : room.cx, top = core ? core.top : gy - 170;   // gy: 결정 기둥이 선 바닥
-    const later = (ms, f) => this.time.delayedCall(ms, () => { if (this.arenaRoom === room && !this.over) f(); });
+    const run = this.arenaRun, later = (ms, f) => this.time.delayedCall(ms, () => { if (this.arenaRoom === room && this.arenaRun === run && !this.over) f(); });   // 같은 아레나를 다시 시작해도 앞 판의 연출은 이어지지 않는다
     this.cinema = true; p.inv = 999; p.b.setVelocityX(0); Music.stop();
     this.combat.clearAll();   // 남은 탄 · 장판(무한다이맥스의 붉은 하늘 등)을 걷는다
     makeTrainerArt(this, 'red');
@@ -3237,8 +3255,11 @@ export default class GameScene extends Phaser.Scene {
     this.time.delayedCall(450, () => { if (!this.overlay && !this.over) this.toggleOverlay('test'); });
   }
   // 매 프레임: 쿨타임 없음 · 샌드백 피해 기록 (최근 5초 · 2초 동안 안 맞으면 체력이 다시 찬다)
+  //  이어 나오는 보스를 골라 워프했으면(펄기아 · 레시라무 · 아비스 네크로즈마): 앞 보스는 등장 연출이 끝나면 바로 정화 → 실제 전환 연출로 고른 보스
   testUpdate() {
-    const p = this.player, now = this.time.now, d = this.dummy;
+    const p = this.player, now = this.time.now, d = this.dummy, sk = this.testSkipTo, b = this.boss;
+    if (sk && b && b.alive && b.bossKey !== sk && b.state !== 'intro') { b.hp = 0; this.killEnemy(b); }
+    else if (sk && b && b.bossKey === sk) this.testSkipTo = null;
     if (this.testNoCd) { for (const m of p.members) { m.cd.z = 0; m.cd.x = 0; m.cd.c = 0; } p.z.cd = 0; }
     if (!d) return;
     if (d.hp < d.lastHp) { d.log.push([now, d.lastHp - d.hp]); d.hitAt = now; }
@@ -3249,7 +3270,7 @@ export default class GameScene extends Phaser.Scene {
   // 오른쪽 위 HUD 한 줄: 샌드백 피해 · 켜 둔 옵션
   testInfo() {
     const d = this.dummy, opts = [this.testGod && '무적', this.testNoCd && '쿨타임 없음'].filter(Boolean).join(' · ');
-    if (!d) return opts ? `테스트룸 · ${opts}` : '테스트룸 · T 패널';
+    if (!d) return opts ? `${this.testReal ? '실제 맵 워프' : '테스트룸'} · ${opts}` : this.testReal ? '실제 맵 워프 · T 패널 · F1 카드' : '테스트룸 · T 패널 · F1 카드';
     const sum = d.log.reduce((s, l) => s + l[1], 0), span = d.log.length ? Math.max(1, (this.time.now - d.log[0][0]) / 1000) : 1;
     return `샌드백 5초 피해 ${sum} · 초당 ${Math.round(sum / span)}${opts ? ' · ' + opts : ''}`;
   }
@@ -3269,17 +3290,146 @@ export default class GameScene extends Phaser.Scene {
     Sfx.play(mega >= 0 ? 'mega' : 'evolve');
     this.events.emit('banner', p.formName(m), `${TIERS[p.tierOf(m)].name} · ${['z', 'x', 'c'].map(sl => `${sl.toUpperCase()} ${SKILLS[m.skills[sl]].name}`).join(' · ')}`);
   }
-  // 보스 고르기: 그 보스가 원래 싸우는 지방·아레나로 방을 다시 깔고(같으면 그대로) 입구에서 바로 보스전
+  // 테스트룸 허브 아레나에서 보스 소환 (실제 보스방이 없는 보스 — 레드의 피카츄 · 리자몽): 그 보스가 원래 싸우는 지방의 타일 · 배경 · 아레나 크기로 허브를 다시 깐다
   testBoss(key, chain = false) {
     if (this.transitioning || !BOSSES[key]) return;
-    const home = bossHome(key), o = this.testOpt;
-    const rebuild = o.ci !== home.ci || o.ai !== home.ai || o.arena !== home.arena || o.tall !== home.tall;
+    const home = bossHome(key), o = this.testOpt, wasReal = this.testReal;
+    const rebuild = wasReal || o.ci !== home.ci || o.ai !== home.ai || o.arena !== home.arena || o.tall !== home.tall;
+    this.testReal = false; this.testSkipTo = null;
     this.testOpt = home; this.testChain = chain;
     this.testReset(rebuild, () => {
       const room = this.level.rooms[0];
       room.boss = key;
       this.time.delayedCall(350, () => { if (!this.over && !this.arenaRoom) this.startBoss(room); });
     });
+  }
+  // ---------------- 테스트 모드: 실제 보스방 · 랜드마크로 워프 ----------------
+  // 실제 보스방이 있는 보스면 { ci, arena: 그 방의 보스, skip: 이어 나오는 보스를 골랐으면 그 보스 } · 없으면 null
+  testBossTarget(key) {
+    const home = bossHome(key), a = home.arena;
+    if (!a || !BOSSES[a]) return null;
+    const line = [...(BOSSES[a].prelude || []), a];
+    for (let q = a; BOSSES[q].then; q = BOSSES[q].then) line.push(BOSSES[q].then);
+    if (BOSSES[a].pair) line.push(BOSSES[a].pair);
+    if (!line.includes(key)) return null;
+    return { ci: home.ci, arena: a, skip: key !== a && key !== BOSSES[a].pair ? key : null };
+  }
+  // 👑 보스를 골랐을 때: 그 보스가 실제로 나오는 지방 맵의 보스방으로 워프 (들어서면 실제처럼 등장 연출 → 전투 → 정화) · 실제 보스방이 없으면 허브 아레나
+  testWarpBoss(key) {
+    if (!BOSSES[key] || this.transitioning) return;
+    const t = this.testBossTarget(key), def = BOSSES[key];
+    if (!t) { this.testBoss(key); this.events.emit('toast', `${def.name}은(는) 실제 보스방이 없어 테스트룸 허브 아레나에서 싸운다`); return; }
+    const arena = BOSSES[t.arena];
+    this.testLast = () => this.testWarpBoss(key);
+    this.testWarp(t.ci, lv => {
+      const r = lv.rooms.find(q => q.boss === t.arena && (q.type === 'boss' || q.type === 'mini' || q.type === 'sanctuary'));
+      return r ? { room: r, x: r.portalFrom ? r.left + 56 : r.left + 40 } : null;   // 출입문으로 들어오는 결전장(시초의 방 · 블랙나이트의 심장)은 출입문 앞 — 한가운데로 걸어가야 강림
+    }, `🗺️ ${STAGES[t.ci].short} · ${arena.name}의 보스방${t.skip ? ` — ${arena.name}은(는) 등장 연출 뒤 바로 정화되고 ${def.name}(으)로 이어진다` : ''}`, () => { this.testSkipTo = t.skip; });
+  }
+  // 🗺️ 랜드마크 입구 & 길목: i 번째 랜드마크의 진입로(part 'path') 또는 정문 앞(part 'gate')
+  testWarpLandmark(i, part = 'gate') {
+    const L = TEST_LANDMARKS[i], ci = L ? landmarkCi(L) : -1;
+    if (ci < 0) return;
+    this.testLast = () => this.testWarpLandmark(i, part);
+    this.testWarp(ci, lv => L[part](lv), `🗺️ ${STAGES[ci].short} · ${L.name} — ${part === 'path' ? '진입로 길목' : '정문 앞 (F / ↑ 로 들어가 포털 확인)'}`);
+  }
+  // 실제 지방 맵(시드 고정)을 깔고 pick(level) → { room, x } 자리로. 하던 보스전 · 샌드백은 치우고 파티 회복
+  //  보스방이면 다시 싸울 수 있게 처음 상태로 (cleared · entered · 관문 · 결정 속 레드) — 들어서는 순간 실제처럼 등장 연출부터
+  testWarp(ci, pick, msg, after) {
+    if (this.transitioning || this.over) return;
+    if (this.overlay) { this.overlay = null; this.setFrozen(false); this.events.emit('overlay', null); }
+    this.transitioning = true;
+    const cam = this.cameras.main;
+    cam.fadeOut(260, 7, 6, 15);
+    cam.once('camerafadeoutcomplete', () => {
+      this.testClearFight();
+      const same = this.testReal && this.stageIdx === ci;
+      this.testReal = true; this.testSkipTo = null; this.stageIdx = ci;
+      if (!same) this.buildWorld();
+      const t = pick(this.level), r = t && t.room;
+      if (r) {
+        if (r.type === 'boss' || r.type === 'mini' || r.type === 'sanctuary') {
+          r.cleared = false; r.entered = false; this.setGates(r, true);
+          const core = this.props && this.props.redCore;
+          if (r.plantHeart && core && core.broken) this.props.buildRedCore(r);
+        }
+        const x = Phaser.Math.Clamp(t.x, r.left + 16, r.right - 16);
+        this.teleport({ x, y: this.testFloor(x, r) - 14 });
+      } else this.teleport(this.level.start);
+      Music.play(this.areaBgm());
+      cam.fadeIn(320, 7, 6, 15);
+      this.transitioning = false;
+      if (msg) this.events.emit('toast', r ? msg : '그 자리를 찾지 못해 지방 입구로 왔다');
+      if (after) after(r);
+    });
+  }
+  // 워프 자리의 발 디딜 곳: 방 바닥에서 위로 — 가장 낮은 땅(언덕 위 포함 · 머리 위 두 칸이 빈 곳). 높은 발판 위가 아니라 길 위에 선다
+  testFloor(x, r) {
+    const lv = this.level, tx = Math.floor(x / TILE), free = ty => lv.grid[ty] && lv.grid[ty][tx] === '.';
+    for (let ty = r.F; ty > r.ty0 + 1; ty--) if (lv.grid[ty] && lv.grid[ty][tx] !== '.' && free(ty - 1) && free(ty - 2)) return ty * TILE;
+    return this.groundBelow(x, r.top + 8);
+  }
+  // 🏠 테스트룸 허브로 (실제 맵을 떠나 빈 아레나 허브 — 마지막에 깐 허브 아레나 그대로)
+  testHub() {
+    if (this.transitioning) return;
+    this.testReal = false; this.testSkipTo = null;
+    this.testReset(true, () => this.events.emit('toast', '🏠 테스트룸 허브'));
+  }
+  // 하던 보스전 · 샌드백 · 이야기 연출을 모두 치운다 (워프 · 허브 · 다시 깔기 공용)
+  testClearFight() {
+    this.resetArenaFight();
+    this.arenaRun = (this.arenaRun || 0) + 1;
+    if (this.trainer) { this.trainer.destroy(); this.trainer = null; }
+    for (const e of this.enemies) { (e.colliders || []).forEach(c => c.destroy()); e.destroy(); }
+    for (const e of this.restingBosses || []) for (const o of e.auraImgs || []) o.destroy();   // 정화돼 머물던 보스의 태고의 기운
+    this.enemies = []; this.restingBosses = []; this.dummy = null; this.boss = null; this.bosses = []; this.chain = null;
+    this.endOverdrive(); this.cinema = false; this.storyWait = false;
+    if (this.player && this.player.inv > 100) this.player.inv = 0;
+    this.combat.clearAll();
+    this.events.emit('clearTitles');
+    this.testHeal(true);
+  }
+  // ❤️ 체력 · 상처약 · 쿨타임 즉시 완충
+  testFull() {
+    const p = this.player;
+    this.testHeal(true);
+    p.uses = p.uses || {}; p.uses.potion = POTION_MAX; p.potionCd = 0;
+    for (const m of p.members) for (const k in m.cd) m.cd[k] = 0;
+    p.z.cd = 0; p.dashCd = 0; p.swapCd = 0; p.parryCd = 0; p.diveCd = 0;
+    this.fx.ring(p.x, p.y, 34, 0x5aff8a, 380); this.fx.glow(p.x, p.y, 34, 0x5aff8a, 400, .8);
+    Sfx.play('heal');
+  }
+  // 🔄 적용된 카드 전체 초기화: 파티 모두 기술머신 카드(기술 · 개조 · 스킬 강화 · 특성 · 숙련) 효과를 지우고 지금 모습의 기본 기술로
+  testResetCards() {
+    const p = this.player;
+    for (const m of p.members) {
+      const tier = m.tier, mega = m.mega ? (m.megaPick || 0) : -1;
+      m.cardGrade = {}; m.cardLv = {}; m.boostCards = []; m.boost = {}; m.ups = new Set(); m.perks = {}; m.atkBonus = 1; m.cdBonus = 1;
+      p.setForm(m, tier, mega);
+      p.refreshMods(m);
+      m.hp = Math.min(m.hp, m.maxhp);
+    }
+    p.grantAll();
+    this.fx.ring(p.x, p.y, 34, 0x9ad8ff, 380);
+    Sfx.play('select');
+  }
+  // 🃏 카드 샌드박스: 고른 카드 한 장을 실전과 같은 적용 창(포켓몬 지정 → 기술 자리)으로 — lv: 0 명함 · 1~3 강화 단계 (적용하면 그 단계까지 바로 합성)
+  //  쓸 수 있는 포켓몬 제한 없음 (파티 모두)
+  testCardSandbox(card, lv = 0) {
+    const p = this.player;
+    if (!p || this.transitioning) return;
+    const c = dressCard(p, Object.assign({}, card, { who: card.who || p.members.map(m => m.key), sandboxLv: lv }));   // 스킬 강화 카드만 그 기술을 단 포켓몬
+    this.tmActive = { kind: 'tm', sandbox: true, used: false, member: p.m, cards: [c], flipped: [true], sel: 0 };
+    if (this.overlay === 'test') this.toggleOverlay('test');
+    this.toggleOverlay('tm');
+  }
+  // 테스트 패널을 그 탭으로 (열려 있으면 탭만 바꾼다) — F1 · 퀵 디버그 바
+  openTestTab(tab) {
+    const ui = this.scene.get('UI');
+    if (!ui) return;
+    if (this.overlay === 'test') { if (ui.testTab !== tab) ui.showTest(tab); return; }
+    ui.testTab = tab;
+    this.toggleOverlay('test');
   }
   // 하던 보스전 · 샌드백을 치우고 파티를 회복해 입구로 (rebuild 면 방을 다시 깐다)
   testReset(rebuild, done) {
@@ -3289,13 +3439,7 @@ export default class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.fadeOut(260, 7, 6, 15);
     cam.once('camerafadeoutcomplete', () => {
-      this.resetArenaFight();
-      if (this.trainer) { this.trainer.destroy(); this.trainer = null; }
-      for (const e of this.enemies) { (e.colliders || []).forEach(c => c.destroy()); e.destroy(); }
-      this.enemies = []; this.dummy = null; this.boss = null; this.bosses = []; this.chain = null;
-      this.combat.clearAll();
-      this.events.emit('clearTitles');
-      this.testHeal(true);
+      this.testClearFight();
       if (rebuild) { this.worlds = []; this.stageIdx = this.testOpt.ci; this.buildWorld(); }
       else { this.unlockArena(); this.teleport(this.level.start); }
       Music.play(this.stage.bgm);
@@ -3338,13 +3482,14 @@ export default class GameScene extends Phaser.Scene {
   }
   // 보스 정화: 보상 · 포털 · 지방 정화 없이 → 카메라를 풀고 다시 고를 수 있게
   testBossDone(boss) {
-    const tr = this.trainer;
+    const tr = this.trainer, room = boss.room;
     this.boss = null; this.bosses = []; this.chain = null; this.arenaRoom = null;
+    if (this.testReal && room) { room.cleared = true; this.time.delayedCall(700, () => { if (this.level && this.level.rooms.includes(room)) this.setGates(room, true); }); }   // 실제 보스방: 관문이 열린다 (같은 보스방 다시는 디버그 바 · 패널에서 다시 워프)
     if (this.player.flipT > 0) this.player.flipT = .001;
     if (tr && !tr.freed) tr.release(TRAINER_LINES[tr.kind].freed);
     this.events.emit('boss', null);
     this.endOverdrive();
-    this.events.emit('banner', `${boss.name} 정화!`, `테스트룸 · ${this.touchInput && this.touchInput.on ? '테스트 버튼' : 'T'}로 다른 보스 · 포켓몬을 고른다`);
+    this.events.emit('banner', `${boss.name} 정화!`, this.testReal ? '테스트 모드 · 디버그 바: 🏠 허브 · 🗺️ 다른 보스방 · 같은 보스방 다시 · 🃏 카드' : `테스트룸 · ${this.touchInput && this.touchInput.on ? '테스트 버튼' : 'T'}로 다른 보스 · 포켓몬을 고른다`);
     this.fx.hitStop(220);
     this.time.delayedCall(700, () => this.unlockArena());
     Music.play(this.stage.bgm);
