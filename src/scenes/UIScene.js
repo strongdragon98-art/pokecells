@@ -44,9 +44,25 @@ import { Settings, SETTING_DEFAULTS, DEFAULT_KEYS, KEY_ACTIONS, FIXED_KEYS, keyL
 
 const ADD = Phaser.BlendModes.ADD;
 const V = { x: 36, y: 36, r: 20 };                      // 메가 게이지 그릇 (중심·안쪽 반지름)
-const B = { x: 9, y: 66 };                              // 유대의 불꽃 (그릇 왼쪽 아래 · 불꽃 밑동)
+const B = { x: 320, y: 40 };                            // 유대의 불꽃 (화면 위쪽 가운데 · 불꽃 밑동)
 // 유대의 불꽃 Lv.1~6 색 [바깥 · 가운데 · 속]: 작은 주황 불씨 → 진홍빛 불꽃 → 찬란한 황금빛 태양 불꽃
 const BOND_PAL = [[0xff8a3a, 0xffb060, 0xffe0a0], [0xff6a2a, 0xffa040, 0xffe0a0], [0xe8283a, 0xff6a3a, 0xffd080], [0xd81a3a, 0xff5a3a, 0xffe090], [0xff3a3a, 0xffb040, 0xfff0b0], [0xffb020, 0xffe060, 0xffffff]];
+// 유대의 불꽃 그림: 흰 그라데이션 불꽃 텍스처(바깥 · 가운데 · 속 · 곁불꽃)를 단계 색으로 물들여 겹친다 (고해상도 캔버스 · 부드러운 번짐)
+//  w · h: 논리 크기 · lean: 끝이 기우는 정도(곁불꽃) · soft: 번짐(px)
+function bondFlameTex(scene, key, w, h, lean = 0, soft = 1.2) {
+  return hiTex(scene, key, w, h, (c) => {
+    const cx = w / 2, tipX = cx + lean * w * .3;
+    c.filter = `blur(${soft}px)`;
+    c.beginPath(); c.moveTo(tipX, h * .04);
+    c.bezierCurveTo(cx + w * .1, h * .3, cx + w * .44, h * .46, cx + w * .4, h * .72);
+    c.bezierCurveTo(cx + w * .36, h * .93, cx + w * .16, h * .99, cx, h * .99);
+    c.bezierCurveTo(cx - w * .16, h * .99, cx - w * .36, h * .93, cx - w * .4, h * .72);
+    c.bezierCurveTo(cx - w * .44, h * .46, cx - w * .1, h * .3, tipX, h * .04);
+    const g = c.createRadialGradient(cx, h * .74, 0, cx, h * .66, h * .66);
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(.45, 'rgba(255,255,255,.92)'); g.addColorStop(.8, 'rgba(255,255,255,.5)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = g; c.fill();
+  });
+}
 const MASK_X = 80, MASK_Y = 23, MASK_GAP = 19, MAX_MASKS = 9;
 const BALL = { top: .8, h: 16.4 };                      // 가면 텍스처 안에서 공이 차지하는 세로 범위 (논리 px)
 // PC 스킬 바 (오른쪽 아래 사각 카드 칸): 대시 · Z · X · C (+ Z크리스탈을 얻으면 Q Z기술). 터치패드를 쓰면 터치 버튼이 대신한다
@@ -147,16 +163,22 @@ export default class UIScene extends Phaser.Scene {
     const pz = this.add.zone(V.x, V.y, 50, 50).setInteractive({ useHandCursor: true }).setDepth(6);
     pz.on('pointerdown', () => { if (!this.overlayMode && this.gs.player && !this.gs.paused && !this.gs.overlay) { this.invMember = null; this.gs.toggleOverlay('inv'); } });
     this.tName = hkText(this, MASK_X - 8, 40, '', 11, HK.ivory, { ls: 1, bold: true }).setDepth(3);
-    // ── 유대의 불꽃 (그릇 왼쪽 아래): 침식의 핵을 정화할 때마다 커지고 색이 바뀐다 · 마우스를 올리거나 누르면 설명
-    this.bondGlow = this.add.image(B.x, B.y - 7, 'glow').setBlendMode(ADD).setAlpha(0).setDepth(2.7);
-    this.gBond = this.add.graphics().setDepth(2.8);
-    this.tBondLv = hkText(this, B.x + 16, B.y, '', 7, '#ffd890', { bold: true, origin: [.5, 1] }).setDepth(2.9);
+    // ── 유대의 불꽃 (화면 위쪽 가운데): 침식의 핵을 정화할 때마다 서서히 커지고 색이 진화한다 · 단계 글자는 없다 — 마우스를 올리거나 누르면 설명
+    //  금빛 받침 장식 위에 그라데이션 불꽃 세 겹(바깥 · 가운데 · 속) + 양옆 곁불꽃이 따로 일렁이고, 불씨가 피어오른다 (Lv.6 은 빛살 고리)
+    bondFlameTex(this, 'bond:outer', 24, 40); bondFlameTex(this, 'bond:mid', 18, 30, 0, 1); bondFlameTex(this, 'bond:core', 10, 18, 0, .8);
+    bondFlameTex(this, 'bond:wispL', 10, 22, -1, .8); bondFlameTex(this, 'bond:wispR', 10, 22, 1, .8);
+    this.bondGlow = this.add.image(B.x, B.y - 10, 'glow').setBlendMode(ADD).setAlpha(0).setDepth(2.6);
+    this.gBondBase = this.add.graphics().setDepth(2.65);   // 받침 장식 · 빛살
+    const fl = k => this.add.image(B.x, B.y, k).setOrigin(.5, 1).setDepth(2.7);
+    this.bondFl = { outer: fl('bond:outer'), wispL: fl('bond:wispL'), wispR: fl('bond:wispR'), mid: fl('bond:mid').setBlendMode(ADD), core: fl('bond:core').setBlendMode(ADD) };
+    this.bondEmbers = [];
+    this.bondShown = null;   // 화면에 보이는 불꽃 크기 (단계가 오르면 목표 크기로 천천히 자란다)
     this.bondPulse = 0; this.bondTipOn = false; this.bondTipT = 0;
-    const bz = this.add.zone(B.x + 4, B.y - 8, 26, 22).setInteractive({ useHandCursor: true }).setDepth(6);
+    const bz = this.add.zone(B.x, B.y - 16, 40, 38).setInteractive({ useHandCursor: true }).setDepth(6);
     bz.on('pointerover', () => { this.bondTipOn = true; });
     bz.on('pointerout', p => { if (!p.wasTouch) this.bondTipOn = false; });
     bz.on('pointerdown', () => { this.bondTipOn = true; this.bondTipT = 3.5; });   // 터치: 3.5초 동안
-    this.tBondTip = this.add.text(B.x + 26, B.y - 24, '', txt(9, HK.ivory, { backgroundColor: '#140a0cee', padding: { x: 7, y: 5 }, lineSpacing: 3, wordWrap: { width: 420, useAdvancedWrap: true } })).setDepth(30).setVisible(false);
+    this.tBondTip = this.add.text(B.x, B.y + 8, '', txt(9, HK.ivory, { backgroundColor: '#140a0cee', padding: { x: 7, y: 5 }, lineSpacing: 3, wordWrap: { width: 420, useAdvancedWrap: true } })).setOrigin(.5, 0).setDepth(30).setVisible(false);
     this.tType = hkText(this, 0, 41, '', 10, HK.dim).setDepth(3);
     this.vHint = hkText(this, MASK_X - 8, 55, '', 10, '#ffc4ec', { ls: 1, glow: true, glowColor: 'rgba(255,138,208,0.7)' }).setDepth(3);
 
@@ -439,24 +461,45 @@ export default class UIScene extends Phaser.Scene {
     g.fillStyle(0x6ad8ff, .95); g.fillRect(x, y, w * n / DATA_KILLS, 3);
     if (this.dataPulse > 0) { g.fillStyle(0xffffff, this.dataPulse * .8); g.fillRect(x, y - 1, w * n / DATA_KILLS, 5); }
   }
-  // HUD 유대의 불꽃: 단계마다 커지고 색이 진화하며 일렁인다 (Lv.6 은 둘레에 빛살이 도는 태양 불꽃)
+  // HUD 유대의 불꽃: 정화 단계(0~6)에 따라 목표 크기가 정해지고, 화면의 불꽃은 그 크기까지 천천히 자란다 (단계가 오르면 크게 맥동하며 커진다)
+  //  세 겹 불꽃은 서로 다른 박자로 일렁이고(가로 · 세로 · 기울기), 곁불꽃은 엇박으로 솟았다 잦아든다 · 불씨가 위로 피어오른다 · Lv.6 은 빛살 고리
   drawBond(dt, time) {
-    const gs = this.gs, stage = gs.bondStage || 0, lv = Math.max(1, Math.min(6, stage)), pal = BOND_PAL[lv - 1], g = this.gBond, t = time / 1000;   // 불꽃 Lv = 정화 단계 (Lv.0 은 가장 작은 불씨)
+    const gs = this.gs, stage = gs.bondStage || 0, lv = Math.max(1, Math.min(6, stage)), pal = BOND_PAL[lv - 1], t = time / 1000, F = this.bondFl;
+    const want = .42 + stage * .1;   // 불씨(0) .42 → 태양 불꽃(6) 1.02
+    if (this.bondShown == null) this.bondShown = want;
+    this.bondShown += (want - this.bondShown) * Math.min(1, dt * 1.2);
     this.bondPulse = Math.max(0, this.bondPulse - dt * .6);
-    const pk = 1 + this.bondPulse * .7, h = (9 + lv * 2) * pk, w = (6 + lv * .9) * pk, x = B.x, y = B.y;
-    g.clear();
-    if (lv >= 6) {   // 태양 불꽃: 빛살
-      for (let k = 0; k < 8; k++) { const a = t * .8 + k / 8 * Math.PI * 2, r0 = w * .9, r1 = w * 1.9 + Math.sin(t * 4 + k) * 1.2; g.lineStyle(1, 0xffe080, .55); g.lineBetween(x + Math.cos(a) * r0, y - h * .35 + Math.sin(a) * r0, x + Math.cos(a) * r1, y - h * .35 + Math.sin(a) * r1); }
+    const k = this.bondShown * (1 + this.bondPulse * .45), x = B.x, y = B.y, hide = !!this.overlayMode;
+    for (const o of Object.values(F)) o.setVisible(!hide);
+    this.bondGlow.setVisible(!hide); this.gBondBase.setVisible(!hide);
+    if (hide) return;
+    // 불꽃 세 겹 + 곁불꽃: 흰 그라데이션을 단계 색으로 물들이고, 서로 다른 박자로 일렁인다
+    const wob = (f, a) => 1 + Math.sin(t * f) * a + Math.sin(t * f * 2.3 + 1.7) * a * .5;
+    const sway = Math.sin(t * 2.6) * .05 + Math.sin(t * 5.3) * .025;
+    const S = (o, sx, sy, rot, tint, alpha) => o.setPosition(x, y).setScale(k * sx / RES, k * sy / RES).setRotation(rot).setTint(tint).setAlpha(alpha);
+    S(F.outer, wob(3.1, .04), wob(4.2, .07), sway, pal[0], .92);
+    S(F.mid, wob(3.7, .05), wob(5.1, .09), sway * 1.3, pal[1], .9);
+    S(F.core, wob(4.6, .06), wob(6.3, .1), sway * 1.6, pal[2], 1);
+    const wl = .55 + Math.sin(t * 3.4) * .25, wr = .55 + Math.sin(t * 3.4 + 2.1) * .25;   // 곁불꽃: 엇박으로 솟았다 잦아든다
+    F.wispL.setPosition(x - 5 * k, y - 1).setScale(k * .9 / RES, k * wl / RES).setRotation(-.25 + sway).setTint(pal[0]).setAlpha(.75);
+    F.wispR.setPosition(x + 5 * k, y - 1).setScale(k * .9 / RES, k * wr / RES).setRotation(.25 + sway).setTint(pal[1]).setAlpha(.7);
+    this.bondGlow.setPosition(x, y - 14 * k).setTint(pal[0]).setScale(.5 + k * .55 + this.bondPulse * .4).setAlpha(.3 + lv * .035 + this.bondPulse * .35 + Math.sin(t * 2.4) * .05);
+    // 금빛 받침 장식: 가는 선 + 가운데 마름모 + 양끝 작은 점 (불꽃이 앉는 자리)
+    const g = this.gBondBase; g.clear();
+    const bw = 15 + k * 7;
+    g.fillStyle(0xffd890, .55); g.fillRect(x - bw, y + 1, bw * 2, 1);
+    g.fillStyle(0xffd890, .25); g.fillRect(x - bw * .7, y + 3, bw * 1.4, 1);
+    g.fillStyle(0xffe6a8, .9); g.fillPoints([{ x, y: y - .5 }, { x: x + 2.5, y: y + 1.5 }, { x, y: y + 3.5 }, { x: x - 2.5, y: y + 1.5 }], true);
+    g.fillStyle(0xffd890, .7); g.fillCircle(x - bw - 1.5, y + 1.5, 1); g.fillCircle(x + bw + 1.5, y + 1.5, 1);
+    if (stage >= 6) {   // 태양 불꽃: 천천히 도는 빛살 고리
+      const cy = y - 16 * k;
+      for (let n = 0; n < 12; n++) { const a = t * .5 + n / 12 * Math.PI * 2, r0 = 15 * k, r1 = (n % 2 ? 19 : 23) * k + Math.sin(t * 3 + n) * 1.2; g.lineStyle(1, 0xffe8a0, n % 2 ? .3 : .55); g.lineBetween(x + Math.cos(a) * r0, cy + Math.sin(a) * r0, x + Math.cos(a) * r1, cy + Math.sin(a) * r1); }
     }
-    const flame = (sc, col, a) => {   // 물방울을 거꾸로 세운 불꽃: 둥근 밑동 + 일렁이는 끝
-      const r = w * sc / 2, top = y - h * sc, sway = Math.sin(t * 7 + sc * 3) * (.7 + lv * .2) * sc;
-      g.fillStyle(col, a); g.fillCircle(x, y - r, r);
-      g.fillTriangle(x - r, y - r, x + r, y - r, x + sway, top);
-      g.fillTriangle(x - r * .6, y - r * 1.2, x - r * .1, y - r * 1.4, x - r * .9 + sway * .5, top + h * sc * .3);   // 곁불꽃
-    };
-    flame(1, pal[0], .95); flame(.7, pal[1], .95); flame(.4, pal[2], 1);
-    this.bondGlow.setTint(pal[0]).setScale((.35 + lv * .07) * pk).setAlpha(.35 + lv * .04 + this.bondPulse * .4 + Math.sin(t * 3) * .05);
-    this.tBondLv.setText(`Lv.${stage}`).setColor(stage >= 6 ? '#fff0a0' : stage >= 3 ? '#ffb0a0' : '#ffd890');
+    // 불씨: 불꽃 끝에서 피어올라 흔들리며 사라진다 (단계가 높을수록 자주)
+    if (Math.random() < dt * (2 + stage * 1.2)) {
+      const e = this.add.image(x + (Math.random() - .5) * 8 * k, y - 18 * k, 'glow').setBlendMode(ADD).setTint(Math.random() < .5 ? pal[1] : pal[2]).setScale(.05 + Math.random() * .04).setDepth(2.75);
+      this.tweens.add({ targets: e, y: e.y - 12 - Math.random() * 12 * k, x: e.x + (Math.random() - .5) * 10, alpha: 0, scale: .01, duration: 700 + Math.random() * 600, ease: 'Sine.easeOut', onComplete: () => e.destroy() });
+    }
     if (this.bondTipT > 0) { this.bondTipT -= dt; if (this.bondTipT <= 0) this.bondTipOn = false; }
     const tip = this.bondTipOn && !this.overlayMode;
     this.tBondTip.setVisible(tip);

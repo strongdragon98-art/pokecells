@@ -48,7 +48,7 @@ export class TouchControls {
       { id: 'use', x: 624, y: 172, r: 15, label: '조사', press: 'useP' },
       { id: 'swap', x: 414, y: 322, r: 17, label: '교대', press: 'swapNext' },
       // 지도 · 가방 · 설정은 통합 메뉴(왼쪽 위 초상화 · 그 아래 바로가기 글자)로 합쳐 위쪽 버튼에서 뺐다
-      { id: 'pause', x: 354, y: 32, r: 18, label: 'Ⅱ', special: 'pause' },
+      { id: 'pause', x: 366, y: 32, r: 18, label: 'Ⅱ', special: 'pause' },   // 가운데는 유대의 불꽃 자리
       ...(gs.test ? [{ id: 'test', x: 186, y: 32, r: 18, label: '테스트', special: 'test' }] : [])   // 테스트룸 패널
     ];
     this.toggleBtn = { x: 412, y: 32, w: 52, h: 28 };   // 터치패드 켜기/끄기
