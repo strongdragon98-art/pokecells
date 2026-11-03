@@ -8,6 +8,7 @@
 //  시트는 그 포켓몬이 필요할 때 받는다 — 씬 preload 에서 Sprites.queue(이 씬에 나올 포켓몬) · 실행 중엔 Sprites.ensure / Actor 가 알아서 요청
 //  배포본 시트는 오른쪽·왼쪽 2행만 남겨 잘라 둔다 (scripts/crop-dist-sprites.js) → 한 장의 메모리가 1/4
 import { LINES } from '../data/roster.js';
+import { FORGE, forgeSheets } from './MegaForge.js';
 import { WILD } from '../data/pokemon.js';
 
 export const ANIMS = ['Idle', 'Walk', 'Attack', 'Strike', 'Shoot', 'Hurt'];
@@ -131,7 +132,19 @@ export class SpriteLoader {
   registerAll() {
     const pre = this.scene.cache.json.get('spritemeta');
     if (pre) for (const [key, e] of Object.entries(pre)) { this.lazy[key] = e; this.data[key] = e.anims; this.meta[key] = this.metaOf(key, e.measured); }
-    for (const key of Object.keys(this.manifest?.pokemon || {})) if (!this.lazy[key]) { this.register(key); this.ready.add(key); }   // 단일 HTML 빌드: 이미 다 불러왔다
+    // 메가 도트 공방(systems/MegaForge.js): 시트가 없는 폼은 기본형 모션 시트를 바꿔 쓴다 — 지연 로딩이면 기본형을 받을 때 함께 만든다
+    for (const [key, spec] of Object.entries(FORGE)) {
+      if (this.lazy[key] || !this.lazy[spec.base]) continue;
+      this.lazy[key] = { forged: spec.base, anims: this.lazy[spec.base].anims, files: {} };
+      this.data[key] = this.data[spec.base];
+      this.meta[key] = Object.assign({}, this.meta[spec.base], { key, forged: true });
+    }
+    for (const key of Object.keys(this.manifest?.pokemon || {})) if (!this.lazy[key] && !FORGE[key]) { this.register(key); this.ready.add(key); }   // 단일 HTML 빌드: 이미 다 불러왔다
+    for (const [key, spec] of Object.entries(FORGE)) {   // 단일 HTML 빌드: 기본형 시트가 이미 있다 → 바로 만든다
+      if (this.lazy[key] || !this.data[spec.base]) continue;
+      this.data[key] = this.data[spec.base];
+      if (forgeSheets(this.game.textures, key, this.data[key])) { this.register(key); this.meta[key].forged = true; this.ready.add(key); }
+    }
     // 모션 시트가 없는 로스터 포켓몬은 아이콘 도트로 대신
     for (const key of Object.keys(ROSTER_ART)) {
       if (this.meta[key] && this.meta[key].hasSprite) continue;
@@ -209,10 +222,17 @@ export class SpriteLoader {
     this.ready.add(key);
   }
 
+  // 메가 도트 공방: 기본형 시트가 다 있으면 메가 시트를 만들고 애니메이션까지 (이미 만들었으면 그대로)
+  forge(key) {
+    if (this.ready.has(key)) return;
+    forgeSheets(this.game.textures, key, this.data[key]);
+    this.createAnims(key);
+  }
+
   // 받을 시트 목록 [{ tk: 텍스처 키, url, fw, fh }] (이미 있는 시트는 뺀다)
   sheetsOf(key) {
     const e = this.lazy[key], tm = this.game.textures, out = [], seen = new Set();
-    if (!e) return out;
+    if (!e || e.forged) return out;
     for (const d of Object.values(e.anims)) {
       const tk = `sheet:${key}:${d.source}`, file = e.files[d.source];
       if (!file || seen.has(tk) || tm.exists(tk)) continue;
@@ -224,8 +244,11 @@ export class SpriteLoader {
 
   // 씬 preload 에서: 이 씬에 나올 포켓몬 시트를 Phaser 로더에 올린다 (씬은 다 받은 뒤 create)
   queue(load, keys) {
-    for (const key of expandKeys(keys)) {
-      if (this.ready.has(key) || !this.lazy[key] || this.waits.has(key)) continue;
+    const all = expandKeys(keys), forged = all.filter(k => this.lazy[k] && this.lazy[k].forged && !this.ready.has(k));
+    for (const k of forged) if (!all.includes(this.lazy[k].forged)) all.push(this.lazy[k].forged);   // 메가 공방 폼: 기본형 시트부터
+    if (forged.length) load.once('complete', () => forged.forEach(k => this.forge(k)));
+    for (const key of all) {
+      if (this.ready.has(key) || !this.lazy[key] || this.waits.has(key) || this.lazy[key].forged) continue;
       const files = this.sheetsOf(key);
       if (!files.length) { this.createAnims(key); continue; }
       let left = files.length;
@@ -240,16 +263,23 @@ export class SpriteLoader {
 
   // 실행 중에: 시트를 받아 애니메이션까지 만든 뒤 끝나는 Promise (같은 포켓몬을 두 번 받지 않는다)
   ensure(keys) {
-    return Promise.all(expandKeys(keys).map(key => {
-      if (this.ready.has(key) || !this.lazy[key]) return null;
-      if (this.waits.has(key)) return this.waits.get(key);
-      const tm = this.game.textures;
-      const p = Promise.all(this.sheetsOf(key).map(s => this.loadImage(s.url).then(img => {
-        if (!tm.exists(s.tk)) tm.addSpriteSheet(s.tk, img, { frameWidth: s.fw, frameHeight: s.fh });
-      }).catch(err => console.warn('[sprite] 불러오기 실패', s.url, err)))).then(() => { this.waits.delete(key); this.createAnims(key); });
+    return Promise.all(expandKeys(keys).map(key => this.ensureOne(key)));
+  }
+  // 한 포켓몬 (계열을 펼치지 않는다 — 메가 공방 폼이 기본형을 부를 때)
+  ensureOne(key) {
+    if (this.ready.has(key) || !this.lazy[key]) return null;
+    if (this.waits.has(key)) return this.waits.get(key);
+    if (this.lazy[key].forged) {   // 메가 공방 폼: 기본형을 받은 뒤 그 시트로 만든다
+      const p = Promise.resolve(this.ensureOne(this.lazy[key].forged)).then(() => { this.waits.delete(key); this.forge(key); });
       this.waits.set(key, p);
       return p;
-    }));
+    }
+    const tm = this.game.textures;
+    const p = Promise.all(this.sheetsOf(key).map(s => this.loadImage(s.url).then(img => {
+      if (!tm.exists(s.tk)) tm.addSpriteSheet(s.tk, img, { frameWidth: s.fw, frameHeight: s.fh });
+    }).catch(err => console.warn('[sprite] 불러오기 실패', s.url, err)))).then(() => { this.waits.delete(key); this.createAnims(key); });
+    this.waits.set(key, p);
+    return p;
   }
 
   // 지금 필요 없는 시트를 메모리에서 내린다 (챕터를 옮길 때 — 아이폰은 탭 메모리가 빠듯하다). 다시 필요하면 ensure 가 다시 받는다
@@ -258,6 +288,7 @@ export class SpriteLoader {
     let n = 0;
     for (const key of [...this.ready]) {
       if (want.has(key) || !this.lazy[key] || this.waits.has(key)) continue;
+      if (!this.lazy[key].forged && [...want].some(k => this.lazy[k] && this.lazy[k].forged === key)) continue;   // 메가 공방 폼의 기본형은 남긴다
       for (const anim of ANIMS) for (const dir of ['right', 'left']) if (am.exists(`${key}:${anim}:${dir}`)) am.remove(`${key}:${anim}:${dir}`);
       for (const d of Object.values(this.data[key])) { const tk = `sheet:${key}:${d.source}`; if (tm.exists(tk)) tm.remove(tk); }
       this.ready.delete(key); n++;

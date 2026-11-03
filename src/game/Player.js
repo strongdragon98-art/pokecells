@@ -8,6 +8,7 @@ import { SPECIES, SKILLS, TAGS, TIERS, EVO_EXP, ZMOVES, Z_CD } from '../data/pok
 import { FORM_ITEMS } from '../data/roster.js';
 import { computeMods, ITEMS, MAX_EQUIP } from '../data/items.js';
 import { START_MONEY, USES, VIT_MAX } from '../data/shop.js';
+import { ashStarTexture } from '../systems/MegaForge.js';
 const HP_SCALE = .85;
 import { onHurt, onDash, onParry } from './Perks.js';
 import { potionMaxAt, potionHealAt, bondParry, BOND_STRIKE_MUL, BOND_STRIKE_CD } from '../data/bond.js';
@@ -480,6 +481,7 @@ export class Player extends Actor {
     // 메가 (영구): 발밑에서 무지갯빛 불씨
     if (this.mega.active && Math.random() < .35) sc.fx.embers(this.x + (Math.random() - .5) * 20, this.bottom - 4, [0xff8ad0, 0x9a7aff, 0xfff6c0], 1, { speed: 30 });
     this.updateMegaDeco();
+    this.updateAshStar(dt);
 
     // 교대
     if (!this.dash) {
@@ -830,6 +832,29 @@ export class Player extends Actor {
   }
 
   // 메가 장식: 등 뒤 메가 심볼 홀로그램(천천히 돈다) · 무지갯빛 오라 · 눈빛
+  // 유대변화(지우) 개굴닌자: 등 뒤에 떠서 도는 거대 물수리검 (systems/MegaForge.js 그림)
+  //  X · C 기술이나 차징 샷을 쓰면 물수리검이 손으로 옮겨 가 크게 날아가고(실제 탄은 기술 · 차징이 쏜다), 1.4초 뒤 등 뒤에 다시 맺힌다
+  updateAshStar(dt) {
+    const on = this.visualKey() === 'greninja-ash' && this.sprite.visible && this.sprite.alpha > .3;
+    if (!on) { if (this.ashStar) this.ashStar.setVisible(false); return; }
+    const sc = this.scene, a = this.action, h = this.sprite.displayHeight;
+    if (!this.ashStar) { this.ashStar = sc.add.image(this.x, this.y, ashStarTexture(sc)).setDepth(21.6); this.ashHide = 0; }
+    const st = this.ashStar, k = Math.max(.3, h / 125), bx = this.x - this.face * h * .2, by = this.bottom - h * .66;   // 몸 뒤 어깨 위
+    if (a && a !== this.ashLastAct && (a.slot === 'x' || a.slot === 'c' || a.slot === 'charge') && this.ashHide <= 0) {   // 손으로 옮겨 가 날아간다
+      this.ashHide = 1.4;
+      sc.tweens.add({ targets: st, x: this.x + this.face * 18 * k, y: this.y - 4, scale: k * 1.5, duration: 110, ease: 'Quad.easeOut', onComplete: () => sc.tweens.add({ targets: st, alpha: 0, duration: 120 }) });
+    }
+    this.ashLastAct = a;
+    st.setVisible(true).setRotation(st.rotation + dt * 7);
+    if (this.ashHide > 0) {
+      this.ashHide -= dt;
+      if (this.ashHide <= 0) { st.setPosition(bx, by).setAlpha(0).setScale(k * .3); sc.tweens.add({ targets: st, alpha: 1, scale: k, duration: 260, ease: 'Back.easeOut' }); sc.fx.burst(bx, by, [0x3ec9ff, 0xffffff], 8, 50, { grav: 0, bounce: false, glow: true, life: .3 }); }
+      return;
+    }
+    if (!sc.tweens.isTweening(st)) st.setScale(k).setAlpha(1);
+    st.setPosition(bx, by + Math.sin(sc.time.now / 260) * 1.2);
+  }
+
   updateMegaDeco() {
     const on = this.mega.active && this.sprite.visible && this.sprite.alpha > .3, t = this.scene.time.now / 1000;
     this.megaSym.setVisible(on); this.megaEye.setVisible(on);
@@ -1481,7 +1506,7 @@ export class Player extends Actor {
     else sc.gameOver(false);
   }
 
-  destroy() { this.aura.destroy(); this.chgAura.destroy(); this.megaSym.destroy(); this.megaEye.destroy(); for (const o of this.bondGlow || []) o.destroy(); super.destroy(); }   // bondGlow: 유대의 불꽃 오라 (Cores.bondAura)
+  destroy() { if (this.ashStar) this.ashStar.destroy(); this.aura.destroy(); this.chgAura.destroy(); this.megaSym.destroy(); this.megaEye.destroy(); for (const o of this.bondGlow || []) o.destroy(); super.destroy(); }   // bondGlow: 유대의 불꽃 오라 (Cores.bondAura)
 }
 
 export { ITEMS };
