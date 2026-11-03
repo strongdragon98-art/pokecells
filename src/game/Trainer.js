@@ -106,7 +106,7 @@ export class Trainer {
     makeTrainerArt(scene, kind);
     const def = TRAINERS[kind];
     this.s = scene; this.kind = kind; this.room = room; this.name = def.name; this.def = def;
-    this.x = x; this.y = scene.groundBelow(x, room.bottom - 24); this.face = face;
+    this.x = x; this.y = scene.floorAt(x, room); this.face = face;
     this.freed = false; this.t = 0; this.castT = 0; this.snapT = 0;
     this.dais = scene.add.image(x, this.y + 1, 'trainer:dais').setOrigin(.5, 1).setDepth(8.2);
     this.aura = scene.add.image(x, this.y - 46, 'glow').setBlendMode(ADD).setTint(0xff1a3a).setScale(1.6, 2.4).setAlpha(.35).setDepth(8.3);

@@ -12,8 +12,13 @@ import { typeColor } from '../data/types.js';
 import { PLAT_SET, groundYAt, T as TILE_ID } from '../game/Level.js';
 import { buildChapter, roomAt, CW, CH } from '../game/World.js';
 import { buildTestRoom, bossHome, TEST_LANDMARKS, landmarkCi } from '../game/TestRoom.js';
+import { solidRowAt } from '../game/Arenas.js';
+import { bakeArenaTiles } from '../systems/ArenaArt.js';
+import { buildArenaBackdrop, craneArt, chainArt } from '../systems/ArenaBackdrop.js';
 
-const ARENA_ZOOM = 1;   // 보스전 월드 배율 (평소 ZOOM 1.25 → 화면에 아레나가 더 많이 들어온다)
+const ARENA_ZOOM = 1;
+// 보스 결전장 주변광: [물들일 색, 밝기 하한(초입 밝기 대비)] (game/Arenas.js 의 결전장 종류)
+const ARENA_AMB = { biolab: [0x8ad8e8, .8], bellroof: [0xffc890, .92], summit: [0xc8f0ff, .92], spear: [0xe0dcff, .9], distortion: [0xb898ff, .8], yinyang: [0xf0e8f4, .86], origin: [0xfff4d8, .96], reactor: [0xffb0b8, .8] };   // 보스전 월드 배율 (평소 ZOOM 1.25 → 화면에 아레나가 더 많이 들어온다)
 import { Props } from '../game/Props.js';
 import { Player } from '../game/Player.js';
 import { Enemy } from '../game/Enemy.js';
@@ -316,6 +321,8 @@ export default class GameScene extends Phaser.Scene {
     if (W.reset) { W.reset = false; if (at) at = this.lastCenter && this.lastCenter.ci === si ? this.hubPos(this.lastCenter) : null; }   // 지형이 바뀐 챕터에서 이어하면 시내 · 입구에서
     this.stage = st; this.runStats.stage = si + 1;
     // 다른 지방으로 건너가면: 지난 지방에서만 쓰던 시트는 내리고(파티 계열은 남긴다) 이 지방 포켓몬을 미리 받아 둔다
+    // 잔상(보스 대시 고스트 · 풀 이미지)이 내려갈 시트를 든 채 남지 않게 — 시트를 내리기 전에 모두 돌려놓는다 (워프 · 공중날기로 결전 도중 지방을 넘을 때)
+    if (this.fx && this.fx.pool) for (const o of this.children.list.slice()) if (o.pooled && !o.released && o.texture && o.texture.key.startsWith('sheet:')) this.fx.pool.release(o);
     if (this.player && this.spriteChapter !== si) Sprites.trim([...this.player.members.map(m => m.key), ...chapterSprites(si), 'corviknight']);
     this.spriteChapter = si;
     if (this.player) this.player.rebornUsed = false;   // 지방마다 부활 1번
@@ -337,6 +344,15 @@ export default class GameScene extends Phaser.Scene {
       if (this.webgl) layer.setPipeline('Light2D');
       r.map = map; r.ts = ts; r.layer = layer;
       this.layers.push(layer);
+      // 보스 결전장: 방 한 장을 보스마다 다른 재질로 구운 그림 (systems/ArenaArt.js) — 타일 지도는 충돌만 맡고 숨긴다 (부서지는 벽 칸만 보인다)
+      r.arenaImg = null;
+      if (r.arenaStyle) {
+        r.arenaKey = bakeArenaTiles(this, level, r);
+        const img = this.add.image(r.X0 * TILE, r.Y0 * TILE, r.arenaKey).setOrigin(0).setDepth(10);
+        if (this.webgl) img.setPipeline('Light2D');
+        layer.forEachTile(t => { if (t.index >= 0 && level.grid[t.y + r.Y0][t.x + r.X0] !== 'B') t.setVisible(false); });
+        r.arenaImg = img; this.worldObjs.push(img);
+      }
     }
     this.tintRooms();
     if (this.webgl) this.lights.setAmbientColor(st.palette.ambient);
@@ -513,6 +529,7 @@ export default class GameScene extends Phaser.Scene {
       else if (r.spiral) t = 0xf0ecf4; else if (r.azure || r.origin) t = 0xfffaf0;   // 용나선탑 회랑 · 천계의 백금빛
       else if (r.plant) t = 0xffe8ec; else if (r.plantHeart) t = 0xffd8e0;   // 가라르 지하: 검붉은 반사광
       r.layer.forEachTile(tile => { tile.tint = t; });
+      if (r.arenaImg) r.arenaImg.setTint(lerpColor(t, 0xffffff, .75));   // 결전장 그림은 제 색을 살린다
     }
   }
   // 횃불(네온 수정) 색: 초입은 따뜻한 등불 → 지방 고유의 빛 → 보스방 앞은 독기 어린 보라 · 핏빛 (정화하면 다시 따뜻하게)
@@ -610,6 +627,11 @@ export default class GameScene extends Phaser.Scene {
     if (this.props) { this.props.destroy(); this.props = null; }
     if (this.promptText) { this.promptText.destroy(); this.promptText = null; }
     if (this.torches && this.webgl) for (const t of this.torches) if (t.light) this.lights.removeLight(t.light);
+    for (const bd of this.arenaDrops || []) bd.destroy();   // 조명 · 배경 텍스처 (그림은 위 worldObjs 로 이미 내렸다)
+    this.arenaDrops = [];
+    for (const r of (this.level && this.level.rooms) || []) if (r.arenaKey && this.textures.exists(r.arenaKey)) { this.textures.remove(r.arenaKey); r.arenaKey = null; }
+    for (const c of this.cranes || []) { dropCollider(c.coll); c.zone.destroy(); }
+    this.cranes = [];
     this.torches = [];
     if (this.playerColliders) { this.playerColliders.forEach(dropCollider); this.playerColliders = null; }
     if (this.gateGroup) { this.gateGroup.destroy(true); this.gateGroup = null; }
@@ -686,6 +708,92 @@ export default class GameScene extends Phaser.Scene {
   groundBelow(x, y) {
     const gy = groundYAt(this.level, x, Math.max(0, y));
     return gy ?? y + 40;
+  }
+  // 아레나 바닥: 공용 아레나는 맨 아래 바닥 (공중 발판은 건너뛴다) · 보스 결전장(game/Arenas.js)은 높낮이가 있어 x 기둥의 단단한 땅 윗면
+  //  from(월드 y)을 주면 그 높이부터 아래로 (그 칸이 땅 속이면 그 땅의 윗면) — 보스 공격이 플레이어가 선 층의 땅에서 솟게
+  floorAt(x, room, from = null) {
+    if (!room || !room.arenaStyle) return this.groundBelow(x, (room ? room.bottom : from ?? 0) - 24);
+    const tx = Phaser.Math.Clamp(Math.floor(x / TILE), room.tx0, room.tx1 - 1);
+    return solidRowAt(this.level.grid, room, tx, from == null ? room.ty0 : Math.floor(from / TILE)) * TILE;
+  }
+
+  // ---------------- 보스 결전장 (game/Arenas.js · systems/ArenaArt.js · systems/ArenaBackdrop.js) ----------------
+  updateArenaDrops(dt) { for (const bd of this.arenaDrops || []) bd.update(dt); }
+  // 턱 오르기: 결전장에서 걷다가 낮은 턱(플레이어 1칸 · 걷는 보스 2칸)에 막히면 그 위로 살짝 들어 올린다 — 지붕 비탈 · 단상 계단 · 사선 트러스를 걸어 오른다
+  //  plat: 통과 발판 토막도 계단처럼 (플레이어만 — 보스는 통과 발판을 딛지 않는다)
+  arenaStep(a, maxTiles, plat = true, r = this.room) {
+    if (!r || !r.arenaStyle || !a || !a.b || !a.onGround || a.dropT > 0) return;
+    const b = a.b, blocked = b.blocked.left || b.blocked.right, vx = Math.abs(b.velocity.x) > 20 ? b.velocity.x : blocked ? (a.lastVx || 0) : 0;
+    if (Math.abs(vx) < 20) return;
+    const G = this.level.grid, dir = vx > 0 ? 1 : -1, tx = Math.floor((dir > 0 ? b.right + 1 : b.x - 1) / TILE), fy = Math.floor((b.bottom - 1) / TILE);
+    const cell = (x, y) => (G[y] && G[y][x]) || 'S', hard = c => c === 'S' || c === 'B';
+    let h = 0;
+    while (h <= maxTiles) { const c = cell(tx, fy - h); if (hard(c) || (plat && h === 0 && c === 'P')) h++; else break; }
+    if (h === 0 || h > maxTiles) return;
+    const nb = (fy - h + 1) * TILE, dy = b.bottom - nb, hb = Math.ceil(b.height / TILE);
+    if (dy <= 0 || dy > maxTiles * TILE + 2) return;
+    for (let x = Math.floor(b.x / TILE); x <= Math.max(tx, Math.floor((b.right - 1) / TILE)); x++) for (let y = fy - h; y > fy - h - hb; y--) if (hard(cell(x, y))) return;
+    b.y -= dy + .5;
+    if (Math.abs(b.velocity.x) < 20) b.setVelocityX(vx);
+    b.blocked.left = b.blocked.right = false;
+  }
+  // 뮤츠 결전장의 사슬 크레인 발판: 위에서만 밟히는 움직이는 철판 (좌우로 오가며 올라탄 몸을 싣고 간다) · 천장 레일에서 사슬 두 줄이 늘어진다
+  buildCranes(r) {
+    this.cranes = this.cranes || [];
+    for (const c of r.arena.cranes) {
+      const w = c.w * TILE, y = c.y * TILE, a = c.a * TILE + w / 2, z = c.b * TILE + w / 2, x = a + (z - a) * (.5 + .5 * Math.sin(c.ph * Math.PI * 2)), railY = r.ty0 * TILE + 7;
+      const zone = this.add.zone(x, y + 4, w, 8);
+      this.physics.add.existing(zone);
+      zone.body.setAllowGravity(false).setImmovable(true);
+      zone.body.checkCollision.down = zone.body.checkCollision.left = zone.body.checkCollision.right = false;
+      zone.body.setVelocityX(c.ph < .5 ? c.sp : -c.sp);
+      const img = this.add.image(x, y, craneArt(this, c.w)).setOrigin(.5, 0).setDepth(10.1);
+      const chains = [-1, 1].map(d => this.add.tileSprite(x + d * (w / 2 - 6), railY, 4, y - railY, chainArt(this)).setOrigin(.5, 0).setDepth(9.9));
+      const hook = this.add.rectangle(x, railY, w + 6, 5, 0x5a6672).setDepth(9.95);
+      if (this.webgl) { img.setPipeline('Light2D'); for (const ch of chains) ch.setPipeline('Light2D'); }
+      const coll = this.physics.add.collider(this.player.obj, zone, null, () => !(this.player.dropT > 0) && this.player.b.velocity.y >= -1);
+      this.cranes.push({ zone, img, chains, hook, coll, a, z, sp: c.sp, w });
+      this.worldObjs.push(zone, img, hook, ...chains);
+    }
+  }
+  updateCranes() {
+    for (const c of this.cranes || []) {
+      const b = c.zone.body;
+      if (c.zone.x <= c.a && b.velocity.x <= 0) b.setVelocityX(c.sp); else if (c.zone.x >= c.z && b.velocity.x >= 0) b.setVelocityX(-c.sp);
+      c.img.x = c.zone.x; c.hook.x = c.zone.x;
+      c.chains[0].x = c.zone.x - (c.w / 2 - 6); c.chains[1].x = c.zone.x + (c.w / 2 - 6);
+    }
+  }
+  // 깨어진 세계 반물질 심연 · 하늘기둥 구름바다 (결전장 바닥 F): 디디면 마지막으로 디딘 섬 · 제단으로 튕겨 올라온다 (최대 체력 8% · 잠깐 무적)
+  //  문 앞 디딤 땅 · 바닥 철창 둘레는 안전하다
+  abyssSafe(r) {
+    if (r.abyssSafe) return r.abyssSafe;
+    const out = [];
+    for (const d of r.doors) {
+      if (d.dir === 'h' && !d.virtual && (d.row + 1) * CH - 6 === r.F) out.push(d.R === r ? [r.X0 * TILE, (r.tx0 + 6) * TILE] : [(r.tx1 - 6) * TILE, r.X1 * TILE]);
+      if (d.dir === 'v' && d.U === r && d.cap != null) out.push([(d.cap - 3) * TILE, (d.cap + 7) * TILE]);
+    }
+    for (const dd of this.level.doors) if (dd.portalIn && (dd.a === r || dd.b === r)) out.push([(dd.portalIn.x - 4) * TILE, (dd.portalIn.x + 5) * TILE]);
+    return (r.abyssSafe = out);
+  }
+  updateAbyss() {
+    const p = this.player, r = this.room;
+    if (!p || !r || !r.arena || !r.arena.abyss || this.cinema) return;
+    const fy = r.F * TILE, safe = this.abyssSafe(r).some(([a, b]) => p.x >= a && p.x <= b);
+    if (p.onGround && (p.bottom < fy - 2 || safe)) { this.abyssLast = { x: p.x, y: p.bottom - p.b.height / 2, room: r }; return; }
+    if (!p.onGround || p.bottom < fy - 2) return;
+    let at = this.abyssLast && this.abyssLast.room === r ? this.abyssLast : null;
+    if (!at) {   // 아직 섬을 디딘 적이 없으면 가장 가까운 섬 윗면 (없으면 문 앞)
+      const tops = (r.arena.islands || r.arena.stones || []).map(q => ({ x: (q.x + q.w / 2) * TILE, y: q.y * TILE - p.b.height / 2 - 2 }));
+      at = tops.sort((u, v) => Math.abs(u.x - p.x) - Math.abs(v.x - p.x))[0] || { x: r.left + 40, y: fy - p.b.height };
+    }
+    const cloud = r.arena.abyss === 'cloud';
+    this.fx.burst(p.x, fy - 4, cloud ? [0xffffff, 0xd8eef4] : [0xb070ff, 0x4ae8d8, 0x12001e], 18, 160, { up: 120, glow: !cloud, life: .5 });
+    p.b.reset(at.x, at.y - 4); p.b.setVelocity(0, 0);
+    p.takeHit(p.m.maxhp * .08, 'none', p.x, { force: true });
+    this.fx.burst(at.x, at.y, cloud ? [0x8affc8, 0xffffff] : [0xd8a0ff, 0xffffff], 14, 120, { glow: true, life: .4 });
+    Sfx.play('pad');
+    if (!this.abyssTold) { this.abyssTold = true; this.events.emit('toast', cloud ? '구름바다로 떨어졌다 — 상승 기류가 제단으로 밀어 올렸다' : '반물질 심연에 빠졌다 — 차원의 힘에 튕겨 섬으로 돌아왔다'); }
   }
 
   // ---------------- 부서지는 벽 ----------------
@@ -1284,12 +1392,14 @@ export default class GameScene extends Phaser.Scene {
       this.props.update(time, dt);
       this.updateResting();
       this.updateLights(dt); this.updateAtmosphere(dt); this.updateWeather(dt);
+      this.updateArenaDrops(dt);
       this.fx.update(dt);
       return;
     }
 
     this.updateInteract();
     this.player.update(dt, this.inp);
+    this.arenaStep(this.player, 1);
     this.consumeInput();
     if (this.test) this.testUpdate();
     this.props.update(time, dt);
@@ -1315,6 +1425,9 @@ export default class GameScene extends Phaser.Scene {
     this.updateAtmosphere(dt);
     this.updateWeather(dt);
     this.updateCracks(dt);
+    this.updateArenaDrops(dt);
+    this.updateCranes(dt);
+    this.updateAbyss(dt);
     this.fx.update(dt);
     const cam = this.cameras.main;
     cam.followOffset.x += (-this.player.face * 26 - cam.followOffset.x) * Math.min(1, dt * 3);
@@ -1331,7 +1444,8 @@ export default class GameScene extends Phaser.Scene {
     const want = this.depthOf(this.room);
     this.atmo = (this.atmo ?? want) + (want - (this.atmo ?? want)) * Math.min(1, dt * .6);
     const c = this.atmo, cam = this.cameras.main, v = cam.worldView, t = this.time.now / 1000;
-    if (this.gradeFx) { const fx = this.gradeFx; fx.reset(); fx.saturate(.18 - c * .62, true); fx.brightness(1.06 - c * .2, true); }
+    const cg = this.room && this.room.arenaStyle ? Math.min(c, .3) : c;   // 보스 결전장은 제 색 그대로 (침식 깊이로 칙칙해지지 않게)
+    if (this.gradeFx) { const fx = this.gradeFx; fx.reset(); fx.saturate(.18 - cg * .62, true); fx.brightness(1.06 - cg * .2, true); }
     // 비네트: 가운데 맑은 시야를 넓게 (예전보다 2.5배 이상) · 가장자리 15~20% 에만 검붉은 긴장감
     if (this.vignetteFx) { this.vignetteFx.radius = .98 - c * .06; this.vignetteFx.strength = .18 + c * .17; }
     // 햇빛 줄기: 화면 위에서 비스듬히 (깊어질수록 옅어지다 사라진다)
@@ -1400,6 +1514,8 @@ export default class GameScene extends Phaser.Scene {
       const pure = this.level && this.level.purified;   // 진 엔딩 뒤엔 가라르 지하도 황금빛 새벽처럼 밝게
       if (R && R.plant && !pure) base = shade(lerpColor(lit0, 0xff9aaa, .3), .75);   // 너클시티 지하 에너지 플랜트: 75% · 검붉은 다이맥스 빛
       if (R && R.plantHeart && !pure) base = shade(lerpColor(lit0, 0xff6a80, .4), .72);   // 블랙나이트의 심장: 핏빛 반응로 (70% 남짓)
+      const AMB = R && R.arenaStyle && ARENA_AMB[R.arenaStyle];   // 보스 결전장: 그 방 그림이 살도록 밝기 하한 · 방 색
+      if (AMB) base = lumFloor(lerpColor(base, AMB[0], .35), lumOf(lit0) * AMB[1]);
       if (this.overdrive) base = lerpColor(base, 0xffd8a0, .3);   // 유대의 불꽃 오버드라이브: 황금빛이 아레나를 밝힌다
       const tgt = Phaser.Display.Color.IntegerToRGB(base), a = this.ambient, k = Math.min(1, dt * 1.5);
       a.setTo(Math.round(a.red + (tgt.r - a.red) * k), Math.round(a.green + (tgt.g - a.green) * k), Math.round(a.blue + (tgt.b - a.blue) * k));
@@ -1531,22 +1647,30 @@ export default class GameScene extends Phaser.Scene {
     this.capsule = null;
     for (const r of this.level.rooms) {
       if (r.boss === 'mewtwo' && !r.cleared) {
-        const x = r.cx, gy = this.groundBelow(x, r.bottom - 24);
+        const x = r.cx, gy = this.floorAt(x, r);
         const img = this.add.image(x, gy + 1, capsuleArt(this)).setOrigin(.5, 1).setDepth(8);
         const glow = this.add.image(x, gy - 40, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(0xff2a4a).setScale(1.4, 2.2).setAlpha(.35).setDepth(7.9);
         this.tweens.add({ targets: glow, alpha: .18, duration: 1300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
         this.worldObjs.push(img, glow);
         this.capsule = { img, glow, x, gy, room: r };
       }
+      if (r.arenaStyle) continue;
       if (r.rooftop) this.rooftopSky(r);
       if (r.spiralTop) this.spiralTopSky(r);
       if (r.stratosphere) this.stratosphereSky(r);
+    }
+    // 보스 결전장 다층 배경 (systems/ArenaBackdrop.js) · 뮤츠 결전장의 사슬 크레인 발판
+    this.arenaDrops = [];
+    for (const r of this.level.rooms) if (r.arenaStyle) {
+      const bd = buildArenaBackdrop(this, r);
+      r.backdrop = bd; this.arenaDrops.push(bd); this.worldObjs.push(...bd.objs);
+      if (r.arena.cranes) this.buildCranes(r);
     }
     this.buildCracks();
   }
   // 용나선탑 꼭대기 흑과 백의 제단: 검은 번개 구름의 황혼 · 오른쪽에 탑과 다리로 맞물려 솟은 거대한 고대 성채(N의 성) · 발치의 구름
   spiralTopSky(r) {
-    const W = r.right - r.left, H = r.bottom - r.top, ADD = Phaser.BlendModes.ADD, gy = this.groundBelow(r.cx, r.bottom - 24);
+    const W = r.right - r.left, H = r.bottom - r.top, ADD = Phaser.BlendModes.ADD, gy = this.floorAt(r.cx, r);
     if (!this.textures.exists('fx:ncastle')) {   // N의 성 실루엣 (300×220): 성벽 · 첨탑 셋 · 창에 비친 빛 · 탑과 잇는 다리
       const t = this.textures.createCanvas('fx:ncastle', 300, 220), c = t.getContext(), F = (x, y, w, h, col, a = 1) => { c.globalAlpha = a; c.fillStyle = '#' + col.toString(16).padStart(6, '0'); c.fillRect(x, y, w, h); c.globalAlpha = 1; };
       F(60, 120, 240, 100, 0x1e1a2e); for (let x = 60; x < 300; x += 16) F(x, 112, 10, 8, 0x1e1a2e);
@@ -1592,7 +1716,7 @@ export default class GameScene extends Phaser.Scene {
       this.tweens.add({ targets: au, scaleX: 3.4, alpha: .14, x: au.x + 30, duration: 2600 + k * 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       objs.push(au);
     }
-    const gy = this.groundBelow(r.cx, r.bottom - 24);
+    const gy = this.floorAt(r.cx, r);
     const far = this.add.tileSprite(r.left, gy - 22, W, 28, 'fx:cloudsea').setOrigin(0, 0).setDepth(1.75).setAlpha(.55).setTint(0xb8d0e8);   // 먼 구름바다
     const near = this.add.tileSprite(r.left, gy - 8, W, 28, 'fx:cloudsea').setOrigin(0, 0).setDepth(10.5).setAlpha(.9);   // 제단 발치를 감싸는 구름
     this.cloudSeas.push({ o: far, sp: 6 }, { o: near, sp: 14 });
@@ -1866,7 +1990,7 @@ export default class GameScene extends Phaser.Scene {
   }
   // 흑과 백의 제단: 하늘에서 거대한 다크스톤(검은 구체 · 푸른 금) / 라이트스톤(흰 구체 · 주황 금)이 내려와 금이 가며 갈라진다 → 그 자리에 영웅이 강림 (ms 뒤 done(x, y))
   stoneSplit(room, light, done) {
-    const cam = this.cameras.main, cx = room.cx, gy = this.groundBelow(cx, room.bottom - 24), ey = Math.max(room.top + 60, gy - 120);
+    const cam = this.cameras.main, cx = room.cx, gy = this.floorAt(cx, room), ey = Math.max(room.top + 60, gy - 120);
     const body = light ? 0xf4f0e8 : 0x14141e, crack = light ? 0xffa040 : 0x4a8aff, rim = light ? 0xffd8a0 : 0x6a9aff;
     const g = this.add.graphics().setDepth(31), o = { y: cam.worldView.y - 60, s: .3, k: 0 }, cracks = [];
     for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2 + Math.random() * .3, pts = [[0, 0]]; let x = 0, y = 0; for (let j = 0; j < 4; j++) { x += Math.cos(a + (Math.random() - .5) * .8) * 9; y += Math.sin(a + (Math.random() - .5) * .8) * 9; pts.push([x, y]); } cracks.push(pts); }
@@ -1878,7 +2002,7 @@ export default class GameScene extends Phaser.Scene {
       g.lineStyle(2, rim, .9); g.strokeCircle(cx, o.y, R);
       if (o.k > 0) for (const pts of cracks) { g.lineStyle(2, crack, 1); g.beginPath(); g.moveTo(cx, o.y); for (const [x, y] of pts.slice(0, 1 + Math.ceil(o.k * 4))) g.lineTo(cx + x * o.s, o.y + y * o.s); g.strokePath(); }
     };
-    if (!light) for (let k = 0; k < 3; k++) this.time.delayedCall(k * 230, () => { const x = cx + (k - 1) * 130; this.darkBolt(x, cam.worldView.y - 10, this.groundBelow(x, room.bottom - 24)); });
+    if (!light) for (let k = 0; k < 3; k++) this.time.delayedCall(k * 230, () => { const x = cx + (k - 1) * 130; this.darkBolt(x, cam.worldView.y - 10, this.floorAt(x, room)); });
     else { cam.flash(300, 255, 240, 220, true); for (let k = 0; k < 20; k++) this.time.delayedCall(k * 30, () => this.fx.embers(cx + (Math.random() - .5) * 200, gy, [0xffffff, 0xffd090, 0xffa040], 1, { speed: 40, up: 120, life: 1 })); }
     Sfx.play('boss'); this.fx.shake(.008, 1000);
     this.tweens.add({ targets: o, y: ey, s: 1, duration: 900, delay: 300, ease: 'Cubic.easeOut', onUpdate: draw });
@@ -1924,14 +2048,14 @@ export default class GameScene extends Phaser.Scene {
       clouds.push(cl);
     }
     // 기와지붕: 바닥선을 따라 짙은 기와 줄과 처마 끝 황금 장식
-    const gy = this.groundBelow(r.cx, r.bottom - 24);
+    const gy = this.floorAt(r.cx, r);
     const roofs = this.add.tileSprite(r.left, gy - 3, W, 8, kawaraArt(this)).setOrigin(0, 0).setDepth(10.45);
     this.worldObjs.push(sky, sun, sunCore, ...clouds, roofs);
   }
 
   // 보스 고유 등장 연출: 처리했으면 true (그동안 아레나는 잠겨 있고, 끝나면 beginBoss)
   bossIntro(key, room) {
-    const cx = room.cx, gy = this.groundBelow(cx, room.bottom - 24), ADD = Phaser.BlendModes.ADD, cam = this.cameras.main;
+    const cx = room.cx, gy = this.floorAt(cx, room), ADD = Phaser.BlendModes.ADD, cam = this.cameras.main;
     const run = this.arenaRun, later = (ms, f) => this.time.delayedCall(ms, () => { if (this.arenaRoom === room && this.arenaRun === run && !this.over) f(); });   // 같은 아레나를 다시 시작해도 앞 판의 연출은 이어지지 않는다
     const spawn = (x, f) => later(0, () => { this.beginBoss(key, room, x); const b = this.boss; if (b && b.bossKey === key) f(b); });
     if (key === 'mewtwo') {   // 배양 캡슐 속 붉은 안광 → 사이코 파동 → 유리관이 산산조각 → 공중으로 떠오른다
@@ -2051,7 +2175,7 @@ export default class GameScene extends Phaser.Scene {
     }
     if (key === 'zekrom') {   // 흑과 백의 제단: 검은 번개가 내리꽂히고 → 다크스톤이 내려와 갈라지며 → 푸른 뇌전을 두른 제크로무가 날개를 펼치며 강림
       this.stoneSplit(room, false, (x, y) => spawn(x, b => {
-        b.introPath(x, y, x, this.groundBelow(x, room.bottom - 24) - b.b.height / 2 - 2, 500, 'Quad.easeIn', () => { const g2 = this.groundBelow(x, room.bottom - 24); this.fx.ring(x, g2 - 6, 90, 0x4a8aff, 500); this.fx.ring(x, g2 - 6, 50, 0xffffff, 380); this.fx.burst(x, g2 - 4, [0x4a8aff, 0xffffff], 30, 240, { up: 120, glow: true }); this.fx.shake(.02, 400); Sfx.play('boom'); this.events.emit('toast', '제크로무가 날개를 펼친다!'); });
+        b.introPath(x, y, x, this.floorAt(x, room) - b.b.height / 2 - 2, 500, 'Quad.easeIn', () => { const g2 = this.floorAt(x, room); this.fx.ring(x, g2 - 6, 90, 0x4a8aff, 500); this.fx.ring(x, g2 - 6, 50, 0xffffff, 380); this.fx.burst(x, g2 - 4, [0x4a8aff, 0xffffff], 30, 240, { up: 120, glow: true }); this.fx.shake(.02, 400); Sfx.play('boom'); this.events.emit('toast', '제크로무가 날개를 펼친다!'); });
         for (let k = 0; k < 10; k++) this.time.delayedCall(k * 60, () => { if (b.alive) this.fx.burst(b.x + (Math.random() - .5) * 60, b.y, [0x4a8aff, 0xffffff], 3, 90, { up: 0, grav: 0, bounce: false, glow: true, life: .3 }); });
       }));
       return true;
@@ -2185,7 +2309,7 @@ export default class GameScene extends Phaser.Scene {
         e.bobTw = this.tweens.add({ targets: s, y: s.y - 10, duration: 1800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
         e.swayTw = this.tweens.add({ targets: s, x: s.x + 14, duration: 3200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       };
-      if (gira && e.room) this.tweens.add({ targets: s, x: e.room.cx, y: this.groundBelow(e.room.cx, e.room.bottom - 24) - aura.lift, duration: 1600, ease: 'Sine.easeInOut', onComplete: hover });   // 왕좌 · 제단 위로 떠올라 평화롭게 머문다
+      if (gira && e.room) this.tweens.add({ targets: s, x: e.room.cx, y: this.floorAt(e.room.cx, e.room) - aura.lift, duration: 1600, ease: 'Sine.easeInOut', onComplete: hover });   // 왕좌 · 제단 위로 떠올라 평화롭게 머문다
       else hover();
     }
     (this.restingBosses = this.restingBosses || []).push(e);
@@ -2415,7 +2539,7 @@ export default class GameScene extends Phaser.Scene {
       this.trainer = new Trainer(this, tk, room, room.cx + 100);   // 아레나 가운데 조금 오른쪽 단상 (왼쪽 입구에서 들어서자마자 화면에 보이게)
       this.trainer.say(TRAINER_LINES[tk].intro);
       const sx = room.cx;
-      this.time.delayedCall(1100, () => { if (this.arenaRoom === room && this.arenaRun === run && this.trainer) this.trainer.throwBall(sx, this.groundBelow(sx, room.bottom - 24) - 20, () => this.beginBoss(list[0], room, sx)); });
+      this.time.delayedCall(1100, () => { if (this.arenaRoom === room && this.arenaRun === run && this.trainer) this.trainer.throwBall(sx, this.floorAt(sx, room) - 20, () => this.beginBoss(list[0], room, sx)); });
       Sfx.play('boss');
       return;
     }
@@ -2431,6 +2555,7 @@ export default class GameScene extends Phaser.Scene {
     if ((this.chain && this.chain.list[this.chain.i] !== key) || (this.boss && this.boss.alive && this.boss.bossKey === key)) return;   // 앞 판에서 걸어 둔 등장이 새 판에 끼어들지 않게 (이 판의 지금 차례 보스만 · 같은 보스를 둘 내지 않는다)
     const def = BOSSES[key], boss = this.spawnBoss(key, room, x);
     this.boss = boss; this.bosses = [boss];
+    if (key === 'necrozma' && room.backdrop && room.backdrop.phase2) room.backdrop.phase2();   // 천장이 뜯겨 나가며 울트라홀 우주로
     if (def.pair && BOSSES[def.pair]) {   // 짝 보스 (라티아스 & 라티오스): 반대편에서 함께 나온다
       const twin = this.spawnBoss(def.pair, room, room.left + 140);
       boss.partner = twin; twin.partner = boss; boss.lead = true;
@@ -2457,7 +2582,7 @@ export default class GameScene extends Phaser.Scene {
       this.bondStageGain(this.stageIdx);   // 정화 단계 6 / 6 — 모든 불꽃이 모였다 (이제 레드에게로 돌아간다)
       this.bondFlameCinematic(room, prev, () => {
         if (this.arenaRoom !== room || this.over) return;
-        const t = this.abyssTear, sil = this.abyssSil, gy = this.groundBelow(room.cx, room.bottom - 24);
+        const t = this.abyssTear, sil = this.abyssSil, gy = this.floorAt(room.cx, room);
         this.startOverdrive(room);
         this.beginBoss(key, room, t ? t.x : room.cx);
         const b = this.boss;
@@ -2480,7 +2605,7 @@ export default class GameScene extends Phaser.Scene {
     } else if (tr && !tr.freed) {   // 트레이너가 다음 몬스터볼을 던진다
       this.events.emit('banner', `${prev.name} 정화!`, `${tr.name}이(가) 다음 포켓몬을 꺼낸다`);
       const line = TRAINER_LINES[tr.kind].next;
-      this.time.delayedCall(900, () => { if (this.arenaRoom !== room || !this.trainer) return; if (line) tr.say(line); const sx = room.cx; tr.throwBall(sx, this.groundBelow(sx, room.bottom - 24) - 20, () => this.beginBoss(key, room, sx)); });
+      this.time.delayedCall(900, () => { if (this.arenaRoom !== room || !this.trainer) return; if (line) tr.say(line); const sx = room.cx; tr.throwBall(sx, this.floorAt(sx, room) - 20, () => this.beginBoss(key, room, sx)); });
     } else this.time.delayedCall(900, () => this.beginBoss(key, room, room.right - 70));
   }
   // 펄기아 강림: 화면 가운데에서 유리처럼 금이 사방으로 뻗고 조각이 쏟아진다 → 보랏빛 차원 균열
@@ -2499,7 +2624,7 @@ export default class GameScene extends Phaser.Scene {
   }
   // 무한다이노 등장: 아레나 바닥이 붉게 갈라지며 심연의 빛이 솟는다
   abyssRise(room) {
-    const cx = room.cx, gy = this.groundBelow(cx, room.bottom - 24);
+    const cx = room.cx, gy = this.floorAt(cx, room);
     this.fx.shake(.02, 1600); Sfx.play('boss'); Sfx.play('thunder');
     this.cameras.main.flash(400, 255, 60, 90, true);
     for (let k = 0; k < 5; k++) this.time.delayedCall(k * 260, () => {
@@ -2510,7 +2635,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   spawnBoss(key, room, x) {
-    const def = BOSSES[key], gy = this.groundBelow(x, room.bottom - 24);   // 아레나 바닥 (공중 발판 위가 아니라)
+    const def = BOSSES[key], gy = this.floorAt(x, room);   // 아레나 바닥 (공중 발판 위가 아니라)
     const boss = new Boss(this, key, x, def.fly ? Math.max(room.top + 40, gy - 70) : gy - 40, { room, hpMul: 1, dmgMul: 1 });
     if (!def.fly) boss.b.reset(x, gy - boss.b.height / 2 - 1);
     boss.state = 'intro'; boss.intangible = true;
@@ -2955,7 +3080,7 @@ export default class GameScene extends Phaser.Scene {
   // 유대의 불꽃 오버드라이브 (진 최종전): 파티 전원 체력 100% · 황금빛 · 진홍빛 오라(Cores.bondAura) · 모든 공격 2배 + 맞힌 자리마다 화염 폭발 (Combat · Cores)
   //  아레나 뒤편에서 레드 · 리자몽 · 피카츄가 5초마다 블래스트번 + 볼트태클 합동 공격 (updateOverdrive)
   startOverdrive(room) {
-    const p = this.player, cam = this.cameras.main, ra = this.redAlly, red = ra && ra.img, gy = this.groundBelow(room.cx, room.bottom - 24);
+    const p = this.player, cam = this.cameras.main, ra = this.redAlly, red = ra && ra.img, gy = this.floorAt(room.cx, room);
     for (const m of p.members) { m.alive = true; m.hp = m.maxhp; }
     p.inv = Math.max(p.inv > 100 ? 0 : p.inv, 2);
     const rx = Math.max(room.left + 90, room.cx - 170);

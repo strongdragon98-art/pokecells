@@ -98,7 +98,9 @@ export class Boss extends Enemy {
     } else {
       if (this.phase === 1 && this.hp < this.maxhp * .5) this.enterPhase2();
       const prev = this.state, s0 = this.castShots || 0;
+      if (!this.flying && this.room && this.room.arenaStyle) sc.arenaStep(this, 2, false, this.room);   // 결전장 단상 · 계단 턱을 걸어 오른다 (game/Arenas.js)
       (BOSS_AI[this.def.ai] || BOSS_AI.legend)(this, dt, p);
+      this.lastVx = this.b.velocity.x;
       if (prev === 'idle' && this.state !== 'idle') this.castShots = (this.castShots || 0) - s0;   // 새 시전: 이번 프레임에 쏜 탄부터 다시 센다
       if (prev === 'wind' && this.state !== 'wind') this.bigN = (this.bigN || 0) + 1;   // 큰 기술 하나를 썼다
       this.maybeRest();
@@ -571,7 +573,7 @@ function slamWave(e, col, type, k = 1) {
 // ================= 관동 전용 패턴 =================
 const ROCK_COL = 0xa88c66;
 const live = e => e.alive && !e.gone;
-const floorY = (e, x) => e.scene.groundBelow(x, e.room.bottom - 24);   // 아레나 바닥 (공중 발판은 건너뛴다) — 땅에서 솟는 공격·바닥을 쓰는 광선 기준   // 미뤄 둔 공격이 쓰러지거나 치워진 보스에게서 나가지 않게
+const floorY = (e, x) => (e.room && e.room.arenaStyle ? e.scene.floorAt(x, e.room, e.scene.player ? e.scene.player.y - 24 : null) : e.scene.groundBelow(x, e.room.bottom - 24));   // 보스 결전장(높낮이가 있는 지형): 플레이어가 선 층 높이부터 아래로 처음 만나는 땅   // 아레나 바닥 (공중 발판은 건너뛴다) — 땅에서 솟는 공격·바닥을 쓰는 광선 기준   // 미뤄 둔 공격이 쓰러지거나 치워진 보스에게서 나가지 않게
 
 // 천장 낙석: 바닥에 깜빡이는 표시 → 천장에서 바위가 떨어져 깨진다 (표시는 바위가 닿는 순간까지)
 function rockfall(e, xs, o = {}) {

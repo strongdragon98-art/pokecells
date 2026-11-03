@@ -12,6 +12,7 @@ import { drawDetailedPixelTree, drawVine } from '../systems/TreeArt.js';
 import { Sfx } from '../systems/Audio.js';
 import { roomAt, roomAtCell } from './World.js';
 import { makeTrainerArt } from './Trainer.js';
+import { windLiftArt } from '../systems/ArenaBackdrop.js';
 
 const ADD = Phaser.BlendModes.ADD;
 const WARM = 0xffc070;
@@ -1872,14 +1873,14 @@ export class Props {
           this.interacts.push({ kind: 'door', pair: 'spear', side: 'in', face: 1, x, y: PY, range: 22, used: false, repeat: true, prompt: '[F 또는 ↑ : 창기둥 밖으로 나가기]', promptY: PY - 98, door: null, glowAt: { x, y: PY - 30 } });
         }
         // 흰 대리석 기둥 (배경 · 몇은 부러졌다) · 바닥에 쓰러진 기둥 토막 · 금강 · 백옥 결정 (빛이 맥동한다) · 높은 틈으로 드는 연보랏빛
-        for (let x = r.left + 60, k = 0; x < r.right - 40; x += 150 + (k * 29) % 50, k++) {
+        if (!r.arenaStyle) for (let x = r.left + 60, k = 0; x < r.right - 40; x += 150 + (k * 29) % 50, k++) {   // 결전장(제단방)은 그 방 그림 · 배경이 기둥을 세운다
           if ((r.portalFrom && x < r.left + 110) || (r.spearAltar && Math.abs(x - r.cx) < 150)) continue;
           const tx = Math.floor(x / TILE), base = floorRow(r, tx);
           if (base === null) continue;
           const h = Math.min(9, base - r.ty0 - 1);
           if (h >= 3) this.lit(s.add.image(x, base * TILE + 6, marbleColumnArt(s, h, k)).setOrigin(.5, 1).setDepth(3.6));
         }
-        for (let x = r.left + 130, k = 0; x < r.right - 60; x += 240 + (k * 41) % 60, k++) {
+        if (!r.arenaStyle) for (let x = r.left + 130, k = 0; x < r.right - 60; x += 240 + (k * 41) % 60, k++) {
           const tx = Math.floor(x / TILE), base = floorRow(r, tx);
           if (base === null || !empty(tx + 2, base - 1) || !solid(tx + 2, base)) continue;
           this.lit(s.add.image(x, base * TILE + 1, fallenDrumArt(s, k)).setOrigin(.5, 1).setDepth(6.1).setFlipX(k % 2 === 1));
@@ -1896,6 +1897,7 @@ export class Props {
         for (let x = r.left + 70; x < r.right; x += 170) this.add(s.add.image(x, r.top + 6, 'glow').setOrigin(.5, 0).setBlendMode(ADD).setTint(0xe8dcff).setScale(1.1, 5.5).setAlpha(.14).setDepth(3.3).setAngle(-12));
         // 디아루가 · 펄기아 제단 (아레나 가운데 뒤) + 그 뒤 차원 균열 (평소엔 닫혀 있다)
         if (r.spearAltar) {
+          const Y = (r.arena && r.arena.altarY ? r.arena.altarY : r.F) * TILE;   // 결전장: 4계단 단상 꼭대기
           this.lit(s.add.image(r.cx, Y + 2, spearAltarArt(s)).setOrigin(.5, 1).setDepth(3.5));
           for (const [d, col] of [[-1, 0x6aa8ff], [1, 0xff7ac8]]) {
             const o = this.add(s.add.image(r.cx + d * 70, Y - 61, 'glow').setBlendMode(ADD).setTint(col).setScale(.7).setAlpha(.6).setDepth(3.55));
@@ -1930,6 +1932,7 @@ export class Props {
         }
         // 반물질의 왕좌 (기라티나 성소 한가운데)
         if (r.throne) {
+          const Y = (r.arena && r.arena.throneY ? r.arena.throneY : r.F) * TILE;   // 결전장: 가운데 부유섬 위
           this.lit(s.add.image(r.cx, Y + 2, throneArt(s)).setOrigin(.5, 1).setDepth(3.5));
           const g = this.add(s.add.image(r.cx, Y - 110, 'glow').setBlendMode(ADD).setTint(0xff2a4a).setScale(2.4, 3).setAlpha(.3).setDepth(3.45));
           this.pulses.push({ o: g, base: .26, amp: .12, sp: .8 });
@@ -1977,7 +1980,7 @@ export class Props {
   // 창기둥 제단 뒤 차원 균열: 닫혀 있으면 안 보이고 조사도 안 된다 → 펄기아까지 정화하면 열린다 (GameScene.openRift · 방이 cleared 로 저장돼 다시 와도 열려 있다)
   buildRift(r, x, y, open) {
     const objs = this.vortex(x, y, 1.15, 3.3);
-    const it = { kind: 'door', pair: 'rift', side: 'out', face: 1, x, y: r.F * TILE, range: 46, used: !open, repeat: true, prompt: '[F 또는 ↑ : 차원의 균열 속으로]', promptY: y - 76, door: null, glowAt: { x, y } };
+    const it = { kind: 'door', pair: 'rift', side: 'out', face: 1, x, y: (r.arena && r.arena.altarY ? r.arena.altarY : r.F) * TILE, range: 46, used: !open, repeat: true, prompt: '[F 또는 ↑ : 차원의 균열 속으로]', promptY: y - 76, door: null, glowAt: { x, y } };
     this.interacts.push(it);
     const light = this.light(x, y, 220, 0xd01a4a, open ? 1 : 0);
     this.rift = { objs, it, light, x, y, open, room: r, scales: objs.map(o => [o.scaleX, o.scaleY]) };
@@ -2159,12 +2162,12 @@ export class Props {
         this.light(r.cx, Y - 40, 300, 0xfff0c0, .8);
       }
     }
-    // 열기 상승 기류: 바닥에서 천장까지 붉은 아지랑이 기둥 · 발밑의 불씨 · 붉은 빛
+    // 열기 상승 기류: 바닥에서 천장까지 붉은 아지랑이 기둥 · 발밑의 불씨 · 붉은 빛 (하늘기둥 정상의 바람 기류는 초록 바람 줄무늬)
     for (const l of this.level.lifts || []) {
-      const x = l.x0 * TILE, y0 = l.y0 * TILE, y1 = (l.y1 + 1) * TILE, w = (l.x1 - l.x0 + 1) * TILE;
-      const col = this.add(s.add.tileSprite(x + w / 2, y0, w + 8, y1 - y0, heatArt(s)).setOrigin(.5, 0).setDepth(9.6).setBlendMode(ADD).setAlpha(.8));
-      this.add(s.add.image(x + w / 2, y1 - 4, 'glow').setBlendMode(ADD).setTint(0xff6a2a).setScale(1.4, .5).setAlpha(.6).setDepth(9.65));
-      this.light(x + w / 2, y1 - 20, 130, 0xff6a2a, 1.1);
+      const x = l.x0 * TILE, y0 = l.y0 * TILE, y1 = (l.y1 + 1) * TILE, w = (l.x1 - l.x0 + 1) * TILE, tint = l.wind ? 0x4affb0 : 0xff6a2a;
+      const col = this.add(s.add.tileSprite(x + w / 2, y0, w + 8, y1 - y0, l.wind ? windLiftArt(s) : heatArt(s)).setOrigin(.5, 0).setDepth(9.6).setBlendMode(ADD).setAlpha(.8));
+      this.add(s.add.image(x + w / 2, y1 - 4, 'glow').setBlendMode(ADD).setTint(tint).setScale(1.4, .5).setAlpha(.6).setDepth(9.65));
+      this.light(x + w / 2, y1 - 20, 130, tint, 1.1);
       this.lifts.push({ x0: x - 4, x1: x + w + 4, y0, y1, col });
     }
     // 푸른 전자기장: 테두리가 지지직 흐르는 푸른 장막 (안에서 뛰면 1.5배 높이)
@@ -2189,6 +2192,7 @@ export class Props {
     for (const r of this.level.rooms) {
       if (!r.plant && !r.plantHeart) continue;
       const Y = r.F * TILE, W = r.right - r.left;
+      if (r.arenaStyle) { if (r.portalFrom) this.innerDoor(r, plantInnerDoorArt(s), 'plant', '출구 · 격리 게이트', '[F 또는 ↑ : 격리 게이트 밖으로 나가기]', 0xff5a7a); this.buildRedCore(r); continue; }   // 결전장: 배관 · 결정 기둥은 그 방 배경(systems/ArenaBackdrop.js)이 그린다
       // 천장 파이프 두 줄 (방 너비 전체 · 지형 뒤)
       for (const [dy, a] of [[10, 1], [26, .8]]) this.lit(s.add.tileSprite(r.left, r.top + dy, W, 12, pipeArt(s)).setOrigin(0, .5).setDepth(3.25).setAlpha(a).setTilePosition(dy * 3, 0));
       // 세로 파이프 (벽을 타고 바닥까지) · 이음매마다 맥동하는 검붉은 빛
@@ -2245,7 +2249,7 @@ export class Props {
   }
   // 블랙나이트의 심장 한가운데 뒤편: 검붉은 결정 기둥 + 사슬에 묶여 창백해진 레드 (눈을 감고 있다)
   buildRedCore(r) {
-    const s = this.s, x = r.cx, Y = r.F * TILE, feet = Y - 22;
+    const s = this.s, x = r.cx, Y = (r.arena && r.arena.coreY ? r.arena.coreY : r.F) * TILE, feet = Y - 22;   // 결전장: 원자로 해치 돔 꼭대기
     makeTrainerArt(s, 'red');
     const halo = this.add(s.add.image(x, Y - 90, 'glow').setBlendMode(ADD).setTint(0xff1a3a).setScale(4, 6).setAlpha(.3).setDepth(3.48));
     const back = this.add(s.add.image(x, Y + 2, redCrystalArt(s, false)).setOrigin(.5, 1).setDepth(3.5));
@@ -2370,7 +2374,7 @@ export class Props {
     const s = this.s, { grid, cols, rows } = this.level, key = veinArt(s);
     for (const r of this.level.rooms) {
       const d = r.depth || 0;
-      if (d < .5 || r.type === 'village') continue;
+      if (d < .5 || r.type === 'village' || r.arenaStyle) continue;
       const p = (d - .45) * .32;
       for (let y = r.ty0 + 1; y <= r.F && y < rows; y++) for (let x = r.tx0; x < r.tx1 && x < cols; x++) {
         if (grid[y][x] !== 'S' || grid[y - 1][x] !== '.' || Math.random() > p) continue;
@@ -2386,7 +2390,7 @@ export class Props {
       for (let y = 3; y < rows; y++) {
         if (grid[y][x] !== 'S' || grid[y - 1][x] !== '.') continue;
         const room = roomAt(this.level, x * TILE + 8, y * TILE - 8), village = room && room.type === 'village';
-        if (!room || room.lab) continue;   // 연구소 안엔 풀·버섯이 없다
+        if (!room || room.lab || room.arenaStyle) continue;   // 연구소 안엔 풀·버섯이 없다 · 보스 결전장은 그 방 그림이 제 장식을 그린다 (systems/ArenaArt.js)
         const gy = y * TILE + 2;
         if (Math.random() < .5) {
           const g = this.lit(s.add.image(x * TILE + rand(1, 14), gy, `dec:grass:${this.si}:${Math.floor(Math.random() * 3)}`).setOrigin(.5, 1).setDepth(13).setFlipX(Math.random() < .5));
@@ -2411,7 +2415,8 @@ export class Props {
     // 숨은 작은 샛길 안쪽 디딤 발판은 난간 없이 (흙 덮개 위로 난간이 비치지 않게)
     const hid = new Set();
     for (const sd of this.level.sides || []) if (sd.hidden) for (const [cx, cy] of sd.cells) hid.add(cy * cols + cx);
-    const isP = (x, y) => grid[y][x] === 'P' && !hid.has(y * cols + x);
+    const arenaAt = (x, y) => { const r = roomAtCell(this.level, x, y); return !!(r && r.arenaStyle); };   // 보스 결전장 발판은 그 방 그림이 그린다 (systems/ArenaArt.js)
+    const isP = (x, y) => grid[y][x] === 'P' && !hid.has(y * cols + x) && !arenaAt(x, y);
     for (let y = 2; y < rows; y++) {
       let x = 0;
       while (x < cols) {

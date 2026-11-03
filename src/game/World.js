@@ -11,6 +11,7 @@ import { TILE } from '../config.js';
 import { T } from './Level.js';
 import { reach, PAD_TILES, BOOST_TILES } from './Reach.js';
 import { LAB, TOWNS } from '../data/npcs.js';
+import { ARENA_STYLE, buildArena } from './Arenas.js';
 
 export const CW = 32, CH = 20;          // 셀 하나의 크기 (타일)
 const WALL = 2, GROUND = 6;             // 방 벽 두께 · 바닥 밑 땅 두께 (바닥 윗면 = 셀 아래 경계 - 6)
@@ -484,8 +485,13 @@ export function buildChapter(ch, ci, retry = 0) {
       hubs.push({ room: r, name: r.city || area.name, x: (b + 28) * TILE + 8, y: g * TILE });
     } else if (r.type === 'mini' || r.type === 'boss' || r.type === 'sanctuary') {
       const mid = (x0 + x1) >> 1;
-      arenaPlatforms(r, tall, setP);
-      if (area.gym || r.type === 'boss') for (const [x, h] of [[x0 + 1, 8], [x1 - 3, 9]]) addProp({ kind: 'pillar', x, g: r.F, h: Math.min(h, r.F - r.ty0 - 2), variant: ri(0, 2) }, 2);
+      // 전설 보스 결전장은 보스마다 고유한 지형 (game/Arenas.js) · 나머지는 공용 아레나 발판
+      //  결전장 지형은 문 · 철창을 다 뚫은 뒤에 깐다 (아래 '보스 결전장') — 문 자리는 옛 평평한 아레나 때와 똑같이 골라진다 (옆방 사다리 · 섬 · 상자 · 진행 저장 서명)
+      const arena = ARENA_STYLE[r.boss];
+      if (arena) r.arenaStyle = arena;
+      else arenaPlatforms(r, tall, setP);
+      //  돌기둥 소품 자리: 결전장은 그 방 그림(systems/ArenaArt.js)이 대신 세운다 — 소품 수 · 난수 순서는 그대로 (진행 저장 서명)
+      if (area.gym || r.type === 'boss') for (const [x, h] of [[x0 + 1, 8], [x1 - 3, 9]]) addProp({ kind: arena ? 'arenaSlot' : 'pillar', x, g: r.F, h: Math.min(h, r.F - r.ty0 - 2), variant: ri(0, 2) }, 2);
       marks.push({ kind: r.type === 'boss' ? 'boss' : r.type === 'mini' ? 'mini' : 'hidden', x: mid, y: r.F, room: r });
     } else if (r.type === 'tm') {
       const ax = (x0 + x1) >> 1, g = altarWide(ax, r.F);
@@ -505,7 +511,7 @@ export function buildChapter(ch, ci, retry = 0) {
     // 벽 횃불
     if (r.type !== 'village' && !r.lab) for (let tx = x0 + 4; tx < x1 - 2; tx += ri(9, 12)) {
       const ty = Math.max(r.ty0 + 1, r.F - 8);
-      if (grid[ty][tx] === '.' && !taken.has(tx)) r.torches.push({ x: tx * TILE + 8, y: ty * TILE + 6 });
+      if (!r.arenaStyle && grid[ty][tx] === '.' && !taken.has(tx)) r.torches.push({ x: tx * TILE + 8, y: ty * TILE + 6 });   // 결전장은 제 조명을 쓴다 (난수는 그대로 쓴다)
     }
   }
 
@@ -559,6 +565,9 @@ export function buildChapter(ch, ci, retry = 0) {
       d.cap = cx0;
     }
   }
+
+  // ---- 보스 결전장 (game/Arenas.js): 뚫린 문 · 철창 · 사다리 자리를 비켜 보스마다 고유한 지형을 깐다 (난수를 쓰지 않는다) ----
+  for (const r of rooms) if (r.arenaStyle) buildArena(r.arenaStyle, r, { grid, setP, lifts, pads, CH, GROUND });
 
   // ---- 보물방 제단 · 상자: 철창 구멍 · 사다리 · 옆문 앞을 비켜 방 가운데에서 가장 가까운 자리 (난수를 쓰지 않는다) ----
   for (const r of rooms) {
