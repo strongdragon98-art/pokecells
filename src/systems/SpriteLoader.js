@@ -8,7 +8,7 @@
 //  시트는 그 포켓몬이 필요할 때 받는다 — 씬 preload 에서 Sprites.queue(이 씬에 나올 포켓몬) · 실행 중엔 Sprites.ensure / Actor 가 알아서 요청
 //  배포본 시트는 오른쪽·왼쪽 2행만 남겨 잘라 둔다 (scripts/crop-dist-sprites.js) → 한 장의 메모리가 1/4
 import { LINES } from '../data/roster.js';
-import { FORGE, forgeSheets } from './MegaForge.js';
+import { RIG_KEYS, rigImageKey, rigImagePath, rigPrep, rigData, rigSheets } from './MegaRig.js';
 import { WILD } from '../data/pokemon.js';
 
 export const ANIMS = ['Idle', 'Walk', 'Attack', 'Strike', 'Shoot', 'Hurt'];
@@ -92,6 +92,7 @@ export class SpriteLoader {
       const e = manifest.pokemon[key];
       if (id && !(e && e.icon)) load.image(`icon:${key}`, `${POKEAPI}/${id}.png`);
     }
+    for (const key of RIG_KEYS) load.image(rigImageKey(key), `assets/${rigImagePath(key)}`);   // 메가 컷아웃 리깅용 본가 외형 도트 (systems/MegaRig.js)
   }
 
   // 단일 HTML 빌드: 파일 안에 담긴 manifest·XML·이미지(data URI)를 네트워크 없이 텍스처로 등록
@@ -117,6 +118,7 @@ export class SpriteLoader {
         jobs.push(loadImg(embed.img[file]).then(im => tex.addSpriteSheet(`sheet:${key}:${d.source}`, im, { frameWidth: d.fw, frameHeight: d.fh })));
       }
     }
+    for (const key of RIG_KEYS) { const f = rigImagePath(key); if (embed.img[f]) jobs.push(loadImg(embed.img[f]).then(im => tex.addImage(rigImageKey(key), im))); }
     await Promise.all(jobs);
   }
 
@@ -132,19 +134,16 @@ export class SpriteLoader {
   registerAll() {
     const pre = this.scene.cache.json.get('spritemeta');
     if (pre) for (const [key, e] of Object.entries(pre)) { this.lazy[key] = e; this.data[key] = e.anims; this.meta[key] = this.metaOf(key, e.measured); }
-    // 메가 도트 공방(systems/MegaForge.js): 시트가 없는 폼은 기본형 모션 시트를 바꿔 쓴다 — 지연 로딩이면 기본형을 받을 때 함께 만든다
-    for (const [key, spec] of Object.entries(FORGE)) {
-      if (this.lazy[key] || !this.lazy[spec.base]) continue;
-      this.lazy[key] = { forged: spec.base, anims: this.lazy[spec.base].anims, files: {} };
-      this.data[key] = this.data[spec.base];
-      this.meta[key] = Object.assign({}, this.meta[spec.base], { key, forged: true });
+    // 메가 컷아웃 리깅(systems/MegaRig.js): 모션 시트가 없는 폼은 본가 외형 도트를 부위별로 잘라 움직인다 — 몸 크기는 지금 재고, 시트는 필요할 때 만든다
+    for (const key of RIG_KEYS) {
+      if (this.lazy[key] && !this.lazy[key].rig) continue;   // 진짜 모션 시트가 생기면 그쪽
+      const prep = rigPrep(this.game.textures, key);
+      if (!prep) continue;
+      this.data[key] = rigData(prep);
+      this.lazy[key] = { rig: true, anims: this.data[key], files: {}, measured: prep.measured };
+      this.meta[key] = Object.assign(this.metaOf(key, prep.measured), { rigged: true });
     }
-    for (const key of Object.keys(this.manifest?.pokemon || {})) if (!this.lazy[key] && !FORGE[key]) { this.register(key); this.ready.add(key); }   // 단일 HTML 빌드: 이미 다 불러왔다
-    for (const [key, spec] of Object.entries(FORGE)) {   // 단일 HTML 빌드: 기본형 시트가 이미 있다 → 바로 만든다
-      if (this.lazy[key] || !this.data[spec.base]) continue;
-      this.data[key] = this.data[spec.base];
-      if (forgeSheets(this.game.textures, key, this.data[key])) { this.register(key); this.meta[key].forged = true; this.ready.add(key); }
-    }
+    for (const key of Object.keys(this.manifest?.pokemon || {})) if (!this.lazy[key]) { this.register(key); this.ready.add(key); }   // 단일 HTML 빌드: 이미 다 불러왔다
     // 모션 시트가 없는 로스터 포켓몬은 아이콘 도트로 대신
     for (const key of Object.keys(ROSTER_ART)) {
       if (this.meta[key] && this.meta[key].hasSprite) continue;
@@ -222,17 +221,17 @@ export class SpriteLoader {
     this.ready.add(key);
   }
 
-  // 메가 도트 공방: 기본형 시트가 다 있으면 메가 시트를 만들고 애니메이션까지 (이미 만들었으면 그대로)
-  forge(key) {
+  // 메가 컷아웃 리깅: 부위별 관절 프레임으로 시트를 만들고 애니메이션까지 (이미 만들었으면 그대로)
+  rigBuild(key) {
     if (this.ready.has(key)) return;
-    forgeSheets(this.game.textures, key, this.data[key]);
+    rigSheets(this.game.textures, key);
     this.createAnims(key);
   }
 
   // 받을 시트 목록 [{ tk: 텍스처 키, url, fw, fh }] (이미 있는 시트는 뺀다)
   sheetsOf(key) {
     const e = this.lazy[key], tm = this.game.textures, out = [], seen = new Set();
-    if (!e || e.forged) return out;
+    if (!e || e.rig) return out;
     for (const d of Object.values(e.anims)) {
       const tk = `sheet:${key}:${d.source}`, file = e.files[d.source];
       if (!file || seen.has(tk) || tm.exists(tk)) continue;
@@ -244,11 +243,9 @@ export class SpriteLoader {
 
   // 씬 preload 에서: 이 씬에 나올 포켓몬 시트를 Phaser 로더에 올린다 (씬은 다 받은 뒤 create)
   queue(load, keys) {
-    const all = expandKeys(keys), forged = all.filter(k => this.lazy[k] && this.lazy[k].forged && !this.ready.has(k));
-    for (const k of forged) if (!all.includes(this.lazy[k].forged)) all.push(this.lazy[k].forged);   // 메가 공방 폼: 기본형 시트부터
-    if (forged.length) load.once('complete', () => forged.forEach(k => this.forge(k)));
-    for (const key of all) {
-      if (this.ready.has(key) || !this.lazy[key] || this.waits.has(key) || this.lazy[key].forged) continue;
+    for (const key of expandKeys(keys)) {
+      if (this.ready.has(key) || !this.lazy[key] || this.waits.has(key)) continue;
+      if (this.lazy[key].rig) { this.rigBuild(key); continue; }   // 메가 컷아웃 리깅: 받을 파일 없이 바로 만든다
       const files = this.sheetsOf(key);
       if (!files.length) { this.createAnims(key); continue; }
       let left = files.length;
@@ -269,11 +266,7 @@ export class SpriteLoader {
   ensureOne(key) {
     if (this.ready.has(key) || !this.lazy[key]) return null;
     if (this.waits.has(key)) return this.waits.get(key);
-    if (this.lazy[key].forged) {   // 메가 공방 폼: 기본형을 받은 뒤 그 시트로 만든다
-      const p = Promise.resolve(this.ensureOne(this.lazy[key].forged)).then(() => { this.waits.delete(key); this.forge(key); });
-      this.waits.set(key, p);
-      return p;
-    }
+    if (this.lazy[key].rig) { this.rigBuild(key); return null; }   // 메가 컷아웃 리깅: 그림은 부팅 때 받았다 → 바로 만든다
     const tm = this.game.textures;
     const p = Promise.all(this.sheetsOf(key).map(s => this.loadImage(s.url).then(img => {
       if (!tm.exists(s.tk)) tm.addSpriteSheet(s.tk, img, { frameWidth: s.fw, frameHeight: s.fh });
@@ -288,7 +281,6 @@ export class SpriteLoader {
     let n = 0;
     for (const key of [...this.ready]) {
       if (want.has(key) || !this.lazy[key] || this.waits.has(key)) continue;
-      if (!this.lazy[key].forged && [...want].some(k => this.lazy[k] && this.lazy[k].forged === key)) continue;   // 메가 공방 폼의 기본형은 남긴다
       for (const anim of ANIMS) for (const dir of ['right', 'left']) if (am.exists(`${key}:${anim}:${dir}`)) am.remove(`${key}:${anim}:${dir}`);
       for (const d of Object.values(this.data[key])) { const tk = `sheet:${key}:${d.source}`; if (tm.exists(tk)) tm.remove(tk); }
       this.ready.delete(key); n++;

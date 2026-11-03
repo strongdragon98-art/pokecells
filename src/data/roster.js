@@ -31,7 +31,7 @@ export const LINES = [
   // ======================= 1세대 · 관동 =======================
   { id: 'bulbasaur', cat: 'starter', gen: 1, ...STARTER, hp: 125, atk: 9, speed: 108, jump: 300, types: T('grass', 'poison'),
     forms: [{ key: 'bulbasaur', name: '이상해씨', dex: 1 }, { key: 'ivysaur', name: '이상해풀', dex: 2 }, { key: 'venusaur', name: '이상해꽃', dex: 3 }],
-    megas: [{ key: 'venusaur-mega', name: '메가이상해꽃', pokeapi: 10033, sc: '0001', sprite: 'venusaur' }],
+    megas: [{ key: 'venusaur-mega', name: '메가이상해꽃', pokeapi: 10033, sc: '0001' }],   // 도트는 본가 외형 컷아웃 리깅 (systems/MegaRig.js)
     skills: { z: 'vine_whip', x: 'razor_leaf', c: 'seed_field' }, desc: '중거리 견제와 회복 장판으로 버티는 운영형.', unlock: { start: true } },
   { id: 'charmander', cat: 'starter', gen: 1, ...STARTER, hp: 108, atk: 11, speed: 118, jump: 305, types: T('fire'),
     forms: [{ key: 'charmander', name: '파이리', dex: 4 }, { key: 'charmeleon', name: '리자드', dex: 5 }, { key: 'charizard', name: '리자몽', dex: 6, types: T('fire', 'flying') }],
@@ -40,7 +40,7 @@ export const LINES = [
     skills: { z: 'scratch_ember', x: 'flamethrower', c: 'fire_blast' }, desc: '화상을 거는 화염 딜러. 대문자로 하늘에서 불길을 떨어뜨린다.', unlock: { start: true } },
   { id: 'squirtle', cat: 'starter', gen: 1, ...STARTER, hp: 132, atk: 10, speed: 110, jump: 300, types: T('water'),
     forms: [{ key: 'squirtle', name: '꼬부기', dex: 7 }, { key: 'wartortle', name: '어니부기', dex: 8 }, { key: 'blastoise', name: '거북왕', dex: 9 }],
-    megas: [{ key: 'blastoise-mega', name: '메가거북왕', pokeapi: 10036, sc: '0001', sprite: 'blastoise' }],
+    megas: [{ key: 'blastoise-mega', name: '메가거북왕', pokeapi: 10036, sc: '0001' }],   // 도트는 본가 외형 컷아웃 리깅 (systems/MegaRig.js)
     skills: { z: 'tackle_watergun', x: 'bubblebeam', c: 'rapid_spin' }, desc: '둔화와 넉백, 투사체 방어가 특기인 탱커.', unlock: { start: true } },
 
   // ======================= 2세대 · 성도 =======================

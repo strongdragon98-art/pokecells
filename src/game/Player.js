@@ -8,7 +8,7 @@ import { SPECIES, SKILLS, TAGS, TIERS, EVO_EXP, ZMOVES, Z_CD } from '../data/pok
 import { FORM_ITEMS } from '../data/roster.js';
 import { computeMods, ITEMS, MAX_EQUIP } from '../data/items.js';
 import { START_MONEY, USES, VIT_MAX } from '../data/shop.js';
-import { ashStarTexture } from '../systems/MegaForge.js';
+import { ashStarTexture } from '../systems/MegaRig.js';
 const HP_SCALE = .85;
 import { onHurt, onDash, onParry } from './Perks.js';
 import { potionMaxAt, potionHealAt, bondParry, BOND_STRIKE_MUL, BOND_STRIKE_CD } from '../data/bond.js';
@@ -249,10 +249,13 @@ export class Player extends Actor {
       if (meta0) scale *= Phaser.Math.Clamp(40 / Math.max(10, meta0.height), .55, 1.4);
     } else {
       const k0 = this.sp.evo[0].key, base = metas[k0] && metas[k0].hasSprite ? metas[k0] : metas[this.m.key];
-      const ref = (base && base.bodyH) || 20, now = (meta0 && meta0.bodyH) || ref;
-      scale = TIER_SIZE[Math.min(2, this.m.tier)] * (this.mega.active ? MEGA_SIZE : 1) * ref / Math.max(4, now);
+      // 메가 컷아웃 리깅(본가 외형 도트 · 그림이 훨씬 크다): 같은 포켓몬의 지금 진화 모습이 화면에 보이는 키 × MEGA_SIZE 가 되게 맞춘다
+      const rig = meta0 && meta0.rigged, fm = rig ? metas[this.formKey()] : meta0;
+      const ref = (base && base.bodyH) || 20, now = (fm && fm.bodyH) || ref;
+      scale = TIER_SIZE[Math.min(2, this.m.tier)] * (this.mega.active && !rig ? MEGA_SIZE : 1) * ref / Math.max(4, now);
       if (!this.mega.active && this.form().aura) scale *= 1.06;
       scale = Phaser.Math.Clamp(scale, .45, 3.2);
+      if (rig && fm) scale *= MEGA_SIZE * fm.height / Math.max(8, meta0.height);
     }
     void mg;
     this.setSpecies(key, scale * big);
@@ -832,27 +835,19 @@ export class Player extends Actor {
   }
 
   // 메가 장식: 등 뒤 메가 심볼 홀로그램(천천히 돈다) · 무지갯빛 오라 · 눈빛
-  // 유대변화(지우) 개굴닌자: 등 뒤에 떠서 도는 거대 물수리검 (systems/MegaForge.js 그림)
-  //  X · C 기술이나 차징 샷을 쓰면 물수리검이 손으로 옮겨 가 크게 날아가고(실제 탄은 기술 · 차징이 쏜다), 1.4초 뒤 등 뒤에 다시 맺힌다
+  // 유대변화(지우) 개굴닌자: X · C 기술이나 차징 샷을 쓰면 등에 진 거대 물수리검(원본 도트에 그려져 있다)이 손으로 옮겨 가 날아가는 잔상 (systems/MegaRig.js 그림)
   updateAshStar(dt) {
-    const on = this.visualKey() === 'greninja-ash' && this.sprite.visible && this.sprite.alpha > .3;
-    if (!on) { if (this.ashStar) this.ashStar.setVisible(false); return; }
-    const sc = this.scene, a = this.action, h = this.sprite.displayHeight;
-    if (!this.ashStar) { this.ashStar = sc.add.image(this.x, this.y, ashStarTexture(sc)).setDepth(21.6); this.ashHide = 0; }
-    const st = this.ashStar, k = Math.max(.3, h / 125), bx = this.x - this.face * h * .2, by = this.bottom - h * .66;   // 몸 뒤 어깨 위
-    if (a && a !== this.ashLastAct && (a.slot === 'x' || a.slot === 'c' || a.slot === 'charge') && this.ashHide <= 0) {   // 손으로 옮겨 가 날아간다
-      this.ashHide = 1.4;
-      sc.tweens.add({ targets: st, x: this.x + this.face * 18 * k, y: this.y - 4, scale: k * 1.5, duration: 110, ease: 'Quad.easeOut', onComplete: () => sc.tweens.add({ targets: st, alpha: 0, duration: 120 }) });
+    const sc = this.scene, a = this.action;
+    if (this.visualKey() !== 'greninja-ash' || !this.sprite.visible) { if (this.ashStar) this.ashStar.setVisible(false); this.ashLastAct = a; return; }
+    if (a && a !== this.ashLastAct && (a.slot === 'x' || a.slot === 'c' || a.slot === 'charge')) {
+      const h = this.sprite.displayHeight, k = Math.max(.3, h / 110);
+      if (!this.ashStar) this.ashStar = sc.add.image(this.x, this.y, ashStarTexture(sc)).setDepth(22.5);
+      const st = this.ashStar;
+      sc.tweens.killTweensOf(st);
+      st.setVisible(true).setAlpha(1).setScale(k).setPosition(this.x - this.face * h * .18, this.bottom - h * .7);
+      sc.tweens.add({ targets: st, x: this.x + this.face * h * .3, y: this.y - 4, scale: k * 1.6, angle: st.angle + 540 * this.face, duration: 160, ease: 'Quad.easeOut', onComplete: () => sc.tweens.add({ targets: st, alpha: 0, duration: 140, onComplete: () => st.setVisible(false) }) });
     }
     this.ashLastAct = a;
-    st.setVisible(true).setRotation(st.rotation + dt * 7);
-    if (this.ashHide > 0) {
-      this.ashHide -= dt;
-      if (this.ashHide <= 0) { st.setPosition(bx, by).setAlpha(0).setScale(k * .3); sc.tweens.add({ targets: st, alpha: 1, scale: k, duration: 260, ease: 'Back.easeOut' }); sc.fx.burst(bx, by, [0x3ec9ff, 0xffffff], 8, 50, { grav: 0, bounce: false, glow: true, life: .3 }); }
-      return;
-    }
-    if (!sc.tweens.isTweening(st)) st.setScale(k).setAlpha(1);
-    st.setPosition(bx, by + Math.sin(sc.time.now / 260) * 1.2);
   }
 
   updateMegaDeco() {
