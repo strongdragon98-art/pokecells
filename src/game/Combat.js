@@ -50,6 +50,7 @@ export class Combat {
     if (this.s.overdrive) d *= 2;   // 유대의 불꽃 오버드라이브 (가라르 진 최종전): 평타 · 차징 샷 · 기술 · 패링 반사탄 모두 2배
     d *= this.s.bondMul || 1;   // 유대의 불꽃 정화 단계마다 모든 공격 소폭 상승 (GameScene.bondMul)
     if (mods.execute && e.hp <= e.maxhp * .25) d *= 1 + mods.execute;   // 특성 카드: 마무리 일격
+    if (!o.dot && p.counterBuffT > this.s.time.now) d *= 1 + .4 * (mods.parryCounter || 1);   // 반격의 일격 카드: 패링 뒤 2초 안에 쓴 기술 (Player.useSkill)
     if (e.groggyT > 0) d *= GROGGY_MUL;   // 보스 그로기(약점 누적으로 자세 무너짐): 받는 피해 ×1.35
     if (e.guardMul && !o.pierceGuard) d *= e.guardMul;   // 레시라무의 푸른 불꽃은 방어 자세도 꿰뚫는다
     const sure = !o.dot && p.critNext > this.s.time.now;   // 패링 카운터 뒤 다음 한 방은 확정 치명타
@@ -325,9 +326,10 @@ export class Combat {
         }
       } else if (!dead && q.owner === 'enemy' && p.parryZone() && p.inParry(p.parryZone(), q.x, q.y, q.r)) {
         // 패링 자세(지상 ↓ + Z) → 반사: 아군 황금빛 탄이 되어 되돌아간다 (속도 2배 · 최대 900) · 250% 피해 × 연속 패링 점감
-        const ch = p.doParry(q.x, q.y, 'proj'), i = Math.min(ch.n, PARRY_SIZE.length) - 1, sp = Math.hypot(q.vx, q.vy) || 1, v = Math.min(900, sp * 2) / sp;
-        q.owner = 'player'; q.vx = -q.vx * v; q.vy = -q.vy * v; q.grav = 0; q.dmg = Math.max(q.dmg * 2.5, p.atk * 2.5) * ch.dmg; q.hit = new Set(); q.life = 1.5; q.homing = 0; q.tier = 3; q.ghost = false;
-        q.r = Math.max(3, q.r * PARRY_SIZE[i]);   // 연속으로 쳐낼수록 반사탄이 작아진다
+        const amp = p.mods.reflectAmp || 0;   // 증폭 반사경 카드: 반사탄 크기 · 비행 속도 +30% · 반사 피해 +35% (합성하면 더)
+        const ch = p.doParry(q.x, q.y, 'proj'), i = Math.min(ch.n, PARRY_SIZE.length) - 1, sp = Math.hypot(q.vx, q.vy) || 1, v = Math.min(900 * (1 + .3 * amp), sp * 2 * (1 + .3 * amp)) / sp;
+        q.owner = 'player'; q.vx = -q.vx * v; q.vy = -q.vy * v; q.grav = 0; q.dmg = Math.max(q.dmg * 2.5, p.atk * 2.5) * ch.dmg * (1 + .35 * amp); q.hit = new Set(); q.life = 1.5; q.homing = 0; q.tier = 3; q.ghost = false;
+        q.r = Math.max(3, q.r * PARRY_SIZE[i] * (1 + .3 * amp));   // 연속으로 쳐낼수록 반사탄이 작아진다
         q.color = PARRY_COL[i]; q.status = { kb: 0, parried: true, parryN: ch.n, parryDmg: ch.dmg, parryStag: ch.stag }; q.parried = true;   // 맞히면 무조건 약점 · 그로기 (damageEnemy)
         continue;
       } else if (!dead && q.owner === 'enemy' && circRect(q.x, q.y, q.r, p.bounds())) {

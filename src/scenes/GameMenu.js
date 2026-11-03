@@ -13,7 +13,7 @@ import { UPGRADES, GRADE_STYLE, GRADES, PERK_TYPE, BOOSTS, BOOST_MAX, boostCard,
 import { PERKS } from '../game/Perks.js';
 import { MOVE_DB } from '../data/MoveDatabase.js';
 import { usesStone, stoneName, zTypeOf, crystalName } from '../data/gear.js';
-import { NUGGETS, NUGGET_KEYS, USES, VIT_MAX, won, POTION_MAX } from '../data/shop.js';
+import { NUGGETS, NUGGET_KEYS, USES, VIT_MAX, won } from '../data/shop.js';
 import { MEGA_ULT, MEGA_ULT_CD, megaSymbol } from '../game/Spectacle.js';
 import { HK, hkText, glassPanel, glassButton, typePill, hiImage, bar3d } from '../systems/ui.js';
 import { roundPortrait, skillIcon } from '../systems/Textures.js';
@@ -500,15 +500,16 @@ export const GameMenu = {
     });
     // 중요한 물건 (파티 공용)
     const ky = CY + CH - 16;
-    // 🧪 상처약 전용 퀵슬롯: 남은 개수 칸 3개 + 단축키 키캡 (싸우는 중 바로 · 포켓샵에서 3개까지)
+    // 🧪 상처약 전용 퀵슬롯: 남은 개수 칸(최대 3 → 유대의 불꽃 Lv.2 4 · Lv.5 5) + 단축키 키캡 (싸우는 중 바로 · 포켓샵에서 최대치까지)
     {
       const qy = ky - 34, n = (p.uses || {}).potion || 0, kl = this.touch.visible ? '🧪 버튼' : keyLabel(Settings.key('potion'));
       glassPanel(g, 24, qy - 13, 376, 26, { r: 8, fill: 0x0c1a12, border: 0x5ad08a, borderAlpha: .45, alpha: .9 });
       C.add(this.itemImage(40, qy, 'potion', 18, 1));
       C.add(hkText(this, 54, qy, '상처약 퀵슬롯', 8.5, '#9affb8', { bold: true, origin: [0, .5] }));
-      for (let k = 0; k < POTION_MAX; k++) { const on = k < n; g.fillStyle(on ? 0x5ad08a : 0x1a2a20, on ? .95 : .8); g.fillRoundedRect(130 + k * 16, qy - 5, 12, 10, 3); g.lineStyle(1, 0x9affb8, on ? .9 : .3); g.strokeRoundedRect(130 + k * 16, qy - 5, 12, 10, 3); }
-      C.add(hkText(this, 182, qy, `${n} / ${POTION_MAX}`, 8.5, n ? HK.ivory : HK.red, { bold: true, origin: [0, .5] }));
-      C.add(hkText(this, 392, qy, `단축키 [ ${kl} ] · 체력 40% 즉시 회복 · 재사용 3초`, 7.5, HK.dim, { origin: [1, .5], ls: 0 }));
+      const pmax = p.potionMax;
+      for (let k = 0; k < pmax; k++) { const on = k < n; g.fillStyle(on ? 0x5ad08a : 0x1a2a20, on ? .95 : .8); g.fillRoundedRect(130 + k * 16, qy - 5, 12, 10, 3); g.lineStyle(1, 0x9affb8, on ? .9 : .3); g.strokeRoundedRect(130 + k * 16, qy - 5, 12, 10, 3); }
+      C.add(hkText(this, 134 + pmax * 16, qy, `${n} / ${pmax}`, 8.5, n ? HK.ivory : HK.red, { bold: true, origin: [0, .5] }));
+      C.add(hkText(this, 392, qy, `단축키 [ ${kl} ] · 체력 ${Math.round(p.potionHeal * 100)}% 즉시 회복 · 재사용 3초`, 7.5, HK.dim, { origin: [1, .5], ls: 0 }));
     }
     g.lineStyle(1, HK.ivoryN, .12); g.lineBetween(26, ky - 12, 398, ky - 12);
     C.add(hkText(this, 26, ky, '중요한 물건', 8, HK.dim, { bold: true, origin: [0, .5] }));

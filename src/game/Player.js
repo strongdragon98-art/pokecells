@@ -9,7 +9,8 @@ import { FORM_ITEMS } from '../data/roster.js';
 import { computeMods, ITEMS, MAX_EQUIP } from '../data/items.js';
 import { START_MONEY, USES, VIT_MAX } from '../data/shop.js';
 const HP_SCALE = .85;
-import { onHurt, onDash } from './Perks.js';
+import { onHurt, onDash, onParry } from './Perks.js';
+import { potionMaxAt, potionHealAt, bondCdMul, BOND_HASTE, BOND_MIRACLE_HP } from '../data/bond.js';
 import { typeMultiplier, effectiveness, typeColor } from '../data/types.js';
 import * as base from './skills.js';
 import * as gen23 from './skills/gen23.js';
@@ -172,7 +173,11 @@ export class Player extends Actor {
   skillId(slot, m = this.m) { return m.skills[slot]; }
   hasUp(id, m = this.m) { return m.ups.has(id); }
   // 기술 쿨타임(초): 아이템 · 숙련 카드 · 메가진화 반영
-  cdOf(id, m = this.m) { const b = m.boost && m.boost[id]; return SKILLS[id].cd * m.mods.cdMul * (m.cdBonus || 1) * (m.mega ? .8 : 1) * (m === this.m ? Cores.cdMul(this) : 1) * (b ? 1 - Math.min(.6, b.haste) : 1); }   // 스킬 강화 카드: 가속 회로
+  // 상처약 최대 소지 · 회복량 (유대의 불꽃 권능 — data/bond.js) · 패링 판정 시간 (예리한 반사 신경 카드)
+  get potionMax() { return potionMaxAt(this.scene.bondStage || 0); }
+  get potionHeal() { return potionHealAt(this.scene.bondStage || 0); }
+  parryWin() { return PARRY_WIN * (this.mods.parryWinMul || 1); }
+  cdOf(id, m = this.m) { const b = m.boost && m.boost[id]; return SKILLS[id].cd * m.mods.cdMul * (m.cdBonus || 1) * (m.mega ? .8 : 1) * (m === this.m ? Cores.cdMul(this) : 1) * (b ? 1 - Math.min(.6, b.haste) : 1) * bondCdMul(this.scene.bondStage || 0); }   // 스킬 강화 카드: 가속 회로
   // 쿨타임 0 인 기본 공격만 3단 콤보 (Z 자리에 기술머신 기술을 달면 쿨타임 기술로 쓴다)
   isCombo(slot, m = this.m) { return slot === 'z' && !SKILLS[m.skills[slot]].cd; }
   // 배운 기술 id 를 slot(z·x·c)에 넣는다. 이미 다른 자리에 있으면 두 자리를 맞바꾼다.
@@ -456,6 +461,7 @@ export class Player extends Actor {
     this.lastInput = inp;
     this.potionCd = Math.max(0, (this.potionCd || 0) - dt);   // 상처약 퀵슬롯 재사용 (GameScene.quickPotion)
     this.zLock = Math.max(0, (this.zLock || 0) - dt); this.parryCd = Math.max(0, (this.parryCd || 0) - dt);   // 3타 후딜레이 · 패링 재사용 대기
+    this.bondHasteT = Math.max(0, (this.bondHasteT || 0) - dt); this.galeT = Math.max(0, (this.galeT || 0) - dt); this.dashEvadeT = Math.max(0, (this.dashEvadeT || 0) - dt);   // 천공의 숨결 가속 · 질풍의 추진력 · 대시 회피 판정
     this.inv -= dt; this.dashCd -= dt; this.swapCd -= dt; this.diveCd -= dt; this.comboT -= dt; this.zBuf -= dt; this.dropT -= dt; this.hurtT -= dt; this.speedBuff -= dt;
     this.z.cd = Math.max(0, this.z.cd - dt);
     for (const m of this.members) for (const k in m.cd) m.cd[k] = Math.max(0, m.cd[k] - dt);
@@ -482,12 +488,13 @@ export class Player extends Actor {
 
     // 대시(회피) — 파괴광선 반동 등(action.noDash)은 끊을 수 없다. 랄토스 계열은 순간이동
     const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
-    if (inp.dashP && this.dashCd <= 0 && !this.dash && (this.onGround || this.airDash) && !(this.action && this.action.noDash)) {
-      if (!this.onGround) { this.airDash = false; this.airStalls = 0; }   // 공중 대시: 공중 평타 체공 횟수를 다시 채운다
+    if (inp.dashP && this.dashCd <= 0 && !this.dash && (this.onGround || this.airDash || this.airDashX > 0) && !(this.action && this.action.noDash)) {
+      if (!this.onGround) { if (this.airDash) this.airDash = false; else this.airDashX--; this.airStalls = 0; }   // 공중 대시: 공중 평타 체공 횟수를 다시 채운다 · 공중 기동 부스터 카드는 한 번 더 (airDashX)
       if (this.action) this.endAction(true);   // 스킬의 end() 로 남은 이펙트·상태를 정리
       this.dash = { t: 0, dir: dir || this.face };
       this.face = this.dash.dir; this.refacing();
       this.dashCd = .55 * this.mods.dashCdMul; this.inv = Math.max(this.inv, .26 + this.mods.dashInvAdd);
+      this.dashEvadeT = .26 + this.mods.dashInvAdd; this.evadeReady = !!this.mods.dashReload;   // 전술 재장전 스텝: 이 무적 동안 공격을 피하면 (takeHit)
       onDash(this, this.dash);   // 특성 카드: 대시 폭탄 · 분신 대시
       Cores.dash(this);         // 보스의 코어: 분화 용암 · 깨어진 세계로 잠복
       if (this.pas.teleport) this.teleport(this.dash);
@@ -525,14 +532,14 @@ export class Player extends Actor {
     if (this.flipT > 0 && (this.flipT -= dt) <= 0) { this.b.setGravityY(0); this.sprite.setFlipY(false); }
     if (this.launchT > 0 && ((this.launchT -= dt) <= 0 || this.b.velocity.y >= 0)) { this.launchT = 0; this.b.setMaxVelocity(700, 640); }   // 꼭대기에 닿으면 원래 낙하 속도 한도로
     if (this.stallT > 0 && ((this.stallT -= dt) <= 0 || this.onGround || this.flipT > 0)) { this.stallT = 0; if (!(this.flipT > 0)) this.b.setGravityY(0); }   // 공중 평타 저중력이 끝났다
-    const speed = sp.speed * this.mods.speedMul * (this.speedBuff > 0 ? 1.25 : 1) * slow * (this.mega.active ? 1.1 : 1) * this.statOf('speed') * this.buffMul('speed') * Cores.speedMul(this);
+    const speed = sp.speed * this.mods.speedMul * (this.speedBuff > 0 ? 1.25 : 1) * (this.bondHasteT > 0 ? BOND_HASTE : 1) * (this.galeT > 0 ? 1 + .25 * (this.mods.dashGale || 1) : 1) * slow * (this.mega.active ? 1.1 : 1) * this.statOf('speed') * this.buffMul('speed') * Cores.speedMul(this);
     if (this.dash && this.dash.tele) {   // 순간이동: 이미 옮겨졌다. 잠깐 멈춰 잔상만 남긴다
       this.dash.t += dt;
       b.setAllowGravity(false); b.setVelocity(0, 0);
       if (this.dash.t >= .12) { this.dash = null; b.setAllowGravity(true); }
     } else if (this.dash) {
       this.dash.t += dt;
-      b.setAllowGravity(false); b.setVelocity(this.dash.dir * 330, 0);
+      b.setAllowGravity(false); b.setVelocity(this.dash.dir * 330 * (1 + (this.mods.dashDist || 0)), 0);   // 잔상 회피 카드: 대시 거리 +12%
       this.dash.gt = (this.dash.gt || 0) - dt;
       if (this.dash.gt <= 0) { this.dash.gt = .025; sc.fx.ghost(this.sprite, typeColor(this.types[0]), .55, 240); }
       onDashTick(this, this.dash, dt);   // 대시 진화 카드 (game/Perks.js): 아쿠아 제트 다단히트 · 화염 길 …
@@ -554,7 +561,7 @@ export class Player extends Actor {
 
     // 점프 (코요테 타임 + 입력 버퍼 + 다단 점프 + 발판 내려가기)
     const ground = this.onGround;
-    if (ground) { this.coyote = .1; this.jumpsUsed = 0; this.airDash = true; this.airStalls = 0; } else this.coyote -= dt;
+    if (ground) { this.coyote = .1; this.jumpsUsed = 0; this.airDash = true; this.airDashX = Math.floor(this.mods.extraAirDash || 0); this.airStalls = 0; } else this.coyote -= dt;
     if (inp.jumpP) { this.jbuf = .12; this.jbufDown = !!(inp.downAim ?? inp.down); } else this.jbuf -= dt;
     if (this.jbuf > 0 && !this.dash && !(a && a.mm === 0)) {
       // 하향 점프(↓ + 점프)는 일반 점프와 완전히 따로: 이 분기에 들어오면 위로 뛰는 점프는 절대 하지 않는다
@@ -574,7 +581,7 @@ export class Player extends Actor {
 
     // 행동 진행 (스라크 계열은 모든 행동이 빠르다)
     if (a) {
-      a.t += dt * (this.pas.atkSpeed || 1) * (this.boltT > 0 ? 1.4 : 1);   // 제크로무의 뇌격 코어: 패링 뒤 5초간 공격 속도 +40%
+      a.t += dt * (this.pas.atkSpeed || 1) * (this.boltT > 0 ? 1.4 : 1) * (this.bondHasteT > 0 ? BOND_HASTE : 1) * (a.gale ? 1.5 : 1);   // 천공의 숨결 +20% · 질풍의 추진력: 대시 뒤 첫 평타 1.5배   // 제크로무의 뇌격 코어: 패링 뒤 5초간 공격 속도 +40%
       if (a.update) a.update(this, a, dt);
       while (a.ev && a.evi < a.ev.length && a.t >= a.ev[a.evi][0]) { a.ev[a.evi][1](); a.evi++; }
       if (this.action === a && a.t >= a.dur) this.endAction();
@@ -708,6 +715,7 @@ export class Player extends Actor {
       const step = this.combo % 3;
       action = SKILL_IMPL[id](this, step);
       action.comboStep = true;
+      if (this.galeHit) { action.gale = true; this.galeHit = false; }   // 질풍의 추진력 카드 (대시 직후 첫 평타)
       this.applyBoost(action, id, step === 2);
       // 묵직한 3타 리듬: 동작은 느리게 · 한 방은 세게 · 3타는 피니시 (강한 넉백 · 역경직 — Combat.damageEnemy)
       action.dur *= COMBO_TEMPO;
@@ -723,6 +731,7 @@ export class Player extends Actor {
     } else {
       action = SKILL_IMPL[id](this, 0);
       m.cd[slot] = this.cdOf(id);
+      if (this.counterT > this.scene.time.now) { this.counterT = 0; this.counterBuffT = this.scene.time.now + 1500; this.scene.fx.floatText(this.x, this.b.y - 22, '반격의 일격! 피해 +40%', '#ffe36a', 10); }   // 반격의 일격 카드: 패링 뒤 2초 안의 다음 기술 (Combat.damageEnemy)
       // 시전 오라: 기술 속성 색 고리 + 발밑에서 피어오르는 불티 (X·C 기술 공통)
       const col = typeColor(SKILLS[id].type), sc = this.scene;
       sc.fx.ring(this.x, this.y, 22, col, 220); sc.fx.glow(this.x, this.y, 22, col, 180, .6);
@@ -874,7 +883,7 @@ export class Player extends Actor {
     if (this.action) this.endAction(true);
     this.chg.t = 0; this.chg.lvl = 0; this.chg.fullAt = null; this.chgAura.setVisible(false);
     this.b.setVelocityX(0);
-    this.startAction({ dur: PARRY_WIN, mm: 0, noDash: true, lockFace: 'hard', anim: 'Idle', parry: true }, 'parry');
+    this.startAction({ dur: this.parryWin(), mm: 0, noDash: true, lockFace: 'hard', anim: 'Idle', parry: true }, 'parry');
     this.squash(1.25, .78);
     // 반달 가드 실드 (푸른 · 은빛) + 육각 배리어 잔상
     const g = sc.add.graphics().setDepth(23).setBlendMode(Phaser.BlendModes.ADD), cx = this.x + f * 6, cy = this.y - 2;
@@ -887,24 +896,25 @@ export class Player extends Actor {
     };
     draw(1);
     this.parryFx = g;
-    sc.tweens.addCounter({ from: 1, to: .5, duration: PARRY_WIN * 1000, onUpdate: tw => { if (g.scene) draw(tw.getValue()); } });
+    sc.tweens.addCounter({ from: 1, to: .5, duration: this.parryWin() * 1000, onUpdate: tw => { if (g.scene) draw(tw.getValue()); } });
     sc.fx.burst(cx + f * 20, cy, [0x6ac8ff, 0xffffff], 6, 60, { grav: 0, bounce: false, glow: true, life: .2 });
     Sfx.play('stance');
   }
   // 지금 열린 패링 판정 (패링 자세 동안만): { x, y, r } — 몸 둘레 · 전방 실드
   parryZone() {
     const a = this.action;
-    return a && a.parry && !a.parried && a.t <= PARRY_WIN ? { x: this.x + this.face * 6, y: this.y - 2, r: PARRY_R } : null;
+    return a && a.parry && !a.parried && a.t <= this.parryWin() ? { x: this.x + this.face * 6, y: this.y - 2, r: PARRY_R } : null;
   }
   inParry(z, x, y, r = 0) { return Math.hypot(x - z.x, y - z.y) <= z.r + r; }
   // 헛방: 실드가 깨져 흩어지고 자세가 무너진다
   parryWhiff() {
     const sc = this.scene;
-    this.parryCd = PARRY_CD;
+    const steady = this.mods.parryCdMul || 1;   // 굳건한 방어 태세 카드: 헛방 쿨타임 · 무방비 후딜레이 -25%
+    this.parryCd = PARRY_CD * steady;
     sc.fx.burst(this.x + this.face * 20, this.y - 2, [0x8a9ab0, 0xbfe6ff], 12, 110, { glow: true, life: .35 });
     sc.fx.floatText(this.x, this.b.y - 18, 'MISS', '#9aa6b8', 10);
     Sfx.play('crack');
-    this.startAction({ dur: WHIFF_T, mm: 0, noDash: true, lockFace: 'hard', anim: 'Idle', whiff: true }, 'whiff');
+    this.startAction({ dur: WHIFF_T * steady, mm: 0, noDash: true, lockFace: 'hard', anim: 'Idle', whiff: true }, 'whiff');
     this.squash(.85, 1.1);
   }
   // 연속 패링 점감: 마지막 패링에서 PARRY_CHAIN_T 초 안에 다시 패링하면 연쇄 (parryN) — 반사 피해 100 → 65 → 40 → 25 → 15% · 그로기 누적 100 → 60 → 35 → 15 → 0%
@@ -926,6 +936,7 @@ export class Player extends Actor {
     sc.fx.burst(x, y, [0xffe36a, 0xffffff, 0x6ac8ff], Math.round(20 * s), 220, { glow: true, grav: 0, bounce: false, life: .32 });
     sc.fx.floatText(this.x, this.b.y - 24, first ? '⚡ PERFECT PARRY!' : `PARRY x${ch.n} (${Math.round(ch.dmg * 100)}%)`, first ? '#ffe36a' : ch.dmg >= .4 ? '#f0d090' : '#c8c0b0', first ? 13 : 11);
     Cores.parry(this);   // 보스의 코어: 제크로무 — 화면 안 모든 적에게 낙뢰 · 공격 속도 +40% (연속 패링이면 그만큼 약하게)
+    onParry(this, x, y, kind, ch);   // 패링 카드 (game/Perks.js): 철벽의 호흡 회복 · 충격파 카운터 · 반격의 일격
     sc.fx.hitStop(100);
     const cam = sc.cameras.main;
     if (!cam.zoomEffect.isRunning) { const z0 = cam.zoom; cam.zoomTo(z0 * 1.05, 60, 'Quad.easeOut', true); sc.time.delayedCall(100, () => cam.zoomTo(z0, 220, 'Sine.easeOut', true)); }
@@ -947,7 +958,7 @@ export class Player extends Actor {
     const show = this.parryGaugeT > 0 && this.parryCd > 0;
     if (!show) { if (this.parryGauge) this.parryGauge.clear(); return; }
     const g = this.parryGauge || (this.parryGauge = this.scene.add.graphics().setDepth(60));
-    const x = this.x + 16, y = this.top - 6, k = this.parryCd / PARRY_CD;
+    const x = this.x + 16, y = this.top - 6, k = this.parryCd / (PARRY_CD * (this.mods.parryCdMul || 1));
     g.clear();
     g.fillStyle(0x1a1a24, .7); g.fillCircle(x, y, 7);
     g.fillStyle(0x9aa0b0, .9); g.fillPoints([{ x: x - 4, y: y - 4 }, { x: x + 4, y: y - 4 }, { x: x + 4, y: y }, { x, y: y + 5 }, { x: x - 4, y }], true);
@@ -1033,6 +1044,10 @@ export class Player extends Actor {
     const blocked = this.dash || (a && (a.dive || a.slot === 'zmove' || a.slot === 'charge' || a.parry || a.whiff));
     if (inp.zH && !blocked) {
       c.t += dt;
+      if (this.counterT > sc.time.now && c.t >= .12) {   // 반격의 일격 카드: 패링 뒤 2초 안의 차징은 즉시 완충 (평타 한 번 누르기와 가르려고 0.12초는 눌러야)
+        this.counterT = 0; c.t = Math.max(c.t, this.chargeAt(this.chargeMax() - 1));
+        sc.fx.floatText(this.x, this.b.y - 22, '반격의 일격! 즉발 차징', '#ffe36a', 10);
+      }
       const max = this.chargeMax();
       let lvl = 0; for (let k = 0; k < max; k++) if (c.t >= this.chargeAt(k)) lvl = k + 1;
       const col = typeColor(this.chargeType());
@@ -1337,7 +1352,7 @@ export class Player extends Actor {
 
   takeHit(dmg, type, srcX, o = {}) {
     const sc = this.scene, a = this.action;
-    if (!o.force && (this.inv > 0 || this.intangible || this.dash)) return false;
+    if (!o.force && (this.inv > 0 || this.intangible || this.dash)) { if (this.evadeReady && (this.dash || this.dashEvadeT > 0)) this.dashReload(); return false; }
     if (sc.testGod) return false;   // 테스트룸: 무적 (보스 패턴 구경)
     // 패링 자세(지상 ↓ + Z): 몸 둘레 70px 안에서 들어온 근접 공격을 받아친다 (투사체는 Combat 이 먼저 반사)
     const pz = !o.noParry && srcX != null && this.parryZone();
@@ -1382,8 +1397,31 @@ export class Player extends Actor {
     return true;
   }
 
+  // 전술 재장전 스텝 카드: 대시 무적으로 공격을 피했다 → 쿨타임 중인 기술(Z · X · C)의 남은 쿨타임 -0.8초 (대시 한 번에 한 번)
+  dashReload() {
+    const m = this.m, cut = .8 * (this.mods.dashReload || 1), sc = this.scene;
+    this.evadeReady = false;
+    for (const k of ['z', 'x', 'c']) if (m.cd[k] > 0) m.cd[k] = Math.max(0, m.cd[k] - cut);
+    sc.fx.floatText(this.x, this.b.y - 20, `회피! 쿨타임 -${cut.toFixed(1)}초`, '#9affd8', 10);
+    sc.fx.ring(this.x, this.y, 24, 0x9affd8, 260);
+  }
+  // 유대의 기적 (유대의 불꽃 Lv.6 완전체 유대의 태양 — data/bond.js): 쓰러질 피해를 받으면 지방마다 1번 체력 30%로 즉시 부활
+  bondMiracle() {
+    const sc = this.scene, m = this.m;
+    if ((sc.bondStage || 0) < 6 || this.bondMiracleUsed) return false;
+    this.bondMiracleUsed = true;
+    m.hp = Math.max(1, Math.round(m.maxhp * BOND_MIRACLE_HP)); m.alive = true; this.inv = 2.5;
+    sc.fx.hitStop(240); sc.cameras.main.flash(500, 255, 220, 140, true); sc.fx.shake(.02, 500);
+    for (let k = 0; k < 5; k++) sc.time.delayedCall(k * 90, () => { if (this.scene) sc.fx.ring(this.x, this.y - 6, 24 + k * 22, k % 2 ? 0xff3a2a : 0xffd870, 520); });
+    sc.fx.burst(this.x, this.y, [0xffd870, 0xff5a3a, 0xffffff], 36, 200, { glow: true, up: 120, grav: -60, bounce: false, life: .9 });
+    sc.events.emit('banner', '🔥 유대의 기적!', '완전체 유대의 태양이 다시 일으켜 세웠다 · 체력 30% (지방마다 1번)');
+    Sfx.play('mega');
+    return true;
+  }
+
   faint() {
     if (Cores.revive(this)) return;   // 칠색조의 무지개 코어: 불사조 부활
+    if (this.bondMiracle()) return;   // 유대의 불꽃 Lv.6: 유대의 기적
     const sc = this.scene, m = this.m;
     m.hp = 0; m.alive = false;
     sc.fx.burst(this.x, this.y, [typeColor(this.typesOf(m)[0]), 0xffffff], 30, 160, { glow: true });

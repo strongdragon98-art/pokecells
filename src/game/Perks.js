@@ -1,8 +1,10 @@
 // 기술머신 특성 카드(perk): 카드로 받은 포켓몬에게만 남는 상시 효과 (Player.members[i].perks = { id: 겹친 수 })
 //  수치형 효과는 mods 로 합쳐지고(data/items.js computeMods), 적중·피격·처치 때 터지는 효과는 아래 onHit / onHurt / onKill 갈고리가 맡는다
 //  등급: 커먼 · 레어 · 유니크 · 전설 (data/tm.js GRADE) — max: 겹칠 수 있는 최대 수 (전설 유물은 1개)
+//  step: 합성할 때마다 기본 효과의 60% 대신 이만큼 더한다 (곱해지는 값은 '줄어드는 양'에 — 경량화 스텝 -15% → -25% → -35% → -45%)
 import Phaser from 'phaser';
 import { Sfx } from '../systems/Audio.js';
+import { typeColor } from '../data/types.js';
 
 export const PERKS = {
   // ================= ⚪ 커먼 =================
@@ -60,6 +62,21 @@ export const PERKS = {
   d_shadow: { grade: '유니크', cat: '대시 진화', name: '⚡ 대시 진화: 그림자 질주', desc: '대시 무적 시간 +0.2초. 스쳐 지나간 적에게 저주(받는 피해 +30%)를 건다.', max: 1, mods: { dashShadow: 1, dashInvAdd: .2 } },
   d_nova: { grade: '전설', cat: '대시 진화', name: '⚡ 대시 진화: 신속의 섬광', desc: '대시 쿨타임 -50%. 대시가 끝날 때마다 둘레에 빛의 충격파가 터진다.', max: 1, mods: { dashCdMul: .5, dashNova: 1 } },
 
+  // ================= 💨 대시 · 🛡️ 패링 (모든 포켓몬 공용 · 커먼 · 레어) =================
+  //  효과: Player(대시 거리 · 공중 대시 · 패링 판정 · 헛방 쿨타임 · 회피 재장전 · 반격의 일격) · 아래 onDash(질풍 · 스파크) · onParry(회복 · 충격파 · 반격) · Combat(증폭 반사탄)
+  c_lightstep: { grade: '커먼', cat: '대시', name: '💨 경량화 스텝', desc: '대시 재사용 쿨타임 -15% (합성할 때마다 10%p 더 — -25% · -35% · -45%).', max: 4, step: .1, mods: { dashCdMul: .85 } },
+  c_afterimage: { grade: '커먼', cat: '대시', name: '💨 잔상 회피', desc: '대시 무적 시간 +0.08초 · 대시 거리 +12%.', max: 4, mods: { dashInvAdd: .08, dashDist: .12 } },
+  c_gale: { grade: '커먼', cat: '대시', name: '💨 질풍의 추진력', desc: '대시 직후 2초간 이동 속도 +25% · 다음 평타 1타가 1.5배 빨라진다.', max: 4, mods: { dashGale: 1 } },
+  r_airboost: { grade: '레어', cat: '대시', name: '💨 공중 기동 부스터', desc: '점프 중 공중 대시 횟수 +1회.', max: 2, mods: { extraAirDash: 1 } },
+  r_spark: { grade: '레어', cat: '대시', name: '💨 스파크 대시', desc: '대시한 길에 속성 정전기 흔적이 남아, 스쳐 지나간 적에게 평타 80% 피해 · 짧은 경직.', max: 4, mods: { dashSpark: 1 } },
+  r_reload: { grade: '레어', cat: '대시', name: '💨 전술 재장전 스텝', desc: '대시 무적으로 적의 공격을 피하면 쿨타임 중인 기술(Z · X · C)의 남은 쿨타임이 0.8초 줄어든다.', max: 4, mods: { dashReload: 1 } },
+  c_steady: { grade: '커먼', cat: '패링', name: '🛡️ 굳건한 방어 태세', desc: '↓ + Z 패링 헛방 뒤 재사용 쿨타임(1.8초) -25% · 무방비 후딜레이도 그만큼 짧아진다.', max: 4, mods: { parryCdMul: .75 } },
+  c_reflex: { grade: '커먼', cat: '패링', name: '🛡️ 예리한 반사 신경', desc: '↓ + Z 패링 성공 판정 시간 +20%.', max: 4, mods: { parryWinMul: 1.2 } },
+  c_breath: { grade: '커먼', cat: '패링', name: '🛡️ 철벽의 호흡', desc: '패링에 성공하면 체력을 최대 HP의 4% 즉시 회복 (합성하면 회복량 증가).', max: 4, mods: { parryHeal: .04 } },
+  r_amplify: { grade: '레어', cat: '패링', name: '🛡️ 증폭 반사경', desc: '패링으로 튕겨 낸 적 투사체의 크기 · 비행 속도 +30% · 반사 피해 +35%.', max: 4, mods: { reflectAmp: 1 } },
+  r_wave: { grade: '레어', cat: '패링', name: '🛡️ 충격파 카운터', desc: '근접 공격이나 투사체를 패링하는 순간 둘레 120px 에 충격파가 터져 주변 적을 밀쳐 내고 보스 그로기를 더 쌓는다.', max: 4, mods: { parryWave: 1 } },
+  r_counter: { grade: '레어', cat: '패링', name: '🛡️ 반격의 일격', desc: '패링 성공 뒤 2초 안에 Z 를 누르고 있으면 차징 샷이 즉시 완충 · 또는 그 안에 쓴 다음 기술 피해 +40%.', max: 4, mods: { parryCounter: 1 } },
+
   // ================= 🟡 전설 (태고의 유물) =================
   l_orb: { grade: '전설', cat: '유물', name: '태고의 유물: 생명의구슬', desc: '모든 최종 피해 +45%. 기술(X·C)을 쓸 때 체력 3% 소모, 적을 쓰러뜨리면 체력 3% 회복.', max: 1, mods: { allMul: 1.45, orbCost: true, killHeal: .03 } },
   l_band: { grade: '전설', cat: '유물', name: '태고의 유물: 구애머리띠', desc: 'Z칸 기술(기본 연타·근접) 피해 +60%.', max: 1, mods: { bandMul: 1.6 } },
@@ -70,7 +87,7 @@ export const PERKS = {
   l_storm: { grade: '전설', cat: '스킬 변이', name: '태고의 유물: 뇌신의 가호', desc: '적중 시 40% 확률로 연쇄 번개가 최대 5마리까지 튄다.', max: 1, mods: { chain: .4, chainN: 5 } }
 };
 
-const MUL = new Set(['atkMul', 'cdMul', 'hpMul', 'speedMul', 'dashCdMul', 'guard', 'swapCdMul', 'sizeMul', 'allMul', 'bandMul', 'specsMul', 'expMul']);
+const MUL = new Set(['atkMul', 'cdMul', 'hpMul', 'speedMul', 'dashCdMul', 'guard', 'swapCdMul', 'sizeMul', 'allMul', 'bandMul', 'specsMul', 'expMul', 'parryCdMul', 'parryWinMul']);
 const MAXED = new Set(['chain', 'chainN']);   // 겹치지 않고 큰 쪽을 쓴다 (연쇄 번개 · 뇌신의 가호)
 
 // 받은 특성 카드 → 수치 합계 (곱해지는 값은 곱하고, 나머지는 더한다)
@@ -82,7 +99,7 @@ export function perkMods(perks = {}) {
     for (const [k, v] of Object.entries(pk.mods)) {
       if (typeof v === 'boolean') out[k] = out[k] || v;
       else if (MAXED.has(k)) out[k] = Math.max(out[k] || 0, v);
-      else if (MUL.has(k)) out[k] = (out[k] ?? 1) * (1 + (v - 1) * (1 + .6 * (n - 1)));   // 중복 카드 합성: 강화 1단계마다 기본 효과의 60% 씩 더 (data/tm.js lvMul)
+      else if (MUL.has(k)) out[k] = (out[k] ?? 1) * (pk.step != null ? v + Math.sign(v - 1) * pk.step * (n - 1) : 1 + (v - 1) * (1 + .6 * (n - 1)));   // 중복 카드 합성: 강화 1단계마다 기본 효과의 60% 씩 더 (data/tm.js lvMul) · step 이 있으면 그만큼
       else out[k] = (out[k] || 0) + v * (1 + .6 * (n - 1));
     }
   }
@@ -253,6 +270,18 @@ export function onKill(p) {
 export function onDash(p, d) {
   const md = p.mods, sc = p.scene, x0 = p.x, y0 = p.y;
   d.hitSet = new Set(); d.tick = 0;
+  if (md.dashGale) { p.galeT = 2; p.galeHit = true; sc.fx.burst(x0, p.bottom - 2, [0xd8fff0, 0x8affd8], 8, 90, { angle: d.dir > 0 ? Math.PI : 0, spread: .5, up: 20, grav: 0, bounce: false, glow: true, life: .35 }); }   // 질풍의 추진력
+  if (md.dashSpark) {   // 스파크 대시: 지나간 길에 속성 정전기 흔적 → 스친 적에게 평타 80% · 짧은 경직 (적마다 한 번)
+    const hit = new Set(), type = p.types[0], col = typeColor(type);
+    sc.time.delayedCall(190, () => {
+      if (!p.scene || !sc.combat) return;
+      const x1 = p.x, L = Math.min(x0, x1) - 8, W = Math.abs(x1 - x0) + 16;
+      sc.combat.hitRect({ x: L, y: y0 - 16, w: W, h: 32 }, .8 * md.dashSpark, type, { proc: true, set: hit, stun: .35, kbx: 60, kby: -60, hs: 25 });
+      for (let k = 0; k < 2; k++) bolt(sc, x0, y0 + (k ? 6 : -6), x1, y0 + (k ? -4 : 4), col, 1.5, 320);
+      for (let x = L; x < L + W; x += 10) sc.fx.burst(x, y0 + (Math.random() - .5) * 14, [col, 0xffffff], 1, 40, { up: 10, grav: 0, bounce: false, glow: true, life: .5, size: 1 });
+      Sfx.play('zap');
+    });
+  }
   if (md.dashThunder) { thunderAt(p, x0); sc.time.delayedCall(210, () => { if (p.scene) thunderAt(p, p.x); }); }
   if (md.dashFlame || md.dashNova || md.dashDecoy) sc.time.delayedCall(200, () => {
     if (!p.scene || !sc.combat) return;
@@ -282,5 +311,27 @@ export function onDash(p, d) {
       for (let k = 0; k < 3; k++) sc.fx.ghost(p.sprite, 0xc8a0ff, .7 - k * .2, 300 + k * 80);
       sc.fx.slash((x0 + x1) / 2, y0, Math.max(14, W / 2), d.dir, 0xc8a0ff, { thick: 3 });
     });
+  }
+}
+
+// ---------------- 패링 성공 갈고리 (Player.doParry) ----------------
+//  철벽의 호흡: 체력 회복 · 충격파 카운터: 둘레 120px 충격파 + 보스 그로기 · 반격의 일격: 2초 동안 즉발 차징 · 다음 기술 피해 +40%
+export function onParry(p, x, y, kind, ch) {
+  const md = p.mods, sc = p.scene, m = p.m;
+  if (md.parryHeal && m.alive && m.hp < m.maxhp) {
+    p.heal(m.maxhp * md.parryHeal, true);
+    sc.fx.floatText(p.x, p.b.y - 34, `+${Math.round(m.maxhp * md.parryHeal)}`, '#7dff9a', 10);
+    sc.fx.burst(p.x, p.y, [0x7dff9a, 0xffffff], 8, 60, { grav: -40, bounce: false, glow: true, life: .4 });
+  }
+  if (md.parryWave && sc.combat) {
+    const R = 120;
+    sc.combat.hitCircle(p.x, p.y, R, .6 * md.parryWave * Math.max(.4, ch.dmg), p.types[0], { proc: true, kbx: 380, kby: -220, hs: 20 });
+    sc.fx.ring(p.x, p.y, R, 0xffe36a, 360); sc.fx.ring(p.x, p.y, R * .6, 0xffffff, 260); sc.fx.shake(.008, 160, 'hit');
+    const boss = sc.enemies.find(e => e.alive && e.boss && Math.hypot(e.x - p.x, e.y - p.y) < R + 60);
+    if (boss && boss.addStaggerRaw && ch.stag > 0) boss.addStaggerRaw(14 * md.parryWave * ch.stag);
+  }
+  if (md.parryCounter) {
+    p.counterT = sc.time.now + 2000;
+    sc.fx.floatText(p.x, p.b.y - 44, '반격 준비! (2초)', '#ffe36a', 9);
   }
 }

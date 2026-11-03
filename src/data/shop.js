@@ -26,7 +26,7 @@ export const NUGGET_KEYS = Object.keys(NUGGETS);
 //  영양제(vit): 포켓몬 한 마리의 능력치를 영구히 올린다 — 종류마다 VIT_MAX 번까지 (data/items.js computeMods)
 export const VIT_MAX = 5;
 export const USES = {
-  potion: { name: '상처약', cat: 'heal', heal: .4, desc: '포켓몬 하나의 체력을 40% 회복한다. 퀵슬롯 단축키로 싸우는 중에도 바로 (최대 3개 소지)' },
+  potion: { name: '상처약', cat: 'heal', heal: .4, desc: '포켓몬 하나의 체력을 40% 회복한다. 퀵슬롯 단축키로 싸우는 중에도 바로 (최대 3개 소지 · 유대의 불꽃이 자라면 회복량 · 소지 한도가 오른다)' },
   super_potion: { name: '고급상처약', cat: 'heal', heal: .7, desc: '포켓몬 하나의 체력을 70% 회복한다.' },
   full_restore: { name: '풀회복약', cat: 'heal', heal: 1, desc: '포켓몬 하나의 체력을 모두 회복한다.' },
   revive: { name: '기력의조각', cat: 'revive', revive: .5, desc: '쓰러진 포켓몬 하나를 체력 50% 로 깨운다.' },
@@ -83,9 +83,9 @@ export function boughtHere(p, key, id) { return ((p.shopLog || {})[key] || {})[i
 //  특수 핵심: 키스톤 · Z링을 이야기 속에서 얻은 뒤에만 — 파티 · 보관함 포켓몬 가운데 아직 돌/크리스탈이 없는 것만 고가에
 export function shopGoods(p, key) {
   const out = SHOP_STOCK.map(s => {
-    if (s.carry) {   // 소지 한도: 지금 가진 것과 합쳐 carry 개까지 (쓴 만큼만 다시 산다)
-      const have = (p.uses || {})[s.id] || 0, left = Math.max(0, s.carry - have);
-      return { ...s, left, tag: `소지 ${have}/${s.carry}`, lock: left === 0 ? `소지 한도 초과 (최대 ${s.carry}개)` : null };
+    if (s.carry) {   // 소지 한도: 지금 가진 것과 합쳐 carry 개까지 (쓴 만큼만 다시 산다) · 상처약은 유대의 불꽃 Lv.2 · Lv.5 에 4 · 5개 (Player.potionMax)
+      const carry = s.id === 'potion' && p.potionMax ? p.potionMax : s.carry, have = (p.uses || {})[s.id] || 0, left = Math.max(0, carry - have);
+      return { ...s, carry, left, tag: `소지 ${have}/${carry}`, lock: left === 0 ? `소지 한도 초과 (최대 ${carry}개)` : null };
     }
     const left = s.stock ? Math.max(0, s.stock - boughtHere(p, key, s.id)) : null;
     return { ...s, left, tag: left === null ? '' : left === 0 ? '품절' : `남은 ${left}`, lock: left === 0 ? '품절 — 다른 시내의 포켓샵에서' : null };

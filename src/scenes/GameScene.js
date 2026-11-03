@@ -7,7 +7,8 @@ import { WILD, DEX_ORDER, SPECIES, SKILLS, TIERS, wildForm, pickWildStage, EXP_P
 import { ITEMS, RANDOM_ITEM_KEYS, ITEM_DROP, CONSUMABLES, MAX_EQUIP } from '../data/items.js';
 import { stoneName, crystalName, zTypeOf, usesStone } from '../data/gear.js';
 import { coreOfBoss } from '../data/cores.js';
-import { NUGGETS, eliteNuggets, bossNuggets, martKey, POTION_MAX, POTION_HEAL, POTION_CD } from '../data/shop.js';
+import { NUGGETS, eliteNuggets, bossNuggets, martKey, POTION_CD } from '../data/shop.js';
+import { BOND_POWERS, BOND_SUN_ATK, BOND_HASTE_T, BOND_SHIELD_T, HEROES_KEY, potionMaxAt } from '../data/bond.js';
 import { typeColor } from '../data/types.js';
 import { PLAT_SET, groundYAt, T as TILE_ID } from '../game/Level.js';
 import { buildChapter, roomAt, CW, CH } from '../game/World.js';
@@ -44,7 +45,7 @@ import { Settings, keyLabel } from '../systems/Settings.js';
 import { Save } from '../systems/Save.js';
 import { RunSave, seeded, newSeed, snapshotWorld, applyWorld, snapshotPlayer, restorePlayer } from '../systems/RunSave.js';
 import { itemArt, shade, TILE_MARGIN, TILE_SPACING } from '../systems/Textures.js';
-import { rollCards, applyCard, TM_CARDS, heldLv, dressCard, CARD_MAX_LV } from '../data/tm.js';
+import { rollCards, applyCard, TM_CARDS, heldLv, dressCard, CARD_MAX_LV, DATA_KILLS, BONUS_CARDS } from '../data/tm.js';
 import { PERKS, onKill as perkKill } from '../game/Perks.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -153,6 +154,14 @@ const CYNTHIA_LINES = [
   '…정신이 드는 것 같아. 너희가 날 붙잡아 준 거구나. 고마워.',
   '무한다이노와 그 배후 세력이 레드의 에너지를 이용해 창기둥의 시공간마저 비틀어버렸어. 네 안의 『유대의 불꽃』이 처음보다 훨씬 거대하고 눈부시게 타오르고 있네... 기라티나마저 정화한다면, 마침내 레드가 갇힌 심장부로 갈 길이 열릴 거야!'
 ];
+// 빛나는 TM 코어 줍기 그림 (12×16): 보랏빛 유리 캡슐 · 금빛 심 · 위아래 금속 마개
+function tmCoreTexture(scene) {
+  if (scene.textures.exists('tmcore')) return;
+  const t = scene.textures.createCanvas('tmcore', 12, 16), c = t.getContext(), F = (x, y, w, h, col) => { c.fillStyle = col; c.fillRect(x, y, w, h); };
+  F(2, 0, 8, 3, '#8a8494'); F(3, 0, 6, 1, '#d8d4e0'); F(2, 13, 8, 3, '#8a8494'); F(3, 15, 6, 1, '#4a4652');
+  F(1, 3, 10, 10, '#3a1a6a'); F(2, 3, 8, 10, '#6a3ad0'); F(3, 4, 2, 8, '#b08aff'); F(5, 6, 3, 4, '#ffd25a'); F(6, 7, 1, 2, '#ffffff'); F(9, 4, 1, 8, '#2a1050');
+  t.refresh();
+}
 const BOND_ATK = .03;   // 유대의 불꽃 정화 단계마다 모든 공격 피해 +3% (Combat.damageEnemy)
 const TEST_SEED = 4242;   // 테스트 모드의 실제 지방 맵 시드 (지방마다 + ci — 늘 같은 지형으로 검수)
 const LEGEND_GHOSTS = ['mewtwo', 'ho-oh', 'rayquaza', 'dialga', 'palkia', 'giratina-origin', 'zekrom', 'reshiram', 'arceus'];   // 시네마틱에 나오는 정화한 전설들의 환영 (시트가 있는 것만)
@@ -235,7 +244,7 @@ export default class GameScene extends Phaser.Scene {
     if (rs) {
       this.stageIdx = rs.stageIdx; this.seeds = rs.seeds.slice(); this.unlockedHubs = rs.hubs.slice(); this.lastCenter = rs.lastCenter;
       this.purifiedSet = new Set(rs.purified || []);
-      this.bondStages = new Set(this.purifiedSet);   // 이어하기: 정화한 지방만큼 유대의 불꽃도 자라 있다
+      this.bondStages = new Set(rs.bond || [...this.purifiedSet, ...(this.purifiedSet.has(4) ? [HEROES_KEY] : [])]);   // 이어하기: 정화한 만큼 유대의 불꽃도 자라 있다 (예전 저장: 정화한 지방 + 하나를 정화했으면 용나선탑 흑백 영웅)
       Object.assign(this.runStats, { kills: rs.stats.kills, unlocked: rs.stats.unlocked.slice(), items: rs.stats.items, start: this.time.now - rs.stats.time * 1000 });
     }
     if (this.test) { this.testOpt = { ci: 0, ai: 0, arena: null, tall: false }; this.testGod = false; this.testNoCd = false; this.testChain = false; this.dummy = null; this.testReal = false; this.testWorlds = []; this.testSkipTo = null; }   // testReal: 실제 지방 맵으로 워프해 있다 (testWorlds)
@@ -325,7 +334,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.fx && this.fx.pool) for (const o of this.children.list.slice()) if (o.pooled && !o.released && o.texture && o.texture.key.startsWith('sheet:')) this.fx.pool.release(o);
     if (this.player && this.spriteChapter !== si) Sprites.trim([...this.player.members.map(m => m.key), ...chapterSprites(si), 'corviknight']);
     this.spriteChapter = si;
-    if (this.player) this.player.rebornUsed = false;   // 지방마다 부활 1번
+    if (this.player) { this.player.rebornUsed = false; this.player.bondMiracleUsed = false; }   // 지방마다 부활 1번 (칠색조 코어 · 유대의 기적)
     Sprites.ensure(chapterSprites(si));
     this.level = level;
     this.explored = W.explored || (W.explored = new Uint8Array(level.cols * level.rows));   // 지도: 화면에 한 번이라도 들어온 칸
@@ -600,7 +609,7 @@ export default class GameScene extends Phaser.Scene {
 
   // 유대의 불꽃 정화 단계 0~6 (HUD 불꽃 Lv = 단계 + 1, 최대 6 — UIScene · 모든 공격 피해 +BOND_ATK × 단계 — Combat)
   get bondStage() { return this.bondStages ? Math.min(6, this.bondStages.size) : 0; }
-  get bondMul() { return 1 + BOND_ATK * this.bondStage; }
+  get bondMul() { return 1 + BOND_ATK * this.bondStage + (this.bondStage >= 6 ? BOND_SUN_ATK : 0); }   // Lv.6 완전체 유대의 태양: +20% 더 (data/bond.js)
   // 지금 방 지역의 곡 (지역마다 bgm 이 있으면 그것 · 없으면 지방 곡)
   areaBgm() { const a = this.room && this.stage.areas[this.room.ai]; return (a && a.bgm) || this.stage.bgm; }
 
@@ -912,6 +921,10 @@ export default class GameScene extends Phaser.Scene {
     if (this.overlay === kind) {
       this.overlay = null; this.setFrozen(false); this.consumeInput(); this.player.zBuf = 0; this.events.emit('overlay', null);
       if (kind === 'join') this.afterJoin();
+      if (kind === 'tm' && this.tmActive && this.tmActive.bonus && !this.tmActive.used) {   // 현장 전송 카드를 고르지 않고 닫았다: 같은 카드로 잠시 뒤 다시
+        (this.bonusQueue = this.bonusQueue || []).unshift(this.tmActive); this.tmActive = null; this.bonusT = 8;
+        this.events.emit('toast', '📡 받지 않은 기술머신 카드 — 8초 뒤 다시 전송된다', 'tm');
+      }
       if (kind === 'shop') { this.shopClosedAt = this.time.now; if (this.shopDirty) { this.shopDirty = false; this.saveRun(true, 'shop'); } }
       if (kind === 'talk' && this.talk && this.talk.onEnd) { const f = this.talk.onEnd; this.talk.onEnd = null; this.time.delayedCall(150, f); }   // 이야기 NPC 보상
       return;
@@ -1044,7 +1057,7 @@ export default class GameScene extends Phaser.Scene {
     this.worlds.forEach((W, ci) => { if (W) worlds[ci] = snapshotWorld(W); });
     const ok = RunSave.write({
       v: 1, at: Date.now(), stageIdx: this.stageIdx, stageName: this.stage.name, pos, seeds: this.seeds.slice(), worlds,
-      hubs: this.unlockedHubs.slice(), lastCenter: c, purified: [...this.purifiedSet],
+      hubs: this.unlockedHubs.slice(), lastCenter: c, purified: [...this.purifiedSet], bond: [...this.bondStages],
       stats: { kills: this.runStats.kills, unlocked: this.runStats.unlocked.slice(), items: this.runStats.items, time: (this.time.now - this.runStats.start) / 1000 },
       player: snapshotPlayer(p)
     });
@@ -1106,21 +1119,31 @@ export default class GameScene extends Phaser.Scene {
 
   // ---------------- 상처약 퀵슬롯: 단축키(기본 A) · 모바일 🧪 버튼 · HUD 칸 클릭 ----------------
   //  출전 중인 포켓몬 체력을 최대 체력의 40% 즉시 회복 · 재사용 3초 · 최대 3개 소지 (포켓샵에서 산다)
+  //  유대의 불꽃 권능 (data/bond.js): Lv.1 회복 55% · Lv.2 최대 4개 · Lv.3 5초 이동 · 공격 속도 +20% · Lv.4 회복 70% + 1초 무적 · Lv.5 최대 5개
   quickPotion() {
     const p = this.player;
     if (!p || this.paused || this.over || this.transitioning) return;
-    const m = p.m, n = p.uses.potion || 0;
+    const m = p.m, n = p.uses.potion || 0, max = p.potionMax, heal = p.potionHeal, lv = this.bondStage;
     if (!m.alive) return;
     if (p.potionCd > 0) { Sfx.play('deny'); return; }
-    if (!n) { Sfx.play('deny'); this.events.emit('toast', `상처약이 없다 · 포켓샵에서 살 수 있다 (최대 ${POTION_MAX}개)`, 'potion'); return; }
+    if (!n) { Sfx.play('deny'); this.events.emit('toast', `상처약이 없다 · 포켓샵에서 살 수 있다 (최대 ${max}개)`, 'potion'); return; }
     if (m.hp >= m.maxhp) { Sfx.play('deny'); this.events.emit('toast', `${p.formName()}의 체력은 이미 가득하다`, 'potion'); return; }
     if (n > 1) p.uses.potion = n - 1; else delete p.uses.potion;
-    p.heal(m.maxhp * POTION_HEAL);
+    p.heal(m.maxhp * heal);
     p.potionCd = POTION_CD;
     Sfx.play('heal');
     this.fx.ring(p.x, p.y, 30, 0x5aff8a, 360); this.fx.glow(p.x, p.y, 34, 0x5aff8a, 420, .8);
     this.fx.burst(p.x, p.y, [0x7dff9a, 0xd8ffe0, 0xffffff], 18, 90, { glow: true, grav: -80, bounce: false, up: 60 });
-    this.events.emit('toast', `🧪 상처약! ${p.formName()} 체력 ${Math.round(POTION_HEAL * 100)}% 회복 (남은 ${n - 1}/${POTION_MAX})`, 'potion');
+    const extra = [];
+    if (lv >= 3) {   // 천공의 숨결: 5초 가속 (초록 바람)
+      p.bondHasteT = BOND_HASTE_T; extra.push('5초 가속');
+      for (let k = 0; k < 2; k++) this.time.delayedCall(k * 110, () => { if (this.player) this.fx.ring(p.x, p.y, 26 + k * 16, 0x8affd8, 320); });
+    }
+    if (lv >= 4) {   // 시공의 등불: 1초 피해 면역 보호막 (황금빛 고리)
+      p.inv = Math.max(p.inv, BOND_SHIELD_T); p.bondShieldT = BOND_SHIELD_T; extra.push('1초 무적');
+      this.fx.ring(p.x, p.y, 40, 0xffe08a, 420); this.fx.glow(p.x, p.y, 40, 0xffd870, 500, .9);
+    }
+    this.events.emit('toast', `🧪 상처약! ${p.formName()} 체력 ${Math.round(heal * 100)}% 회복${extra.length ? ' · 🔥 ' + extra.join(' · ') : ''} (남은 ${n - 1}/${max})`, 'potion');
   }
 
   // ---------------- 마을: 포켓몬센터 · 자판기 ----------------
@@ -1336,7 +1359,7 @@ export default class GameScene extends Phaser.Scene {
       const cap = card.kind === 'perk' ? Math.min(CARD_MAX_LV, PERKS[card.id].max - 1) : CARD_MAX_LV;
       for (let k = 0; k < CARD_MAX_LV && heldLv(m, card) < Math.min(card.sandboxLv, cap); k++) msg = applyCard(p, m, card, slot);
     }
-    if (it.legend || it.sandbox) it.used = true; else this.props.markUsed(it);   // 히든 전설 보상 카드 · 샌드박스 카드는 제단이 없다
+    if (it.legend || it.sandbox || it.bonus) it.used = true; else this.props.markUsed(it);   // 히든 전설 보상 · 샌드박스 · 현장 전송(전투 데이터 · 빛나는 TM 코어) 카드는 제단이 없다
     this.tmActive = null;
     this.toggleOverlay('tm');
     const who = p.formName(m);
@@ -1427,6 +1450,7 @@ export default class GameScene extends Phaser.Scene {
     this.updateCracks(dt);
     this.updateArenaDrops(dt);
     this.updateCranes(dt);
+    if ((this.bonusT = (this.bonusT || 0) - dt) <= 0) { this.bonusT = .5; this.tryBonusCards(); }   // 현장 기술머신 전송 (전투 데이터 · 빛나는 TM 코어)
     this.updateAbyss(dt);
     this.fx.update(dt);
     const cam = this.cameras.main;
@@ -2703,10 +2727,12 @@ export default class GameScene extends Phaser.Scene {
       this.spawnPickup('candy', e.x, e.y - 4);
       eliteNuggets(this.stageIdx).forEach((id, k) => this.spawnPickup('nugget', e.x - 8 + k * 8, e.y - 6, id));
       if (Math.random() < .25) this.spawnPickup('item', e.x + 6, e.y - 4, pick(ELITE_TOOLS));
+      this.spawnPickup('tmcore', e.x, e.y - 12);   // 빛나는 TM 코어 100%: 주우면 그 자리에서 기술머신 카드 3장
       this.fx.ring(e.x, e.y, 40, 0xffd27a, 420);
     }
     else if (Math.random() < ITEM_DROP.wild) this.spawnPickup('item', e.x, e.y, pick(RANDOM_ITEM_KEYS));   // 야생은 아이템 대신 가끔 오렌열매
     else if (Math.random() < .16) this.spawnPickup('oran', e.x, e.y);
+    if (!e.elite) this.addBattleData(e);   // 일반 야생: 전투 데이터 축적 (12마리마다 카드)
     const r = Save.addKill(e.line || e.key);   // 정화 진행도는 진화 계열로 센다 (피카츄를 정화해도 피츄 계열 +1)
     if (r) {
       if (r.unlockedNow) { this.runStats.unlocked.push(e.line); this.queueJoin(e.line, 'dex'); }   // 10번 정화: 정화 완료 쇼케이스
@@ -2885,6 +2911,7 @@ export default class GameScene extends Phaser.Scene {
     const p = this.player, room = e.room, ch = this.chain, si = this.stageIdx, ex = e.x, ey = e.y, name = e.name;
     const last = !ch || ch.i >= ch.list.length - 1, pair = e.partner && e.partner.alive;
     const core = !!(room && room.type === 'boss' && last && !pair && si < STAGES.length - 1);
+    const heroes = !!(room && room.spiralTop && last && !pair);   // 용나선탑 꼭대기 제크로무 → 레시라무: 진실과 이상의 성화 (유대의 불꽃 Lv.5 — data/bond.js)
     for (let k = 0; k < 3; k++) this.time.delayedCall(k * 120, () => { if (this.player) this.fx.ring(p.x, p.y - 6, 20 + k * 18, k % 2 ? BOND_CRIMSON : BOND_GOLD, 420); });
     this.fx.glow(p.x, p.y - 6, 30, BOND_GOLD, 500, .9);
     for (let k = 0; k < 12; k++) this.time.delayedCall(k * 40, () => { if (this.player && this.level) this.bondOrb(p.x, p.y - 6, { x: ex + (Math.random() - .5) * 36, y: ey + (Math.random() - .5) * 30 }, k % 2 ? BOND_CRIMSON : BOND_GOLD, 420, .55); });
@@ -2907,16 +2934,30 @@ export default class GameScene extends Phaser.Scene {
       for (let k = 0; k < 3; k++) this.time.delayedCall(k * 110, () => { if (this.player) this.fx.ring(q.x, q.y - 6, 24 + k * 22, k % 2 ? BOND_CRIMSON : BOND_GOLD, 500); });
       this.fx.burst(q.x, q.y - 6, [BOND_GOLD, BOND_CRIMSON, 0xffffff], 24, 160, { glow: true, up: 80, grav: -40, bounce: false, life: .7 });
       if (core) this.bondStageGain(si);
+      else if (heroes) this.bondStageGain(HEROES_KEY);
       else { this.events.emit('bond', `🔥 유대의 불꽃이 ${name}의 침식을 태워 냈다`, null); Sfx.play('purify'); }
     });
   }
-  // 정화 단계 +1: HUD 불꽃이 커지고 화면 위쪽 알림 (같은 지방은 한 번만)
-  bondStageGain(si) {
-    if (this.test || this.bondStages.has(si)) return;
-    this.bondStages.add(si);
+  // 정화 단계 +1: HUD 불꽃이 커지고 화면 위쪽 알림 (같은 핵은 한 번만) → 단계가 올랐으면 그 단계의 영구 권능 해금 (data/bond.js)
+  //  key: 침식의 핵을 정화한 지방 번호 · 용나선탑 흑백 영웅(HEROES_KEY)
+  bondStageGain(key) {
+    if (this.test || this.bondStages.has(key)) return;
+    const before = this.bondStage;
+    this.bondStages.add(key);
     const n = this.bondStage;
     this.events.emit('bond', `🔥 레드가 남긴 [유대의 불꽃]이 공명하여 더욱 강해집니다! (정화 단계: ${n} / 6)`, n);
     Sfx.play('mega');
+    if (n > before) this.time.delayedCall(2300, () => this.bondPowerUnlock(n));
+  }
+  // 유대의 불꽃 Lv.n 권능 해금: 화면 한가운데 불꽃 문양 배너 (UIScene.showBondPower) · 소지 한도가 늘면 상처약 1개를 채워 준다
+  bondPowerUnlock(n) {
+    const pw = BOND_POWERS[n - 1], p = this.player;
+    if (!pw || !p || this.over) return;
+    if (potionMaxAt(n) > potionMaxAt(n - 1)) { p.uses = p.uses || {}; p.uses.potion = Math.min(p.potionMax, (p.uses.potion || 0) + 1); }
+    this.events.emit('bondPower', n);
+    for (let k = 0; k < 4; k++) this.time.delayedCall(k * 120, () => { if (this.player) this.fx.ring(p.x, p.y - 6, 24 + k * 20, k % 2 ? BOND_CRIMSON : BOND_GOLD, 520); });
+    this.fx.burst(p.x, p.y - 6, [BOND_GOLD, BOND_CRIMSON, 0xffffff], 30, 180, { glow: true, up: 100, grav: -50, bounce: false, life: .8 });
+    Sfx.play('unlock');
   }
 
   // ---------------- 유대의 불꽃 (가라르 · 블랙나이트의 심장) ----------------
@@ -3205,6 +3246,30 @@ export default class GameScene extends Phaser.Scene {
     if (this.joinBlur) { this.cameras.main.postFX.remove(this.joinBlur); this.joinBlur = null; }
     if (this.joinQueue && this.joinQueue.length) this.time.delayedCall(350, () => this.nextJoin());
   }
+  // ---------------- 현장 기술머신 전송: 전투 데이터 축적(일반 야생 12마리) · 빛나는 TM 코어(엘리트 100%) → 카드 3장 중 1장 ----------------
+  //  보스전 · 연출 · 다른 창이 열려 있으면 기다렸다가 연다 (bonusQueue) · 고르지 않고 닫으면 같은 카드로 잠시 뒤 다시
+  addBattleData(e) {
+    const p = this.player;
+    if (!p || this.test) return;
+    p.dataKills = (p.dataKills || 0) + 1;
+    if (p.dataKills >= DATA_KILLS) {
+      p.dataKills = 0;
+      this.events.emit('toast', '📡 전투 데이터 축적 완료! 현장 기술머신 전송 — 카드 3장 중 1장', 'tm');
+      this.fx.ring(p.x, p.y, 36, 0x8ad8ff, 380);
+      this.queueBonusCards('data', 1);
+    }
+    this.events.emit('battleData', p.dataKills, DATA_KILLS);
+  }
+  queueBonusCards(kind, wait = 0) { (this.bonusQueue = this.bonusQueue || []).push(kind); this.bonusT = Math.max(this.bonusT || 0, wait); }
+  tryBonusCards() {
+    if (!this.bonusQueue || !this.bonusQueue.length || !this.player || this.over || this.paused || this.overlay || this.transitioning || this.cinema || this.storyWait || this.arenaRoom || this.tmOpening) return;
+    const q = this.bonusQueue.shift(), p = this.player;
+    const it = typeof q === 'object' ? q : { kind: 'tm', bonus: q, used: false, member: p.m, cards: rollCards(p, { n: BONUS_CARDS }), flipped: Array(BONUS_CARDS).fill(false), sel: -1,
+      title: q === 'elite' ? '✨ 빛나는 TM 코어' : '📡 현장 기술머신 전송', note: q === 'elite' ? '엘리트를 정화하고 얻은 빛나는 TM 코어가 카드 3장을 전송한다' : `일반 야생 포켓몬 ${DATA_KILLS}마리를 정화한 전투 데이터로 카드 3장이 전송됐다` };
+    this.tmActive = it;
+    this.toggleOverlay('tm');
+    Sfx.play('mega');
+  }
   // 히든 전설 보상: 출전 중인 포켓몬에게 맞춘 '전설' 등급 기술 카드 3장
   openLegendCards() {
     if (this.over || this.transitioning || this.overlay) { this.time.delayedCall(800, () => this.openLegendCards()); return; }
@@ -3218,13 +3283,14 @@ export default class GameScene extends Phaser.Scene {
   spawnPickup(kind, x, y, id, still = false) {
     // 아이템·상처약은 가방과 같은 본가 그림을 16칸 크기로 (월드 배율만큼 곱게 줄여 둔다). 그림이 없으면 도트 아이콘
     const artId = kind === 'item' || kind === 'nugget' ? id : kind === 'potion' ? 'potion' : kind === 'candy' ? 'rare_candy' : null, art = artId && itemArt(this, artId, 16 * ZOOM);
+    if (kind === 'tmcore') tmCoreTexture(this);
     const img = this.physics.add.image(x, y, art || (kind === 'item' ? `it:${id}` : kind === 'potion' ? 'oran' : kind === 'formitem' ? 'megastone' : kind)).setDepth(19);   // 폼체인지 아이템은 구슬 모양 (색으로 구분)
     if (kind === 'formitem') img.setTint(FORM_ITEMS[id].color);
     if (art) { img.setDisplaySize(16, 16); img.body.setSize(10 / img.scaleX, 16 / img.scaleY); }   // 몸통도 그림 크기에 맞춰 바닥에 딱 놓이게
     else img.body.setSize(10, 10);
     if (!still) img.setVelocity(rand(-70, 70), -190);
     img.body.setBounce(.35); img.body.setDragX(120);
-    const col = kind === 'formitem' ? FORM_ITEMS[id].color : kind === 'megastone' ? 0xff8ad0 : kind === 'zcrystal' ? 0xfff6a0 : kind === 'oran' ? 0x4a7aff : kind === 'potion' ? 0xd88aff : kind === 'candy' ? 0x9ad8ff : kind === 'nugget' ? NUGGETS[id].color : 0xffe08a;
+    const col = kind === 'tmcore' ? 0xffd25a : kind === 'formitem' ? FORM_ITEMS[id].color : kind === 'megastone' ? 0xff8ad0 : kind === 'zcrystal' ? 0xfff6a0 : kind === 'oran' ? 0x4a7aff : kind === 'potion' ? 0xd88aff : kind === 'candy' ? 0x9ad8ff : kind === 'nugget' ? NUGGETS[id].color : 0xffe08a;
     const glow = this.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(col).setScale(kind === 'nugget' ? .8 : .5).setDepth(18);
     if (kind === 'nugget') img.setVelocity(rand(-60, 60), -260);   // 금구슬은 더 높이 튀어 오른다
     const coll = this.physics.add.collider(img, this.layers);
@@ -3283,6 +3349,10 @@ export default class GameScene extends Phaser.Scene {
       this.events.emit('toast', `[${ng.name}] 획득! (포켓샵에서 고가에 판매 가능 · ${ng.sell.toLocaleString('ko-KR')} ₽)`, p.id);
       Sfx.play('coin'); this.fx.burst(pl.x, pl.y - 6, [0xffd84a, 0xfff6c0, 0xffffff], 18, 130, { glow: true, up: 90 });
       this.fx.floatText(pl.x, pl.y - 22, `+${ng.sell.toLocaleString('ko-KR')} ₽`, '#ffd84a', 10);
+    } else if (p.kind === 'tmcore') {   // 빛나는 TM 코어 (엘리트 100%): 그 자리에서 기술머신 카드 3장 중 1장
+      this.events.emit('toast', '✨ 빛나는 TM 코어! 기술머신 카드가 전송된다', 'tm');
+      Sfx.play('unlock'); this.fx.ring(pl.x, pl.y, 44, 0xffd25a, 420); this.fx.burst(pl.x, pl.y, [0xffd25a, 0xb08aff, 0xffffff], 22, 150, { glow: true, up: 90 });
+      this.queueBonusCards('elite', .6);
     } else if (p.kind === 'oran') {
       pl.heal(pl.m.maxhp * .2); Sfx.play('heal');
     } else if (p.kind === 'potion') {   // 상처약: 출전 중인 포켓몬 체력 40%
@@ -3518,7 +3588,7 @@ export default class GameScene extends Phaser.Scene {
   testFull() {
     const p = this.player;
     this.testHeal(true);
-    p.uses = p.uses || {}; p.uses.potion = POTION_MAX; p.potionCd = 0;
+    p.uses = p.uses || {}; p.uses.potion = p.potionMax; p.potionCd = 0;
     for (const m of p.members) for (const k in m.cd) m.cd[k] = 0;
     p.z.cd = 0; p.dashCd = 0; p.swapCd = 0; p.parryCd = 0; p.diveCd = 0;
     this.fx.ring(p.x, p.y, 34, 0x5aff8a, 380); this.fx.glow(p.x, p.y, 34, 0x5aff8a, 400, .8);

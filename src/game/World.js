@@ -1067,10 +1067,55 @@ export function buildChapter(ch, ci, retry = 0) {
     if (!(grid[y] && grid[y][x] === 'S' && grid[y - 1][x] === '.' && grid[y - 2][x] === '.')) chests.splice(i, 1);
   }
 
+  // ---- 길목 기술머신: 전투방 바닥 곳곳에 캡슐을 더 놓는다 (지방마다 샛길 기술머신 수의 2배 이상 — 카드를 훨씬 자주 뽑게) ----
+  //  격자 · 소품 · 난수를 건드리지 않는다 (진행 저장 서명 · 같은 시드의 지형 그대로) — 방 · 자리는 방 번호로 정한 해시 · 쓴 캡슐은 RunSave 의 tmx
+  //  자리: 3칸 평평한 바닥 위 5칸이 빈 곳 · 문 · 철창 사다리 · 소품 · 상자 · 회복기 · 마을 사람과 떨어진 곳 (방마다 하나)
+  const tmx = [];
+  {
+    const hsh = (a, b) => { let h = Math.imul(a + 7, 374761393) ^ Math.imul(b + 3, 668265263) ^ Math.imul(ci + 11, 1442695041); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+    const base = props.filter(q => q.kind === 'tm').length, want = Math.max(4, base);
+    const busyX = r => {
+      const out = [];
+      for (const d of r.doors) {
+        if (d.dir === 'h') out.push(d.R === r ? [r.tx0 - 1, r.tx0 + 7] : [r.tx1 - 8, r.tx1]);
+        else if (d.cap != null) out.push([d.cap - 4, d.cap + 7]);
+      }
+      return out;
+    };
+    const spotIn = r => {
+      const busy = busyX(r), span = r.tx1 - r.tx0, pref = r.tx0 + 6 + Math.floor(hsh(r.id, 2) * Math.max(1, span - 12));
+      const free = (tx, y) => {
+        if (busy.some(([a, b]) => tx + 3 >= a && tx - 3 <= b)) return false;
+        for (let x = tx - 1; x <= tx + 1; x++) { if (grid[y][x] !== 'S') return false; for (let yy = y - 5; yy < y; yy++) if (yy <= r.ty0 || grid[yy][x] !== '.') return false; }
+        if (props.some(q => Math.abs(q.x - tx) < 4 && q.g != null && Math.abs(q.g - y) < 4)) return false;
+        if (tmx.some(t => t.room === r && Math.abs(t.x - tx) < 16)) return false;
+        if (chests.some(c => Math.abs(c.x / TILE - tx) < 5 && Math.abs(c.y / TILE - y) < 4)) return false;
+        if (terminals.some(t => Math.abs(t.x - tx) < 6 && t.room === r)) return false;
+        if (npcs.some(n => n.room === r && Math.abs(n.x - tx) < 6)) return false;
+        if (pads.some(pd => pd.room === r && Math.abs(pd.x - tx) < 5)) return false;
+        return true;
+      };
+      const cols2 = []; for (let k = 0; k < span; k++) for (const tx of [pref + k, pref - k]) if (tx >= r.tx0 + 5 && tx < r.tx1 - 5 && !cols2.includes(tx)) cols2.push(tx);
+      for (const tx of cols2) { let y = r.ty0 + 1; while (y < r.F && grid[y][tx] === '.') y++; if (y <= r.F && free(tx, y)) return { x: tx, g: y }; }
+      return null;
+    };
+    const cand = rooms.filter(r => r.type === 'combat' && !r.gateFront && !r.portalFrom && !r.lab)
+      .sort((a, b) => hsh(a.id, 1) - hsh(b.id, 1));
+    const byArea = new Map();   // 지역마다 고르게: 지역별로 줄 세워 번갈아 뽑는다
+    for (const r of cand) { if (!byArea.has(r.ai)) byArea.set(r.ai, []); byArea.get(r.ai).push(r); }
+    const lanes = [...byArea.values()];
+    for (let round = 0; tmx.length < want && lanes.some(l => l.length); round++) for (const l of lanes) {
+      if (tmx.length >= want) break;
+      while (l.length) { const r = l.shift(), at = spotIn(r); if (at) { tmx.push({ kind: 'tm', x: at.x, g: at.g, room: r, roadside: true, used: false }); marks.push({ kind: 'tm', x: at.x, y: at.g, room: r }); if (r.gw >= 2 && !r.tmTwice) { r.tmTwice = true; l.push(r); } break; } }   // 넓은 방은 한 번 더 (양쪽 끝)
+    }
+    // 그래도 모자라면 이미 캡슐이 있는 방의 반대쪽 끝에도 (16칸 넘게 떨어진 자리)
+    for (const r of cand) { if (tmx.length >= want) break; const at = spotIn(r); if (at) { tmx.push({ kind: 'tm', x: at.x, g: at.g, room: r, roadside: true, used: false }); marks.push({ kind: 'tm', x: at.x, y: at.g, room: r }); } }
+  }
+
   const start = mainRooms[0];
   return {
     ci, chapter: ch, data, grid, cols, rows, width: cols * TILE, height: rows * TILE, ncx, ncy, cellRoom,
-    rooms, doors, sides, breakables, props, chests, spawns, marks, potions, hubs, tileOf, terminals, npcs, phase, pads, fields, lifts,
+    rooms, doors, sides, breakables, props, chests, spawns, marks, potions, hubs, tileOf, terminals, npcs, phase, pads, fields, lifts, tmx,
     start: { x: (start.tx0 + 5) * TILE, y: start.F * TILE - 12, room: start }, surfaceRow
   };
 }

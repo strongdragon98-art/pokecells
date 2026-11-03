@@ -5,7 +5,9 @@
 //   카드마다 쓸 수 있는 포켓몬(who: 계열 키 목록)을 달아 둔다 → 고를 때 둘 이상이면 누구에게 적용할지 고른다 (UIScene.showTM)
 //  4장 = 지금 가진 기술 강화 2장 (boost · up) + 새 기술 1장 확정 (파티에 없는 다른 속성 우선) + 자유 1장 (새 기술 60% 또는 특성 카드)
 //  기술은 그 포켓몬이 원작·타입상 배울 수 있는 것만 (TM_LEARN)
-//  등급 4단계: 커먼 · 레어 · 유니크 · 전설 (특성 카드 55 · 28 · 13 · 4% / 스킬 강화 카드는 레어 62 · 유니크 29 · 전설 9%)
+//  등급 4단계: 커먼 62% · 레어 28% · 유니크 8% · 전설 2% — 기술 · 특성 카드는 등급을 먼저 굴리고(그 자리 후보에 있는 등급끼리 다시 나눈다) 그 등급 안에서 고른다
+//   스킬 강화 카드도 같은 등급 확률 (커먼: 위력 · 광역 +15% · 가속 -10% · 분열탄 1갈래) · 원작 개조(유니크 · 전설)는 강화 칸에 6% 확률로만 · 차징 카드 보장 15%(등급 확률대로)
+//   커먼 · 레어를 합성해 +2 에 한 등급 승급하는 규칙은 그대로
 import { SKILLS } from './pokemon.js';
 import { typeName } from './types.js';
 import { PERKS } from '../game/Perks.js';
@@ -44,12 +46,12 @@ export const UPGRADES = {
 //  효과는 Player.applyBoost(시전할 때 피해 · 크기 · 분열탄) · Player.cdOf(쿨타임)에서 읽는다 (m.boost = boostTotals(m.boostCards))
 export const BOOST_MAX = 3;
 export const BOOSTS = {
-  power: { name: '위력 증폭', icon: '⚔', amt: { 레어: .25, 유니크: .4, 전설: .6 }, desc: (sk, a) => `${sk}의 피해 +${Math.round(a * 100)}%` },
-  haste: { name: '가속 회로', icon: '⏱', cdOnly: true, amt: { 레어: .15, 유니크: .22, 전설: .3 }, desc: (sk, a) => `${sk}의 쿨타임 -${Math.round(a * 100)}% (누적 최대 -60%)` },
-  wide: { name: '광역 확장', icon: '◎', amt: { 레어: .25, 유니크: .4, 전설: .6 }, desc: (sk, a) => `${sk}의 범위 · 투사체 크기 +${Math.round(a * 100)}%` },
-  split: { name: '분열탄', icon: '✺', amt: { 레어: 2, 유니크: 3, 전설: 4 }, desc: (sk, a, ty) => `${sk}를 쓸 때마다 ${typeName(ty)} 유도탄 ${a}갈래가 함께 뻗어 나간다 (피해 45%)` }
+  power: { name: '위력 증폭', icon: '⚔', amt: { 커먼: .15, 레어: .25, 유니크: .4, 전설: .6 }, desc: (sk, a) => `${sk}의 피해 +${Math.round(a * 100)}%` },
+  haste: { name: '가속 회로', icon: '⏱', cdOnly: true, amt: { 커먼: .1, 레어: .15, 유니크: .22, 전설: .3 }, desc: (sk, a) => `${sk}의 쿨타임 -${Math.round(a * 100)}% (누적 최대 -60%)` },
+  wide: { name: '광역 확장', icon: '◎', amt: { 커먼: .15, 레어: .25, 유니크: .4, 전설: .6 }, desc: (sk, a) => `${sk}의 범위 · 투사체 크기 +${Math.round(a * 100)}%` },
+  split: { name: '분열탄', icon: '✺', amt: { 커먼: 1, 레어: 2, 유니크: 3, 전설: 4 }, desc: (sk, a, ty) => `${sk}를 쓸 때마다 ${typeName(ty)} 유도탄 ${a}갈래가 함께 뻗어 나간다 (피해 45%)` }
 };
-const BOOST_W = { 레어: 62, 유니크: 29, 전설: 9 };
+const BOOST_W = { 커먼: 62, 레어: 28, 유니크: 8, 전설: 2 };
 // ---- 중복 카드 합성: 같은 카드를 또 뽑으면 장수를 늘리지 않고 한 장의 강화 단계(+1 · +2 · +3)를 올린다 ----
 //  강화 1단계마다 핵심 수치가 기본값의 60%씩 더 오른다 (lvMul) · +2 에 등급 한 단계 승급 · +3 = ★초월(MAX): 이름 앞 [★초월] · 홀로그램 · 특수 보너스 · 더는 기술머신에 나오지 않는다
 //  합성되는 카드: 기술 카드(기술머신으로 배운 기술) · 스킬 강화 카드(같은 기술 · 같은 갈래) · 특성 카드 (원작 개조 카드는 한 번뿐 · 숙련 카드는 몇 번이고)
@@ -185,6 +187,7 @@ export function moveGrade(id) {
 }
 
 export const TM_CARDS = 4;   // 한 번에 뒤집는 카드 수
+export const DATA_KILLS = 12, BONUS_CARDS = 3;   // 전투 데이터 축적: 일반 야생 12마리마다 현장 기술머신 전송 · 현장 전송(전투 데이터 · 빛나는 TM 코어) 카드 수
 // 카드가 모자랄 때 채우는 숙련 카드 (몇 번이고 겹친다 — 어떤 경우에도 카드 4장을 채운다)
 export const MASTERY = {
   power_memory: { name: '숙련의 기억: 힘', grade: '커먼', desc: '이 포켓몬의 공격력 +8%.', apply: m => { m.atkBonus *= 1.08; } },
@@ -201,7 +204,7 @@ export const GRADE_STYLE = {
   유니크: { en: 'UNIQUE', border: ['#b5179e', '#7209b7'], bg: ['#2e0a3e', '#12061e'], glow: 0xb5179e },
   전설: { en: 'LEGENDARY', border: ['#ffb703', '#ff0054'], bg: ['#3e2208', '#1e0612'], glow: 0xffb703 }
 };
-const WEIGHT = { 커먼: 55, 레어: 28, 유니크: 13, 전설: 4 };
+const WEIGHT = { 커먼: 62, 레어: 28, 유니크: 8, 전설: 2 };
 // 기술 카드 등급: 대기술은 전설 · 주력기는 유니크 · 나머지는 레어
 const MOVE_GRADE = {
   solar_beam: '전설', earthquake: '전설', draco_meteor: '전설', hyper_beam: '전설', giga_impact: '전설', thunder: '전설', fire_blast: '전설', hydro_pump: '전설', close_combat: '전설',
@@ -211,9 +214,20 @@ const MOVE_GRADE = {
   drain_punch: '유니크', wild_charge: '유니크', body_press: '유니크', psyshock: '유니크', night_slash: '유니크'
 };
 // 특성 카드 분류 → 카드에 붙는 알약 글자 · 속성 부여 카드는 그 속성 색
-export const PERK_TYPE = { u_rapid: 'electric', u_shock: 'fire', u_charge: 'electric', r_burn: 'fire', r_freeze: 'ice', r_para: 'electric', r_poison: 'poison', u_curse: 'ghost', u_chain: 'electric', l_storm: 'electric', u_flame: 'fire', u_toxic: 'poison', l_hole: 'dark' };
+export const PERK_TYPE = { r_spark: 'electric', r_wave: 'fighting', r_amplify: 'psychic', u_rapid: 'electric', u_shock: 'fire', u_charge: 'electric', r_burn: 'fire', r_freeze: 'ice', r_para: 'electric', r_poison: 'poison', u_curse: 'ghost', u_chain: 'electric', l_storm: 'electric', u_flame: 'fire', u_toxic: 'poison', l_hole: 'dark' };
 
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+// 등급을 먼저 굴리고(WEIGHT — 목록에 있는 등급끼리 다시 나눈다) 그 등급 안에서 w(카드) 가중으로 고른다
+function pickGraded(list, w = () => 1) {
+  const have = GRADES.filter(g => list.some(c => c.grade === g));
+  if (!have.length) return null;
+  let r = Math.random() * have.reduce((s, g) => s + WEIGHT[g], 0), g = have[0];
+  for (const gg of have) if ((r -= WEIGHT[gg]) < 0) { g = gg; break; }
+  const sub = list.filter(c => c.grade === g);
+  let q = Math.random() * sub.reduce((s, c) => s + w(c), 0);
+  for (const c of shuffle(sub.slice())) if ((q -= w(c)) < 0) return c;
+  return sub[0];
+}
 function rollGrade() {
   let r = Math.random() * 100;
   for (const g of GRADES) { r -= WEIGHT[g]; if (r < 0) return g; }
@@ -263,7 +277,7 @@ function partyCandidates(p) {
 
 // 차징 카드 (game/Perks.js · 모든 포켓몬 공용): 4장 중 하나도 없으면 이 확률로 자유 칸을 차징 카드로 바꾼다 (자연 등장과 합쳐 30% 이상)
 export const CHARGE_PERKS = ['u_charge', 'u_rapid', 'u_shock'];
-const CHARGE_CARD_P = .3;
+const CHARGE_CARD_P = .15;
 
 // 파티 p 에게 맞는 서로 다른 카드 '반드시 4장'
 //  ① 지금 가진 기술 강화 카드 2장 — 원작 개조(up)가 남아 있으면 30%로 그쪽, 아니면 스킬 강화(boost) · 출전 중인 포켓몬의 기술이 두 배로 잘 나온다
@@ -276,18 +290,16 @@ export function rollCards(p, o = {}) {
   const all = p.members.map(m => m.key);
   const key = c => c.kind + ':' + c.id;
   const take = list => { const c = shuffle(list.filter(q => !used.has(key(q))))[0]; if (c) { used.add(key(c)); out.push(c); } return c; };
-  const MOVE_W = { 레어: 6, 유니크: 3, 전설: 1, 커먼: 6 };
   const takeMove = () => {
     const pool = moves.filter(c => !used.has(key(c)) && GRADES.indexOf(c.grade) >= floor);
     const list = pool.length ? pool : moves.filter(c => !used.has(key(c)));
-    if (!list.length) return null;
-    let r = Math.random() * list.reduce((s, c) => s + MOVE_W[c.grade], 0);
-    for (const c of shuffle(list.slice())) { if ((r -= MOVE_W[c.grade]) < 0) { used.add(key(c)); out.push(c); return c; } }
-    return take(list);
+    const c = pickGraded(list);
+    if (c) { used.add(key(c)); out.push(c); }
+    return c;
   };
   const boostGrade = () => {
-    let r = Math.random() * 100, g = '레어';
-    for (const gg of ['레어', '유니크', '전설']) { r -= BOOST_W[gg]; if (r < 0) { g = gg; break; } }
+    let r = Math.random() * 100, g = '커먼';
+    for (const gg of GRADES) { r -= BOOST_W[gg]; if (r < 0) { g = gg; break; } }
     return GRADES[Math.max(GRADES.indexOf(g), floor)];
   };
   const takeBoost = (grade = null) => {
@@ -302,7 +314,7 @@ export function rollCards(p, o = {}) {
   };
   const takeEnhance = () => {
     const upList = ups.filter(c => !used.has(key(c)) && GRADES.indexOf(c.grade) >= floor);
-    if (upList.length && Math.random() < .3) return take(upList);
+    if (upList.length && Math.random() < .06) { const c = pickGraded(upList); used.add(key(c)); out.push(c); return c; }   // 원작 개조(유니크 · 전설)는 드물게
     return takeBoost() || take(upList);
   };
   if (o.legend) {
@@ -314,10 +326,8 @@ export function rollCards(p, o = {}) {
   {
     const own = new Set(p.members.flatMap(m => p.typesOf(m))), open = moves.filter(c => !c.dup && !used.has(key(c)));
     const high = open.filter(c => GRADES.indexOf(c.grade) >= floor), fresh = high.length ? high : open;   // 전설 제단: 최소 등급부터
-    const w = c => (own.has(c.type) ? 1 : 3) * MOVE_W[c.grade];
     if (fresh.length) {
-      let r = Math.random() * fresh.reduce((s, c) => s + w(c), 0), pick = fresh[0];
-      for (const c of fresh) if ((r -= w(c)) < 0) { pick = c; break; }
+      const pick = pickGraded(fresh, c => (own.has(c.type) ? 1 : 3));   // 등급을 굴린 뒤 그 등급 안에서 다른 속성 3배
       if (!own.has(pick.type)) pick.cat = '새 기술 · 다른 속성';
       used.add(key(pick)); out.push(pick);
     }
@@ -334,20 +344,21 @@ export function rollCards(p, o = {}) {
   //  초고압 차징 코어(단계 해금)를 가장 자주 · 다 익힌 카드는 partyCandidates 가 이미 뺐다
   const isChg = c => c.kind === 'perk' && CHARGE_PERKS.includes(c.id), chg = perks.filter(c => isChg(c) && !used.has(key(c)));
   if (chg.length && !out.some(isChg) && Math.random() < CHARGE_CARD_P) {
-    let r = Math.random() * chg.reduce((s, c) => s + (c.id === 'u_charge' ? 3 : 1), 0), pick = chg[0];
-    for (const c of chg) if ((r -= c.id === 'u_charge' ? 3 : 1) < 0) { pick = c; break; }
+    const pick = pickGraded(chg, c => (c.id === 'u_charge' ? 3 : 1));   // 등급 확률(유니크 8% …)을 그대로 따른다 · 같은 등급이면 초고압 차징 코어 3배
     used.add(key(pick));
     const i = out.length < TM_CARDS ? out.length : out.map((c, k) => (o.legend && c.grade === '전설' ? -1 : k)).filter(k => k >= 0).pop();
     out[i ?? out.length] = pick;
   }
   for (const [id, c] of Object.entries(MASTERY)) if (out.length < TM_CARDS) out.push({ kind: 'mastery', id, name: c.name, type: 'normal', grade: c.grade, desc: c.desc, cat: '숙련', who: all });
-  return shuffle(out).slice(0, TM_CARDS).map(c => dressCard(p, c));
+  // o.n: 그보다 적게 (전투 데이터 축적 보너스 · 빛나는 TM 코어는 3장) — 자유 칸부터 덜어 낸다
+  const keep = o.n && o.n < out.length ? out.slice(0, o.n) : out;
+  return shuffle(keep).slice(0, TM_CARDS).map(c => dressCard(p, c));
 }
 
 // 🃏 카드 샌드박스 (테스트 모드 · UIScene 테스트 패널 '카드' 탭): 제약 없이 모든 카드 — group 으로 분류
 //  move: 액티브 기술 (기술머신 45종 + 계열 전용 · 대시 같은 돌진 기술 제외) · boost: 원작 개조 + 출전 중인 포켓몬의 Z·X·C 스킬 강화(갈래 × 레어 · 유니크 · 전설)
 //  charge: 2 · 3단 차징 해금 등 차징 카드 · dash: 대시 진화 · perk: 그 밖의 특성(능력치 · 기동 · 속성 부여 · 스킬 변이 · 유물 · 유틸) · mastery: 숙련
-export const SANDBOX_GROUPS = [['all', '전체'], ['move', '액티브 기술'], ['boost', '기술 강화'], ['charge', '차징'], ['dash', '대시 진화'], ['perk', '특성 · 스탯'], ['mastery', '숙련']];
+export const SANDBOX_GROUPS = [['all', '전체'], ['move', '액티브 기술'], ['boost', '기술 강화'], ['charge', '차징'], ['dash', '대시'], ['parry', '패링'], ['perk', '특성 · 스탯'], ['mastery', '숙련']];
 export function sandboxCards(p) {
   const out = [], m = p.m;
   const ids = [...new Set([...Object.keys(TM_LEARN), ...Object.values(TM_POOL).flat()])].filter(id => SKILLS[id] && !DASH_ONLY.has(id) && SKILLS[id].arch !== 'dash');
@@ -358,10 +369,10 @@ export function sandboxCards(p) {
     if (!sk) continue;
     for (const bk of Object.keys(BOOSTS)) {
       if (BOOSTS[bk].cdOnly && !sk.cd) continue;
-      for (const grade of ['레어', '유니크', '전설']) out.push(Object.assign(boostCard({ bk, skill: sid, owner: m.key, grade, amt: BOOSTS[bk].amt[grade] }, slot), { group: 'boost', who: [m.key] }));
+      for (const grade of GRADES) out.push(Object.assign(boostCard({ bk, skill: sid, owner: m.key, grade, amt: BOOSTS[bk].amt[grade] }, slot), { group: 'boost', who: [m.key] }));
     }
   }
-  for (const [id, pk] of Object.entries(PERKS)) out.push({ group: pk.cat === '차징' ? 'charge' : pk.cat === '대시 진화' ? 'dash' : 'perk', kind: 'perk', id, name: pk.name, type: PERK_TYPE[id] || 'normal', grade: pk.grade, desc: pk.desc, cat: pk.cat, max: pk.max });
+  for (const [id, pk] of Object.entries(PERKS)) out.push({ group: pk.cat === '차징' ? 'charge' : pk.cat === '대시 진화' || pk.cat === '대시' ? 'dash' : pk.cat === '패링' ? 'parry' : 'perk', kind: 'perk', id, name: pk.name, type: PERK_TYPE[id] || 'normal', grade: pk.grade, desc: pk.desc, cat: pk.cat, max: pk.max });
   for (const [id, c] of Object.entries(MASTERY)) out.push({ group: 'mastery', kind: 'mastery', id, name: c.name, type: 'normal', grade: c.grade, desc: c.desc, cat: '숙련' });
   const gi = c => SANDBOX_GROUPS.findIndex(g => g[0] === c.group);
   return out.sort((a, b) => gi(a) - gi(b) || GRADES.indexOf(b.grade) - GRADES.indexOf(a.grade) || (a.kind === 'boost' && b.kind === 'boost' ? 0 : a.name.localeCompare(b.name, 'ko')));

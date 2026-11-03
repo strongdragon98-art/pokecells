@@ -1383,7 +1383,7 @@ export class Props {
 
   build() {
     const s = this.s, p = this.stage.palette, metal = this.stage.plat === 'metal';
-    for (const pr of this.level.props) {
+    for (const pr of [...this.level.props, ...(this.level.tmx || [])]) {   // tmx: 길목 기술머신 캡슐 (game/World.js 끝 — 샛길 제단과 같은 캡슐)
       if (pr.hide) continue;   // 방울탑 정문 앞 성역 마당에서 치운 장식 (game/World.js)
       const X = pr.x * TILE, Y = pr.g * TILE, room = roomAt(this.level, X + 8, Y - 4), village = room && room.type === 'village', area = this.areaOf(room);
       switch (pr.kind) {

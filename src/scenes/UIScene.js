@@ -7,14 +7,15 @@ import Phaser from 'phaser';
 import { txt, GAME_W, GAME_H, RES, uiCamera } from '../config.js';
 import { SKILLS, SPECIES, UNLOCKABLE, UNLOCK_KILLS, TIERS, ZMOVES, Z_CD, TAGS, EVO_EXP, BOSSES } from '../data/pokemon.js';
 import { ITEMS, MAX_EQUIP } from '../data/items.js';
-import { POTION_MAX, POTION_CD } from '../data/shop.js';
+import { POTION_CD } from '../data/shop.js';
+import { BOND_POWERS } from '../data/bond.js';
 import { STAGES, areaLabel } from '../data/stages.js';
 import { typeName, typeColor, hex, matchups } from '../data/types.js';
-import { GRADE_STYLE, UPGRADES, BOOSTS, TM_CARDS, rollCards, heldLv, mergePreview, lvTag, CARD_MAX_LV, MAX_BONUS, sandboxCards, SANDBOX_GROUPS, GRADES } from '../data/tm.js';
+import { GRADE_STYLE, UPGRADES, BOOSTS, TM_CARDS, BONUS_CARDS, DATA_KILLS, rollCards, heldLv, mergePreview, lvTag, CARD_MAX_LV, MAX_BONUS, sandboxCards, SANDBOX_GROUPS, GRADES } from '../data/tm.js';
 
 // 특성 카드 분류 → 카드 가운데 아이콘 글자 (기술 아이콘이 없는 카드)
 const TM_K = .88, TM_GAP = 150;   // 기술머신 카드 4장: 크기 배율 · 카드 사이 간격 (한 줄 590px 안)
-const PERK_ICON = { 차징: '⚡', 능력치: '⚔', 기동: '➶', 유틸: '✚', '속성 부여': '✺', '스킬 변이': '✷', 유물: '❂', 숙련: '✦', '대시 진화': '⚡' };
+const PERK_ICON = { 차징: '⚡', 능력치: '⚔', 기동: '➶', 유틸: '✚', '속성 부여': '✺', '스킬 변이': '✷', 유물: '❂', 숙련: '✦', '대시 진화': '⚡', 대시: '➶', 패링: '⛨' };
 // 한 줄 글자가 넘치면 가로로 줄인다
 const fitText = (t, w) => { if (t.width > w) t.setScale(w / t.width, 1); return t; };
 import { HK, hkText, darkBand, hkMenu, hiImage, fadeLine, bar3d, glassPanel, glassButton, typePill } from '../systems/ui.js';
@@ -153,7 +154,7 @@ export default class UIScene extends Phaser.Scene {
     bz.on('pointerover', () => { this.bondTipOn = true; });
     bz.on('pointerout', p => { if (!p.wasTouch) this.bondTipOn = false; });
     bz.on('pointerdown', () => { this.bondTipOn = true; this.bondTipT = 3.5; });   // 터치: 3.5초 동안
-    this.tBondTip = this.add.text(B.x + 26, B.y - 24, '', txt(10, HK.ivory, { backgroundColor: '#140a0cee', padding: { x: 7, y: 5 }, lineSpacing: 3, wordWrap: { width: 300, useAdvancedWrap: true } })).setDepth(30).setVisible(false);
+    this.tBondTip = this.add.text(B.x + 26, B.y - 24, '', txt(9, HK.ivory, { backgroundColor: '#140a0cee', padding: { x: 7, y: 5 }, lineSpacing: 3, wordWrap: { width: 420, useAdvancedWrap: true } })).setDepth(30).setVisible(false);
     this.tType = hkText(this, 0, 41, '', 10, HK.dim).setDepth(3);
     this.vHint = hkText(this, MASK_X - 8, 55, '', 10, '#ffc4ec', { ls: 1, glow: true, glowColor: 'rgba(255,138,208,0.7)' }).setDepth(3);
 
@@ -188,6 +189,9 @@ export default class UIScene extends Phaser.Scene {
       return { t, s, act };
     });
     this.tTip = this.add.text(MASK_X - 8, 104, '', txt(10, HK.ivory, { backgroundColor: '#0d0c16ee', padding: { x: 7, y: 5 }, lineSpacing: 3 })).setDepth(30);
+    // ── 전투 데이터 축적 게이지 (HUD 링크 줄 아래): 일반 야생 12마리마다 현장 기술머신 전송 (GameScene.addBattleData)
+    this.gData = this.add.graphics().setDepth(3); this.dataPulse = 0;
+    this.tData = hkText(this, 14, 131, '', 8, '#9ad8ff', { ls: 0 }).setDepth(3);
     if (this.gs.test) this.buildDebugBar();   // 테스트 모드: 오른쪽 위 퀵 디버그 바
 
     // ── 스킬 바: 사각 카드 칸 (대시 · Z · X · C · Q Z기술) — 디자인은 설정 → 스킬 UI 스타일 (샘플 A · B · C)
@@ -301,6 +305,8 @@ export default class UIScene extends Phaser.Scene {
       say: (who, s) => this.showLore(s, who),   // 트레이너 대사 (난천 · 레드)
       caption: (s, ms) => this.showCaption(s, ms),   // 이야기 자막 (GameScene.bondFlameCinematic)
       bond: (s, n) => this.showBondNote(s, n),   // 유대의 불꽃 공명 (GameScene.bondPurify · bondStageGain)
+      bondPower: n => this.showBondPower(n),   // 유대의 불꽃 Lv.n 권능 해금 배너 (GameScene.bondPowerUnlock)
+      battleData: () => { this.dataPulse = 1; },   // 전투 데이터 축적 (GameScene.addBattleData)
       boss: b => { if (b) this.bossTitle(b); },
       clearTitles: () => { this.tweens.killTweensOf([this.loreBox, this.captionBox, this.bondBox]); this.loreBox.setAlpha(0); this.captionBox.setAlpha(0); this.bondBox.setAlpha(0); this.bossTitleT = 0; },   // 테스트룸에서 보스를 바로 바꿀 때 앞 보스의 이름 · 트레이너 대사를 지운다
       unlock: (k, kind) => this.onUnlock(k, kind),
@@ -386,9 +392,54 @@ export default class UIScene extends Phaser.Scene {
     this.tweens.add({ targets: this.bondBox, alpha: 0, duration: 700, delay: n ? 3800 : 2400, ease: 'Sine.easeIn' });
     this.bondPulse = n ? 1 : .5;
   }
+  // 유대의 불꽃 Lv.n 권능 해금: 화면 한가운데 큰 불꽃 문양 (세 겹 불꽃 · 빛살 · 금빛 고리) + 「🔥 [유대의 불꽃 Lv.n 달성!]」 + 권능 설명 — 4.5초
+  showBondPower(n) {
+    const pw = BOND_POWERS[n - 1];
+    if (!pw) return;
+    if (this.bondPowerBox) { this.tweens.killTweensOf(this.bondPowerBox); this.bondPowerBox.destroy(); }
+    const box = this.bondPowerBox = this.add.container(0, 0).setDepth(26).setAlpha(0), cx = 320, cy = 196, pal = BOND_PAL[Math.min(5, n - 1)];   // 지역 · 보스 배너(화면 위쪽) 아래
+    const band = this.add.graphics(); darkBand(band, 120, cy + 22, 400, 70, .88); box.add(band);
+    box.add(this.add.image(cx, cy - 18, 'glow').setBlendMode(ADD).setTint(pal[0]).setScale(3.2).setAlpha(.55));
+    const ring = this.add.graphics().setPosition(cx, cy - 18);   // 금빛 고리 · 빛살 (제자리에서 천천히 돈다)
+    ring.lineStyle(2, 0xffd890, .9); ring.strokeCircle(0, 0, 30); ring.lineStyle(1, 0xffe8b0, .6); ring.strokeCircle(0, 0, 36);
+    for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2; ring.lineStyle(1.5, 0xffd890, .75); ring.lineBetween(Math.cos(a) * 38, Math.sin(a) * 38, Math.cos(a) * (k % 2 ? 44 : 50), Math.sin(a) * (k % 2 ? 44 : 50)); }
+    box.add(ring);
+    const fl = this.add.graphics(); box.add(fl);
+    const drawFlame = t => {   // 크게 일렁이는 세 겹 불꽃 (HUD 불꽃과 같은 모양)
+      fl.clear();
+      for (const [sc, col] of [[1, pal[0]], [.68, pal[1]], [.38, pal[2]]]) {
+        const h = 46 * sc, r = 13 * sc, x = cx, y = cy - 2, sway = Math.sin(t * 7 + sc * 3) * 3 * sc;
+        fl.fillStyle(col, .95); fl.fillCircle(x, y - r, r); fl.fillTriangle(x - r, y - r, x + r, y - r, x + sway, y - h);
+        fl.fillTriangle(x - r * .6, y - r * 1.2, x - r * .1, y - r * 1.4, x - r * .9 + sway * .5, y - h * .7);
+        fl.fillTriangle(x + r * .6, y - r * 1.2, x + r * .1, y - r * 1.4, x + r * .9 + sway * .5, y - h * .66);
+      }
+    };
+    drawFlame(0);
+    box.add(hkText(this, cx, cy + 34, `🔥 [유대의 불꽃 Lv.${n} 달성!]  ${pw.name}`, 13, '#ffe08a', { origin: .5, bold: true, ls: 0, glow: true, glowColor: 'rgba(255,170,60,0.7)' }));
+    box.add(hkText(this, cx, cy + 52, pw.gain, 9.5, HK.ivory, { origin: .5, ls: 0, style: { align: 'center', wordWrap: { width: 380, useAdvancedWrap: true } } }));
+    box.add(hkText(this, cx, cy + 70, `${pw.from} · HUD 불꽃에 마우스를 올리면 해금한 권능 목록`, 7.5, HK.dim, { origin: .5, ls: 0 }));
+    const ev = this.time.addEvent({ delay: 16, loop: true, callback: () => { if (!box.scene) { ev.remove(); return; } drawFlame(this.time.now / 1000); ring.setAngle(this.time.now / 60); } });
+    this.tweens.add({ targets: box, alpha: 1, duration: 500, ease: 'Sine.easeOut' });
+    this.tweens.add({ targets: box, alpha: 0, duration: 800, delay: 4500, ease: 'Sine.easeIn', onComplete: () => { ev.remove(); box.destroy(); if (this.bondPowerBox === box) this.bondPowerBox = null; } });
+    this.bondPulse = 1;
+  }
+  // 전투 데이터 축적 게이지 (HUD 링크 줄 아래 · 가는 하늘색 막대)
+  drawData(dt) {
+    const p = this.gs.player, g = this.gData;
+    g.clear();
+    const show = !!p && !this.overlayMode;
+    this.tData.setVisible(show);
+    if (!show) return;
+    this.dataPulse = Math.max(0, (this.dataPulse || 0) - dt * 2);
+    const n = p.dataKills || 0, x = 14, y = 143, w = 84;
+    this.tData.setText(`📡 전투 데이터 ${n}/${DATA_KILLS}`).setColor(this.dataPulse > 0 ? '#ffffff' : '#9ad8ff');
+    g.fillStyle(0x0a1420, .85); g.fillRect(x, y, w, 3);
+    g.fillStyle(0x6ad8ff, .95); g.fillRect(x, y, w * n / DATA_KILLS, 3);
+    if (this.dataPulse > 0) { g.fillStyle(0xffffff, this.dataPulse * .8); g.fillRect(x, y - 1, w * n / DATA_KILLS, 5); }
+  }
   // HUD 유대의 불꽃: 단계마다 커지고 색이 진화하며 일렁인다 (Lv.6 은 둘레에 빛살이 도는 태양 불꽃)
   drawBond(dt, time) {
-    const gs = this.gs, stage = gs.bondStage || 0, lv = Math.min(6, stage + 1), pal = BOND_PAL[lv - 1], g = this.gBond, t = time / 1000;
+    const gs = this.gs, stage = gs.bondStage || 0, lv = Math.max(1, Math.min(6, stage)), pal = BOND_PAL[lv - 1], g = this.gBond, t = time / 1000;   // 불꽃 Lv = 정화 단계 (Lv.0 은 가장 작은 불씨)
     this.bondPulse = Math.max(0, this.bondPulse - dt * .6);
     const pk = 1 + this.bondPulse * .7, h = (9 + lv * 2) * pk, w = (6 + lv * .9) * pk, x = B.x, y = B.y;
     g.clear();
@@ -403,11 +454,12 @@ export default class UIScene extends Phaser.Scene {
     };
     flame(1, pal[0], .95); flame(.7, pal[1], .95); flame(.4, pal[2], 1);
     this.bondGlow.setTint(pal[0]).setScale((.35 + lv * .07) * pk).setAlpha(.35 + lv * .04 + this.bondPulse * .4 + Math.sin(t * 3) * .05);
-    this.tBondLv.setText(`Lv.${lv}`).setColor(lv >= 6 ? '#fff0a0' : lv >= 3 ? '#ffb0a0' : '#ffd890');
+    this.tBondLv.setText(`Lv.${stage}`).setColor(stage >= 6 ? '#fff0a0' : stage >= 3 ? '#ffb0a0' : '#ffd890');
     if (this.bondTipT > 0) { this.bondTipT -= dt; if (this.bondTipT <= 0) this.bondTipOn = false; }
     const tip = this.bondTipOn && !this.overlayMode;
     this.tBondTip.setVisible(tip);
-    if (tip) this.tBondTip.setText(`🔥 유대의 불꽃 Lv.${lv}  ·  정화 단계 ${stage} / 6\n레드가 붙잡히기 전 전해준 유대의 불꽃. 보스를 정화할수록 강해지며, 모든 불꽃이 모이면 레드를 구원할 수 있다 (모든 공격력 +${Math.round((gs.bondMul - 1) * 100)}% 상승 중)`);
+    if (tip) this.tBondTip.setText(`🔥 유대의 불꽃 Lv.${stage}  ·  정화 단계 ${stage} / 6  ·  모든 공격력 +${Math.round((gs.bondMul - 1) * 100)}%\n레드가 붙잡히기 전 전해준 유대의 불꽃. 침식의 핵을 정화할 때마다 영구 권능이 하나씩 깨어난다\n`
+      + BOND_POWERS.map(pw => pw.lv <= stage ? `✅ Lv.${pw.lv} ${pw.name} — ${pw.desc}` : `🔒 Lv.${pw.lv} ${pw.name} — ${pw.title} (${pw.from})`).join('\n'));
   }
 
   showCaption(s, ms = 4200) {
@@ -562,6 +614,7 @@ export default class UIScene extends Phaser.Scene {
     g.fillGradientStyle(HK.ivoryN, HK.ivoryN, HK.ivoryN, HK.ivoryN, .18, 0, .18, 0); g.fillRect(tailX, V.y - 1.5, tailEnd - tailX, 3);
     g.fillGradientStyle(HK.ivoryN, HK.ivoryN, HK.ivoryN, HK.ivoryN, .95, 0, .95, 0); g.fillRect(tailX, V.y - .4, tailEnd - tailX, .9);
     this.drawBond(dt, time);
+    this.drawData(dt);
     this.tName.setText(`${p.name}${mg.active ? ' ★' : ''}`);
     this.tType.setText(`${p.types.map(typeName).join(' · ')}${p.slowT > 0 ? ' · 둔화됨' : ''}`).setX(this.tName.x + this.tName.width + 7);
 
@@ -708,7 +761,8 @@ export default class UIScene extends Phaser.Scene {
     const gs = this.gs, it = gs.tmActive;
     if (!it) return;
     // 카드가 4장이 아니거나 빈 칸이 섞였으면(예전 3장 저장·오류) 그 포켓몬 기준으로 다시 뽑는다 — 어떤 경우에도 4장
-    if (!it.sandbox && (!Array.isArray(it.cards) || it.cards.length !== TM_CARDS || it.cards.some(c => !c || !c.name))) { it.cards = rollCards(this.gs.player, it.legend ? { floor: '유니크', legend: true } : {}); it.flipped = Array(TM_CARDS).fill(false); it.sel = -1; }   // 🃏 샌드박스 카드는 고른 한 장 그대로
+    const want = it.bonus ? BONUS_CARDS : TM_CARDS;   // 현장 전송(전투 데이터 · 빛나는 TM 코어)은 3장
+    if (!it.sandbox && (!Array.isArray(it.cards) || it.cards.length !== want || it.cards.some(c => !c || !c.name))) { it.cards = rollCards(this.gs.player, it.legend ? { floor: '유니크', legend: true } : it.bonus ? { n: BONUS_CARDS } : {}); it.flipped = Array(want).fill(false); it.sel = -1; }   // 🃏 샌드박스 카드는 고른 한 장 그대로
     const N = it.cards.length;
     if (!Array.isArray(it.flipped) || it.flipped.length !== N) it.flipped = Array(N).fill(false);
     this.clearOverlay();
@@ -719,7 +773,8 @@ export default class UIScene extends Phaser.Scene {
     if (it.sel < 0 || it.sel >= N) it.sel = Math.max(0, it.flipped.indexOf(false));
     g.fillStyle(0x05040a, .9); g.fillRect(0, 0, GAME_W, GAME_H);
     L.add(this.add.image(320, CY, 'glow').setBlendMode(ADD).setTint(0x4a7aff).setScale(9, 5).setAlpha(.16));
-    L.add(hkText(this, 320, 20, it.sandbox ? '🃏 카드 샌드박스' : it.legend ? '전설의 기술 카드' : '기술머신', 18, it.legend || it.sandbox ? HK.gold : HK.ivory, { bold: true, ls: it.legend || it.sandbox ? 5 : 8, origin: .5, glow: true }));
+    const ttl = it.sandbox ? '🃏 카드 샌드박스' : it.legend ? '전설의 기술 카드' : it.title || '기술머신', emoji = /[\uD800-\uDFFF]/.test(ttl);   // 자간이 이모지(서로게이트 쌍)를 쪼개지 않게
+    L.add(hkText(this, 320, 20, ttl, 18, it.legend || it.sandbox || it.bonus ? HK.gold : HK.ivory, { bold: true, ls: emoji ? 0 : it.legend || it.sandbox ? 5 : 8, origin: .5, glow: true }));
     L.add(fadeLine(this, 320, 38, 320, .8));
     L.add(hkText(this, 320, 50, it.sandbox ? `테스트 모드 · 「${SANDBOX_LV[it.cards[0].sandboxLv || 0]}」 단계로 바로 적용 · 쓸 수 있는 포켓몬 제한 없음` : `파티 전체(${p.members.map(q => p.formName(q)).join(' · ')})에게 맞춰진 고대 석판 · ${allOpen ? '마음에 드는 카드 1장을 고르세요' : `카드를 눌러 하나씩 뒤집으세요 (남은 ${it.flipped.filter(f => !f).length}장)`}`, 9.5, HK.dim, { origin: .5 }));
     this.tmTextures(W, H);
@@ -753,7 +808,7 @@ export default class UIScene extends Phaser.Scene {
     } else {
       L.add(hkText(this, 320, BY + 10, `카드를 누르거나 1~${N}  ·  ← → 고르고 Enter · Space · Z 로 뒤집기  ·  ${N}장을 다 열어 본 뒤 1장을 고른다`, 9, HK.dim, { origin: .5 }));
     }
-    L.add(hkText(this, 320, 348, it.sandbox ? 'Esc 닫기 · 「← 다른 카드」는 카드 샌드박스 목록으로' : 'Esc 닫기 (고른 내용은 제단에 남는다)', 8, HK.faint, { origin: .5 }));
+    L.add(hkText(this, 320, 348, it.sandbox ? 'Esc 닫기 · 「← 다른 카드」는 카드 샌드박스 목록으로' : it.bonus ? `${it.note || ''}  ·  Esc 닫기 (고르지 않으면 잠시 뒤 다시 전송)` : 'Esc 닫기 (고른 내용은 제단에 남는다)', 8, HK.faint, { origin: .5 }));
     glassButton(this, 566, 8, 64, 20, '✕  닫기', () => gs.toggleOverlay('tm'), { size: 9, layer: L });
     if (this.tmModal && allOpen && it.sel >= 0) this.tmDrawModal(L, it.cards[it.sel]);   // 카드를 고르면 화면 한가운데 [포켓몬 지정 → (새 기술이면) 바꿀 기술 자리] 창
     if (this.tmAnims.length) this.tmEvents.push(this.time.addEvent({ delay: 16, loop: true, callback: () => { const t = this.time.now / 1000; for (const f of this.tmAnims) f(t); } }));
@@ -1868,7 +1923,7 @@ export default class UIScene extends Phaser.Scene {
         s.x = (p.mega.active ? SLOT_X.ult : p.z.has ? SLOT_X.zmove : SLOT_X.dash) - 38;   // 보이는 칸 가운데 맨 왼쪽 바로 옆
         s.zone.setPosition(s.x, SLOT_Y); s.cd.setX(s.x); s.icon.setX(s.x);
         type = 'grass'; tex = itemArt(this, 'potion', 26) || 'it:potion'; cd = p.potionCd || 0; max = POTION_CD; name = '상처약';
-        this.tPotion.setVisible(!this.touchLayout).setPosition(s.x, SLOT_Y + 23).setText(`🧪 ${n}/${POTION_MAX}`).setColor(n ? '#9affb8' : HK.red);
+        this.tPotion.setVisible(!this.touchLayout).setPosition(s.x, SLOT_Y + 23).setText(`🧪 ${n}/${p.potionMax}`).setColor(n ? '#9affb8' : HK.red);
         if (!n) cd = Math.max(cd, .001);   // 없으면 어둡게
       }
       else { const id = p.skillId(s.id), sk = SKILLS[id], lock = s.id === 'z' && p.isCombo('z'); type = sk.type; tex = skillIcon(this, id); cd = lock ? p.zLock || 0 : m.cd[s.id]; max = lock ? .42 : p.cdOf(id) || 1; name = sk.name; }   // 연타 Z칸: 3타 뒤 숨 고르기
