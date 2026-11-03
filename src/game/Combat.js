@@ -16,6 +16,12 @@ export const BOSS_MIN_SPEED = 580;
 // 패링으로 되받아친 탄 (parried): 맞힌 상대 속성과 상관없이 '효과가 굉장했다'(약점) 판정 · 보스 그로기 게이지 PARRY_STAGGER 를 한 번에 (일반 약점 한 방의 최대치 약 4.5배)
 //  연속 패링 점감 (Player.parryChainStep): 2초 안에 이어 쳐낸 탄은 반사 피해 · 그로기가 줄어든다 (o.parryDmg · o.parryStag) · 반사탄도 작아진다 (PARRY_SIZE)
 const PARRY_STAGGER = 32, PARRY_SIZE = [1, .85, .72, .62, .55], PARRY_COL = [0xffe36a, 0xffd88a, 0xf0d0a0, 0xd8c8b0, 0xc0b8b0];
+// 반사탄 조준: 쳐내는 순간 그 탄을 쏜 적(없으면 가장 가까운 적)의 중심으로 · 날아가는 동안 초당 최대 REFLECT_TURN 만큼만 꺾어 따라간다 (약한 유도)
+const REFLECT_TURN = 40 * Math.PI / 180, REFLECT_RANGE = 640;
+// ⚠️ 붉은 안광(패링 불가 — Boss.dangerOn) 공격을 패링하면 가드 브레이크 · 받는 피해 ×DANGER_MUL (Player.takeHit · guardBreak)
+export const DANGER_MUL = 1.4;
+// 영거리 사격술(양날의 검 카드): 적과 NEAR_R 안에서 맞히면 +75% · FAR_R 밖에서 맞히면 -30%
+const NEAR_R = 140, FAR_R = 300;
 
 // 다단히트 합계 글자 모양
 const txtStack = () => txt(11, '#ffe08a', { stroke: '#3a1a00', strokeThickness: 3, fontStyle: 'bold' });
@@ -51,6 +57,11 @@ export class Combat {
     d *= this.s.bondMul || 1;   // 유대의 불꽃 정화 단계마다 모든 공격 소폭 상승 (GameScene.bondMul)
     if (mods.execute && e.hp <= e.maxhp * .25) d *= 1 + mods.execute;   // 특성 카드: 마무리 일격
     if (!o.dot && p.counterBuffT > this.s.time.now) d *= 1 + .4 * (mods.parryCounter || 1);   // 반격의 일격 카드: 패링 뒤 2초 안에 쓴 기술 (Player.useSkill)
+    if (mods.overCharge && (o.chg || o.src === 'charge')) d *= 1 + mods.overCharge;   // 과부하 차징 캐논(양날의 검): 차징 샷 · 폭발 피해 +120%
+    if (!o.dot && (mods.nearPow || mods.farCut)) {   // 영거리 사격술(양날의 검): 가까이서 +75% · 멀리서 -30%
+      const dist = Math.hypot(e.x - p.x, e.y - p.y);
+      if (dist <= NEAR_R) d *= 1 + (mods.nearPow || 0); else if (dist >= FAR_R) d *= 1 - (mods.farCut || 0);
+    }
     if (e.groggyT > 0) d *= GROGGY_MUL;   // 보스 그로기(약점 누적으로 자세 무너짐): 받는 피해 ×1.35
     if (e.guardMul && !o.pierceGuard) d *= e.guardMul;   // 레시라무의 푸른 불꽃은 방어 자세도 꿰뚫는다
     const sure = !o.dot && p.critNext > this.s.time.now;   // 패링 카운터 뒤 다음 한 방은 확정 치명타
@@ -85,6 +96,11 @@ export class Combat {
     }
     if (e.boss && o.parried) { if (e.addStaggerRaw && (o.parryStag ?? 1) > 0) e.addStaggerRaw(PARRY_STAGGER * (o.parryStag ?? 1)); }   // 패링 반사탄: 그로기 게이지가 뭉텅이로 (연속 패링은 60 → 35 → 15 → 0%)
     else if (e.boss && e.addStagger && !o.dot) e.addStagger(m === 0 ? 'immune' : eff, d * (o.stagMul || 1));   // 보스 그로기 게이지 (약점 속성 공격만 · 준 피해에 비례 — Boss.addStagger) · stagMul: 차징 임팩트 웨이브 2배
+    const pa = p.action;
+    if (mods.heavyStag && pa && pa.comboStep && !o.dot && !o.proc && !o.parried && e.hp > 0) {   // 초중량 일격(양날의 검): 평타 한 번에 적마다 한 번 — 보스 그로기 · 3타 피니시는 잡몹 경직
+      const hs = pa.heavySet || (pa.heavySet = new Set());
+      if (!hs.has(e)) { hs.add(e); if (e.boss && e.addStaggerRaw) e.addStaggerRaw((pa.finisher ? 7 : 2.5) * mods.heavyStag); else if (pa.finisher) e.status.stun = Math.max(e.status.stun, .35); }
+    }
     if (e.hp > 0) perkHit(this, e, d, type, o);
     if (p.castGrade && !o.proc && !o.dot && e.alive) this.gradeBurst(e, type, p.castGrade === '전설');   // 유니크·전설 기술 카드: 맞힌 자리마다 연쇄 폭발   // 특성 카드: 화상·빙결·마비·독·저주 부여 · 연쇄 번개 · 장판 · 블랙홀
     if (e.hp <= 0 && !(e.cheatDeath && e.cheatDeath())) this.s.killEnemy(e);   // 칠색조 부활처럼 한 번 버티는 보스
@@ -201,6 +217,12 @@ export class Combat {
     return n;
   }
   enemiesIn(rect) { return this.s.enemies.filter(e => e.alive && overlap(rect, e.bounds())); }
+  // 반사탄이 노릴 적: 그 탄을 쏜 적(살아 있고 맞을 수 있으면) · 아니면 탄에서 가장 가까운 적
+  reflectTarget(q) {
+    const s = q.src;
+    if (s && s.alive && !s.intangible && !s.gone && this.s.enemies.includes(s)) return s;
+    return this.nearest(q.x, q.y, 1, REFLECT_RANGE)[0] || null;
+  }
   nearest(x, y, n = 1, range = 400) {
     return this.s.enemies.filter(e => e.alive && !e.intangible && Math.abs(e.x - x) < range && Math.abs(e.y - y) < range * .7)
       .sort((a, b) => Phaser.Math.Distance.Between(x, y, a.x, a.y) - Phaser.Math.Distance.Between(x, y, b.x, b.y)).slice(0, n);
@@ -250,7 +272,7 @@ export class Combat {
         q.charge = true;
         const cx = this.chargeCtx;   // 퍼펙트 차징: 확정 치명타 · 임팩트 웨이브: 그로기 2배 + 맞힌 자리에 2차 폭발 장판 (기본 차징 탄은 직접 터뜨린다)
         if (cx) {
-          q.status = Object.assign({}, q.status, cx.crit ? { crit: 1 } : {}, cx.shock ? { stagMul: 2 } : {});
+          q.status = Object.assign({}, q.status, { chg: 1 }, cx.crit ? { crit: 1 } : {}, cx.shock ? { stagMul: 2 } : {});   // chg: 과부하 차징 캐논 (damageEnemy)
           if (cx.shock && !q.ownShock) { const end = q.onExpire; q.onExpire = qq => { if (end) end(qq); if (qq.hit.size) cx.shock(qq.x, qq.y); }; }
         }
       }
@@ -296,6 +318,14 @@ export class Combat {
           q.vx = Math.cos(na) * sp; q.vy = Math.sin(na) * sp;
         }
       }
+      if (q.seek) {   // 패링 반사탄: 노린 적을 초당 최대 REFLECT_TURN 으로 부드럽게 쫓는다 (그 적이 쓰러지면 가장 가까운 적)
+        const t = q.seek.alive && !q.seek.intangible && !q.seek.gone ? q.seek : (q.seek = this.reflectTarget(q));
+        if (t) {
+          const want = Math.atan2(t.y - q.y, t.x - q.x), cur = Math.atan2(q.vy, q.vx), sp = Math.hypot(q.vx, q.vy);
+          const na = cur + Phaser.Math.Clamp(Phaser.Math.Angle.Wrap(want - cur), -REFLECT_TURN * dt, REFLECT_TURN * dt);
+          q.vx = Math.cos(na) * sp; q.vy = Math.sin(na) * sp;
+        }
+      }
       if (q.boomerang && q.t > q.boomerang) {   // 돌아오는 잎날
         const dx = p.x - q.x, dy = p.y - q.y, d = Math.hypot(dx, dy) || 1, sp = 260;
         q.vx += (dx / d * sp - q.vx) * Math.min(1, dt * 6); q.vy += (dy / d * sp - q.vy) * Math.min(1, dt * 6);
@@ -325,13 +355,23 @@ export class Combat {
           if (--q.pierce <= 0) { dead = true; why = 'done'; break; }
         }
       } else if (!dead && q.owner === 'enemy' && p.parryZone() && p.inParry(p.parryZone(), q.x, q.y, q.r)) {
+        // ⚠️ 붉은 안광(패링 불가) 탄: 받아치지 못하고 가드 브레이크 · 피해 ×DANGER_MUL (Boss.dangerOn)
+        if (q.danger || (q.src && q.src.danger)) {
+          p.guardBreak(q.x, q.y);
+          if (p.takeHit(q.dmg * DANGER_MUL, q.type, q.x - q.vx * .1, Object.assign({}, q.status, { noParry: true }))) { dead = true; why = 'hit'; }
+        } else {
         // 패링 자세(지상 ↓ + Z) → 반사: 아군 황금빛 탄이 되어 되돌아간다 (속도 2배 · 최대 900) · 250% 피해 × 연속 패링 점감
+        //  쏜 적(없으면 가장 가까운 적)의 중심을 겨눠 날아가고, 그 적이 움직이면 초당 40° 까지 꺾어 따라간다 (q.seek)
         const amp = p.mods.reflectAmp || 0;   // 증폭 반사경 카드: 반사탄 크기 · 비행 속도 +30% · 반사 피해 +35% (합성하면 더)
         const ch = p.doParry(q.x, q.y, 'proj'), i = Math.min(ch.n, PARRY_SIZE.length) - 1, sp = Math.hypot(q.vx, q.vy) || 1, v = Math.min(900 * (1 + .3 * amp), sp * 2 * (1 + .3 * amp)) / sp;
-        q.owner = 'player'; q.vx = -q.vx * v; q.vy = -q.vy * v; q.grav = 0; q.dmg = Math.max(q.dmg * 2.5, p.atk * 2.5) * ch.dmg * (1 + .35 * amp); q.hit = new Set(); q.life = 1.5; q.homing = 0; q.tier = 3; q.ghost = false;
+        const tgt = this.reflectTarget(q);
+        if (tgt) { const a = Math.atan2(tgt.y - q.y, tgt.x - q.x); q.vx = Math.cos(a) * sp * v; q.vy = Math.sin(a) * sp * v; } else { q.vx = -q.vx * v; q.vy = -q.vy * v; }
+        q.seek = tgt; q.update = null;   // 스스로 움직이던 탄(떨어지는 바위 · 도는 구슬)도 이제 곧게 날아간다
+        q.owner = 'player'; q.grav = 0; q.dmg = Math.max(q.dmg * 2.5, p.atk * 2.5) * ch.dmg * (1 + .35 * amp) * (ch.pow || 1); q.hit = new Set(); q.life = 1.5; q.homing = 0; q.tier = 3; q.ghost = false;   // ch.pow: 천공의 반격 · 찰나의 카운터
         q.r = Math.max(3, q.r * PARRY_SIZE[i] * (1 + .3 * amp));   // 연속으로 쳐낼수록 반사탄이 작아진다
         q.color = PARRY_COL[i]; q.status = { kb: 0, parried: true, parryN: ch.n, parryDmg: ch.dmg, parryStag: ch.stag }; q.parried = true;   // 맞히면 무조건 약점 · 그로기 (damageEnemy)
         continue;
+        }
       } else if (!dead && q.owner === 'enemy' && circRect(q.x, q.y, q.r, p.bounds())) {
         const r = p.blockProjectile(q);
         if (r === 'reflect') { q.owner = 'player'; q.vx = -q.vx * 1.2; q.vy *= -.3; q.dmg = p.atk * 2; q.hit = new Set(); q.life = 1.2; q.homing = 0; q.type = p.sp.types[0]; q.tier = p.tierIdx; this.fx.ring(q.x, q.y, 14, 0xbfe6ff, 200); continue; }
@@ -406,7 +446,7 @@ export class Combat {
   explode(q) {
     const b = q.boom;
     if (q.owner === 'player') this.hitCircle(q.x, q.y, b.r, b.mul, q.type, Object.assign({ kbx: b.kb ?? 200, kby: -200, src: q.charge ? 'charge' : undefined }, q.status));
-    else if (Phaser.Math.Distance.Between(q.x, q.y, this.p.x, this.p.y) < b.r) this.p.takeHit(q.dmg, q.type, q.x, {});
+    else if (Phaser.Math.Distance.Between(q.x, q.y, this.p.x, this.p.y) < b.r) this.p.takeHit(q.dmg, q.type, q.x, { danger: !!q.danger });   // 붉은 안광 폭발탄은 패링 불가
     this.fx.ring(q.x, q.y, b.r, q.color, 280); this.fx.glow(q.x, q.y, b.r, q.color, 260, .9);
     this.fx.burst(q.x, q.y, [q.color, 0xffffff], 22, b.r * 3, { up: 80, glow: true });
     this.fx.shake(b.r > 50 ? .012 : .006, 200, q.owner === 'player' ? 'hit' : 'world'); Sfx.play('boom');

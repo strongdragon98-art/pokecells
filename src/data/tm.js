@@ -8,6 +8,7 @@
 //  등급 4단계: 커먼 62% · 레어 28% · 유니크 8% · 전설 2% — 기술 · 특성 카드는 등급을 먼저 굴리고(그 자리 후보에 있는 등급끼리 다시 나눈다) 그 등급 안에서 고른다
 //   스킬 강화 카드도 같은 등급 확률 (커먼: 위력 · 광역 +15% · 가속 -10% · 분열탄 1갈래) · 원작 개조(유니크 · 전설)는 강화 칸에 6% 확률로만 · 차징 카드 보장 15%(등급 확률대로)
 //   커먼 · 레어를 합성해 +2 에 한 등급 승급하는 규칙은 그대로
+//  ⚖️ 양날의 검 특성 카드 8종(game/Perks.js curse): 대가를 안고 한 메커니즘을 폭발시킨다 — 특성 카드 풀에 그대로 섞인다 (레어 · 유니크)
 import { SKILLS } from './pokemon.js';
 import { typeName } from './types.js';
 import { PERKS } from '../game/Perks.js';
@@ -89,8 +90,10 @@ export function mergePreview(m, card) {
     base = moveGrade(card.id);
     cmp = `(위력 기존 +${pct(LV_GAIN * from)} ▶ 강화 후 +${pct(LV_GAIN * to)} 🔺)`;
   } else if (card.kind === 'perk') {
-    base = PERKS[card.id].grade;
-    cmp = `(효과 기존 ×${lvMul(from).toFixed(1)} ▶ 강화 후 ×${lvMul(to).toFixed(1)} 🔺)`;
+    const pk = PERKS[card.id];
+    base = pk.grade;
+    cmp = pk.curse ? `(극대화 ×${lvMul(from).toFixed(1)} ▶ ×${lvMul(to).toFixed(1)} 🔺 · 대가 ${Math.round((pk.ease || 0) * to * 100)}% 완화)`   // 양날의 검: 대가는 커지지 않고 줄어든다
+      : `(효과 기존 ×${lvMul(from).toFixed(1)} ▶ 강화 후 ×${lvMul(to).toFixed(1)} 🔺)`;
   }
   return { from, to, grade: promoteGrade(base, to), cmp, max: to >= CARD_MAX_LV };
 }
@@ -187,7 +190,21 @@ export function moveGrade(id) {
 }
 
 export const TM_CARDS = 4;   // 한 번에 뒤집는 카드 수
-export const DATA_KILLS = 12, BONUS_CARDS = 3;   // 전투 데이터 축적: 일반 야생 12마리마다 현장 기술머신 전송 · 현장 전송(전투 데이터 · 빛나는 TM 코어) 카드 수
+export const DATA_KILLS = 20, BONUS_CARDS = 3;   // 전투 데이터 축적: 일반 야생 12마리마다 현장 기술머신 전송 · 현장 전송(전투 데이터 · 빛나는 TM 코어) 카드 수
+// 카드 스택: 파티가 지닌 · 강화한 기술머신 카드 수 (특성 장 수 · 스킬 강화 1 + 단계 · 기술 카드 1 + 단계 · 원작 개조 · 숙련)
+//  엘리트 · 보스는 나타날 때 스택마다 체력 +STACK_HP · 공격력 +STACK_ATK (GameScene.stackScale) — 카드로 강해진 만큼 적도 버틴다
+export const STACK_HP = .06, STACK_ATK = .03;
+export function cardStacks(p) {
+  let n = 0;
+  for (const m of (p && p.members) || []) {
+    for (const v of Object.values(m.perks || {})) n += v || 0;
+    for (const e of m.boostCards || []) n += 1 + (e.lv || 0);
+    for (const id of Object.keys(m.cardGrade || {})) n += 1 + ((m.cardLv || {})['move:' + id] || 0);
+    n += (m.ups && m.ups.size) || 0;
+    n += m.mastery || 0;
+  }
+  return n;
+}
 // 카드가 모자랄 때 채우는 숙련 카드 (몇 번이고 겹친다 — 어떤 경우에도 카드 4장을 채운다)
 export const MASTERY = {
   power_memory: { name: '숙련의 기억: 힘', grade: '커먼', desc: '이 포켓몬의 공격력 +8%.', apply: m => { m.atkBonus *= 1.08; } },
@@ -358,7 +375,7 @@ export function rollCards(p, o = {}) {
 // 🃏 카드 샌드박스 (테스트 모드 · UIScene 테스트 패널 '카드' 탭): 제약 없이 모든 카드 — group 으로 분류
 //  move: 액티브 기술 (기술머신 45종 + 계열 전용 · 대시 같은 돌진 기술 제외) · boost: 원작 개조 + 출전 중인 포켓몬의 Z·X·C 스킬 강화(갈래 × 레어 · 유니크 · 전설)
 //  charge: 2 · 3단 차징 해금 등 차징 카드 · dash: 대시 진화 · perk: 그 밖의 특성(능력치 · 기동 · 속성 부여 · 스킬 변이 · 유물 · 유틸) · mastery: 숙련
-export const SANDBOX_GROUPS = [['all', '전체'], ['move', '액티브 기술'], ['boost', '기술 강화'], ['charge', '차징'], ['dash', '대시'], ['parry', '패링'], ['perk', '특성 · 스탯'], ['mastery', '숙련']];
+export const SANDBOX_GROUPS = [['all', '전체'], ['move', '액티브 기술'], ['boost', '기술 강화'], ['charge', '차징'], ['dash', '대시'], ['parry', '패링'], ['curse', '양날의 검'], ['perk', '특성 · 스탯'], ['mastery', '숙련']];
 export function sandboxCards(p) {
   const out = [], m = p.m;
   const ids = [...new Set([...Object.keys(TM_LEARN), ...Object.values(TM_POOL).flat()])].filter(id => SKILLS[id] && !DASH_ONLY.has(id) && SKILLS[id].arch !== 'dash');
@@ -372,7 +389,7 @@ export function sandboxCards(p) {
       for (const grade of GRADES) out.push(Object.assign(boostCard({ bk, skill: sid, owner: m.key, grade, amt: BOOSTS[bk].amt[grade] }, slot), { group: 'boost', who: [m.key] }));
     }
   }
-  for (const [id, pk] of Object.entries(PERKS)) out.push({ group: pk.cat === '차징' ? 'charge' : pk.cat === '대시 진화' || pk.cat === '대시' ? 'dash' : pk.cat === '패링' ? 'parry' : 'perk', kind: 'perk', id, name: pk.name, type: PERK_TYPE[id] || 'normal', grade: pk.grade, desc: pk.desc, cat: pk.cat, max: pk.max });
+  for (const [id, pk] of Object.entries(PERKS)) out.push({ group: pk.cat === '차징' ? 'charge' : pk.cat === '대시 진화' || pk.cat === '대시' ? 'dash' : pk.cat === '패링' ? 'parry' : pk.curse ? 'curse' : 'perk', kind: 'perk', id, name: pk.name, type: PERK_TYPE[id] || 'normal', grade: pk.grade, desc: pk.desc, cat: pk.cat, max: pk.max });
   for (const [id, c] of Object.entries(MASTERY)) out.push({ group: 'mastery', kind: 'mastery', id, name: c.name, type: 'normal', grade: c.grade, desc: c.desc, cat: '숙련' });
   const gi = c => SANDBOX_GROUPS.findIndex(g => g[0] === c.group);
   return out.sort((a, b) => gi(a) - gi(b) || GRADES.indexOf(b.grade) - GRADES.indexOf(a.grade) || (a.kind === 'boost' && b.kind === 'boost' ? 0 : a.name.localeCompare(b.name, 'ko')));
@@ -419,5 +436,6 @@ export function applyCard(player, m, card, slot) {
     return n > 1 ? `${pk.name} 강화 합성 ${lvTag(lv - 1)} → ${lvTag(lv)}${lv === 2 ? ' · 등급 승급!' : ''}${lv >= CARD_MAX_LV ? ' · ' + MAX_BONUS.perk : ''} · ${pk.desc} (효과 ×${lvMul(lv).toFixed(1)})` : pk.desc;
   }
   MASTERY[card.id].apply(m, player);
+  m.mastery = (m.mastery || 0) + 1;   // 카드 스택 (cardStacks)
   return card.name;
 }

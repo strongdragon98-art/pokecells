@@ -12,6 +12,8 @@ import { typeColor, typeName } from '../data/types.js';
 
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const STRIKE = new Set(['dash', 'dive', 'spin', 'spark', 'glide', 'jet', 'serpent', 'skydive', 'lunge', 'volt', 'boltRun', 'fbDive']);
+// 붉은 안광을 굴리는 강력한 패턴: 몸통 돌진(STRIKE) · 도약 내려찍기(leap) · 바짝 파고드는 드래곤크루(clawIn — 잡기) · 성스러운불꽃 폭격 질주(bombRun)
+const DANGER_STATES = new Set([...STRIKE, 'leap', 'clawIn', 'bombRun']);
 // 공중 보스 체공 고도 제한: 이 상태들에서는 아래 땅·발판 위로 HOVER_GAP 보다 높이 뜨지 않는다 (1단 점프·기본기로 닿게)
 const HOVER_STATES = new Set(['idle', 'wind', 'fire', 'recover', 'barrage', 'blinkFire']);
 const HOVER_GAP = 30;                                      // 보스 발끝 ~ 아래 땅 (px)
@@ -26,6 +28,14 @@ export const GROGGY_T = 2.25, GROGGY_MUL = 1.35;
 // 보스 탄 규칙: 한 번의 시전(idle 을 떠나 다음 idle 까지)에 쏘는 탄은 최대 MAX_CAST_SHOTS 발 (넘치면 쏘지 않는다 — Boss.shot) — 연속 패링 반사 딜이 과하게 쌓이지 않게
 //  탄속: 직선으로 나는 보스 탄은 Combat 이 BOSS_MIN_SPEED 이상으로 (보스마다 def.shotMul 배 — 다크라이 2배) · 스스로 움직이는 탄은 날아가기 시작할 때 bossSpeed
 export const MAX_CAST_SHOTS = 5;
+// ⚠️ 붉은 안광 (패링 불가): 강력한 돌진 · 내려찍기 · 대폭발 직전 — 보스 눈에 붉은 십자 안광 + 「⚠️ DANGER!」 (dangerOn)
+//  강력한 패턴(DANGER_STATES: 몸통 돌진 · 도약 내려찍기 · 잡기 · 폭격 질주)은 시전마다 DANGER_P(광폭화면 DANGER_RAGE_P) 확률로 — 시작 직전 DANGER_HOLD 초 멈칫하며 번쩍인다
+//  큰 폭발탄(boom 반경 DANGER_BOOM_R 이상) · 큰 폭발 장판(burst 너비 DANGER_ZONE_W 이상)은 언제나 · 붉은 안광 시전의 탄 · 장판 · 몸통 박치기는 모두 패링 불가
+//  패링하면 가드 브레이크 + 피해 ×1.4 (Player.guardBreak · Combat.DANGER_MUL) — 점프 · 대시로 피해야 한다
+const DANGER_P = .5, DANGER_RAGE_P = .7, DANGER_HOLD = .42, DANGER_BOOM_R = 40, DANGER_ZONE_W = 70, DANGER_COL = 0xff1a2a, DANGER_MAX_T = 3.5;
+// 🔥 광폭화: 체력 RAGE_HP 이하 — 패턴 시계(예비 동작 · 후딜레이 · 쿨타임)와 몸놀림이 RAGE 배 빨라지고, 패턴이 끝난 뒤 쉬는 시간이 RAGE_CD 배로 한 번 더 준다
+export const RAGE_HP = .4, RAGE = 1.25;
+const RAGE_CD = .8;
 const bossSpeed = (sp, e) => Math.max(sp * ENEMY_FAST * ((e && e.def.shotMul) || 1), BOSS_MIN_SPEED);
 
 export class Boss extends Enemy {
@@ -54,20 +64,29 @@ export class Boss extends Enemy {
     this.timer = Math.max(this.timer, ms / 1000 + .6);
   }
 
-  get striking() { return STRIKE.has(this.state) || (this.state === 'leap' && this.diving); }   // 몸으로 부딪혀도 피해를 주는 상태
+  get striking() { return !(this.dangerHold > 0) && (STRIKE.has(this.state) || (this.state === 'leap' && this.diving)); }   // 몸으로 부딪혀도 피해를 주는 상태 (붉은 안광 멈칫 동안은 아니다)
 
-  zone(c) { return this.scene.combat.spawnZone(Object.assign({ owner: 'enemy', dmg: this.dmg, type: this.types[0] }, c)); }
+  zone(c) {   // 큰 폭발 장판(burst)은 붉은 안광 · 붉은 안광 시전의 장판은 모두 패링 불가 (status.danger → Player.takeHit)
+    const big = c.draw === 'burst' && (c.w || 0) >= DANGER_ZONE_W && (c.dmg ?? this.dmg) > 0;
+    if (big && !this.danger) this.dangerOn(false);
+    if (this.danger) c = Object.assign({}, c, { status: Object.assign({}, c.status, { danger: true }) });
+    return this.scene.combat.spawnZone(Object.assign({ owner: 'enemy', dmg: this.dmg, type: this.types[0] }, c));
+  }
   // 보스 투사체: 최종 진화형(3단, 메가진화 후엔 메가)으로 맞대결한다. 연발 탄막은 연속 투사체, 폭발하는 큰 탄(boom)은 단발
   shot(c) {   // fast: 탄속 ×1.42(보스는 하한 BOSS_MIN_SPEED) + 0.2초 예비 동작 (Combat) · 이번 시전의 탄을 다 썼으면 쏘지 않는다 (빈 껍데기)
     if ((this.castShots || 0) >= MAX_CAST_SHOTS) return { dead: true, x: c.x, y: c.y, vx: 0, vy: 0, r: c.r || 4, hit: new Set(), status: {}, life: 0 };
     this.castShots = (this.castShots || 0) + 1;
-    return this.scene.combat.spawnProjectile(Object.assign({ owner: 'enemy', dmg: this.dmg, type: this.types[0], tier: this.megaForm ? 3 : 2, stream: !c.boom, fast: true, boss: true, spdMul: this.def.shotMul || 1 }, c));
+    const big = c.boom && c.boom.r >= DANGER_BOOM_R && (c.dmg ?? this.dmg) > 0;   // 큰 폭발탄: 붉은 안광 (패링 불가)
+    if (big && !this.danger) this.dangerOn(false);
+    return this.scene.combat.spawnProjectile(Object.assign({ owner: 'enemy', dmg: this.dmg, type: this.types[0], tier: this.megaForm ? 3 : 2, stream: !c.boom, fast: true, boss: true, spdMul: this.def.shotMul || 1, src: this, danger: !!this.danger }, c));   // src: 패링 반사탄이 이 보스를 겨눈다
   }
   spare(n) { return MAX_CAST_SHOTS - (this.castShots || 0) >= n; }   // 이번 시전에 아직 n 발을 쏠 수 있는지 (양쪽 충격파처럼 짝지어 나가는 탄)
   groundY() { return this.scene.level ? this.scene.groundBelow(this.x, this.b.y) : this.bottom; }
 
   update(dt, p) {
     const sc = this.scene, st = this.status;
+    if (this.rageV) { this.rageV = false; this.b.velocity.x /= RAGE; this.b.velocity.y /= RAGE; }   // 광폭화: 지난 물리 단계 동안만 키운 몸놀림을 되돌린다 (끝에서 다시)
+    if (this.danger && (this.dangerT -= dt) <= 0) this.dangerOff();   // 시전이 idle 로 돌아오지 않는 패턴이어도 붉은 안광은 DANGER_MAX_T 초면 꺼진다
     this.t += dt;
     for (const k in st) st[k] -= dt;
     this.tickT -= dt;
@@ -95,18 +114,31 @@ export class Boss extends Enemy {
     } else if (st.stun > 0 || st.root > 0) {
       this.b.setVelocityX(this.b.velocity.x * .8);
       this.telegraph(false);
+    } else if (this.dangerHold > 0) {   // ⚠️ 붉은 안광: 튀어 나가기 직전 멈칫 — 다 되면 막아 둔 돌진 속도 그대로 (dangerOn)
+      this.dangerHold -= dt;
+      this.b.setVelocity(0, 0);
+      if (this.dangerHold <= 0) { this.b.setAllowGravity(this.dangerG); this.b.setVelocity(this.dangerV.x, this.dangerV.y); }
     } else {
       if (this.phase === 1 && this.hp < this.maxhp * .5) this.enterPhase2();
+      if (!this.rage && this.hp <= this.maxhp * RAGE_HP) this.enterRage();
       const prev = this.state, s0 = this.castShots || 0;
       if (!this.flying && this.room && this.room.arenaStyle) sc.arenaStep(this, 2, false, this.room);   // 결전장 단상 · 계단 턱을 걸어 오른다 (game/Arenas.js)
-      (BOSS_AI[this.def.ai] || BOSS_AI.legend)(this, dt, p);
+      (BOSS_AI[this.def.ai] || BOSS_AI.legend)(this, this.rage ? dt * RAGE : dt, p);   // 광폭화: 패턴 시계가 RAGE 배 빠르다 (예비 동작 · 후딜레이 · 쿨타임)
       this.lastVx = this.b.velocity.x;
       if (prev === 'idle' && this.state !== 'idle') this.castShots = (this.castShots || 0) - s0;   // 새 시전: 이번 프레임에 쏜 탄부터 다시 센다
       if (prev === 'wind' && this.state !== 'wind') this.bigN = (this.bigN || 0) + 1;   // 큰 기술 하나를 썼다
+      if (this.state === 'idle') {   // 시전이 끝났다: 붉은 안광도 꺼지고 · 광폭화면 다음 패턴까지 한 번 더 짧게
+        if (prev !== 'idle' && this.rage) this.cd *= RAGE_CD;
+        this.dangerCast = false;
+        if (this.danger) this.dangerOff();
+      } else if ((this.striking || DANGER_STATES.has(this.state)) && !this.dangerCast && !this.intangible) {   // 이번 시전의 첫 강력한 패턴(돌진 · 도약 · 잡기 · 폭격): 붉은 안광을 굴린다
+        this.dangerCast = true;
+        if (!this.danger && Math.random() < (this.rage ? DANGER_RAGE_P : DANGER_P)) this.dangerOn(true);
+      }
       this.maybeRest();
       this.hoverCap();
     }
-    if (this.striking && !this.intangible && overlap(this.bounds(), p.bounds())) p.takeHit(this.dmg, this.def.atkType || this.types[0], this.x, {});
+    if (this.striking && !this.intangible && overlap(this.bounds(), p.bounds())) p.takeHit(this.dmg, this.def.atkType || this.types[0], this.x, { danger: !!this.danger });
     // 아레나 밖으로 나가지 않게 (날아다니는 보스는 위아래도)
     if (this.room) {
       const minX = this.room.left + 20, maxX = this.room.right - 20;
@@ -126,6 +158,70 @@ export class Boss extends Enemy {
     if (want !== this.animName) this.play(want);
     this.syncSprite(dt);
     this.syncCorruption(dt);
+    if (this.rage) {   // 광폭화: 붉게 일렁이는 오라 · 발밑에서 솟는 불티
+      this.glowImg.setTint(0xff2a2a).setAlpha(.5 + Math.sin(this.t * 9) * .18);
+      if (Math.random() < dt * 8) sc.fx.burst(this.x + (Math.random() - .5) * this.b.width, this.bottom - 4, [0xff2a2a, 0xff8a2a, 0x3a0a0a], 1, 30, { angle: -Math.PI / 2, spread: .5, up: 50, grav: -40, bounce: false, glow: true, life: .6 });
+    }
+    if (this.dangerFx && this.dangerFx.active) { const ep = this.eyePos(); this.dangerFx.setPosition(ep.x, ep.y); }   // 붉은 십자 안광 · DANGER 글자가 보스를 따라간다
+    if (this.dangerTxt && this.dangerTxt.active) this.dangerTxt.setPosition(Math.round(this.x + (this.dangerHold > 0 ? (Math.random() - .5) * 3 : 0)), Math.round(this.top - 10));
+    // 광폭화 몸놀림 RAGE 배: 다음 물리 단계 동안만 속도를 키운다 — 중력 보정까지 더해 같은 궤적을 RAGE 배 빨리 (맨 앞에서 되돌린다)
+    if (this.rage && this.alive && !(this.groggyT > 0) && !(this.dangerHold > 0) && this.state !== 'rest' && this.state !== 'intro') {
+      const b = this.b;
+      if (b.allowGravity && !b.blocked.down) b.velocity.y += (sc.physics.world.gravity.y + b.gravity.y) * dt * (RAGE - 1 / RAGE);
+      b.velocity.x *= RAGE; b.velocity.y *= RAGE; this.rageV = true;
+    }
+  }
+
+  // ---------------- ⚠️ 붉은 안광 (패링 불가) ----------------
+  //  이번 시전은 패링이 안 된다: 보스 눈에 붉은 십자 안광 · 머리 위 「⚠️ DANGER!」 · 경고음 · 붉은 섬광 (hold: 돌진 직전 DANGER_HOLD 초 멈칫)
+  //  시전이 끝나 idle 로 돌아오면 꺼진다 (그로기 · 숨 고르기도) — 그동안의 탄(shot) · 장판(zone) · 몸통 박치기는 모두 패링 불가
+  dangerOn(hold) {
+    const sc = this.scene, b = this.b;
+    this.danger = true; this.dangerT = DANGER_MAX_T;
+    if (hold) {
+      this.dangerHold = DANGER_HOLD; this.dangerV = { x: b.velocity.x, y: b.velocity.y }; this.dangerG = b.allowGravity;
+      b.setAllowGravity(false); b.setVelocity(0, 0);
+    }
+    this.dangerFxOff();
+    const ep = this.eyePos(), life = (hold ? DANGER_HOLD : .3) * 1000 + 380;
+    const fx = this.dangerFx = sc.add.container(ep.x, ep.y).setDepth(46);
+    const halo = sc.add.image(0, 0, 'glow').setBlendMode(ADDB).setTint(0xff0a1a).setAlpha(.7);
+    const h = sc.add.image(0, 0, 'glow').setBlendMode(ADDB).setTint(DANGER_COL).setScale(2.6, .14);   // 붉은 십자: 가로로 길게 · 세로로 짧게
+    const v = sc.add.image(0, 0, 'glow').setBlendMode(ADDB).setTint(DANGER_COL).setScale(.14, 1.7);
+    const core = sc.add.image(0, 0, 'glow').setBlendMode(ADDB).setTint(0xffffff).setScale(.32);
+    fx.add([halo, h, v, core]); fx.setScale(0).setRotation(-.35);
+    sc.tweens.add({ targets: fx, scale: 1, rotation: 0, duration: 150, ease: 'Back.easeOut' });
+    sc.tweens.add({ targets: [h, v], alpha: { from: 1, to: .5 }, duration: 80, yoyo: true, repeat: -1 });
+    sc.tweens.add({ targets: fx, alpha: 0, delay: life - 240, duration: 240, onComplete: () => { if (this.dangerFx === fx) this.dangerFx = null; fx.destroy(); } });
+    const t = this.dangerTxt = sc.add.text(Math.round(this.x), Math.round(this.top - 10), '⚠️ DANGER!', { fontFamily: 'Galmuri11', fontSize: '14px', color: '#ff3a3a', stroke: '#2a0006', strokeThickness: 4, resolution: 2 }).setOrigin(.5, 1).setDepth(62).setScale(1.7);
+    sc.tweens.add({ targets: t, scale: 1, duration: 170, ease: 'Back.easeOut' });
+    sc.tweens.add({ targets: t, alpha: 0, delay: life, duration: 300, onComplete: () => { if (this.dangerTxt === t) this.dangerTxt = null; t.destroy(); } });
+    sc.fx.ring(this.x, this.y, 46, DANGER_COL, 300); sc.fx.glow(ep.x, ep.y, 30, DANGER_COL, 300, 1);
+    sc.fx.shake(.006, 160); sc.cameras.main.flash(90, 255, 30, 40, true);
+    Sfx.play('danger');
+    if (!sc.dangerTold) { sc.dangerTold = true; sc.events.emit('toast', '⚠️ 붉은 안광 = 패링 불가! 막으면 가드 브레이크 · 피해 1.4배 — 점프나 대시로 피하자'); }
+  }
+  dangerFxOff() {
+    const tw = this.scene && this.scene.tweens, fx = this.dangerFx, t = this.dangerTxt;
+    if (fx && fx.active) { if (tw) { for (const c of fx.list) tw.killTweensOf(c); tw.killTweensOf(fx); } fx.destroy(); }
+    if (t && t.active) { if (tw) tw.killTweensOf(t); t.destroy(); }
+    this.dangerFx = null; this.dangerTxt = null;
+  }
+  dangerOff() {
+    if (this.dangerHold > 0) { this.dangerHold = 0; this.b.setAllowGravity(this.dangerG ?? !this.flying); }   // 멈칫하던 중 끊겼다 (그로기 · 숨 고르기)
+    this.danger = false; this.dangerT = 0;
+  }
+
+  // 🔥 광폭화 (체력 RAGE_HP 이하 · 한 번): 공격 · 이동 속도 +25% · 패턴 후딜레이 감소 · 붉은 안광이 잦아진다 (update)
+  enterRage() {
+    const sc = this.scene;
+    this.rage = true;
+    this.b.setMaxVelocity(700 * RAGE, 900 * RAGE);
+    sc.events.emit('banner', `🔥 ${this.name} 광폭화!`, `체력 ${Math.round(RAGE_HP * 100)}% 이하 · 공격 · 이동 속도 +${Math.round((RAGE - 1) * 100)}% · 후딜레이 감소`);
+    sc.fx.shake(.016, 500); sc.cameras.main.flash(260, 255, 40, 30, true);
+    for (let k = 0; k < 3; k++) sc.time.delayedCall(k * 120, () => { if (this.alive) sc.fx.ring(this.x, this.y, 50 + k * 28, k % 2 ? 0xff8a2a : 0xff2a2a, 460); });
+    sc.fx.burst(this.x, this.y, [0xff2a2a, 0xff8a2a, 0xffffff, 0x3a0a0a], 34, 240, { glow: true, up: 90, life: .7 });
+    Sfx.play('roar'); Sfx.play('boss');
   }
 
   enterPhase2() {
@@ -161,6 +257,7 @@ export class Boss extends Enemy {
     if (this.restAt === undefined) this.restAt = 2 + (Math.random() < .5 ? 1 : 0);
     if ((this.bigN || 0) < this.restAt) return;
     const sc = this.scene;
+    this.dangerOff();
     this.state = 'rest'; this.restT = 2.5 + Math.random(); this.restFx = 0;
     this.b.setAllowGravity(true); this.b.setVelocity(0, 140);
     this.telegraph(false);
@@ -207,6 +304,7 @@ export class Boss extends Enemy {
   }
   startGroggy() {
     const sc = this.scene;
+    this.dangerOff(); this.dangerFxOff();   // 그로기로 꺾이면 붉은 안광도 꺼진다
     this.groggyT = GROGGY_T; this.stagger = 100; this.groggyN = (this.groggyN || 0) + 1;
     this.state = 'groggy'; this.telegraph(false); this.intangible = false; this.sprite.setAlpha(1);
     if (this.puddle) this.puddle.clear();
@@ -258,7 +356,7 @@ export class Boss extends Enemy {
   }
 
   destroy() {
-    this.gone = true; this.glowImg.destroy();
+    this.gone = true; this.glowImg.destroy(); this.dangerFxOff();
     for (const o of [...(this.fxObjs || []), ...(this.decoys || [])]) if (o && o.active) o.destroy();   // 분신 · 그림자 웅덩이 · 결정
     super.destroy();
   }

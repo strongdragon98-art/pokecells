@@ -101,7 +101,7 @@ function memberSnap(m) {
   return {
     key: m.key, hp: Math.round(m.hp), alive: m.alive, tier: m.tier, peakTier: Math.max(m.peakTier || 0, m.tier), exp: m.exp, mega: m.mega, megaPick: m.megaPick || 0,
     items: { ...m.items }, perks: { ...(m.perks || {}) }, skills: { ...m.skills }, ups: [...m.ups], atkBonus: m.atkBonus, cdBonus: m.cdBonus, learned: [...m.learned], chargeType: m.chargeType || null, cardGrade: { ...(m.cardGrade || {}) }, cardLv: { ...(m.cardLv || {}) },
-    gear: { ...(m.gear || {}) }, boostCards: (m.boostCards || []).map(e => ({ ...e })), vit: { ...(m.vit || {}) }
+    gear: { ...(m.gear || {}) }, boostCards: (m.boostCards || []).map(e => ({ ...e })), vit: { ...(m.vit || {}) }, mastery: m.mastery || 0   // mastery: 숙련 카드 수 (카드 스택)
   };
 }
 // 저장해 둔 진행을 포켓몬 m 에 덮어쓴다
@@ -112,7 +112,8 @@ function applyMember(m, d) {
     items: { ...d.items }, perks: { ...(d.perks || {}) }, vit: { ...(d.vit || {}) }, mods: computeMods(d.items || {}, d.perks || {}, d.vit || {}), skills: { ...m.skills, ...d.skills }, ups: new Set(d.ups || []), cardGrade: { ...(d.cardGrade || {}) },
     atkBonus: d.atkBonus || 1, cdBonus: d.cdBonus || 1, learned: d.learned && d.learned.length ? [...d.learned] : m.learned, chargeType: d.chargeType || null,
     gear: { stone: (d.gear && d.gear.stone) || null, crystal: (d.gear && d.gear.crystal) || null },
-    boostCards: (d.boostCards || []).map(e => ({ ...e })), cardLv: { ...(d.cardLv || {}) }, boost: boostTotals(d.boostCards, d.cardLv)   // 스킬 강화 카드
+    boostCards: (d.boostCards || []).map(e => ({ ...e })), cardLv: { ...(d.cardLv || {}) }, boost: boostTotals(d.boostCards, d.cardLv),   // 스킬 강화 카드
+    mastery: d.mastery || 0
   });
 }
 

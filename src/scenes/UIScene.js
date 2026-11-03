@@ -9,13 +9,15 @@ import { SKILLS, SPECIES, UNLOCKABLE, UNLOCK_KILLS, TIERS, ZMOVES, Z_CD, TAGS, E
 import { ITEMS, MAX_EQUIP } from '../data/items.js';
 import { POTION_CD } from '../data/shop.js';
 import { BOND_POWERS } from '../data/bond.js';
+import { PERKS } from '../game/Perks.js';
 import { STAGES, areaLabel } from '../data/stages.js';
 import { typeName, typeColor, hex, matchups } from '../data/types.js';
 import { GRADE_STYLE, UPGRADES, BOOSTS, TM_CARDS, BONUS_CARDS, DATA_KILLS, rollCards, heldLv, mergePreview, lvTag, CARD_MAX_LV, MAX_BONUS, sandboxCards, SANDBOX_GROUPS, GRADES } from '../data/tm.js';
 
 // 특성 카드 분류 → 카드 가운데 아이콘 글자 (기술 아이콘이 없는 카드)
 const TM_K = .88, TM_GAP = 150;   // 기술머신 카드 4장: 크기 배율 · 카드 사이 간격 (한 줄 590px 안)
-const PERK_ICON = { 차징: '⚡', 능력치: '⚔', 기동: '➶', 유틸: '✚', '속성 부여': '✺', '스킬 변이': '✷', 유물: '❂', 숙련: '✦', '대시 진화': '⚡', 대시: '➶', 패링: '⛨' };
+const PERK_ICON = { 차징: '⚡', 능력치: '⚔', 기동: '➶', 유틸: '✚', '속성 부여': '✺', '스킬 변이': '✷', 유물: '❂', 숙련: '✦', '대시 진화': '⚡', 대시: '➶', 패링: '⛨', '양날의 검': '⚖' };
+const curseOf = card => (card && card.kind === 'perk' && PERKS[card.id] && PERKS[card.id].curse ? PERKS[card.id] : null);   // ⚖️ 양날의 검 카드 (game/Perks.js)
 // 한 줄 글자가 넘치면 가로로 줄인다
 const fitText = (t, w) => { if (t.width > w) t.setScale(w / t.width, 1); return t; };
 import { HK, hkText, darkBand, hkMenu, hiImage, fadeLine, bar3d, glassPanel, glassButton, typePill } from '../systems/ui.js';
@@ -189,7 +191,7 @@ export default class UIScene extends Phaser.Scene {
       return { t, s, act };
     });
     this.tTip = this.add.text(MASK_X - 8, 104, '', txt(10, HK.ivory, { backgroundColor: '#0d0c16ee', padding: { x: 7, y: 5 }, lineSpacing: 3 })).setDepth(30);
-    // ── 전투 데이터 축적 게이지 (HUD 링크 줄 아래): 일반 야생 12마리마다 현장 기술머신 전송 (GameScene.addBattleData)
+    // ── 전투 데이터 축적 게이지 (HUD 링크 줄 아래): 일반 야생 DATA_KILLS(20) 마리마다 현장 기술머신 전송 (GameScene.addBattleData)
     this.gData = this.add.graphics().setDepth(3); this.dataPulse = 0;
     this.tData = hkText(this, 14, 131, '', 8, '#9ad8ff', { ls: 0 }).setDepth(3);
     if (this.gs.test) this.buildDebugBar();   // 테스트 모드: 오른쪽 위 퀵 디버그 바
@@ -684,10 +686,12 @@ export default class UIScene extends Phaser.Scene {
 
     // ===== 보스 체력 =====
     const boss = gs.boss, showBoss = !!(boss && boss.alive), duo = gs.bosses && gs.bosses.length > 1 ? gs.bosses : null;
-    this.tBoss.setText(showBoss ? (duo ? duo.map(q => q.name).join('     ') : boss.name) : '');
+    this.tBoss.setText(showBoss ? (duo ? duo.map(q => (q.rage ? '[광폭화] ' : '') + q.name).join('     ') : (boss.rage ? '[광폭화] ' : '') + boss.name) : '')
+      .setColor(showBoss && (duo ? duo.some(q => q.rage) : boss.rage) ? '#ff7a6a' : HK.ivory);   // 🔥 광폭화 (체력 40% 이하 — Boss.enterRage)
     if (showBoss) {
-      if (duo) duo.forEach((q, i) => bar3d(g, 214 + i * 110, 334, 102, 4, q.alive ? q.hp / q.maxhp : 0, q.def.color || 0xa070ff));   // 짝 보스: 두 줄
-      else bar3d(g, 214, 334, 212, 4, boss.hp / boss.maxhp, boss.phase === 2 ? 0xff5a9a : 0xa070ff);
+      const rageCol = Math.floor(time / 130) % 2 ? 0xff2a2a : 0xff6a3a;   // 광폭화: 붉게 깜빡이는 체력 바
+      if (duo) duo.forEach((q, i) => bar3d(g, 214 + i * 110, 334, 102, 4, q.alive ? q.hp / q.maxhp : 0, q.rage ? rageCol : q.def.color || 0xa070ff));   // 짝 보스: 두 줄
+      else bar3d(g, 214, 334, 212, 4, boss.hp / boss.maxhp, boss.rage ? rageCol : boss.phase === 2 ? 0xff5a9a : 0xa070ff);
       // 그로기 게이지 (HP 바 바로 아래): 약점으로 때리면 번쩍이며 빠르게 찬다 · 그로기 중엔 남은 시간만큼 줄어든다
       const sg = (q, x, w) => {
         const groggy = q.groggyT > 0, k = (q.stagger || 0) / 100;
@@ -783,6 +787,7 @@ export default class UIScene extends Phaser.Scene {
       const st = GRADE_STYLE[card.grade] || GRADE_STYLE.커먼, col = st.glow;
       // 등급 오라 (열린 카드) · 전설은 뒷면부터 빛줄기
       if ((open && card.grade !== '커먼') || card.grade === '전설') this.tmAura(L, x, CY, W * TM_K, H * TM_K, card.grade, open);
+      if (open && curseOf(card)) this.tmCurseAura(L, x, CY);   // ⚖️ 양날의 검: 검붉은 · 보랏빛 오라
       if (chosen) L.add(this.add.image(x, CY - 6, 'glow').setBlendMode(ADD).setTint(0xffd27a).setScale(3.4 * TM_K, 4.2 * TM_K).setAlpha(.45));
       const wrap = this.add.container(x, chosen ? CY - 6 : CY).setScale(TM_K); L.add(wrap);
       const c = this.add.container(0, 0); wrap.add(c);
@@ -1098,6 +1103,7 @@ export default class UIScene extends Phaser.Scene {
         }
         Sfx.play('card_legend');
       }
+      if (curseOf(card)) { wave(0xff1a3a, 4.4, 620); wave(0x7a1aff, 3.4, 760); spark(16, [0xff2a4a, 0xb04aff, 0x3a0010], 70, 70); Sfx.play('danger'); }   // ⚖️ 양날의 검: 검붉은 섬광
       this.tweens.add({ targets: c, scaleX: 1, duration: 150, ease: 'Back.easeOut', onComplete: () => { safety.remove(); this.tmBusy = false; if (it.flipped.every(Boolean)) this.showTM(); } });
     } });
   }
@@ -1154,48 +1160,99 @@ export default class UIScene extends Phaser.Scene {
   }
   // opt.foot: 바닥 글귀를 직접 (보유 카드 탭: '적용 중: …') — 없으면 기술머신 카드의 '📌 적용 가능: …' + 미니 초상화
   tmFace(face, card, m, W, H, chosen, opt = {}) {
-    const st = GRADE_STYLE[card.grade] || GRADE_STYLE.커먼, gcss = st.border[0], top = -H / 2;
+    const st = GRADE_STYLE[card.grade] || GRADE_STYLE.커먼, gcss = st.border[0], top = -H / 2, pk = curseOf(card), iy = pk ? top + 44 : top + 50;   // 양날의 검: 설명이 길어 아이콘 · 이름을 조금 위로
     face.add(hiImage(this, 0, 0, `tm-face2-${card.grade}`));
+    if (pk) this.tmCurseFrame(face, W, H);
     const pad = card.grade === '전설' ? 16 : 10;   // 전설 카드는 모서리 장식을 비켜서
     face.add(hkText(this, -W / 2 + pad, top + 8, `${card.grade} · ${st.en}`, 7.5, gcss, { bold: true }));
     face.add(hkText(this, W / 2 - pad, top + 8, card.cat || (card.kind === 'move' ? '새 기술 · 타 속성' : card.kind === 'up' ? '기술 강화' : '숙련'), 7.5, HK.dim, { origin: [1, 0] }));
     const iconId = card.kind === 'move' ? card.id : card.kind === 'up' || card.kind === 'boost' ? card.skill : null, tcol = card.kind === 'perk' || card.kind === 'mastery' ? st.glow : typeColor(card.type);
-    face.add(this.add.image(0, top + 50, 'glow').setBlendMode(ADD).setTint(tcol).setScale(.9).setAlpha(.5));
-    if (iconId && SKILLS[iconId]) face.add(this.add.image(0, top + 50, skillIcon(this, iconId)).setDisplaySize(42, 42));
+    face.add(this.add.image(0, iy, 'glow').setBlendMode(ADD).setTint(pk ? 0xd01a3a : tcol).setScale(pk ? .8 : .9).setAlpha(.5));
+    if (iconId && SKILLS[iconId]) face.add(this.add.image(0, iy, skillIcon(this, iconId)).setDisplaySize(42, 42));
     if (card.kind === 'boost' && BOOSTS[card.bk]) {   // 스킬 강화 갈래 배지 (위력 · 가속 · 광역 · 분열)
       face.add(this.add.circle(20, top + 66, 9, 0x0a0814, .92).setStrokeStyle(1.2, st.glow, 1));
       face.add(hkText(this, 20, top + 66, BOOSTS[card.bk].icon, 10, gcss, { origin: .5, bold: true }));
     }
-    else face.add(hkText(this, 0, top + 50, PERK_ICON[card.cat] || '✦', 24, gcss, { origin: .5, glow: true }));
+    else face.add(hkText(this, 0, iy, PERK_ICON[card.cat] || '✦', pk ? 21 : 24, pk ? '#ff6a7a' : gcss, { origin: .5, glow: true }));
     // 이름: '불꽃세례 개조: 푸른 연옥' 은 두 줄 (작은 머리글 + 큰 이름)
     const [head, main] = card.name.includes(': ') ? card.name.split(': ') : [null, card.name];
-    let y = top + 80;
+    let y = pk ? top + 64 : top + 80;
     if (head) { face.add(hkText(this, 0, y, head, 8, HK.dim, { origin: [.5, 0] })); y += 12; }
     const nm = hkText(this, 0, y, main, main.length > 8 ? 11 : 12.5, chosen ? HK.gold : HK.ivory, { bold: true, origin: [.5, 0] });
     if (nm.width > W - 18) nm.setScale((W - 18) / nm.width);
     face.add(nm); y += 18;
-    if (card.kind === 'move' || card.kind === 'up' || card.kind === 'boost' || card.type !== 'normal') {
+    if (pk) { face.add(fitText(hkText(this, 0, y - 2, pk.en || '', 7, '#c890ff', { origin: [.5, 0] }), W - 18)); y += 9; }   // 영문 이름 (Razor-Thin Parry …)
+    else if (card.kind === 'move' || card.kind === 'up' || card.kind === 'boost' || card.type !== 'normal') {
       const probe = hkText(this, 0, 0, typeName(card.type), 7.5, '#ffffff', { bold: true }), pw = Math.round(probe.width) + 14;   // 타입 알약 폭 재기 (가운데 맞춤)
       probe.destroy();
       typePill(this, face, -pw / 2, y, card.type, 7.5); y += 16;
     } else y += 4;
-    face.add(hkText(this, -W / 2 + 11, y, card.desc, 8.5, HK.ivory, { style: { wordWrap: { width: W - 22, useAdvancedWrap: true }, lineSpacing: 2, maxLines: opt.foot ? 5 : card.merge ? 2 : 3 } }));
+    if (pk) this.tmCurseText(face, pk, W, y, !!card.merge && !opt.foot);   // [🔺 극대화 효과] / [🔻 대가 · 디버프]
+    else face.add(hkText(this, -W / 2 + 11, y, card.desc, 8.5, HK.ivory, { style: { wordWrap: { width: W - 22, useAdvancedWrap: true }, lineSpacing: 2, maxLines: opt.foot ? 5 : card.merge ? 2 : 3 } }));
     if (card.name.startsWith('[★초월]')) this.tmHolo(face, W, H);
     if (card.merge && !opt.foot) {   // 🔨 강화 합성 배지 (카드 위) + 수치 비교 (카드 안)
       const pv = card.merge, lab = hkText(this, 0, top - 4, `[ 🔨 강화 합성! ${lvTag(pv.from)} ➔ ${lvTag(pv.to)} ]`, 8, '#ffe08a', { origin: .5, bold: true }), bw = lab.width + 12;
       const bb = this.add.graphics(); bb.fillStyle(0x2a1606, .97); bb.fillRoundedRect(-bw / 2, top - 12, bw, 16, 8); bb.lineStyle(1.2, 0xffb703, 1); bb.strokeRoundedRect(-bw / 2, top - 12, bw, 16, 8);
       face.add([bb, lab]);   // 카드 위 테두리에 걸친 배지
       const why = pv.to >= CARD_MAX_LV ? MAX_BONUS[card.kind] : pv.to === 2 ? '+2 달성 · 등급 한 단계 승급!' : '';
-      face.add(fitText(hkText(this, 0, H / 2 - (why ? 42 : 34), pv.cmp, 7.5, '#8affb0', { origin: [.5, 0], bold: true }), W - 14));
-      if (why) face.add(fitText(hkText(this, 0, H / 2 - 30, why, 7, '#ffd27a', { origin: [.5, 0] }), W - 14));
+      face.add(fitText(hkText(this, 0, H / 2 - (pk ? (why ? 34 : 27) : why ? 42 : 34), pv.cmp, 7.5, '#8affb0', { origin: [.5, 0], bold: true }), W - 14));
+      if (why) face.add(fitText(hkText(this, 0, H / 2 - (pk ? 25 : 30), why, 7, '#ffd27a', { origin: [.5, 0] }), W - 14));
     }
     if (opt.foot) { face.add(fitText(hkText(this, 0, H / 2 - 16, opt.foot, 7.5, HK.gold, { origin: [.5, 0], bold: true }), W - 16)); return; }
     // 📌 적용 가능: 파티에서 이 카드를 쓸 수 있는 포켓몬 (미니 초상화 + 이름)
     const p = this.gs.player, who = this.tmWho(card), qs = who.map(k => p.members.find(q => q.key === k)).filter(Boolean);
     const everyone = qs.length === p.members.length && p.members.length > 1 && (card.kind === 'perk' || card.kind === 'mastery');
     const label = everyone ? '📌 적용 가능: 모든 포켓몬 공용' : qs.length === 1 ? `📌 적용 가능: ${p.formName(qs[0])} 전용` : `📌 적용 가능: ${qs.map(q => p.formName(q)).join(', ')}`;
-    if (!card.merge) qs.forEach((q, k) => face.add(this.add.image((k - (qs.length - 1) / 2) * 20, H / 2 - 27, roundPortrait(this, p.portraitKey(q))).setScale(.32)));   // 합성 카드는 그 자리에 수치 비교
+    if (!card.merge && !pk) qs.forEach((q, k) => face.add(this.add.image((k - (qs.length - 1) / 2) * 20, H / 2 - 27, roundPortrait(this, p.portraitKey(q))).setScale(.32)));   // 합성 카드는 그 자리에 수치 비교
     face.add(fitText(hkText(this, 0, H / 2 - 16, label, 7.5, HK.gold, { origin: [.5, 0], bold: true }), W - 14));
+  }
+
+  // ⚖️ 양날의 검 카드: 검붉은 · 보랏빛 이중 테두리 + 안쪽 보랏빛 오라 + 가장자리를 타고 튀는 붉은 스파크 (tmAnims 가 돌 때 움직인다)
+  tmCurseFrame(face, W, H) {
+    const g = this.add.graphics();
+    g.lineStyle(2.4, 0x8a0a2a, .95); g.strokeRoundedRect(-W / 2 + 2, -H / 2 + 2, W - 4, H - 4, 8);
+    g.lineStyle(1, 0xb04aff, .85); g.strokeRoundedRect(-W / 2 + 5.5, -H / 2 + 5.5, W - 11, H - 11, 6);
+    const glow = this.add.image(0, 0, 'glow').setBlendMode(ADD).setTint(0x9a1aff).setScale(W / 44, H / 44).setAlpha(.12);
+    const sp = this.add.graphics().setBlendMode(ADD);
+    face.add([glow, g, sp]);
+    const hw = W / 2 - 2, hh = H / 2 - 2, per = 4 * (hw + hh);
+    let next = 0;
+    (this.tmAnims = this.tmAnims || []).push(t => {
+      if (!sp.scene) return;
+      glow.setAlpha(.1 + Math.sin(t * 3) * .05);
+      sp.setAlpha(Math.max(0, sp.alpha - .07));
+      if (t < next) return;
+      next = t + .1 + Math.random() * .22;
+      sp.clear().setAlpha(1);
+      for (let k = 0; k < 2; k++) {   // 테두리 위 아무 점에서 테두리를 따라 지지직
+        let d = Math.random() * per, x, y, nx, ny;
+        if (d < 2 * hw) { x = -hw + d; y = -hh; nx = 0; ny = -1; }
+        else if ((d -= 2 * hw) < 2 * hh) { x = hw; y = -hh + d; nx = 1; ny = 0; }
+        else if ((d -= 2 * hh) < 2 * hw) { x = hw - d; y = hh; nx = 0; ny = 1; }
+        else { d -= 2 * hw; x = -hw; y = hh - d; nx = -1; ny = 0; }
+        const tx = -ny, ty = nx, dir = Math.random() < .5 ? 1 : -1;
+        sp.lineStyle(1.3, k ? 0xb04aff : 0xff2a4a, 1); sp.beginPath(); sp.moveTo(x, y);
+        for (let s = 0; s < 4; s++) { const a = (4 + Math.random() * 5) * dir, o = Math.random() * 5 - 1.5; x += tx * a + nx * o; y += ty * a + ny * o; sp.lineTo(x, y); }
+        sp.strokePath();
+      }
+    });
+  }
+  // 열린 양날의 검 카드 뒤: 검붉은 · 보랏빛 오라가 일렁인다
+  tmCurseAura(L, x, y) {
+    for (const [tint, sx, sy, d] of [[0x8a0a2a, 3.2, 4, 1100], [0x7a1aff, 2.7, 3.5, 1500]]) {
+      const a = this.add.image(x, y, 'glow').setBlendMode(ADD).setTint(tint).setScale(sx, sy).setAlpha(.3); L.add(a);
+      this.tweens.add({ targets: a, scaleX: sx * 1.1, scaleY: sy * 1.07, alpha: { from: .2, to: .44 }, duration: d, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    }
+  }
+  // 양날의 검 카드 설명: [🔺 극대화 효과] 초록 머리 · 황금 글 / [🔻 대가 · 디버프] 붉은 경고 — 위아래로 나눈다
+  tmCurseText(face, pk, W, y, merged) {
+    const x = -W / 2 + 10, ww = W - 20, st = n => ({ style: { wordWrap: { width: ww, useAdvancedWrap: true }, lineSpacing: 1, maxLines: n } });
+    face.add(hkText(this, x, y, '[🔺 극대화 효과]', 7.5, '#6aff9a', { bold: true })); y += 10;
+    const u = hkText(this, x, y, pk.up, 7, '#ffe08a', st(3)); face.add(u); y += u.height + 3;
+    const g = this.add.graphics(); g.lineStyle(.8, 0xff3a4a, .55); g.lineBetween(x, y - 1.5, x + ww, y - 1.5); face.add(g);
+    face.add(hkText(this, x, y, '[🔻 대가 · 디버프]', 7.5, '#ff4a5a', { bold: true })); y += 10;
+    const d = hkText(this, x, y, pk.down, 7, '#ff9a9a', st(merged ? 2 : 3)); face.add(d);
+    return y + d.height;
   }
 
   // 카드 누르기: 뒷면이면 뒤집고, 4장을 다 열었으면 고른다 (이미 고른 카드를 한 번 더 누르면 결정)

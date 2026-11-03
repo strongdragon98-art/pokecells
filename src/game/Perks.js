@@ -2,6 +2,7 @@
 //  수치형 효과는 mods 로 합쳐지고(data/items.js computeMods), 적중·피격·처치 때 터지는 효과는 아래 onHit / onHurt / onKill 갈고리가 맡는다
 //  등급: 커먼 · 레어 · 유니크 · 전설 (data/tm.js GRADE) — max: 겹칠 수 있는 최대 수 (전설 유물은 1개)
 //  step: 합성할 때마다 기본 효과의 60% 대신 이만큼 더한다 (곱해지는 값은 '줄어드는 양'에 — 경량화 스텝 -15% → -25% → -35% → -45%)
+//  ⚖️ 양날의 검(curse): mods = 극대화 효과(합성할수록 대폭 상승) · cost = 대가(합성해도 커지지 않고 ease 만큼씩 완화) · up / down = 카드 앞면의 두 줄 설명
 import Phaser from 'phaser';
 import { Sfx } from '../systems/Audio.js';
 import { typeColor } from '../data/types.js';
@@ -77,6 +78,36 @@ export const PERKS = {
   r_wave: { grade: '레어', cat: '패링', name: '🛡️ 충격파 카운터', desc: '근접 공격이나 투사체를 패링하는 순간 둘레 120px 에 충격파가 터져 주변 적을 밀쳐 내고 보스 그로기를 더 쌓는다.', max: 4, mods: { parryWave: 1 } },
   r_counter: { grade: '레어', cat: '패링', name: '🛡️ 반격의 일격', desc: '패링 성공 뒤 2초 안에 Z 를 누르고 있으면 차징 샷이 즉시 완충 · 또는 그 안에 쓴 다음 기술 피해 +40%.', max: 4, mods: { parryCounter: 1 } },
 
+  // ================= ⚖️ 양날의 검 (하이리스크 · 하이리턴 — 치명적인 대가를 안고 한 메커니즘을 괴물처럼 폭발시킨다) =================
+  //  카드 테두리에 검붉은 스파크 · 보랏빛 오라 (UIScene.tmCurseFrame) · 설명은 [🔺 극대화 효과] / [🔻 대가 · 디버프] 두 칸
+  //  합성(+1 ~ +3강): 극대화 효과만 기본값의 60% 씩 더 오르고, 대가는 그대로 ease(10%) 씩 완화된다 (perkMods)
+  //  효과: 찰나의 카운터 Player.parryChainStep · parryWhiff / 과부하 Combat.damageEnemy · Player.fireCharge · takeHit / 유리대포 items.computeMods · takeHit
+  //   도박사 Player 대시 / 광전사 Player.atk · cardSpeed · GameScene.quickPotion / 초중량 Player.useSkill · Combat.damageEnemy / 마력 폭주 Player.manaDrive / 영거리 Combat.damageEnemy
+  u_razor: { grade: '유니크', cat: '양날의 검', curse: true, name: '⚖️ 찰나의 카운터', en: 'Razor-Thin Parry', max: 4, ease: .1,
+    up: '↓ + Z 패링 성공 시 반사 투사체 · 카운터 피해 +160% 폭증 · 보스 그로기 누적 2배!', down: '패링 성공 판정 시간 -35% (0.22 → 0.14초) · 헛방 재사용 쿨타임 +1.0초',
+    mods: { razorPow: 1.6, razorStag: 1 }, cost: { parryWinMul: .65, whiffCdAdd: 1 } },
+  u_overload: { grade: '유니크', cat: '양날의 검', curse: true, name: '⚖️ 과부하 차징 캐논', en: 'Overloaded Charge Core', max: 4, ease: .1,
+    up: 'Z 홀드 차징 샷 최종 피해 +120% · 폭발 반경 1.8배 확대!', down: '차징을 모으는 동안 이동 속도 -60% (거의 제자리) · 모으는 중 받는 피해 +30%',
+    mods: { overCharge: 1.2, overBoom: .8 }, cost: { chargeSlow: .6, chargeHurt: .3 } },
+  r_glass: { grade: '레어', cat: '양날의 검', curse: true, name: '⚖️ 유리대포의 각오', en: 'Glass Cannon Protocol', max: 4, ease: .1,
+    up: '모든 평타 · 차징 샷 · 기술 최종 공격력 +65% 영구 증가 · 급소율 +20%!', down: '이 포켓몬의 최대 체력 -30% · 피격 뒤 무적 시간 -25%',
+    mods: { allMul: 1.65, crit: .2 }, cost: { hpMul: .7, invMul: .75 } },
+  r_allin: { grade: '레어', cat: '양날의 검', curse: true, name: '⚖️ 도박사의 외줄타기 스텝', en: 'All-In Dash', max: 4, ease: .1,
+    up: '대시(Shift) 무적 시간 2배 · 대시 직후 2초 안의 다음 공격은 100% 확정 치명타!', down: '대시 재사용 쿨타임 +60% (남발 불가)',
+    mods: { dashInvX: 1, dashCrit: 2 }, cost: { dashCdMul: 1.6 } },
+  r_blood: { grade: '레어', cat: '양날의 검', curse: true, name: '⚖️ 광전사의 혈투', en: "Berserker's Pact", max: 4, ease: .1,
+    up: '적중할 때마다 준 피해의 3% 흡혈 · 남은 체력이 낮을수록 공격 속도 · 피해 최대 +80% 폭증!', down: '상처약 회복 효율 -50%',
+    mods: { lifesteal: .03, bloodRage: .8 }, cost: { potionCut: .5 } },
+  r_heavy: { grade: '레어', cat: '양날의 검', curse: true, name: '⚖️ 초중량 일격', en: 'Heavyweight Impact', max: 4, ease: .1,
+    up: '평타(Z) 3타 콤보 1타당 피해 +90% · 평타만으로도 보스 그로기 · 3타 피니시는 잡몹 경직!', down: '평타 공격 속도 -25% · 3타 피니시 후딜레이 +0.3초 (대시 · 기술로 끊자)',
+    mods: { heavyHit: .9, heavyStag: 1 }, cost: { comboSlow: .25, finishLag: .3 } },
+  u_manadrive: { grade: '유니크', cat: '양날의 검', curse: true, name: '⚖️ 마력 폭주 기관', en: 'Mana Overdrive', max: 4, ease: .1,
+    up: '액티브 기술(X · C) 피해 +85% · 기술 크기 · 범위 1.5배 확대!', down: '기술을 쓸 때마다 지금 체력의 4% 를 코스트로 소모 (체력 5% 이하면 소모 없음)',
+    mods: { skillPow: .85, skillSize: .5 }, cost: { castCost: .04 } },
+  r_pointblank: { grade: '레어', cat: '양날의 검', curse: true, name: '⚖️ 영거리 사격술', en: 'Point-Blank Sniper', max: 4, ease: .1,
+    up: '적과 140px 안 근접 거리에서 맞힌 모든 공격 · 차징 샷 피해 +75% 증폭!', down: '300px 밖 먼 거리에서 맞힌 원거리 공격 피해 -30%',
+    mods: { nearPow: .75 }, cost: { farCut: .3 } },
+
   // ================= 🟡 전설 (태고의 유물) =================
   l_orb: { grade: '전설', cat: '유물', name: '태고의 유물: 생명의구슬', desc: '모든 최종 피해 +45%. 기술(X·C)을 쓸 때 체력 3% 소모, 적을 쓰러뜨리면 체력 3% 회복.', max: 1, mods: { allMul: 1.45, orbCost: true, killHeal: .03 } },
   l_band: { grade: '전설', cat: '유물', name: '태고의 유물: 구애머리띠', desc: 'Z칸 기술(기본 연타·근접) 피해 +60%.', max: 1, mods: { bandMul: 1.6 } },
@@ -87,7 +118,8 @@ export const PERKS = {
   l_storm: { grade: '전설', cat: '스킬 변이', name: '태고의 유물: 뇌신의 가호', desc: '적중 시 40% 확률로 연쇄 번개가 최대 5마리까지 튄다.', max: 1, mods: { chain: .4, chainN: 5 } }
 };
 
-const MUL = new Set(['atkMul', 'cdMul', 'hpMul', 'speedMul', 'dashCdMul', 'guard', 'swapCdMul', 'sizeMul', 'allMul', 'bandMul', 'specsMul', 'expMul', 'parryCdMul', 'parryWinMul']);
+const MUL = new Set(['atkMul', 'cdMul', 'hpMul', 'speedMul', 'dashCdMul', 'guard', 'swapCdMul', 'sizeMul', 'allMul', 'bandMul', 'specsMul', 'expMul', 'parryCdMul', 'parryWinMul', 'invMul']);
+for (const pk of Object.values(PERKS)) if (pk.curse) pk.desc = `🔺 ${pk.up}  🔻 ${pk.down}`;   // 양날의 검: 한 줄 설명 (샌드박스 목록 · 보유 카드)
 const MAXED = new Set(['chain', 'chainN']);   // 겹치지 않고 큰 쪽을 쓴다 (연쇄 번개 · 뇌신의 가호)
 
 // 받은 특성 카드 → 수치 합계 (곱해지는 값은 곱하고, 나머지는 더한다)
@@ -101,6 +133,11 @@ export function perkMods(perks = {}) {
       else if (MAXED.has(k)) out[k] = Math.max(out[k] || 0, v);
       else if (MUL.has(k)) out[k] = (out[k] ?? 1) * (pk.step != null ? v + Math.sign(v - 1) * pk.step * (n - 1) : 1 + (v - 1) * (1 + .6 * (n - 1)));   // 중복 카드 합성: 강화 1단계마다 기본 효과의 60% 씩 더 (data/tm.js lvMul) · step 이 있으면 그만큼
       else out[k] = (out[k] || 0) + v * (1 + .6 * (n - 1));
+    }
+    for (const [k, v] of Object.entries(pk.cost || {})) {   // 양날의 검 대가: 합성해도 커지지 않고 ease 만큼씩 줄어든다 (-30% → -27% → -24% → -21%)
+      const e = Math.max(0, 1 - (pk.ease || 0) * (n - 1));
+      if (MUL.has(k)) out[k] = (out[k] ?? 1) * (1 + (v - 1) * e);
+      else out[k] = (out[k] || 0) + v * e;
     }
   }
   return out;

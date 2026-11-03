@@ -3,7 +3,7 @@
 //  쓰는 길: 포켓몬센터 옆 포켓샵에서 이상한사탕 · 회복약 · 영양제 · 전술 장착 도구 · 메가스톤 · Z크리스탈을 산다
 //  재고는 포켓샵(시내)마다 따로 센다 — 구매 이력(Player.shopLog)이 진행 저장(RunSave)에 함께 남는다
 //  하드코어 물가: 돈은 모으기 힘들고(금구슬은 싸게 · 드랍도 드물게) 좋은 도구는 아주 비싸다 · 되팔 때는 원가의 25% 만
-//  상처약은 퀵슬롯 전용 (단축키 · 모바일 퀵버튼, GameScene.quickPotion) — 최대 POTION_MAX 개까지만 지닌다
+//  상처약은 퀵슬롯 전용 (단축키 · 모바일 퀵버튼, GameScene.quickPotion) — 처음엔 최대 POTION_MAX 개 (유대의 불꽃이 자라면 3 · 4개, Player.potionMax)
 import { ITEMS } from './items.js';
 import { SPECIES } from './pokemon.js';
 import { usesStone, stoneName, zTypeOf, crystalName } from './gear.js';
@@ -11,7 +11,7 @@ import { typeColor } from './types.js';
 
 export const START_MONEY = 3000;   // 새 모험의 용돈 (본가처럼 3,000 ₽)
 export const won = n => `${Math.round(n).toLocaleString('ko-KR')} ₽`;
-export const POTION_MAX = 3, POTION_HEAL = .4, POTION_CD = 3;   // 상처약: 최대 소지 · 최대 체력 40% 회복 · 재사용 3초
+export const POTION_MAX = 2, POTION_HEAL = .35, POTION_CD = 3;   // 상처약: 처음 최대 소지 · 최대 체력 35% 회복 · 재사용 3초 (data/bond.js 가 키운다)
 export const RESELL = .25;                                      // 되팔 때 받는 비율 (금구슬 제외)
 
 // 금구슬: 환금 전용 (장착 · 사용 불가) — 판매가 고정
@@ -26,7 +26,7 @@ export const NUGGET_KEYS = Object.keys(NUGGETS);
 //  영양제(vit): 포켓몬 한 마리의 능력치를 영구히 올린다 — 종류마다 VIT_MAX 번까지 (data/items.js computeMods)
 export const VIT_MAX = 5;
 export const USES = {
-  potion: { name: '상처약', cat: 'heal', heal: .4, desc: '포켓몬 하나의 체력을 40% 회복한다. 퀵슬롯 단축키로 싸우는 중에도 바로 (최대 3개 소지 · 유대의 불꽃이 자라면 회복량 · 소지 한도가 오른다)' },
+  potion: { name: '상처약', cat: 'heal', heal: POTION_HEAL, desc: '포켓몬 하나의 체력을 35% 즉시 회복한다. 퀵슬롯 단축키로 싸우는 중에도 움직임을 끊지 않고 바로 (처음 최대 2개 소지 · 유대의 불꽃이 자라면 회복량 42 → 50% · 소지 한도 3 → 4개)' },
   super_potion: { name: '고급상처약', cat: 'heal', heal: .7, desc: '포켓몬 하나의 체력을 70% 회복한다.' },
   full_restore: { name: '풀회복약', cat: 'heal', heal: 1, desc: '포켓몬 하나의 체력을 모두 회복한다.' },
   revive: { name: '기력의조각', cat: 'revive', revive: .5, desc: '쓰러진 포켓몬 하나를 체력 50% 로 깨운다.' },
@@ -39,7 +39,7 @@ export const USES = {
 
 // 판매 품목: cat — grow 소비/성장 · tool 전술 장착 도구 · core 특수 핵심 (고액)
 //  stock: 포켓샵마다 살 수 있는 개수 (없으면 무제한) · carry: 지닐 수 있는 최대 개수 (상처약)
-//  고급상처약 · 풀회복약은 팔지 않는다 (상처약 3개 한도가 전투의 긴장을 만든다 — 예전에 산 것은 가방에서 그대로 쓴다)
+//  고급상처약 · 풀회복약은 팔지 않는다 (상처약 2 ~ 4개 한도가 전투의 긴장을 만든다 — 예전에 산 것은 가방에서 그대로 쓴다)
 export const SHOP_STOCK = [
   { id: 'potion', kind: 'use', cat: 'grow', price: 600, carry: POTION_MAX },
   { id: 'rare_candy', kind: 'candy', cat: 'grow', price: 4500, stock: 3 },

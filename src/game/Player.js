@@ -10,7 +10,8 @@ import { computeMods, ITEMS, MAX_EQUIP } from '../data/items.js';
 import { START_MONEY, USES, VIT_MAX } from '../data/shop.js';
 const HP_SCALE = .85;
 import { onHurt, onDash, onParry } from './Perks.js';
-import { potionMaxAt, potionHealAt, bondCdMul, BOND_HASTE, BOND_MIRACLE_HP } from '../data/bond.js';
+import { potionMaxAt, potionHealAt, bondParry, BOND_STRIKE_MUL, BOND_STRIKE_CD } from '../data/bond.js';
+import { DANGER_MUL } from './Combat.js';
 import { typeMultiplier, effectiveness, typeColor } from '../data/types.js';
 import * as base from './skills.js';
 import * as gen23 from './skills/gen23.js';
@@ -49,6 +50,7 @@ const LEGEND_BODY = { w: 22, h: 32 };   // 전설 플레이어블 히트박스 =
 const TELEPORT = 78;                    // 순간이동 거리
 // Z 홀드 차징 샷: CHG_SHOW 초부터 기운이 모이고, 단계별 시각(초)에 1·2·3단 (2단은 '초고압 차징 코어' 1장 · 3단은 2장 — 고속 축전 코일이면 더 빨리)
 const CHG_SHOW = .22, CHG_AT = [.72, 1.45, 2.25];
+const DASH_INV_CAP = .6;   // 대시 무적 상한 (도박사의 외줄타기 스텝 2배 · 합성)
 export { CHG_SHOW, CHG_AT };   // UIScene 스킬 바: Z 칸의 차징 게이지
 // 속성 → 차징 탄 그림 (systems/ProjectileRenderer.js 의 kind)
 const CHARGE_KIND = { fire: 'fire', water: 'water', ice: 'bubble', grass: 'leaf', bug: 'leaf', electric: 'bolt', ghost: 'shadow', dark: 'shadow', poison: 'bubble', psychic: 'wave',
@@ -154,7 +156,7 @@ export class Player extends Actor {
   get atk() {
     const md = this.mods, sl = this.action && this.action.slot, m = this.m;
     const slotMul = sl === 'z' ? md.bandMul : sl === 'x' || sl === 'c' ? md.specsMul : 1, rage = md.berserk && m.hp <= m.maxhp * .5 ? 1 + md.berserk : 1;
-    return this.sp.atk * this.T.atk * (m.atkBonus || 1) * this.statOf('atk') * this.buffMul('atk') * md.atkMul * slotMul * rage * ((this.action && this.action.boostDmg) || 1);   // 스킬 강화 카드: 위력 증폭
+    return this.sp.atk * this.T.atk * (m.atkBonus || 1) * this.statOf('atk') * this.buffMul('atk') * md.atkMul * slotMul * rage * (1 + this.bloodK()) * ((this.action && this.action.boostDmg) || 1);   // 스킬 강화 카드: 위력 증폭 · 광전사의 혈투: 잃은 체력만큼
   }
   // 고른 메가(리자몽·뮤츠 X/Y) · 모습별 타입 · 모습별 능력치 배율(잉어킹 → 갸라도스 10배)
   megaOf(m = this.m) { return m.sp.megas[m.megaPick || 0] || m.sp.mega; }
@@ -176,8 +178,11 @@ export class Player extends Actor {
   // 상처약 최대 소지 · 회복량 (유대의 불꽃 권능 — data/bond.js) · 패링 판정 시간 (예리한 반사 신경 카드)
   get potionMax() { return potionMaxAt(this.scene.bondStage || 0); }
   get potionHeal() { return potionHealAt(this.scene.bondStage || 0); }
-  parryWin() { return PARRY_WIN * (this.mods.parryWinMul || 1); }
-  cdOf(id, m = this.m) { const b = m.boost && m.boost[id]; return SKILLS[id].cd * m.mods.cdMul * (m.cdBonus || 1) * (m.mega ? .8 : 1) * (m === this.m ? Cores.cdMul(this) : 1) * (b ? 1 - Math.min(.6, b.haste) : 1) * bondCdMul(this.scene.bondStage || 0); }   // 스킬 강화 카드: 가속 회로
+  parryWin() { return PARRY_WIN * (this.mods.parryWinMul || 1); }   // 찰나의 카운터(양날의 검): ×0.65
+  // 양날의 검 카드 (game/Perks.js): 광전사의 혈투 — 잃은 체력 비율 × bloodRage 만큼 공격력 · 공격 속도 (최대 +80%, 합성하면 더) · 과부하 차징 캐논 — Z 를 누르고 모으는 중
+  bloodK() { const m = this.m, r = this.mods.bloodRage; return r ? r * Phaser.Math.Clamp(1 - m.hp / m.maxhp, 0, 1) : 0; }
+  get charging() { return !!(this.chg && this.chg.t >= CHG_SHOW); }
+  cdOf(id, m = this.m) { const b = m.boost && m.boost[id]; return SKILLS[id].cd * m.mods.cdMul * (m.cdBonus || 1) * (m.mega ? .8 : 1) * (m === this.m ? Cores.cdMul(this) : 1) * (b ? 1 - Math.min(.6, b.haste) : 1); }   // 스킬 강화 카드: 가속 회로
   // 쿨타임 0 인 기본 공격만 3단 콤보 (Z 자리에 기술머신 기술을 달면 쿨타임 기술로 쓴다)
   isCombo(slot, m = this.m) { return slot === 'z' && !SKILLS[m.skills[slot]].cd; }
   // 배운 기술 id 를 slot(z·x·c)에 넣는다. 이미 다른 자리에 있으면 두 자리를 맞바꾼다.
@@ -431,7 +436,8 @@ export class Player extends Actor {
     } else if (u.cat === 'heal') {
       if (!m.alive) return { ok: false, msg: '쓰러진 포켓몬은 기력의조각으로 깨워야 한다' };
       if (m.hp >= m.maxhp) return { ok: false, msg: `${this.formName(m)}의 체력은 이미 가득하다` };
-      const n = Math.round(Math.min(m.maxhp - m.hp, m.maxhp * u.heal));
+      const heal = id === 'potion' ? this.potionHeal * (1 - ((m.mods && m.mods.potionCut) || 0)) : u.heal;   // 상처약은 퀵슬롯과 같은 회복량 (유대의 불꽃 · 광전사의 혈투)
+      const n = Math.round(Math.min(m.maxhp - m.hp, m.maxhp * heal));
       m.hp += n;
       msg = `${this.formName(m)}의 체력이 ${n} 회복됐다`;
     } else {
@@ -461,7 +467,7 @@ export class Player extends Actor {
     this.lastInput = inp;
     this.potionCd = Math.max(0, (this.potionCd || 0) - dt);   // 상처약 퀵슬롯 재사용 (GameScene.quickPotion)
     this.zLock = Math.max(0, (this.zLock || 0) - dt); this.parryCd = Math.max(0, (this.parryCd || 0) - dt);   // 3타 후딜레이 · 패링 재사용 대기
-    this.bondHasteT = Math.max(0, (this.bondHasteT || 0) - dt); this.galeT = Math.max(0, (this.galeT || 0) - dt); this.dashEvadeT = Math.max(0, (this.dashEvadeT || 0) - dt);   // 천공의 숨결 가속 · 질풍의 추진력 · 대시 회피 판정
+    this.galeT = Math.max(0, (this.galeT || 0) - dt); this.dashEvadeT = Math.max(0, (this.dashEvadeT || 0) - dt);   // 질풍의 추진력 · 대시 회피 판정
     this.inv -= dt; this.dashCd -= dt; this.swapCd -= dt; this.diveCd -= dt; this.comboT -= dt; this.zBuf -= dt; this.dropT -= dt; this.hurtT -= dt; this.speedBuff -= dt;
     this.z.cd = Math.max(0, this.z.cd - dt);
     for (const m of this.members) for (const k in m.cd) m.cd[k] = Math.max(0, m.cd[k] - dt);
@@ -493,8 +499,10 @@ export class Player extends Actor {
       if (this.action) this.endAction(true);   // 스킬의 end() 로 남은 이펙트·상태를 정리
       this.dash = { t: 0, dir: dir || this.face };
       this.face = this.dash.dir; this.refacing();
-      this.dashCd = .55 * this.mods.dashCdMul; this.inv = Math.max(this.inv, .26 + this.mods.dashInvAdd);
-      this.dashEvadeT = .26 + this.mods.dashInvAdd; this.evadeReady = !!this.mods.dashReload;   // 전술 재장전 스텝: 이 무적 동안 공격을 피하면 (takeHit)
+      const dinv = Math.min(DASH_INV_CAP, (.26 + this.mods.dashInvAdd) * (1 + (this.mods.dashInvX || 0)));   // 도박사의 외줄타기 스텝(양날의 검): 무적 2배 (최대 DASH_INV_CAP 초)
+      this.dashCd = .55 * this.mods.dashCdMul; this.inv = Math.max(this.inv, dinv);
+      this.dashEvadeT = dinv; this.evadeReady = !!this.mods.dashReload;   // 전술 재장전 스텝: 이 무적 동안 공격을 피하면 (takeHit)
+      if (this.mods.dashCrit) { this.critNext = sc.time.now + this.mods.dashCrit * 1000; sc.fx.ring(this.x, this.y, 18, 0xff3a5a, 220); }   // 도박사의 외줄타기 스텝: 대시 뒤 dashCrit 초 안의 다음 한 방은 확정 치명타 (Combat.damageEnemy critNext)
       onDash(this, this.dash);   // 특성 카드: 대시 폭탄 · 분신 대시
       Cores.dash(this);         // 보스의 코어: 분화 용암 · 깨어진 세계로 잠복
       if (this.pas.teleport) this.teleport(this.dash);
@@ -532,7 +540,7 @@ export class Player extends Actor {
     if (this.flipT > 0 && (this.flipT -= dt) <= 0) { this.b.setGravityY(0); this.sprite.setFlipY(false); }
     if (this.launchT > 0 && ((this.launchT -= dt) <= 0 || this.b.velocity.y >= 0)) { this.launchT = 0; this.b.setMaxVelocity(700, 640); }   // 꼭대기에 닿으면 원래 낙하 속도 한도로
     if (this.stallT > 0 && ((this.stallT -= dt) <= 0 || this.onGround || this.flipT > 0)) { this.stallT = 0; if (!(this.flipT > 0)) this.b.setGravityY(0); }   // 공중 평타 저중력이 끝났다
-    const speed = sp.speed * this.mods.speedMul * (this.speedBuff > 0 ? 1.25 : 1) * (this.bondHasteT > 0 ? BOND_HASTE : 1) * (this.galeT > 0 ? 1 + .25 * (this.mods.dashGale || 1) : 1) * slow * (this.mega.active ? 1.1 : 1) * this.statOf('speed') * this.buffMul('speed') * Cores.speedMul(this);
+    const speed = sp.speed * this.mods.speedMul * (this.speedBuff > 0 ? 1.25 : 1) * (this.galeT > 0 ? 1 + .25 * (this.mods.dashGale || 1) : 1) * (this.mods.chargeSlow && this.charging ? 1 - this.mods.chargeSlow : 1) * slow * (this.mega.active ? 1.1 : 1) * this.statOf('speed') * this.buffMul('speed') * Cores.speedMul(this);
     if (this.dash && this.dash.tele) {   // 순간이동: 이미 옮겨졌다. 잠깐 멈춰 잔상만 남긴다
       this.dash.t += dt;
       b.setAllowGravity(false); b.setVelocity(0, 0);
@@ -581,7 +589,7 @@ export class Player extends Actor {
 
     // 행동 진행 (스라크 계열은 모든 행동이 빠르다)
     if (a) {
-      a.t += dt * (this.pas.atkSpeed || 1) * (this.boltT > 0 ? 1.4 : 1) * (this.bondHasteT > 0 ? BOND_HASTE : 1) * (a.gale ? 1.5 : 1);   // 천공의 숨결 +20% · 질풍의 추진력: 대시 뒤 첫 평타 1.5배   // 제크로무의 뇌격 코어: 패링 뒤 5초간 공격 속도 +40%
+      a.t += dt * (this.pas.atkSpeed || 1) * (this.boltT > 0 ? 1.4 : 1) * (a.gale ? 1.5 : 1) * this.cardSpeed(a);   // 질풍의 추진력: 대시 뒤 첫 평타 1.5배 · 광전사의 혈투 · 초중량 일격 (cardSpeed)   // 제크로무의 뇌격 코어: 패링 뒤 5초간 공격 속도 +40%
       if (a.update) a.update(this, a, dt);
       while (a.ev && a.evi < a.ev.length && a.t >= a.ev[a.evi][0]) { a.ev[a.evi][1](); a.evi++; }
       if (this.action === a && a.t >= a.dur) this.endAction();
@@ -721,6 +729,7 @@ export class Player extends Actor {
       action.dur *= COMBO_TEMPO;
       for (const e of action.ev || []) e[0] *= COMBO_TEMPO;
       action.boostDmg = (action.boostDmg || 1) * COMBO_DMG * COMBO_STEP[step];
+      if (this.mods.heavyHit) action.boostDmg *= 1 + this.mods.heavyHit;   // 초중량 일격(양날의 검): 평타 1타당 +90% · 보스 경직 (Combat.damageEnemy)
       action.finisher = step === 2;
       if (action.finisher) {
         const t0 = action.ev && action.ev.length ? Math.min(...action.ev.map(e => e[0])) : .05;
@@ -739,6 +748,7 @@ export class Player extends Actor {
       if (this.mods.orbCost && slot !== 'z') this.selfDamage(m.maxhp * .03);
       this.gradeCast(action, id, (m.cardGrade || {})[id]);
       this.applyBoost(action, id, true);
+      if (this.mods.skillPow) this.manaDrive(action);   // 마력 폭주 기관(양날의 검)
       Cores.cast(this, id);   // 보스의 코어: 분화 용암 · 델타스트림 · 모래폭풍 검기
     }
     this.startAction(action, slot);
@@ -840,7 +850,7 @@ export class Player extends Actor {
     if (a.anim) {
       this.play(a.anim, true);
       const am = this.meta.anims[a.anim];
-      this.sprite.anims.timeScale = am ? Phaser.Math.Clamp(am.ms * (this.pas.atkSpeed || 1) / (a.dur * 1000), .5, 3.5) : 1;
+      this.sprite.anims.timeScale = am ? Phaser.Math.Clamp(am.ms * (this.pas.atkSpeed || 1) * this.cardSpeed(a) / (a.dur * 1000), .5, 3.5) : 1;
     }
     if (a.noGrav) { this.b.setAllowGravity(false); if (!a.ctrl) this.b.setVelocityY(0); }
   }
@@ -852,7 +862,7 @@ export class Player extends Actor {
     this.sprite.anims.timeScale = 1;
     if (a.end) a.end(this, a);
     if (a.comboStep && !interrupted) { this.combo = (this.combo + 1) % 3; this.comboT = .45; }
-    if (a.comboStep && a.finisher && !interrupted) this.zLock = COMBO_RECOVER;   // 3타 뒤 숨 고르기
+    if (a.comboStep && a.finisher && !interrupted) this.zLock = COMBO_RECOVER + (this.mods.finishLag || 0);   // 3타 뒤 숨 고르기 (초중량 일격: 더 길게)
     if (a.parry) {   // 패링 자세가 끝났다: 실드를 걷고, 아무것도 받아치지 못했으면 헛방
       if (this.parryFx) { const g = this.parryFx; this.parryFx = null; this.scene.tweens.add({ targets: g, alpha: 0, duration: 120, onComplete: () => g.destroy() }); }
       if (!a.parried) this.parryWhiff();
@@ -910,7 +920,7 @@ export class Player extends Actor {
   parryWhiff() {
     const sc = this.scene;
     const steady = this.mods.parryCdMul || 1;   // 굳건한 방어 태세 카드: 헛방 쿨타임 · 무방비 후딜레이 -25%
-    this.parryCd = PARRY_CD * steady;
+    this.parryCd = PARRY_CD * steady + (this.mods.whiffCdAdd || 0);   // 찰나의 카운터(양날의 검): 헛방 쿨타임 +1초
     sc.fx.burst(this.x + this.face * 20, this.y - 2, [0x8a9ab0, 0xbfe6ff], 12, 110, { glow: true, life: .35 });
     sc.fx.floatText(this.x, this.b.y - 18, 'MISS', '#9aa6b8', 10);
     Sfx.play('crack');
@@ -924,7 +934,9 @@ export class Player extends Actor {
     this.parryN = now - (this.parryAt ?? -99999) <= PARRY_CHAIN_T * 1000 ? (this.parryN || 0) + 1 : 1;
     this.parryAt = now;
     const i = Math.min(this.parryN, PARRY_DMG.length) - 1;
-    return (this.parryChain = { n: this.parryN, dmg: PARRY_DMG[i], stag: PARRY_STAG[i] });
+    // pow · stag: 유대의 불꽃 Lv.3 천공의 반격(그로기 +15% · 반사 · 카운터 피해 +20%) · 찰나의 카운터(양날의 검: 피해 +160% · 그로기 2배)
+    const bp = bondParry(this.scene.bondStage || 0), md = this.mods;
+    return (this.parryChain = { n: this.parryN, dmg: PARRY_DMG[i], stag: PARRY_STAG[i] * bp.stag * (1 + (md.razorStag || 0)), pow: bp.pow * (1 + (md.razorPow || 0)) });
   }
   // 패링 성공 (x, y: 부딪힌 자리 · kind: 'proj' 투사체 반사 · 'melee' 근접 공격 받아치기) → 연속 패링 단계 { n, dmg, stag }
   doParry(x, y, kind) {
@@ -937,6 +949,7 @@ export class Player extends Actor {
     sc.fx.floatText(this.x, this.b.y - 24, first ? '⚡ PERFECT PARRY!' : `PARRY x${ch.n} (${Math.round(ch.dmg * 100)}%)`, first ? '#ffe36a' : ch.dmg >= .4 ? '#f0d090' : '#c8c0b0', first ? 13 : 11);
     Cores.parry(this);   // 보스의 코어: 제크로무 — 화면 안 모든 적에게 낙뢰 · 공격 속도 +40% (연속 패링이면 그만큼 약하게)
     onParry(this, x, y, kind, ch);   // 패링 카드 (game/Perks.js): 철벽의 호흡 회복 · 충격파 카운터 · 반격의 일격
+    this.bondStrike(x, y);   // 유대의 불꽃 Lv.6: 유대의 추가 타격
     sc.fx.hitStop(100);
     const cam = sc.cameras.main;
     if (!cam.zoomEffect.isRunning) { const z0 = cam.zoom; cam.zoomTo(z0 * 1.05, 60, 'Quad.easeOut', true); sc.time.delayedCall(100, () => cam.zoomTo(z0, 220, 'Sine.easeOut', true)); }
@@ -944,7 +957,7 @@ export class Player extends Actor {
     if (kind !== 'melee') return ch;
     // 근접 카운터: 전방 충격파 · 상대 큰 경직 (보스 그로기 +30) · X · C · 메가 필살기 쿨타임 -2초 · 다음 평타/차징 한 방 확정 치명타
     const type = this.types[0], cx = this.x + f * 26;
-    sc.combat.hitCircle(cx, this.y, 40 * this.mods.sizeMul, 1.5 * ch.dmg, type, { kbx: 280, kby: -180, hs: 40, stun: 1.2 * Math.max(.4, ch.dmg) });
+    sc.combat.hitCircle(cx, this.y, 40 * this.mods.sizeMul, 1.5 * ch.dmg * ch.pow, type, { kbx: 280, kby: -180, hs: 40, stun: 1.2 * Math.max(.4, ch.dmg) });
     sc.fx.ring(cx, this.y, 40 * this.mods.sizeMul, 0xffe36a, 300);
     const e = sc.enemies.filter(q => q.alive && !q.intangible && Math.abs(q.x - x) < 120 && Math.abs(q.y - this.y) < 100).sort((p1, p2) => Math.abs(p1.x - x) - Math.abs(p2.x - x))[0];
     if (e && e.boss && e.addStaggerRaw && ch.stag > 0) e.addStaggerRaw(30 * ch.stag);
@@ -958,7 +971,7 @@ export class Player extends Actor {
     const show = this.parryGaugeT > 0 && this.parryCd > 0;
     if (!show) { if (this.parryGauge) this.parryGauge.clear(); return; }
     const g = this.parryGauge || (this.parryGauge = this.scene.add.graphics().setDepth(60));
-    const x = this.x + 16, y = this.top - 6, k = this.parryCd / (PARRY_CD * (this.mods.parryCdMul || 1));
+    const x = this.x + 16, y = this.top - 6, k = Math.min(1, this.parryCd / (PARRY_CD * (this.mods.parryCdMul || 1) + (this.mods.whiffCdAdd || 0)));
     g.clear();
     g.fillStyle(0x1a1a24, .7); g.fillCircle(x, y, 7);
     g.fillStyle(0x9aa0b0, .9); g.fillPoints([{ x: x - 4, y: y - 4 }, { x: x + 4, y: y - 4 }, { x: x + 4, y: y }, { x, y: y + 5 }, { x: x - 4, y }], true);
@@ -1120,9 +1133,10 @@ export class Player extends Actor {
     const sig = chargeSigOf(this);   // 계열 고유 차징 (game/Signature.js): 개굴닌자 거대 수리검 · 울머기 저격탄 …
     const sc = this.scene, type = sig ? sig.type : this.chargeType(), col = typeColor(type), spec = CHARGE_SHOT[lvl], evo = this.tierIdx, s = this.mods.sizeMul * this.T.proj * (evo >= 2 ? 1.2 : 1) * (this.mods.psyCore ? 1.3 : 1);   // 3단·메가는 탄이 더 크다 · 뮤츠의 코어 +30%
     const perks = this.m.perks || {}, full = lvl === this.chargeMax(), shockN = full ? perks.u_shock || 0 : 0, rapid = (perks.u_rapid || 0) > 0;
-    const critMul = crit ? CHARGE_CRIT : 1;
+    const critMul = crit ? CHARGE_CRIT : 1, overR = 1 + Math.min(1.5, this.mods.overBoom || 0);   // 과부하 차징 캐논(양날의 검): 폭발 반경 1.8배 (피해 +120% 는 Combat.damageEnemy)
     if (this.action) this.endAction(true);
     this.chgAura.setVisible(false);
+    if (full) this.bondStrike(this.x + this.face * 140, this.y);   // 유대의 불꽃 Lv.6: 풀차징 샷 → 유대의 추가 타격 (앞쪽 가까운 적)
     if (crit) {   // ⚡ 퍼펙트 차징: 확정 치명타 + 피해 ×1.5
       sc.fx.floatText(this.x, this.b.y - 26, '⚡ OVERCHARGE CRITICAL!', '#ffe36a', 13);
       sc.fx.starburst(this.x, this.y, 0xffffff, 1.6, { debris: false });
@@ -1135,12 +1149,12 @@ export class Player extends Actor {
         sc.combat.chargeSpawn = true;   // 이 순간 만든 탄은 차징 탄 (연습용 나무 상자 · Combat.spawnProjectile)
         sc.combat.chargeCtx = { crit, shock: shockN ? (hx, hy) => this.chargeShockField(hx, hy, lvl, type, shockN) : null };
         if (sig) {
-          sig.fire(this, lvl, s, f);
+          sig.fire(this, lvl, s * Math.sqrt(overR), f);
           if (lvl >= 2) sc.fx.floatText(this.x, this.b.y - 16, (sig.nameOf ? sig.nameOf(this, lvl) : sig.name[lvl - 1]) + '!', lvl >= 3 ? '#ffe36a' : '#ffffff', lvl >= 3 ? 12 : 10);
           if (lvl >= 3) sc.fx.hitStop(60);
         } else {
-          const boom = { r: spec.boom.r * (1 + (s - 1) * .6), mul: spec.boom.mul * critMul };
-          const status = Object.assign({ heavy: true, hs: 30 + lvl * 15 }, lvl >= 2 ? { stun: .4 } : {}, crit ? { crit: 1 } : {}, shockN ? { stagMul: 2 } : {});
+          const boom = { r: spec.boom.r * (1 + (s - 1) * .6) * overR, mul: spec.boom.mul * critMul };
+          const status = Object.assign({ heavy: true, chg: 1, hs: 30 + lvl * 15 }, lvl >= 2 ? { stun: .4 } : {}, crit ? { crit: 1 } : {}, shockN ? { stagMul: 2 } : {});
           // 대폭발: 속성 충격파 고리 + 역경직 (보스 · 엘리트를 파고든 뒤 · 벽에 부딪히거나 사거리 끝)
           const blast = (q, heavy) => {
             if (q.boomed) return;
@@ -1357,8 +1371,9 @@ export class Player extends Actor {
     // 패링 자세(지상 ↓ + Z): 몸 둘레 70px 안에서 들어온 근접 공격을 받아친다 (투사체는 Combat 이 먼저 반사)
     const pz = !o.noParry && srcX != null && this.parryZone();
     if (pz && Math.abs(srcX - pz.x) <= pz.r + 24) {
-      this.doParry((srcX + this.x) / 2, this.y - 4, 'melee');
-      return false;
+      // ⚠️ 붉은 안광(패링 불가 — Boss.dangerOn): 받아치지 못하고 가드 브레이크 · 피해 ×DANGER_MUL
+      if (o.danger || sc.bossDanger) { this.guardBreak((srcX + this.x) / 2, this.y - 4); dmg *= DANGER_MUL; }
+      else { this.doParry((srcX + this.x) / 2, this.y - 4, 'melee'); return false; }
     }
     if (a && a.guard === 'counter') {
       this.endAction(true);
@@ -1369,13 +1384,14 @@ export class Player extends Actor {
     }
     const m = type === 'none' ? 1 : typeMultiplier(type, this.types);
     const eff = effectiveness(m);
-    const d = Math.max(1, Math.round(dmg * m * (this.mega.active ? .8 : 1) * (this.pas.guard || 1) * this.buffMul('guard') * this.mods.guard * Cores.hurtMul(this)));
+    const hurtK = this.mods.chargeHurt && this.charging ? 1 + this.mods.chargeHurt : 1;   // 과부하 차징 캐논(양날의 검): 모으는 중 받는 피해 +30%
+    const d = Math.max(1, Math.round(dmg * m * hurtK * (this.mega.active ? .8 : 1) * (this.pas.guard || 1) * this.buffMul('guard') * this.mods.guard * Cores.hurtMul(this)));
     // 기합의띠(특성 카드): 쓰러질 피해를 체력 1로 버티고 3초 무적 — 방마다 1번 (GameScene.updateRooms 가 되돌린다)
     const sash = this.mods.sturdy && !this.m.sturdyUsed && this.m.hp > 1 && d >= this.m.hp;
     this.m.hp = sash ? 1 : this.m.hp - d;
     sc.fx.floatText(this.x, this.b.y - 2, `-${d}`, eff === 'super' ? '#ff6a4a' : '#ff9a8a', eff === 'super' ? 15 : 12);
     if (eff === 'super') sc.fx.floatText(this.x, this.b.y - 18, '효과가 굉장했다!', '#ffb050', 10);
-    this.flash(100); this.hurtT = .25; this.inv = .85;
+    this.flash(100); this.hurtT = .25; this.inv = .85 * (this.mods.invMul || 1);   // 유리대포의 각오(양날의 검): 피격 무적 -25%
     sc.fx.hitStop(60); sc.fx.shake(eff === 'super' ? .012 : .007, 160);
     sc.fx.burst(this.x, this.y, [0xff5a5a, 0xffffff], 8, 100);
     const big = eff === 'super' || d >= this.m.maxhp * .22;   // 큰 피격: 더 깊은 충격음 + 더 진한 붉은 테두리
@@ -1405,23 +1421,57 @@ export class Player extends Actor {
     sc.fx.floatText(this.x, this.b.y - 20, `회피! 쿨타임 -${cut.toFixed(1)}초`, '#9affd8', 10);
     sc.fx.ring(this.x, this.y, 24, 0x9affd8, 260);
   }
-  // 유대의 기적 (유대의 불꽃 Lv.6 완전체 유대의 태양 — data/bond.js): 쓰러질 피해를 받으면 지방마다 1번 체력 30%로 즉시 부활
-  bondMiracle() {
-    const sc = this.scene, m = this.m;
-    if ((sc.bondStage || 0) < 6 || this.bondMiracleUsed) return false;
-    this.bondMiracleUsed = true;
-    m.hp = Math.max(1, Math.round(m.maxhp * BOND_MIRACLE_HP)); m.alive = true; this.inv = 2.5;
-    sc.fx.hitStop(240); sc.cameras.main.flash(500, 255, 220, 140, true); sc.fx.shake(.02, 500);
-    for (let k = 0; k < 5; k++) sc.time.delayedCall(k * 90, () => { if (this.scene) sc.fx.ring(this.x, this.y - 6, 24 + k * 22, k % 2 ? 0xff3a2a : 0xffd870, 520); });
-    sc.fx.burst(this.x, this.y, [0xffd870, 0xff5a3a, 0xffffff], 36, 200, { glow: true, up: 120, grav: -60, bounce: false, life: .9 });
-    sc.events.emit('banner', '🔥 유대의 기적!', '완전체 유대의 태양이 다시 일으켜 세웠다 · 체력 30% (지방마다 1번)');
-    Sfx.play('mega');
-    return true;
+  // ⚠️ 붉은 안광 공격을 패링하려 했다 (Boss.dangerOn): 가드 실드가 붉게 산산조각 · 패링 자세가 풀리고 재사용 대기 — 피해는 takeHit 이 ×DANGER_MUL 로
+  guardBreak(x, y) {
+    const sc = this.scene, a = this.action;
+    if (a && a.parry) { a.parried = true; this.endAction(true); }
+    if (this.parryFx) { this.parryFx.destroy(); this.parryFx = null; }
+    this.parryCd = PARRY_CD * (this.mods.parryCdMul || 1) + (this.mods.whiffCdAdd || 0);
+    sc.fx.floatText(this.x, this.b.y - 26, '💢 GUARD BREAK!', '#ff4a4a', 13);
+    sc.fx.burst(x, y, [0xff2a3a, 0x6a0a14, 0xffffff, 0x8a9ab0], 22, 200, { glow: true, life: .45 });
+    sc.fx.ring(x, y, 30, 0xff2a3a, 260); sc.fx.glow(x, y, 34, 0xff1a2a, 260, .9);
+    sc.fx.shake(.014, 260, 'hit'); sc.cameras.main.flash(120, 255, 40, 40, true);
+    Sfx.play('shatter'); Sfx.play('crack');
   }
+  // 유대의 추가 타격 (유대의 불꽃 Lv.6 완전체 유대의 태양 — data/bond.js): 풀차징 샷 · 패링 성공 → (x, y) 둘레 가까운 적(보스 먼저)에게 황금빛 낙뢰 일격
+  bondStrike(x, y) {
+    const sc = this.scene, now = sc.time.now;
+    if ((sc.bondStage || 0) < 6 || now - (this.bondStrikeAt ?? -1e9) < BOND_STRIKE_CD * 1000) return;
+    const near = sc.enemies.filter(e => e.alive && !e.intangible && Math.hypot(e.x - x, e.y - y) < 340).sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y));
+    const e = near.find(q => q.boss) || near[0];
+    if (!e) return;
+    this.bondStrikeAt = now;
+    sc.time.delayedCall(170, () => {
+      if (!e.alive || !sc.combat || !this.scene) return;
+      const ex = e.x, ey = e.y, col = 0xffd25a;
+      const beam = sc.add.image(ex, ey - 70, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(col).setScale(.55, 4.2).setAlpha(.95).setDepth(47);   // 하늘에서 내리꽂는 황금 빛기둥
+      sc.tweens.add({ targets: beam, scaleX: .08, alpha: 0, duration: 340, ease: 'Quad.easeIn', onComplete: () => beam.destroy() });
+      sc.fx.starburst(ex, ey, col, 1.5, { debris: false });
+      sc.fx.ring(ex, ey, 34, 0xffffff, 260); sc.fx.ring(ex, ey, 58, col, 400); sc.fx.glow(ex, ey, 48, col, 320, 1);
+      sc.fx.burst(ex, ey, [col, 0xffffff, 0xff8a2a], 24, 210, { glow: true, up: 90, life: .5 });
+      sc.fx.floatText(ex, e.top - 24, '🔥 유대의 추가 타격!', '#ffd25a', 11);
+      sc.combat.damageEnemy(e, this.atk * BOND_STRIKE_MUL, this.types[0], { proc: true, ignoreResist: true, hx: ex, hy: ey, hs: 50 });
+      Sfx.play('thunder');
+    });
+  }
+  // 마력 폭주 기관 (양날의 검): 액티브 기술 피해 +85% · 크기 1.5배 (최대 2배) — 쓸 때마다 지금 체력의 4% (체력 5% 이하면 소모 없음)
+  manaDrive(action) {
+    const m = this.m, md = this.mods, s1 = md.sizeMul, end0 = action.end;
+    action.boostDmg = (action.boostDmg || 1) * (1 + md.skillPow);
+    md.sizeMul = s1 * Math.min(2, 1 + (md.skillSize || 0));
+    action.end = (p, a) => { md.sizeMul = s1; if (end0) end0(p, a); };   // 기술이 끝나면(끊겨도) 되돌린다
+    if (md.castCost && m.hp > m.maxhp * .05) {
+      const cost = Math.max(1, Math.round(m.hp * md.castCost));
+      this.selfDamage(cost);
+      this.scene.fx.floatText(this.x, this.b.y - 6, `-${cost} 마력 폭주`, '#d88aff', 9);
+      this.scene.fx.burst(this.x, this.y, [0xb04aff, 0xff3a6a], 6, 60, { glow: true, life: .3 });
+    }
+  }
+  // 카드가 바꾸는 행동 속도: 광전사의 혈투(잃은 체력만큼 최대 +100%) · 초중량 일격(평타 -25%)
+  cardSpeed(a) { return (1 + Math.min(1, this.bloodK())) * (a && a.comboStep && this.mods.comboSlow ? 1 - this.mods.comboSlow : 1); }
 
   faint() {
     if (Cores.revive(this)) return;   // 칠색조의 무지개 코어: 불사조 부활
-    if (this.bondMiracle()) return;   // 유대의 불꽃 Lv.6: 유대의 기적
     const sc = this.scene, m = this.m;
     m.hp = 0; m.alive = false;
     sc.fx.burst(this.x, this.y, [typeColor(this.typesOf(m)[0]), 0xffffff], 30, 160, { glow: true });

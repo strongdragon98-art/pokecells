@@ -8,7 +8,7 @@ import { ITEMS, RANDOM_ITEM_KEYS, ITEM_DROP, CONSUMABLES, MAX_EQUIP } from '../d
 import { stoneName, crystalName, zTypeOf, usesStone } from '../data/gear.js';
 import { coreOfBoss } from '../data/cores.js';
 import { NUGGETS, eliteNuggets, bossNuggets, martKey, POTION_CD } from '../data/shop.js';
-import { BOND_POWERS, BOND_SUN_ATK, BOND_HASTE_T, BOND_SHIELD_T, HEROES_KEY, potionMaxAt } from '../data/bond.js';
+import { BOND_POWERS, BOND_SUN_ATK, BOND_SUN_HP, HEROES_KEY, potionMaxAt } from '../data/bond.js';
 import { typeColor } from '../data/types.js';
 import { PLAT_SET, groundYAt, T as TILE_ID } from '../game/Level.js';
 import { buildChapter, roomAt, CW, CH } from '../game/World.js';
@@ -45,7 +45,7 @@ import { Settings, keyLabel } from '../systems/Settings.js';
 import { Save } from '../systems/Save.js';
 import { RunSave, seeded, newSeed, snapshotWorld, applyWorld, snapshotPlayer, restorePlayer } from '../systems/RunSave.js';
 import { itemArt, shade, TILE_MARGIN, TILE_SPACING } from '../systems/Textures.js';
-import { rollCards, applyCard, TM_CARDS, heldLv, dressCard, CARD_MAX_LV, DATA_KILLS, BONUS_CARDS } from '../data/tm.js';
+import { rollCards, applyCard, TM_CARDS, heldLv, dressCard, CARD_MAX_LV, DATA_KILLS, BONUS_CARDS, cardStacks, STACK_HP, STACK_ATK } from '../data/tm.js';
 import { PERKS, onKill as perkKill } from '../game/Perks.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -334,7 +334,11 @@ export default class GameScene extends Phaser.Scene {
     if (this.fx && this.fx.pool) for (const o of this.children.list.slice()) if (o.pooled && !o.released && o.texture && o.texture.key.startsWith('sheet:')) this.fx.pool.release(o);
     if (this.player && this.spriteChapter !== si) Sprites.trim([...this.player.members.map(m => m.key), ...chapterSprites(si), 'corviknight']);
     this.spriteChapter = si;
-    if (this.player) { this.player.rebornUsed = false; this.player.bondMiracleUsed = false; }   // 지방마다 부활 1번 (칠색조 코어 · 유대의 기적)
+    if (this.player) {
+      const p = this.player;
+      p.rebornUsed = false;   // 지방마다 부활 1번 (칠색조 코어)
+      if (p.uses && p.uses.potion > p.potionMax) p.uses.potion = p.potionMax;   // 예전 저장(최대 3 ~ 5개)은 지금 소지 한도로
+    }
     Sprites.ensure(chapterSprites(si));
     this.level = level;
     this.explored = W.explored || (W.explored = new Uint8Array(level.cols * level.rows));   // 지도: 화면에 한 번이라도 들어온 칸
@@ -609,7 +613,12 @@ export default class GameScene extends Phaser.Scene {
 
   // 유대의 불꽃 정화 단계 0~6 (HUD 불꽃 Lv = 단계 + 1, 최대 6 — UIScene · 모든 공격 피해 +BOND_ATK × 단계 — Combat)
   get bondStage() { return this.bondStages ? Math.min(6, this.bondStages.size) : 0; }
-  get bondMul() { return 1 + BOND_ATK * this.bondStage + (this.bondStage >= 6 ? BOND_SUN_ATK : 0); }   // Lv.6 완전체 유대의 태양: +20% 더 (data/bond.js)
+  get bondMul() {   // Lv.6 완전체 유대의 태양: 출전 중인 포켓몬 체력이 80% 이상이면 +15% 더 (data/bond.js)
+    const m = this.player && this.player.m, sun = this.bondStage >= 6 && m && m.hp >= m.maxhp * BOND_SUN_HP;
+    return 1 + BOND_ATK * this.bondStage + (sun ? BOND_SUN_ATK : 0);
+  }
+  // ⚠️ 붉은 안광(패링 불가) 중인 보스가 있다 (Boss.dangerOn) — 근접 · 장판 피해를 패링으로 받지 못한다 (Player.takeHit)
+  get bossDanger() { return !!(this.enemies && this.enemies.some(e => e.boss && e.alive && e.danger)); }
   // 지금 방 지역의 곡 (지역마다 bgm 이 있으면 그것 · 없으면 지방 곡)
   areaBgm() { const a = this.room && this.stage.areas[this.room.ai]; return (a && a.bgm) || this.stage.bgm; }
 
@@ -1118,12 +1127,13 @@ export default class GameScene extends Phaser.Scene {
   consumeInput() { for (const f of ['ultP', 'jumpP', 'dashP', 'zP', 'xP', 'cP', 'swapNext', 'swapPrev', 's1', 's2', 's3', 'mega', 'zmoveP', 'useP', 'upP', 'potionP']) this.inp[f] = false; }
 
   // ---------------- 상처약 퀵슬롯: 단축키(기본 A) · 모바일 🧪 버튼 · HUD 칸 클릭 ----------------
-  //  출전 중인 포켓몬 체력을 최대 체력의 40% 즉시 회복 · 재사용 3초 · 최대 3개 소지 (포켓샵에서 산다)
-  //  유대의 불꽃 권능 (data/bond.js): Lv.1 회복 55% · Lv.2 최대 4개 · Lv.3 5초 이동 · 공격 속도 +20% · Lv.4 회복 70% + 1초 무적 · Lv.5 최대 5개
+  //  즉발: 누르는 순간 출전 중인 포켓몬 체력을 회복한다 — 동작이 없어 이동 · 점프 · 공중 기동 · 공격 흐름을 끊지 않는다 · 재사용 3초 (포켓샵에서 산다)
+  //  처음엔 최대 2개 · 최대 체력의 35% — 유대의 불꽃 권능 (data/bond.js): Lv.1 회복 42% · Lv.2 최대 3개 · Lv.4 회복 50% · Lv.5 최대 4개
+  //  광전사의 혈투 카드(양날의 검): 회복 효율 -50% (Player.mods.potionCut)
   quickPotion() {
     const p = this.player;
     if (!p || this.paused || this.over || this.transitioning) return;
-    const m = p.m, n = p.uses.potion || 0, max = p.potionMax, heal = p.potionHeal, lv = this.bondStage;
+    const m = p.m, n = p.uses.potion || 0, max = p.potionMax, cut = p.mods.potionCut || 0, heal = p.potionHeal * (1 - cut);
     if (!m.alive) return;
     if (p.potionCd > 0) { Sfx.play('deny'); return; }
     if (!n) { Sfx.play('deny'); this.events.emit('toast', `상처약이 없다 · 포켓샵에서 살 수 있다 (최대 ${max}개)`, 'potion'); return; }
@@ -1134,16 +1144,7 @@ export default class GameScene extends Phaser.Scene {
     Sfx.play('heal');
     this.fx.ring(p.x, p.y, 30, 0x5aff8a, 360); this.fx.glow(p.x, p.y, 34, 0x5aff8a, 420, .8);
     this.fx.burst(p.x, p.y, [0x7dff9a, 0xd8ffe0, 0xffffff], 18, 90, { glow: true, grav: -80, bounce: false, up: 60 });
-    const extra = [];
-    if (lv >= 3) {   // 천공의 숨결: 5초 가속 (초록 바람)
-      p.bondHasteT = BOND_HASTE_T; extra.push('5초 가속');
-      for (let k = 0; k < 2; k++) this.time.delayedCall(k * 110, () => { if (this.player) this.fx.ring(p.x, p.y, 26 + k * 16, 0x8affd8, 320); });
-    }
-    if (lv >= 4) {   // 시공의 등불: 1초 피해 면역 보호막 (황금빛 고리)
-      p.inv = Math.max(p.inv, BOND_SHIELD_T); p.bondShieldT = BOND_SHIELD_T; extra.push('1초 무적');
-      this.fx.ring(p.x, p.y, 40, 0xffe08a, 420); this.fx.glow(p.x, p.y, 40, 0xffd870, 500, .9);
-    }
-    this.events.emit('toast', `🧪 상처약! ${p.formName()} 체력 ${Math.round(heal * 100)}% 회복${extra.length ? ' · 🔥 ' + extra.join(' · ') : ''} (남은 ${n - 1}/${max})`, 'potion');
+    this.events.emit('toast', `🧪 상처약! ${p.formName()} 체력 ${Math.round(heal * 100)}% 회복${cut ? ` (광전사의 혈투 -${Math.round(cut * 100)}%)` : ''} (남은 ${n - 1}/${max})`, 'potion');
   }
 
   // ---------------- 마을: 포켓몬센터 · 자판기 ----------------
@@ -2503,7 +2504,7 @@ export default class GameScene extends Phaser.Scene {
     this.addEnemy(e, s.room || this.room);
     this.fx.ring(s.x, e.y, 34, 0xff3a2a, 460); this.fx.glow(s.x, e.y, 40, 0xff3a2a, 520, 1);
     this.fx.burst(s.x, e.y, [0xff3a2a, 0xffa040, 0xffffff], 20, 130, { glow: true, up: 80 });
-    this.events.emit('toast', `🔥 엘리트 ${def.name}이(가) 길을 막아섰다! 쓰러뜨리면 이상한사탕 · 금구슬`);
+    this.events.emit('toast', `🔥 엘리트 ${def.name}이(가) 길을 막아섰다! 쓰러뜨리면 이상한사탕 · 금구슬${e.stacks > 0 ? ' · ⚔ ' + this.stackNote(e) : ''}`);
     Sfx.play('boss');
   }
 
@@ -2541,10 +2542,21 @@ export default class GameScene extends Phaser.Scene {
 
   addEnemy(e, room) {
     e.room = room;
+    if ((e.elite || e.boss) && !e.stacks) this.stackScale(e);
     e.colliders = [this.physics.add.collider(e.obj, this.gateGroup)];
     if (!e.def.noclip) e.colliders.push(this.physics.add.collider(e.obj, this.layers, null, e.boss ? (o, tile) => !PLAT_SET.has(tile.index) : null));   // 보스는 통과 발판에 올라서지 않는다
     this.enemies.push(e);
   }
+
+  // 카드 스택 비례 동적 스케일링: 파티가 지닌 · 강화한 기술머신 카드 수(data/tm.js cardStacks)만큼 엘리트 · 보스 체력 +STACK_HP · 공격력 +STACK_ATK (스택마다)
+  stackScale(e) {
+    const n = cardStacks(this.player);
+    e.stacks = n || -1;   // 한 번만 (이어 싸우기 · 짝 보스도 저마다)
+    if (n <= 0) return;
+    const hk = 1 + STACK_HP * n;
+    e.maxhp = Math.round(e.maxhp * hk); e.hp = Math.round(e.hp * hk); e.dmg *= 1 + STACK_ATK * n;
+  }
+  stackNote(e) { const n = e.stacks || 0; return n > 0 ? `카드 ${n}스택 · 체력 +${Math.round(STACK_HP * n * 100)}% · 공격 +${Math.round(STACK_ATK * n * 100)}%` : ''; }
 
   // 아레나 보스: 방의 보스 키 (중간 보스 · 지방 최종 보스 · 히든 전설). 날아다니는 보스는 공중에서
   // 아레나 보스전 시작. 이어 싸우는 순서(chain): prelude(레드의 포켓몬들) → 방 보스 → then(디아루가 → 펄기아)
@@ -2586,6 +2598,7 @@ export default class GameScene extends Phaser.Scene {
       this.bosses.push(twin);
     }
     this.events.emit('boss', boss);   // UI 가 할로우 나이트식 보스 이름 타이틀을 띄운다
+    if (boss.stacks > 0) this.time.delayedCall(1800, () => { if (boss.alive) this.events.emit('toast', `⚔ ${boss.name} 강화 — ${this.stackNote(boss)}`); });
     this.fx.shake(.01, 500); Sfx.play('boss');
     Music.play(def.bgm || (def.tier === 'boss' ? this.stage.bossBgm : 'boss_ruin'));   // 보스 전용곡(아비스 네크로즈마) · 지방 최종 보스는 지방 전용곡, 중간·히든 보스는 공용 전투곡
   }
@@ -2732,7 +2745,7 @@ export default class GameScene extends Phaser.Scene {
     }
     else if (Math.random() < ITEM_DROP.wild) this.spawnPickup('item', e.x, e.y, pick(RANDOM_ITEM_KEYS));   // 야생은 아이템 대신 가끔 오렌열매
     else if (Math.random() < .16) this.spawnPickup('oran', e.x, e.y);
-    if (!e.elite) this.addBattleData(e);   // 일반 야생: 전투 데이터 축적 (12마리마다 카드)
+    if (!e.elite) this.addBattleData(e);   // 일반 야생: 전투 데이터 축적 (DATA_KILLS 마리마다 카드)
     const r = Save.addKill(e.line || e.key);   // 정화 진행도는 진화 계열로 센다 (피카츄를 정화해도 피츄 계열 +1)
     if (r) {
       if (r.unlockedNow) { this.runStats.unlocked.push(e.line); this.queueJoin(e.line, 'dex'); }   // 10번 정화: 정화 완료 쇼케이스
@@ -3246,7 +3259,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.joinBlur) { this.cameras.main.postFX.remove(this.joinBlur); this.joinBlur = null; }
     if (this.joinQueue && this.joinQueue.length) this.time.delayedCall(350, () => this.nextJoin());
   }
-  // ---------------- 현장 기술머신 전송: 전투 데이터 축적(일반 야생 12마리) · 빛나는 TM 코어(엘리트 100%) → 카드 3장 중 1장 ----------------
+  // ---------------- 현장 기술머신 전송: 전투 데이터 축적(일반 야생 DATA_KILLS 마리) · 빛나는 TM 코어(엘리트 100%) → 카드 3장 중 1장 ----------------
   //  보스전 · 연출 · 다른 창이 열려 있으면 기다렸다가 연다 (bonusQueue) · 고르지 않고 닫으면 같은 카드로 잠시 뒤 다시
   addBattleData(e) {
     const p = this.player;
