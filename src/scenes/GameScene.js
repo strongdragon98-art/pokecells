@@ -45,7 +45,7 @@ import { Settings, keyLabel } from '../systems/Settings.js';
 import { Save } from '../systems/Save.js';
 import { RunSave, seeded, newSeed, snapshotWorld, applyWorld, snapshotPlayer, restorePlayer } from '../systems/RunSave.js';
 import { itemArt, shade, TILE_MARGIN, TILE_SPACING } from '../systems/Textures.js';
-import { rollCards, applyCard, TM_CARDS, heldLv, dressCard, CARD_MAX_LV, BONUS_CARDS, cardStacks, STACK_HP, STACK_ATK, ownedUpgrades, upgradeInfo, MASTERY_STEPS, MASTERY_HEAL, MASTERY_CARDS } from '../data/tm.js';
+import { rollCards, applyCard, TM_CARDS, heldLv, dressCard, CARD_MAX_LV, BONUS_CARDS, cardStacks, STACK_HP, STACK_ATK, ownedUpgrades, upgradeInfo, masterySteps, MASTERY_HEAL, MASTERY_CARDS } from '../data/tm.js';
 import { PERKS, onKill as perkKill } from '../game/Perks.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -2490,10 +2490,14 @@ export default class GameScene extends Phaser.Scene {
       if (s.room && (s.room.type === 'village' || s.room.lab || s.room.peaceful)) continue;   // 마을 · 방울로드 성역엔 침식된 포켓몬이 하나도 나오지 않는다
       if (this.level.purified) { if (!s.elite && Math.random() < .5) this.spawnWanderer(s); continue; }   // 정화한 지방: 세뇌된 적 대신 평화로운 야생 포켓몬
       if (s.elite && s.room && s.room.hidden && !(this.level.sides || []).some(sd => sd.room === s.room && sd.revealed)) { s.spawned = false; continue; }   // 숨은 굴의 수문장은 흙이 걷힌 뒤에
-      if (!s.elite && (this.level.terminals || []).some(t => Math.abs(t.x * TILE - s.x) < 150 && Math.abs(t.g * TILE - s.y) < 90)) continue;   // 간이 회복기 둘레는 안전 구역
-      if (!s.elite && (this.level.npcs || []).some(n => n.guide && s.x - n.x * TILE > -60 && s.x - n.x * TILE < 220 && Math.abs(n.g * TILE - s.y) < 90)) continue;   // 조작 힌트 NPC 와 연습용 과녁 자리도
+      if (this.safeSpawn(s)) continue;   // 간이 회복기 둘레 · 조작 힌트 NPC 와 연습용 과녁 자리는 안전 구역
       this.spawnAt(s);
     }
+  }
+  safeSpawn(s, lv = this.level) {
+    if (s.elite) return false;
+    return (lv.terminals || []).some(t => Math.abs(t.x * TILE - s.x) < 150 && Math.abs(t.g * TILE - s.y) < 90)   // 간이 회복기 둘레는 안전 구역
+      || (lv.npcs || []).some(n => n.guide && s.x - n.x * TILE > -60 && s.x - n.x * TILE < 220 && Math.abs(n.g * TILE - s.y) < 90);   // 조작 힌트 NPC 와 연습용 과녁 자리도
   }
 
   // 🔥 엘리트 수문장 (기술머신이 없는 막다른 길 끝): 출전 포켓몬보다 한 단계 위 · 체력 3.4배 · 피해 1.5배 · 몸집 1.25배 · 붉은 오라
@@ -3266,7 +3270,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.joinBlur) { this.cameras.main.postFX.remove(this.joinBlur); this.joinBlur = null; }
     if (this.joinQueue && this.joinQueue.length) this.time.delayedCall(350, () => this.nextJoin());
   }
-  // ---------------- 🗺️ 지방 탐색 숙련도: 새로 들어가 몬스터를 모두 정화한 일반 전투 방마다 +1 → 5 · 10 곳(MASTERY_STEPS)에 보유 카드 강화 ----------------
+  // ---------------- 🗺️ 지방 탐색 숙련도: 새로 들어가 몬스터를 모두 정화한 일반 전투 방마다 +1 → 그 지방 전투 방의 40% · 80%(masterySteps)에 보유 카드 강화 ----------------
   //  지방마다 정확히 2번 (그 뒤로는 세지 않고 보스전에 집중) · 센 방은 room.mastered 로 저장된다 (RunSave) — 다시 와도 · 이어하기로 몬스터가 다시 나와도 또 세지 않는다
   //  안 세는 곳: 이미 센 방 · 몬스터가 한 마리도 없던 방 · 마을 · 성역(peaceful) · 연구소 · 상점 · 보스방 · 정화한 지방 · 테스트룸
   isNewClearedCombatRoom(room) {
@@ -3277,11 +3281,23 @@ export default class GameScene extends Phaser.Scene {
     return !this.enemies.some(e => e.alive && e.room === room);
   }
   masteryCount() { return this.level ? this.level.rooms.reduce((n, r) => n + (r.mastered ? 1 : 0), 0) : 0; }
+  // 이 지방에서 셀 수 있는 전투 방 수: 몬스터가 실제로 나오는 일반 전투 방 (성역 · 연구소 · 안전 구역뿐인 방 · 숨은 샛길 방은 뺀다)
+  //  지형은 시드로 정해지므로 이어하기 · 다시 와도 같은 값 — 지방(level)에 한 번 세어 둔다
+  masteryRooms(lv = this.level) {
+    if (!lv) return 0;
+    if (lv.masteryRoomN == null) {
+      const live = new Set();
+      for (const s of lv.spawns) if (s.room && !s.elite && !this.safeSpawn(s, lv)) live.add(s.room);
+      lv.masteryRoomN = lv.rooms.filter(r => live.has(r) && r.type === 'combat' && !r.peaceful && !r.lab && !r.secret).length;
+    }
+    return lv.masteryRoomN;
+  }
+  masterySteps(lv = this.level) { return masterySteps(this.masteryRooms(lv)); }
   checkRoomClear(room) {
-    const lv = this.level, got = (lv && lv.masteryGot) || 0;
-    if (got >= MASTERY_STEPS.length || !this.isNewClearedCombatRoom(room)) return;
+    const lv = this.level, got = (lv && lv.masteryGot) || 0, S = this.masterySteps();
+    if (got >= S.length || !this.isNewClearedCombatRoom(room)) return;
     room.mastered = true;
-    const n = this.masteryCount(), step = MASTERY_STEPS[got];
+    const n = this.masteryCount(), step = S[got];
     this.events.emit('mastery', n);
     if (n < step) return;
     lv.masteryGot = got + 1;

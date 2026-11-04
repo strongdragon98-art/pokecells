@@ -10,7 +10,7 @@
 //   커먼 · 레어를 합성해 +2 에 한 등급 승급하는 규칙은 그대로
 //  ⚖️ 양날의 검 특성 카드 8종(game/Perks.js curse): 대가를 안고 한 메커니즘을 폭발시킨다 — 특성 카드 풀에 그대로 섞인다 (레어 · 유니크)
 //  새 카드는 ① 필드 기술머신 캡슐(샛길 제단 · 길목 캡슐) ② 엘리트 · 보스가 떨어뜨리는 빛나는 TM 코어에서만 — 몬스터 처치 수 보상은 없다
-//  🗺️ 지방 탐색 숙련도: 지방마다 새로 정화한 일반 전투 방 MASTERY_STEPS(5 · 10)곳에 '보유 카드 강화' (ownedUpgrades · upgradeInfo · GameScene.checkRoomClear)
+//  🗺️ 지방 탐색 숙련도: 지방마다 새로 정화한 일반 전투 방이 그 지방 전투 방의 40% · 80%(masterySteps)에 닿으면 '보유 카드 강화' (ownedUpgrades · upgradeInfo · GameScene.checkRoomClear)
 import { SKILLS } from './pokemon.js';
 import { typeName } from './types.js';
 import { PERKS, perkMods } from '../game/Perks.js';
@@ -193,9 +193,17 @@ export function moveGrade(id) {
 
 export const TM_CARDS = 4;   // 한 번에 뒤집는 카드 수
 export const BONUS_CARDS = 3;   // 빛나는 TM 코어(엘리트 · 보스 드랍)가 전송하는 카드 수
-// 🗺️ 지방 탐색 숙련도: 새로 들어가 몬스터를 모두 정화한 일반 전투 방 수가 이 값에 닿을 때마다 보유 카드 강화 1번 (지방마다 2번 — 그 뒤로는 보스전에 집중)
+// 🗺️ 지방 탐색 숙련도: 새로 들어가 몬스터를 모두 정화한 일반 전투 방 수가 기준에 닿을 때마다 보유 카드 강화 1번 (지방마다 2번 — 그 뒤로는 보스전에 집중)
+//  기준은 지방 크기에 맞춘다: 그 지방에서 셀 수 있는 전투 방(GameScene.masteryRooms — 숨은 샛길 방은 뺀다) 의 MASTERY_FRAC (40% · 80%)
+//   지방마다 전투 방이 20 ~ 50곳으로 크게 달라, 고정 5 · 10곳이면 큰 지방에선 두 번째 강화가 맵 초반에 끝나 버린다
+//   본길(입구 → 보스)엔 전투 방이 6 ~ 14곳뿐이라 80% 는 샛길을 두루 돌아본 보상 — 보스를 정화하면 지방이 정화돼 더 세지 않는다
 //  강화할 카드가 하나도 없으면(없거나 모두 +3강 ★초월) 대신 출전 중인 포켓몬 체력 MASTERY_HEAL 회복 · 한 번에 보여 주는 카드 MASTERY_CARDS 장
-export const MASTERY_STEPS = [5, 10], MASTERY_HEAL = .3, MASTERY_CARDS = 3;
+export const MASTERY_FRAC = [.4, .8], MASTERY_HEAL = .3, MASTERY_CARDS = 3;
+// 셀 수 있는 전투 방 n 곳 → 강화 기준 [첫 번째, 두 번째] (반올림 · 첫 번째는 두 번째보다 적어도 1 작게 · 두 번째는 n 을 넘지 않게)
+export function masterySteps(n) {
+  const b = Math.max(1, Math.min(n, Math.round(n * MASTERY_FRAC[1])));
+  return [Math.max(1, Math.min(b - 1, Math.round(n * MASTERY_FRAC[0]))), b];
+}
 // 카드 스택: 파티가 지닌 · 강화한 기술머신 카드 수 (특성 장 수 · 스킬 강화 1 + 단계 · 기술 카드 1 + 단계 · 원작 개조 · 숙련)
 //  엘리트 · 보스는 나타날 때 스택마다 체력 +STACK_HP · 공격력 +STACK_ATK (GameScene.stackScale) — 카드로 강해진 만큼 적도 버틴다
 export const STACK_HP = .06, STACK_ATK = .03;

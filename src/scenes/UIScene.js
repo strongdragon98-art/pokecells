@@ -12,7 +12,7 @@ import { BOND_POWERS } from '../data/bond.js';
 import { PERKS } from '../game/Perks.js';
 import { STAGES, areaLabel } from '../data/stages.js';
 import { typeName, typeColor, hex, matchups } from '../data/types.js';
-import { GRADE_STYLE, UPGRADES, BOOSTS, TM_CARDS, BONUS_CARDS, MASTERY_STEPS, rollCards, heldLv, mergePreview, lvTag, CARD_MAX_LV, MAX_BONUS, sandboxCards, SANDBOX_GROUPS, GRADES } from '../data/tm.js';
+import { GRADE_STYLE, UPGRADES, BOOSTS, TM_CARDS, BONUS_CARDS, rollCards, heldLv, mergePreview, lvTag, CARD_MAX_LV, MAX_BONUS, sandboxCards, SANDBOX_GROUPS, GRADES } from '../data/tm.js';
 
 // 특성 카드 분류 → 카드 가운데 아이콘 글자 (기술 아이콘이 없는 카드)
 const TM_K = .88, TM_GAP = 150;   // 기술머신 카드 4장: 크기 배율 · 카드 사이 간격 (한 줄 590px 안)
@@ -213,7 +213,7 @@ export default class UIScene extends Phaser.Scene {
       return { t, s, act };
     });
     this.tTip = this.add.text(MASK_X - 8, 104, '', txt(10, HK.ivory, { backgroundColor: '#0d0c16ee', padding: { x: 7, y: 5 }, lineSpacing: 3 })).setDepth(30);
-    // ── 🗺️ 지방 탐색 숙련도 미니 게이지 (화면 위쪽 가운데 · 유대의 불꽃 아래): 새로 정화한 전투 방 n / 5 → n / 10 (GameScene.checkRoomClear)
+    // ── 🗺️ 지방 탐색 숙련도 미니 게이지 (화면 위쪽 가운데 · 유대의 불꽃 아래): 새로 정화한 전투 방 n / 첫 기준 → n / 두 번째 기준 (지방 전투 방의 40% · 80% · GameScene.checkRoomClear)
     this.gMastery = this.add.graphics().setDepth(3); this.masteryPulse = 0;
     this.tMastery = hkText(this, B.x, B.y + 4, '', 8, '#ffe8a8', { origin: [.5, 0] }).setDepth(3);
     if (this.gs.test) this.buildDebugBar();   // 테스트 모드: 오른쪽 위 퀵 디버그 바
@@ -448,7 +448,7 @@ export default class UIScene extends Phaser.Scene {
     this.tweens.add({ targets: box, alpha: 0, duration: 800, delay: 4500, ease: 'Sine.easeIn', onComplete: () => { ev.remove(); box.destroy(); if (this.bondPowerBox === box) this.bondPowerBox = null; } });
     this.bondPulse = 1;
   }
-  // 🗺️ 지방 탐색 숙련도 미니 게이지: [ 🗺️ 지방 숙련도: 3 / 5 방 ] → (첫 강화 뒤) [ … 7 / 10 방 ] → 완료 · 가는 금빛 막대 (테스트룸 · 정화한 지방은 숨김)
+  // 🗺️ 지방 탐색 숙련도 미니 게이지: [ 🗺️ 지방 숙련도: 3 / 14 방 ] → (첫 강화 뒤) [ … 17 / 28 방 ] → 완료 (기준은 지방 크기에 맞춘다 · GameScene.masterySteps) · 가는 금빛 막대 (테스트룸 · 정화한 지방은 숨김)
   drawMastery(dt) {
     const gs = this.gs, lv = gs.level, g = this.gMastery;
     g.clear();
@@ -456,12 +456,12 @@ export default class UIScene extends Phaser.Scene {
     this.tMastery.setVisible(show);
     if (!show) return;
     this.masteryPulse = Math.max(0, this.masteryPulse - dt * 1.6);
-    const got = lv.masteryGot || 0, done = got >= MASTERY_STEPS.length, step = MASTERY_STEPS[Math.min(got, MASTERY_STEPS.length - 1)], n = done ? step : Math.min(step, gs.masteryCount());
+    const S = gs.masterySteps(), got = lv.masteryGot || 0, done = got >= S.length, step = S[Math.min(got, S.length - 1)], n = done ? step : Math.min(step, gs.masteryCount());
     this.tMastery.setText(done ? '[ 🗺️ 지방 숙련도: 완료 ✓ ]' : `[ 🗺️ 지방 숙련도: ${n} / ${step} 방 ]`).setColor(this.masteryPulse > 0 ? '#ffffff' : done ? '#8affb0' : '#ffe8a8');
     const w = 96, x = B.x - w / 2, y = B.y + 16, k = Math.min(1, n / step);
     g.fillStyle(0x140c06, .85); g.fillRect(x, y, w, 3);
     g.fillStyle(done ? 0x6aff9a : 0xffc24a, .95); g.fillRect(x, y, w * k, 3);
-    if (!done && got > 0) { g.fillStyle(0xffffff, .6); g.fillRect(Math.round(x + w * MASTERY_STEPS[got - 1] / step), y - 1, 1, 5); }   // 지난 강화 지점 눈금
+    if (!done && got > 0) { g.fillStyle(0xffffff, .6); g.fillRect(Math.round(x + w * S[got - 1] / step), y - 1, 1, 5); }   // 지난 강화 지점 눈금
     if (this.masteryPulse > 0) { g.fillStyle(0xffffff, this.masteryPulse * .7); g.fillRect(x, y - 1, w * k, 5); }
   }
   // HUD 유대의 불꽃: 정화 단계(0~6)에 따라 목표 크기가 정해지고, 화면의 불꽃은 그 크기까지 천천히 자란다 (단계가 오르면 크게 맥동하며 커진다)
