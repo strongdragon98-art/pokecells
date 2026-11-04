@@ -13,6 +13,8 @@ const GROGGY_MUL = 1.35;   // game/Boss.js GROGGY_MUL 과 같은 값 (Boss → C
 export const ENEMY_FAST = 1.42, SHOT_HOLD = .2;
 // 보스 탄 최소 속도 (직선으로 나는 탄 · 같은 궤적 · 같은 사거리로 빨라진다): 느릿느릿 날아와 제자리 연속 패링으로 녹이는 일이 없게 — 발사 섬광을 보고 칼같이 쳐내야 한다
 export const BOSS_MIN_SPEED = 580;
+// 보스 탄 전체 하향 (최소 속도 · 지방 고정 스펙 탄속 · 스스로 움직이는 탄까지 모두 같은 비율): 너무 빨라 읽기 어렵다는 피드백 → 5% 느리게
+export const BOSS_SHOT_K = .95;
 // 패링으로 되받아친 탄 (parried): 맞힌 상대 속성과 상관없이 '효과가 굉장했다'(약점) 판정 · 보스 그로기 게이지 PARRY_STAGGER 를 한 번에 (일반 약점 한 방의 최대치 약 4.5배)
 //  연속 패링 점감 (Player.parryChainStep): 2초 안에 이어 쳐낸 탄은 반사 피해 · 그로기가 줄어든다 (o.parryDmg · o.parryStag) · 반사탄도 작아진다 (PARRY_SIZE)
 const PARRY_STAGGER = 32, PARRY_SIZE = [1, .85, .72, .62, .55], PARRY_COL = [0xffe36a, 0xffd88a, 0xf0d0a0, 0xd8c8b0, 0xc0b8b0];
@@ -256,7 +258,7 @@ export class Combat {
     const q = Object.assign({ owner: 'player', vx: 0, vy: 0, r: 4, life: 1, pierce: 1, grav: 0, t: 0, hit: new Set(), status: {} }, c);
     q.color = color;
     if (q.owner === 'enemy' && q.fast) {
-      const sp = Math.hypot(q.vx, q.vy), k = q.update ? ENEMY_FAST : Math.max(ENEMY_FAST * (q.spdMul || 1), q.boss && sp >= 20 ? BOSS_MIN_SPEED / sp : 0);   // 보스 탄: 보스별 배율(다크라이 2배) · 최소 속도
+      const sp = Math.hypot(q.vx, q.vy), k = (q.update ? ENEMY_FAST : Math.max(ENEMY_FAST * (q.spdMul || 1), q.boss && sp >= 20 ? BOSS_MIN_SPEED / sp : 0)) * (q.boss ? BOSS_SHOT_K : 1);   // 보스 탄: 보스별 배율(다크라이 2배) · 최소 속도 · 전체 5% 하향
       q.vx *= k; q.vy *= k;
       if (!q.update) { q.grav *= k * k; q.life /= k; q.hold = SHOT_HOLD; if (q.grow) q.grow *= k; if (q.homing) q.homing /= k; }   // 같은 궤적 · 같은 사거리로 더 빨리 + 예비 동작
       // 스스로 움직이는 탄(떨어지는 바위 · 떠올라 기다리다 날아오는 파편 · 조여 오는 손톱 · 도는 구슬)은 제 예비 동작이 따로 있다 — 날아가는 속도만 (Boss 의 update 가 ENEMY_FAST 를 곱한다)
