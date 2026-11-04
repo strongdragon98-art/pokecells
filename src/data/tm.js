@@ -10,7 +10,7 @@
 //   커먼 · 레어를 합성해 +2 에 한 등급 승급하는 규칙은 그대로
 //  ⚖️ 양날의 검 특성 카드 8종(game/Perks.js curse): 대가를 안고 한 메커니즘을 폭발시킨다 — 특성 카드 풀에 그대로 섞인다 (레어 · 유니크)
 //  새 카드는 ① 필드 기술머신 캡슐(샛길 제단 · 길목 캡슐) ② 엘리트 · 보스가 떨어뜨리는 빛나는 TM 코어에서만 — 몬스터 처치 수 보상은 없다
-//  🗺️ 지방 탐색 숙련도: 지방마다 새로 정화한 일반 전투 방이 그 지방 전투 방의 40% · 80%(masterySteps)에 닿으면 '보유 카드 강화' (ownedUpgrades · upgradeInfo · GameScene.checkRoomClear)
+//  ✨ 샛길 정화: 지방마다 침식된 샛길 구역(본길에서 갈라지는 방)을 마지막 한 마리까지 정화해 3곳 · 6곳(sideSteps)에 닿으면 '보유 카드 강화' (ownedUpgrades · upgradeInfo · GameScene.checkRoomClear)
 import { SKILLS } from './pokemon.js';
 import { typeName } from './types.js';
 import { PERKS, perkMods } from '../game/Perks.js';
@@ -193,16 +193,16 @@ export function moveGrade(id) {
 
 export const TM_CARDS = 4;   // 한 번에 뒤집는 카드 수
 export const BONUS_CARDS = 3;   // 빛나는 TM 코어(엘리트 · 보스 드랍)가 전송하는 카드 수
-// 🗺️ 지방 탐색 숙련도: 새로 들어가 몬스터를 모두 정화한 일반 전투 방 수가 기준에 닿을 때마다 보유 카드 강화 1번 (지방마다 2번 — 그 뒤로는 보스전에 집중)
-//  기준은 지방 크기에 맞춘다: 그 지방에서 셀 수 있는 전투 방(GameScene.masteryRooms — 숨은 샛길 방은 뺀다) 의 MASTERY_FRAC (40% · 80%)
-//   지방마다 전투 방이 20 ~ 50곳으로 크게 달라, 고정 5 · 10곳이면 큰 지방에선 두 번째 강화가 맵 초반에 끝나 버린다
-//   본길(입구 → 보스)엔 전투 방이 6 ~ 14곳뿐이라 80% 는 샛길을 두루 돌아본 보상 — 보스를 정화하면 지방이 정화돼 더 세지 않는다
+// ✨ 샛길 정화 (오염 구역 정화 보상): 본길에서 갈라지는 샛길 구역(GameScene.sideRooms)의 침식된 포켓몬을 마지막 한 마리까지 쓰러뜨리면
+//  그 방이 영구히 정화되고(다시 와도 몬스터가 나오지 않는 성역) 정화한 수가 SIDE_STEPS(3곳 · 6곳)에 닿을 때마다 보유 카드 강화 1번 (지방마다 2번)
+//   방에 들어서기만 해서는 세지 않는다 · 본길 방은 몬스터를 다 잡아도 세지 않고, 다른 방에 다녀오면 다시 나타난다 (긴장감 유지)
+//   샛길 구역은 지방마다 12 ~ 40곳 — 6곳까지는 갈림길 몇 곳을 정리하면 닿는다 · 보스를 정화하면 지방 전체가 정화돼 더 세지 않는다
 //  강화할 카드가 하나도 없으면(없거나 모두 +3강 ★초월) 대신 출전 중인 포켓몬 체력 MASTERY_HEAL 회복 · 한 번에 보여 주는 카드 MASTERY_CARDS 장
-export const MASTERY_FRAC = [.4, .8], MASTERY_HEAL = .3, MASTERY_CARDS = 3;
-// 셀 수 있는 전투 방 n 곳 → 강화 기준 [첫 번째, 두 번째] (반올림 · 첫 번째는 두 번째보다 적어도 1 작게 · 두 번째는 n 을 넘지 않게)
-export function masterySteps(n) {
-  const b = Math.max(1, Math.min(n, Math.round(n * MASTERY_FRAC[1])));
-  return [Math.max(1, Math.min(b - 1, Math.round(n * MASTERY_FRAC[0]))), b];
+export const SIDE_STEPS = [3, 6], MASTERY_HEAL = .3, MASTERY_CARDS = 3;
+// 정화할 수 있는 샛길 구역이 n 곳뿐인 지방이면 기준을 그 안으로 줄인다 (두 번째는 n 을 넘지 않게 · 첫 번째는 두 번째보다 적어도 1 작게)
+export function sideSteps(n) {
+  const b = Math.max(1, Math.min(n, SIDE_STEPS[1]));
+  return [Math.max(1, Math.min(b - 1, SIDE_STEPS[0])), b];
 }
 // 카드 점수(총 카드 가치): 파티가 지닌 · 강화한 기술머신 카드 = 보유 카드 수 + 강화 단계 합 (특성 장 수 · 스킬 강화 1 + 단계 · 기술 카드 1 + 단계 · 원작 개조 · 숙련)
 //  보스 · 엘리트 스탯에는 쓰지 않는다 (챕터별 고정 스펙 — data/balance.js) · 보스전 🔴 전력 부족 경고와 테스트룸 자동 장착이 권장 점수와 견준다
@@ -242,7 +242,7 @@ const MOVE_GRADE = {
   shadow_ball: '유니크', earth_power: '유니크', moonblast: '유니크', play_rough: '유니크', dark_pulse: '유니크', sludge_bomb: '유니크', flash_cannon: '유니크', x_scissor: '유니크',
   drain_punch: '유니크', wild_charge: '유니크', body_press: '유니크', psyshock: '유니크', night_slash: '유니크'
 };
-// ---------------- 🗺️ 보유 카드 강화 (지방 탐색 숙련도 보상) ----------------
+// ---------------- ✨ 보유 카드 강화 (오염 구역 정화 보상 — 샛길 정화 3곳 · 6곳) ----------------
 // 파티가 지닌 카드 가운데 한 단계 더 올릴 수 있는 것 [{ m, card }] — 기술머신으로 배운 기술 · 스킬 강화 · 특성 (+3강 ★초월 · 겹칠 수 없는 카드는 빠진다)
 //  card 는 기술머신 카드와 같은 모양이라 applyCard 가 그대로 합성한다 (원작 개조 · 숙련 카드는 강화 단계가 없다)
 export function ownedUpgrades(p) {

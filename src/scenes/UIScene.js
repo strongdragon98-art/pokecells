@@ -214,9 +214,10 @@ export default class UIScene extends Phaser.Scene {
       return { t, s, act };
     });
     this.tTip = this.add.text(MASK_X - 8, 104, '', txt(10, HK.ivory, { backgroundColor: '#0d0c16ee', padding: { x: 7, y: 5 }, lineSpacing: 3 })).setDepth(30);
-    // ── 🗺️ 지방 탐색 숙련도 미니 게이지 (화면 위쪽 가운데 · 유대의 불꽃 아래): 새로 정화한 전투 방 n / 첫 기준 → n / 두 번째 기준 (지방 전투 방의 40% · 80% · GameScene.checkRoomClear)
+    // ── ✨ 샛길 정화 미니 게이지 (화면 위쪽 가운데 · 유대의 불꽃 아래): 정화한 샛길 구역 n / 첫 기준(3) → n / 두 번째 기준(6) (GameScene.purifySideRoom)
     this.gMastery = this.add.graphics().setDepth(3); this.masteryPulse = 0;
     this.tMastery = hkText(this, B.x, B.y + 4, '', 8, '#ffe8a8', { origin: [.5, 0] }).setDepth(3);
+    this.tSideRoom = hkText(this, B.x, B.y + 21, '', 7, '#ff9ab8', { origin: [.5, 0] }).setDepth(3).setVisible(false);   // 지금 선 샛길 구역: 남은 침식 포켓몬 · 정화 완료
     if (this.gs.test) this.buildDebugBar();   // 테스트 모드: 오른쪽 위 퀵 디버그 바
 
     // ── 스킬 바: 사각 카드 칸 (대시 · Z · X · C · Q Z기술) — 디자인은 설정 → 스킬 UI 스타일 (샘플 A · B · C)
@@ -325,7 +326,7 @@ export default class UIScene extends Phaser.Scene {
       area: a => this.areaTitle(a),
       overlay: kind => kind === 'map' ? this.showMap() : kind === 'inv' ? (this.invMember = null, this.showInv()) :   // 가방은 열 때마다 출전 중인 포켓몬부터
          kind === 'tm' ? (this.tmModal = this.gs.tmActive && this.gs.tmActive.sandbox ? { step: 'who', target: null, tip: null } : null, this.showTM())
-        : kind === 'upgrade' ? this.showUpgrade()   // 🗺️ 지방 탐색 숙련도: 보유 카드 강화 (3장 앞면 · 누르면 바로 +1)   // 🃏 카드 샌드박스: 카드를 누른 순간 실전과 같은 포켓몬 지정 창
+        : kind === 'upgrade' ? this.showUpgrade()   // ✨ 오염 구역 정화 보상: 보유 카드 강화 (3장 앞면 · 누르면 바로 +1)   // 🃏 카드 샌드박스: 카드를 누른 순간 실전과 같은 포켓몬 지정 창
         : kind === 'shop' ? (this.shopMoneyShown = null, this.shopQty = 1, this.shopConfirm = null, this.showShop())   // 포켓샵 (scenes/ShopMenu.js)
         : kind === 'taxi' ? this.showTaxi() : kind === 'talk' ? this.showTalk() : kind === 'debug' ? this.showDebug() : kind === 'test' ? this.showTest() : kind === 'settings' ? this.showSettings(0) : kind === 'box' ? this.showBox() : kind === 'join' ? this.showJoin() : this.clearOverlay(),
       lore: s => this.showLore(s),
@@ -334,7 +335,7 @@ export default class UIScene extends Phaser.Scene {
       caption: (s, ms) => this.showCaption(s, ms),   // 이야기 자막 (GameScene.bondFlameCinematic)
       bond: (s, n) => this.showBondNote(s, n),   // 유대의 불꽃 공명 (GameScene.bondPurify · bondStageGain)
       bondPower: n => this.showBondPower(n),   // 유대의 불꽃 Lv.n 권능 해금 배너 (GameScene.bondPowerUnlock)
-      mastery: () => { this.masteryPulse = 1; },   // 🗺️ 지방 탐색 숙련도 +1 (GameScene.checkRoomClear)
+      mastery: () => { this.masteryPulse = 1; },   // ✨ 샛길 정화 +1 (GameScene.purifySideRoom)
       boss: b => { if (b) this.bossTitle(b); },
       clearTitles: () => { this.tweens.killTweensOf([this.loreBox, this.captionBox, this.bondBox]); this.loreBox.setAlpha(0); this.captionBox.setAlpha(0); this.bondBox.setAlpha(0); this.bossTitleT = 0; },   // 테스트룸에서 보스를 바로 바꿀 때 앞 보스의 이름 · 트레이너 대사를 지운다
       unlock: (k, kind) => this.onUnlock(k, kind),
@@ -451,16 +452,23 @@ export default class UIScene extends Phaser.Scene {
     this.tweens.add({ targets: box, alpha: 0, duration: 800, delay: 4500, ease: 'Sine.easeIn', onComplete: () => { ev.remove(); box.destroy(); if (this.bondPowerBox === box) this.bondPowerBox = null; } });
     this.bondPulse = 1;
   }
-  // 🗺️ 지방 탐색 숙련도 미니 게이지: [ 🗺️ 지방 숙련도: 3 / 14 방 ] → (첫 강화 뒤) [ … 17 / 28 방 ] → 완료 (기준은 지방 크기에 맞춘다 · GameScene.masterySteps) · 가는 금빛 막대 (테스트룸 · 정화한 지방은 숨김)
+  // ✨ 샛길 정화 미니 게이지: [ ✨ 샛길 정화: 2 / 3 구역 ] → (첫 강화 뒤) [ … 4 / 6 구역 ] → 완료 (GameScene.sideSteps) · 가는 금빛 막대 (테스트룸 · 정화한 지방은 숨김)
+  //  그 아래 한 줄: 샛길 구역 안이면 남은 침식된 포켓몬 수 · 정화한 구역이면 [✨ 정화 완료 (Purified)]
   drawMastery(dt) {
     const gs = this.gs, lv = gs.level, g = this.gMastery;
     g.clear();
     const show = !!(gs.player && lv && !this.overlayMode && !gs.test && !lv.purified);
     this.tMastery.setVisible(show);
+    const R = gs.room, inSide = show && gs.isSideRoom(R);
+    this.tSideRoom.setVisible(inSide);
     if (!show) return;
     this.masteryPulse = Math.max(0, this.masteryPulse - dt * 1.6);
-    const S = gs.masterySteps(), got = lv.masteryGot || 0, done = got >= S.length, step = S[Math.min(got, S.length - 1)], n = done ? step : Math.min(step, gs.masteryCount());
-    this.tMastery.setText(done ? '[ 🗺️ 지방 숙련도: 완료 ✓ ]' : `[ 🗺️ 지방 숙련도: ${n} / ${step} 방 ]`).setColor(this.masteryPulse > 0 ? '#ffffff' : done ? '#8affb0' : '#ffe8a8');
+    const S = gs.sideSteps(), got = lv.masteryGot || 0, done = got >= S.length, step = S[Math.min(got, S.length - 1)], n = done ? step : Math.min(step, gs.sideCount());
+    this.tMastery.setText(done ? '[ ✨ 샛길 정화: 완료 ✓ ]' : `[ ✨ 샛길 정화: ${n} / ${step} 구역 ]`).setColor(this.masteryPulse > 0 ? '#ffffff' : done ? '#8affb0' : '#ffe8a8');
+    if (inSide) {
+      const left = R.isPurified ? 0 : gs.sideRemain(R);
+      this.tSideRoom.setText(R.isPurified ? '[✨ 정화 완료 (Purified)] 평화로운 성역' : `침식된 샛길 구역 · 남은 침식 포켓몬 ${left}`).setColor(R.isPurified ? '#8affd0' : '#ff9ab8');
+    }
     const w = 96, x = B.x - w / 2, y = B.y + 16, k = Math.min(1, n / step);
     g.fillStyle(0x140c06, .85); g.fillRect(x, y, w, 3);
     g.fillStyle(done ? 0x6aff9a : 0xffc24a, .95); g.fillRect(x, y, w * k, 3);
@@ -721,7 +729,7 @@ export default class UIScene extends Phaser.Scene {
       g.fillStyle(col, 1); g.fillCircle(x, 28, rad + (cur ? .6 : 0));
       g.fillStyle(0xffffff, .5); g.fillCircle(x - .7, 27.2, rad * .33);
     });
-    this.tRoom.setText(gs.test ? gs.testInfo() : gs.room ? (gs.room.under && gs.room.type === 'combat' ? '지하 · 전투 구역' : ROOM_NAME[gs.room.type] || '') : '');
+    this.tRoom.setText(gs.test ? gs.testInfo() : gs.room ? (gs.isSideRoom(gs.room) && !gs.level.purified ? (gs.room.isPurified ? '샛길 · ✨ 정화 완료' : '샛길 · 오염 구역') : gs.room.under && gs.room.type === 'combat' ? '지하 · 전투 구역' : ROOM_NAME[gs.room.type] || '') : '');
     let row = 0;
     UNLOCKABLE.forEach((k, i) => {
       const t = this.tDex[i];
@@ -1257,7 +1265,7 @@ export default class UIScene extends Phaser.Scene {
     face.add(fitText(hkText(this, 0, H / 2 - 16, label, 7.5, HK.gold, { origin: [.5, 0], bold: true }), W - 14));
   }
 
-  // ================= 🗺️ 지방 탐색 숙련도 보상: 보유 카드 강화 (GameScene.openUpgrade) =================
+  // ================= ✨ 오염 구역 정화 보상: 보유 카드 강화 (GameScene.openUpgrade) =================
   //  랜덤 뽑기가 아니라 뒤집기 연출 없이 처음부터 앞면 3장 (0.15초 페이드인) · 위에 보상 사유 배너 · 카드마다 [Lv 배지] · [강화 전 ➔ 🔼 강화 후] 수치
   //  카드를 누르거나 1 · 2 · 3 → 포켓몬을 다시 고르지 않고 그 자리에서 황금 스파크와 함께 +1 (GameScene.applyUpgrade) → 토스트 · 바로 탐험으로
   showUpgrade(again = false) {
@@ -1272,7 +1280,7 @@ export default class UIScene extends Phaser.Scene {
     // 상단 보상 사유 배너 · 안내
     const bw = 616, by = 6;
     const band = this.add.graphics(); band.fillStyle(0x2a1a06, .92); band.fillRoundedRect(320 - bw / 2, by, bw, 26, 7); band.lineStyle(1.2, 0xffc24a, .9); band.strokeRoundedRect(320 - bw / 2, by, bw, 26, 7); L.add(band);
-    L.add(fitText(hkText(this, 320, by + 13, `🗺️ [지방 탐색 숙련도 보상] 전투 구역 ${it.up}곳을 돌파하여 보유 기술머신(TM)의 위력이 한 단계 개량됩니다!`, 11, HK.gold, { bold: true, origin: .5, glow: true }), bw - 16));
+    L.add(fitText(hkText(this, 320, by + 13, `✨ [오염 구역 정화 보상] 침식된 샛길 구역 ${it.up}곳을 완벽히 정화하여, 유대의 힘으로 보유 기술머신(TM) 카드를 한 단계 강화합니다!`, 11, HK.gold, { bold: true, origin: .5, glow: true }), bw - 16));
     L.add(hkText(this, 320, 42, '강화할 보유 카드를 1장 선택하세요 (선택 즉시 카드 레벨 +1 상승, +3강 만렙까지 가능)', 9, HK.ivory, { origin: .5 }));
     L.add(fadeLine(this, 320, 54, 320, .8));
     this.tmTextures(W, H);
@@ -1505,6 +1513,12 @@ export default class UIScene extends Phaser.Scene {
     this.input.keyboard.on('keydown', this.onOverlayKey, this);
     // 범례 (핀 모양을 글로 풀어서) · 탐험률 · 조작
     L.add(hkText(this, 34, 316, '◉ 포켓몬센터  ◉ 아머까오  ☠ 보스·중간 보스  ? 숨겨진 전설  ◉ 기술머신  ◉ 보물  ◉ 상처약  ◉ 현재 위치  ┆ 안 가 본 길', 8.5, HK.dim));
+    // ✨ 샛길 정화 구역 색 (systems/MapView.js): 정화 전 핏빛 · 정화한 곳 에메랄드 + 금테 — 그 지방에서 정화한 수 / 전체
+    const mw = this.gs.worlds[ci], side = mw && mw.level && !mw.level.purified ? this.gs.sideRoomsOf(mw.level) : [];
+    if (side.length) {
+      const a = hkText(this, 34, 327, '▮ 침식된 샛길 (포켓몬을 모두 쓰러뜨려 정화)', 8.5, '#d8708a');
+      L.add([a, hkText(this, a.x + a.width + 12, 327, `▮ ✦ 정화한 샛길 ${side.filter(r => r.isPurified).length} / ${side.length}`, 8.5, '#6ae8b8')]);
+    }
     L.add(hkText(this, 320, 340, `${st.short} 탐험 ${Math.round(this.mapView.progress * 100)}%   ·   1~${STAGES.length} 지방   ·   ${keyLabel(Settings.key('map'))} · Esc 닫기   ·   끌어서 이동 · 휠 · Z · +– 확대`, 9, HK.faint, { origin: .5 }));
     this.overlayMode = 'map';
   }

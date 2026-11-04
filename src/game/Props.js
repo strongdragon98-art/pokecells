@@ -16,6 +16,9 @@ import { windLiftArt } from '../systems/ArenaBackdrop.js';
 
 const ADD = Phaser.BlendModes.ADD;
 const WARM = 0xffc070;
+// 땅 밀착 (Ground Snap): 땅에 서는 소품은 그림의 맨 아래 불투명 픽셀이 바닥 타일 윗면보다 GROUND_SINK px 아래 (살짝 묻히게)
+const GROUND_SINK = 3;
+const FOOT = new Map();   // 텍스처 키 → 맨 아래 불투명 줄 { pad: 아래 투명 여백, l, r: 그 줄의 왼쪽 · 오른쪽, w } (텍스처 픽셀 · 키마다 한 번)
 const PAD_VY = 760;
 const FIELD_JUMP = 1.225, LIFT_ACC = 1500, LIFT_V = 300;   // 용나선탑 전자기장: 점프 속도 ×√1.5 (높이 1.5배) · 열기 상승 기류: 위로 가속 · 최고 상승 속도   // 차원 도약 수정이 솟구치는 속도 (최대 약 20칸 — 길 보장 Reach.PAD_TILES 18칸보다 넉넉히)
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -1374,12 +1377,115 @@ export class Props {
     this.build();
   }
   areaOf(room) { return room ? this.stage.areas[room.ai] : null; }
-  depthOf(room) { return !room ? null : this.level.purified || room.trail || room.seaBridge ? 0 : room.tower || room.pillar ? Math.min(.45, room.depth || 0) : room.depth; }   // 정화한 지방 · 방울로드는 맑다 · 방울탑 안은 은은하게
+  depthOf(room) { return !room ? null : this.level.purified || room.trail || room.seaBridge || room.isPurified ? 0 : room.tower || room.pillar ? Math.min(.45, room.depth || 0) : room.depth; }   // 정화한 지방 · 방울로드는 맑다 · 방울탑 안은 은은하게
 
   lit(o) { if (this.webgl) o.setPipeline('Light2D'); this.objs.push(o); return o; }
   add(o) { this.objs.push(o); return o; }
   light(x, y, r, col, k) { if (!this.webgl) return null; const l = this.s.lights.addLight(x, y, r, col, k); this.lights.push(l); return l; }
   glow(x, y, sc, col, a, depth) { return this.add(this.s.add.image(x, y, 'glow').setBlendMode(ADD).setTint(col).setScale(sc).setAlpha(a).setDepth(depth)); }
+
+  // ---------------- 땅 밀착 (Ground Snap) ----------------
+  //  나무 · 풀숲 · 가로등 · 바위 · 비석 · 기둥 · 석상 · 울타리 · 상자 같은 땅에 서는 소품은 지형을 다 만든 뒤의 최종 grid 에서 발밑을 다시 잰다
+  //  (World 는 지형을 깔자마자 그 자리 바닥 높이로 소품 자리를 정하는데, 그 뒤에 문 · 철창 구멍 · 사다리 우물 · 보물방 제단 다지기 · 결전장이
+  //   바닥을 깎거나 돋운다 — 예전엔 처음 잰 높이에 그대로 그려 허공에 뜨거나 땅에 파묻혔다. 비석은 방 기본 바닥 높이에 고정이라 구덩이 위에 떴다)
+  //  · 발 폭: 그림의 맨 아래 불투명 줄(뿌리 · 받침 · 기둥 밑동)이 걸친 타일 열 전부 (footOf)
+  //  · 열마다 처음 잰 줄 둘레에서 수직으로 '디딜 바닥 윗면'(단단한 땅 'S' · 바로 위 칸은 땅이 아니다)을 찾는다 (Tile Raycast Down — surfaceRow)
+  //  · 발 폭의 모든 열이 같은 높이의 바닥을 디딜 때만 그 윗면 + GROUND_SINK 에 그림의 맨 아래 픽셀을 맞춘다 (standY)
+  //  · 한 열이라도 구덩이 · 낭떠러지 · 단차 · 좁은 발판 끝이면 장식은 심지 않는다 (상호작용 소품은 처음 자리 그대로)
+  footOf(key) {
+    if (FOOT.has(key)) return FOOT.get(key);
+    let f = null;
+    try {
+      const tex = this.s.textures.get(key), fr = tex.get(), src = tex.getSourceImage(), cv = document.createElement('canvas');
+      cv.width = fr.cutWidth; cv.height = fr.cutHeight;
+      const c = cv.getContext('2d'); c.drawImage(src, fr.cutX, fr.cutY, fr.cutWidth, fr.cutHeight, 0, 0, fr.cutWidth, fr.cutHeight);
+      const d = c.getImageData(0, 0, cv.width, cv.height).data, W = cv.width;
+      for (let y = cv.height - 1; y >= 0 && !f; y--) {
+        let l = -1, r = -1;
+        for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3] > 40) { if (l < 0) l = x; r = x; }
+        if (l >= 0) f = { pad: cv.height - 1 - y, l, r, w: W };
+      }
+      if (!f) f = { pad: 0, l: 0, r: W - 1, w: W };
+    } catch (e) { const fr = this.s.textures.getFrame(key); f = { pad: 0, l: 0, r: (fr ? fr.width : 16) - 1, w: fr ? fr.width : 16 }; }
+    FOOT.set(key, f);
+    return f;
+  }
+  // c 열에서 row0 둘레(위 up 칸 · 아래 down 칸)의 가장 가까운 디딜 바닥 윗면 줄 · 없으면 null (구덩이 · 낭떠러지)
+  surfaceRow(c, row0, up = 4, down = 4, plat = false) {
+    const G = this.level.grid, ok = y => G[y] && (G[y][c] === 'S' || (plat && G[y][c] === 'P')) && G[y - 1] && G[y - 1][c] !== 'S' && G[y - 1][c] !== 'B';
+    for (let k = 0; k <= Math.max(up, down); k++) {
+      if (k <= down && ok(row0 + k)) return row0 + k;
+      if (k && k <= up && ok(row0 - k)) return row0 - k;
+    }
+    return null;
+  }
+  // 픽셀 L ~ R 이 걸친 열이 모두 같은 높이의 바닥을 디디면 그 줄 · 아니면 null (단차 · 턱 끝 · 구덩이)
+  //  o.plat: 통과 발판도 바닥으로 (출입문) · o.low: 열마다 높이가 조금(1칸) 달라도 가장 낮은 바닥에 맞춘다 — 지형보다 뒤에 그려지는 큰 장식만
+  //   (높은 칸 쪽 밑동은 앞에 그려지는 바닥 타일이 가려 땅에 박힌 듯 보인다 — 결전장 단상의 제단)
+  groundRow(L, R, row0, up = 4, down = 4, o = {}) {
+    let row = null, lo = null;
+    for (let c = Math.floor((L + 1) / TILE); c <= Math.floor((R - 1) / TILE); c++) {
+      const y = this.surfaceRow(c, row0, up, down, o.plat);
+      if (y === null) return null;
+      if (row === null) row = lo = y;
+      else if (y !== row && !o.low) return null;
+      lo = Math.max(lo, y); row = Math.min(row, y);
+    }
+    if (o.low && lo - row > (o.spread ?? 1)) return null;
+    return o.low ? lo : row;
+  }
+  // 아래 끝 기준(origin y 1) 그림을 세울 y: 발 폭을 재고 땅 줄을 찾아 '바닥 윗면 + sink' 에 그림의 맨 아래 불투명 픽셀이 오게 — 땅이 없으면 null
+  //  this.groundY 에 찾은 바닥 윗면(px)을 남긴다 (곁들이는 빛 · 덩굴 자리를 맞출 때)
+  standY(key, x, ox, row0, o = {}) {
+    const f = this.footOf(key), sc = o.scale ?? 1;
+    let l = f.l, r = f.r;
+    if (o.flip) { l = f.w - 1 - f.r; r = f.w - 1 - f.l; }
+    const left = x - ox * f.w * sc, row = this.groundRow(left + l * sc, left + (r + 1) * sc, row0, o.up ?? 4, o.down ?? 4, o);
+    if (row === null) return null;
+    this.groundY = row * TILE;
+    return this.groundY + (o.sink ?? GROUND_SINK) + f.pad * sc;
+  }
+
+  // 가로로 조금씩 비켜 보며(xs 순서) 땅 밀착 자리를 찾는다 → { x, y } · 없으면 null (출입문 · 동굴 입구 외관처럼 꼭 세워야 하는 것)
+  fitX(key, xs, ox, row0, o = {}) {
+    for (const x of xs) { const y = this.standY(key, x, ox, row0, o); if (y !== null) return { x, y }; }
+    return null;
+  }
+  // 기술머신 캡슐 받침이 놓인 자리보다 넓을 때: 허공에 걸친 받침 아래를 돌 기단으로 바닥까지 받친다 (발밑 칸마다 실제 바닥 윗면까지)
+  plinth(key, x, Y, row) {
+    const f = this.footOf(key), L = x - f.w / 2 + f.l, R = x - f.w / 2 + f.r + 1, g = this.add(this.s.add.graphics().setDepth(5.97));
+    for (let c = Math.floor((L + 1) / TILE); c <= Math.floor((R - 1) / TILE); c++) {
+      const y = this.surfaceRow(c, row, 0, 5);
+      if (y === null || y === row) continue;
+      const x0 = Math.max(L, c * TILE), x1 = Math.min(R, (c + 1) * TILE), bot = y * TILE + 2;
+      g.fillStyle(0x1e1e2c, 1); g.fillRect(x0, Y - 1, x1 - x0, bot - Y + 1);
+      g.fillStyle(0x34364a, 1); g.fillRect(x0 + 1, Y, x1 - x0 - 2, bot - Y - 1);
+      g.fillStyle(0xd8a63a, .7); g.fillRect(x0 + 1, Y + 2, x1 - x0 - 2, 1);   // 금테
+      for (let yy = Y + 7; yy < bot - 2; yy += 6) { g.fillStyle(0x1e1e2c, .9); g.fillRect(x0 + 1, yy, x1 - x0 - 2, 1); }   // 돌 마디
+    }
+  }
+
+  // ✨ 샛길 구역 정화 (GameScene.purifySideRoom): 그 방의 시든 나무를 햇살 받은 푸른 나무로 · 풀을 연둣빛으로 · 붉은 포자를 반딧불이로 ·
+  //  바닥 균열 · 숲의 붉은 안광을 걷어 낸다 — 방 하나만 다시 칠한다 (전체를 다시 지으면 부순 상자까지 되살아난다)
+  repaintRoom(room) {
+    const s = this.s, pal = this.stage.palette;
+    for (const tr of this.trees || []) {
+      if (tr.room !== room || !tr.img.scene) continue;
+      const a = treeArt(s, this.si, tr.v, pal, 0), ox = a.baseX / a.W, y = tr.ground + GROUND_SINK + this.footOf(a.key).pad;
+      tr.img.setTexture(a.key).setOrigin(ox, 1).setY(y);
+      if (tr.emis) tr.emis.setVisible(false);
+      this.pulses = this.pulses.filter(q => q.o !== tr.emis);
+      for (const vi of tr.vines) vi.destroy();
+      this.vines = this.vines.filter(v => !tr.vines.includes(v));
+      const top = y - a.H, left = tr.img.x - a.baseX;
+      tr.vines = a.vines.map((vn, k) => { const vi = this.lit(s.add.image(left + vn.x, top + vn.y - 1, a.vineKeys[k]).setOrigin(.5, 0).setDepth(4.2)); vi.ph = Math.random() * 6; this.vines.push(vi); return vi; });
+      for (const m of tr.motes) if (m.spore) { m.spore = false; m.setTint(0xe8f8e0).setScale(.09); }
+      s.tweens.add({ targets: tr.img, alpha: { from: .4, to: 1 }, duration: 500 });
+    }
+    for (const g of this.grass) if (g.tall && g.room === room) g.setTint(0xe8ffc8);
+    for (const v of this.veinList || []) if (v.room === room && v.img.scene) { this.pulses = this.pulses.filter(q => q.o !== v.img); s.tweens.add({ targets: v.img, alpha: 0, duration: 700, onComplete: () => v.img.setVisible(false) }); }
+    for (const e of this.eyes) if (e.room === room) { e.gone = true; e.pair.forEach(o => o.setVisible(false)); }
+  }
 
   build() {
     const s = this.s, p = this.stage.palette, metal = this.stage.plat === 'metal';
@@ -1462,14 +1568,16 @@ export class Props {
           break;
         }
         case 'lamp': {
-          const warm = pr.warm || village, a = lampArt(s, warm), x = X + 1;
+          const warm = pr.warm || village, a = lampArt(s, warm), x = X + 1, ly = this.standY(a.body, x, 0, pr.g);
+          if (ly === null) break;   // 땅 밀착: 발밑이 구덩이 · 단차면 세우지 않는다
+          const Y = this.groundY;
           // 1번 도로의 가로등은 절반쯤 쓰러져 꺼져 있다
           if (area && area.bg === 'road' && Math.random() < .55) {
             this.lit(s.add.image(x + 4, Y + 1, a.body).setOrigin(.5, 1).setRotation(Math.random() < .5 ? 1.42 : -1.42).setDepth(7));
             break;
           }
-          this.lit(s.add.image(x, Y, a.body).setOrigin(0, 1).setDepth(7));
-          const em = this.add(s.add.image(x, Y, a.emis).setOrigin(0, 1).setDepth(7.1));
+          this.lit(s.add.image(x, ly, a.body).setOrigin(0, 1).setDepth(7));
+          const em = this.add(s.add.image(x, ly, a.emis).setOrigin(0, 1).setDepth(7.1));
           const col = warm ? WARM : p.light;
           const g = this.glow(x + 7, Y - a.H + 8, .9, col, .55, 7.2);
           const l = this.light(x + 7, Y - a.H + 12, warm ? 150 : 120, col, warm ? 1.5 : 1.1);
@@ -1480,15 +1588,18 @@ export class Props {
         case 'tree': {
           // 고밀도 픽셀 고목 + 늘어진 덩굴(흔들림) + 균열 맥동 + 떨어지는 포자·피어오르는 반딧불이
           const rm = roomAtCell(this.level, pr.x, pr.g - 1), stage = depthStage(this.depthOf(rm));   // 입구 쪽은 푸르고, 보스방 쪽은 시들어 검붉다
-          const v = (pr.x * 7 + pr.g) % 4, a = treeArt(s, this.si, v, p, stage), x = X + 24, top = Y + 2 - a.H, left = x - a.baseX;
-          this.lit(s.add.image(x, Y + 2, a.key).setOrigin(a.baseX / a.W, 1).setDepth(4));
-          if (a.emis) { const e = this.add(s.add.image(x, Y + 2, `${a.key}:e`).setOrigin(a.baseX / a.W, 1).setDepth(4.1)); this.pulses.push({ o: e, base: .5, amp: .3, sp: 1.2 + Math.random() * .8 }); }   // 균열이 숨 쉬듯 은은하게
-          a.vines.forEach((vn, k) => { const vi = this.lit(s.add.image(left + vn.x, top + vn.y - 1, a.vineKeys[k]).setOrigin(.5, 0).setDepth(4.2)); vi.ph = Math.random() * 6; this.vines.push(vi); });
+          const v = (pr.x * 7 + pr.g) % 4, a = treeArt(s, this.si, v, p, stage), x = X + 24, ty = this.standY(a.key, x, a.baseX / a.W, pr.g);
+          if (ty === null) break;   // 발밑이 구덩이 · 단차 · 턱 끝이면 심지 않는다 (땅 밀착)
+          const top = ty - a.H, left = x - a.baseX, gy = this.groundY;
+          const tr = { room: rm, v, ground: gy, img: this.lit(s.add.image(x, ty, a.key).setOrigin(a.baseX / a.W, 1).setDepth(4)), emis: null, vines: [], motes: [] };
+          (this.trees = this.trees || []).push(tr);
+          if (a.emis) { const e = tr.emis = this.add(s.add.image(x, ty, `${a.key}:e`).setOrigin(a.baseX / a.W, 1).setDepth(4.1)); this.pulses.push({ o: e, base: .5, amp: .3, sp: 1.2 + Math.random() * .8 }); }   // 균열이 숨 쉬듯 은은하게
+          a.vines.forEach((vn, k) => { const vi = this.lit(s.add.image(left + vn.x, top + vn.y - 1, a.vineKeys[k]).setOrigin(.5, 0).setDepth(4.2)); vi.ph = Math.random() * 6; this.vines.push(vi); tr.vines.push(vi); });
           for (let k = 0; k < 4; k++) {
             const cl = a.canopy[Math.floor(Math.random() * a.canopy.length)], spore = k < 2;
             const m = this.add(s.add.image(0, 0, 'glow').setBlendMode(ADD).setTint(spore ? 0xa82a4a : 0xe8f8e0).setScale(spore ? .07 : .09).setDepth(24));
-            Object.assign(m, { spore, hx: left + cl.x, hy: top + cl.y, gy: Y, life: Math.random(), sp: .06 + Math.random() * .06, ph: Math.random() * 6 });
-            this.motes.push(m);
+            Object.assign(m, { spore, hx: left + cl.x, hy: top + cl.y, gy, life: Math.random(), sp: .06 + Math.random() * .06, ph: Math.random() * 6 });
+            this.motes.push(m); tr.motes.push(m);
           }
           break;
         }
@@ -1510,16 +1621,17 @@ export class Props {
           for (const lx of a.lamps) { this.light(X + lx, Y - a.H + 40, 260, 0xfff0d0, 1.5); const gl = this.glow(X + lx, Y - a.H + 30, .9, 0xfff0c0, .35, 2.75); this.pulses.push({ o: gl, base: .32, amp: .04, sp: 1.3 }); }
           break;
         }
-        case 'lore': {
-          this.lit(s.add.image(X + 8, Y + 1, loreArt(s)).setOrigin(.5, 1).setDepth(7));
+        case 'lore': {   // 비석: 땅 밀착 (땅을 못 찾으면 처음 자리 — 읽을 수 있어야 한다)
+          const key = loreArt(s), sy = this.standY(key, X + 8, .5, pr.g, { up: 6, down: 6 }), Y = sy === null ? pr.g * TILE : this.groundY;
+          this.lit(s.add.image(X + 8, sy ?? Y + 1, key).setOrigin(.5, 1).setDepth(7));
           const mark = this.glow(X + 8, Y - 26, .25, 0xd8c8ff, .4, 7.3);
           this.pulses.push({ o: mark, base: .35, amp: .2, sp: 2 });
           this.interacts.push({ kind: 'lore', x: X + 8, y: Y, range: 16, used: false, repeat: true, text: pr.text, prompt: '[F 또는 ↑ : 읽기]', promptY: Y - 34 });
           break;
         }
         case 'journal': {   // 가라르 지하 플랜트의 기밀 연구 일지: 받침대 위 홀로그램 단말 → F / ↑ 로 열람 (대화창 — GameScene.readJournal)
-          const x = X + 8;
-          this.lit(s.add.image(x, Y + 1, journalArt(s)).setOrigin(.5, 1).setDepth(7));
+          const x = X + 8, key = journalArt(s), sy = this.standY(key, x, .5, pr.g, { up: 6, down: 6 }), Y = sy === null ? pr.g * TILE : this.groundY;
+          this.lit(s.add.image(x, sy ?? Y + 1, key).setOrigin(.5, 1).setDepth(7));
           const h = this.glow(x, Y - 22, .5, 0x6af8ff, .45, 7.3);
           this.pulses.push({ o: h, base: .4, amp: .2, sp: 2.4 });
           this.light(x, Y - 22, 90, 0x6af8ff, 1.1);
@@ -1527,9 +1639,11 @@ export class Props {
           this.interacts.push({ kind: 'journal', no: pr.no, x, y: Y, range: 18, used: false, repeat: true, text: pr.text, prompt: '[F 또는 ↑ : 기밀 연구 일지 열람]', promptY: Y - 44 });
           break;
         }
-        case 'signpost': this.lit(s.add.image(X + 8, Y + 1, signpostArt(s)).setOrigin(.5, 1).setDepth(7).setFlipX(Math.random() < .5)); break;
+        case 'signpost': { const fl = Math.random() < .5, key = signpostArt(s), sy = this.standY(key, X + 8, .5, pr.g, { flip: fl }); if (sy !== null) this.lit(s.add.image(X + 8, sy, key).setOrigin(.5, 1).setDepth(7).setFlipX(fl)); break; }
         case 'tm': {   // 샛길 끝의 거대 기술머신 캡슐 (다가가면 공명해 에너지 기둥이 솟고, F / ↑ 로 작동 → 캡슐이 열리며 카드 3장)
-          const a = tmArt(s), x = X + 8;
+          const a = tmArt(s), x = X + 8, fit = this.standY(a.base, x, .5, pr.g, { sink: 0, up: 6, down: 6 }), mid = fit === null ? this.surfaceRow(Math.floor(x / TILE), pr.g, 6, 6) : null;
+          const Y = fit !== null ? this.groundY : mid !== null ? mid * TILE : pr.g * TILE;   // 땅 밀착: 제단 윗면
+          if (fit === null && mid !== null) this.plinth(a.base, x, Y, mid);   // 받침이 자리보다 넓다 → 허공에 걸친 쪽을 돌 기단으로
           const sigil = this.add(s.add.image(x, Y - 1, a.sigil).setBlendMode(ADD).setScale(1, .26).setAlpha(.55).setDepth(5.9));
           this.lit(s.add.image(x, Y, a.base).setOrigin(.5, 1).setDepth(6));
           const glass = this.add(s.add.image(x, Y - 16, a.glass).setOrigin(.5, 1).setDepth(6.05).setAlpha(.9));
@@ -1567,15 +1681,17 @@ export class Props {
           break;
         }
         case 'tallgrass': {
-          const g = this.lit(s.add.image(X + 16, Y + 2, tallGrassArt(s, this.si, p)).setOrigin(.5, 1).setDepth(13.5).setFlipX(Math.random() < .5));
+          const fl = Math.random() < .5, key = tallGrassArt(s, this.si, p), gy = this.standY(key, X + 16, .5, pr.g, { flip: fl });
+          if (gy === null) break;   // 땅 밀착: 턱 끝 · 구덩이 위엔 두지 않는다
+          const g = this.lit(s.add.image(X + 16, gy, key).setOrigin(.5, 1).setDepth(13.5).setFlipX(fl));
           const gr = roomAtCell(this.level, pr.x, pr.g - 1), gst = depthStage(this.depthOf(gr));
           if (gst === 2) g.setTint(0xc07a7a); else if (gst === 0) g.setTint(0xe8ffc8);   // 시든 풀은 검붉게 · 초입은 햇살 받은 연두빛
-          g.ph = Math.random() * 6; this.grass.push(g);
+          g.ph = Math.random() * 6; g.tall = true; g.room = gr; this.grass.push(g);
           break;
         }
-        case 'pillar': this.lit(s.add.image(X + 16, Y + 6, pillarArt(s, pr.h, pr.variant)).setOrigin(.5, 1).setDepth(6)); break;
-        case 'statue': this.lit(s.add.image(X + 16, Y, statueArt(s, p, this.si)).setOrigin(.5, 1).setDepth(7)); break;
-        case 'fence': this.lit(s.add.image(X, Y + 1, fenceArt(s, pr.w, metal)).setOrigin(0, 1).setDepth(7)); break;
+        case 'pillar': { const key = pillarArt(s, pr.h, pr.variant), y = this.standY(key, X + 16, .5, pr.g, { sink: 6 }); if (y !== null) this.lit(s.add.image(X + 16, y, key).setOrigin(.5, 1).setDepth(6)); break; }
+        case 'statue': { const key = statueArt(s, p, this.si), y = this.standY(key, X + 16, .5, pr.g); if (y !== null) this.lit(s.add.image(X + 16, y, key).setOrigin(.5, 1).setDepth(7)); break; }
+        case 'fence': { const key = fenceArt(s, pr.w, metal), y = this.standY(key, X, 0, pr.g); if (y !== null) this.lit(s.add.image(X, y, key).setOrigin(0, 1).setDepth(7)); break; }
         case 'sign': {   // 시내 입구 표지: 시내 이름
           this.lit(s.add.image(X + 16, Y, signArt(s)).setOrigin(.5, 1).setDepth(7));
           this.add(s.add.text(X + 16, Y - 40, (room && room.city) || (area && area.name) || '최후의 안전지대', { fontFamily: 'Galmuri9', fontSize: '9px', color: '#ffe0a0', stroke: '#1a1008', strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(7.2));
@@ -1597,8 +1713,10 @@ export class Props {
           break;
         }
         case 'crate': {
-          const x = X + 8, y = pr.stacked ? (pr.g + 1) * TILE - 14 : Y;
-          const img = this.lit(s.add.image(x, y, crateArt(s)).setOrigin(.5, 1).setDepth(15));
+          const key = crateArt(s), x = X + 8, by = this.standY(key, x, .5, pr.stacked ? pr.g + 1 : pr.g);   // 땅 밀착 (쌓인 상자는 아래 상자 위에)
+          if (by === null) break;
+          const y = pr.stacked ? by - 14 : by;
+          const img = this.lit(s.add.image(x, y, key).setOrigin(.5, 1).setDepth(15));
           this.crates.push({ img, x, y: y - 7, alive: true });
           break;
         }
@@ -1643,10 +1761,10 @@ export class Props {
       const Y = r.F * TILE;
       // 단풍 가로수: 길을 따라 촘촘히 (은행나무 · 홍단풍 번갈아)
       for (let x = r.left + 30, k = 0; x < r.right - 30; x += 64 + (k * 17) % 22, k++) {
-        const tx = Math.floor(x / TILE);
-        if (!floorAt(tx, r.F) || (r.trailEnd && x > r.doorTx * TILE - 360)) continue;   // 방울탑 정문 외관 앞은 비워 둔다
-        const a = autumnTree(s, k % 4);
-        this.lit(s.add.image(x, Y + 2, a.key).setOrigin(a.baseX / a.W, 1).setDepth(3.6 + (k % 2) * .2).setScale(k % 2 ? .9 : 1));
+        if (r.trailEnd && x > r.doorTx * TILE - 360) continue;   // 방울탑 정문 외관 앞은 비워 둔다
+        const a = autumnTree(s, k % 4), sc = k % 2 ? .9 : 1, ty = this.standY(a.key, x, a.baseX / a.W, r.F, { scale: sc });
+        if (ty === null) continue;   // 땅 밀착: 뿌리가 구덩이 · 턱 끝에 걸리면 심지 않는다
+        this.lit(s.add.image(x, ty, a.key).setOrigin(a.baseX / a.W, 1).setDepth(3.6 + (k % 2) * .2).setScale(sc));
       }
       // 바닥에 수북한 낙엽
       for (let x = r.left + 4; x < r.right - 4; x += 3 + ((x * 7) % 4)) {
@@ -1729,8 +1847,8 @@ export class Props {
           this.pulses.push({ o: crack, base: .6, amp: .3, sp: 1.5 + (x % 5) * .2 });
         }
         if (r.magmaGate) {
-          const gx = r.right - 100;
-          this.lit(s.add.image(gx, Y + 2, magmaCaveArt(s)).setOrigin(.5, 1).setDepth(3.4));
+          const key = magmaCaveArt(s), at = this.fitX(key, [0, -16, -32, -48, -64, -96, -128, -160, -192, -224, -256, -288, -320, -352, -384].map(d => r.right - 100 + d), .5, r.F, { sink: 2, up: 3, down: 2, low: true, spread: 3 }), gx = at ? at.x : r.right - 100;
+          this.lit(s.add.image(gx, at ? at.y : Y + 2, key).setOrigin(.5, 1).setDepth(3.4));
           const glow = this.add(s.add.image(gx, Y - 30, 'glow').setBlendMode(ADD).setTint(0xff6a1a).setScale(2.4, 2).setAlpha(.5).setDepth(3.45));
           this.pulses.push({ o: glow, base: .45, amp: .2, sp: 1.2 });
           this.add(s.add.text(gx, Y - 134, '대지의 동굴', { fontFamily: 'Galmuri9', fontSize: '9px', color: '#ffb080', stroke: '#2a0806', strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(3.5));
@@ -1742,8 +1860,8 @@ export class Props {
         const w = this.add(s.add.tileSprite(r.left, Y - 3, W, 10, waveArt(s)).setOrigin(0, 0).setDepth(10.4).setAlpha(.75));
         (this.waves = this.waves || []).push(w);
         if (r.seaGate) {
-          const gx = r.right - 100;
-          this.lit(s.add.image(gx, Y + 2, seaCaveArt(s)).setOrigin(.5, 1).setDepth(3.4));
+          const key = seaCaveArt(s), at = this.fitX(key, [0, -16, -32, -48, -64, -96, -128, -160, -192, -224, -256, -288, -320, -352, -384].map(d => r.right - 100 + d), .5, r.F, { sink: 2, up: 3, down: 2, low: true, spread: 3 }), gx = at ? at.x : r.right - 100;
+          this.lit(s.add.image(gx, at ? at.y : Y + 2, key).setOrigin(.5, 1).setDepth(3.4));
           const glow = this.add(s.add.image(gx, Y - 40, 'glow').setBlendMode(ADD).setTint(0x4affd0).setScale(2, 1.6).setAlpha(.35).setDepth(3.45));
           this.pulses.push({ o: glow, base: .3, amp: .15, sp: .9 });
           this.add(s.add.text(gx, Y - 134, '해저동굴', { fontFamily: 'Galmuri9', fontSize: '9px', color: '#8affe0', stroke: '#04121a', strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(3.5));
@@ -1835,7 +1953,8 @@ export class Props {
           const tx = Math.floor(x / TILE), base = floorRow(r, tx);
           if (base === null) continue;
           const h = Math.min(8, base - r.ty0 - 2);
-          if (h >= 3) this.lit(s.add.image(x, base * TILE + 4, ancientPillarArt(s, h, k % 3 === 1)).setOrigin(.5, 1).setDepth(3.6));
+          const key = h >= 3 ? ancientPillarArt(s, h, k % 3 === 1) : null, py = key && this.standY(key, x, .5, base, { sink: 4, up: 0, down: 0 });
+          if (py) this.lit(s.add.image(x, py, key).setOrigin(.5, 1).setDepth(3.6));   // 땅 밀착: 밑동 전체가 같은 높이를 디딜 때만
         }
         if (r.snowPeak) this.light(r.cx, r.top + 30, Math.max(300, (r.right - r.left) * .6), 0xd8e8ff, .5);
       }
@@ -1878,18 +1997,23 @@ export class Props {
           const tx = Math.floor(x / TILE), base = floorRow(r, tx);
           if (base === null) continue;
           const h = Math.min(9, base - r.ty0 - 1);
-          if (h >= 3) this.lit(s.add.image(x, base * TILE + 6, marbleColumnArt(s, h, k)).setOrigin(.5, 1).setDepth(3.6));
+          const key = h >= 3 ? marbleColumnArt(s, h, k) : null, py = key && this.standY(key, x, .5, base, { sink: 6, up: 0, down: 0 });
+          if (py) this.lit(s.add.image(x, py, key).setOrigin(.5, 1).setDepth(3.6));
         }
         if (!r.arenaStyle) for (let x = r.left + 130, k = 0; x < r.right - 60; x += 240 + (k * 41) % 60, k++) {
           const tx = Math.floor(x / TILE), base = floorRow(r, tx);
           if (base === null || !empty(tx + 2, base - 1) || !solid(tx + 2, base)) continue;
-          this.lit(s.add.image(x, base * TILE + 1, fallenDrumArt(s, k)).setOrigin(.5, 1).setDepth(6.1).setFlipX(k % 2 === 1));
+          const key = fallenDrumArt(s, k), py = this.standY(key, x, .5, base, { flip: k % 2 === 1, up: 0, down: 0 });
+          if (py) this.lit(s.add.image(x, py, key).setOrigin(.5, 1).setDepth(6.1).setFlipX(k % 2 === 1));
         }
         for (let x = r.left + 90, k = 0; x < r.right - 40; x += 120 + (k * 23) % 40, k++) {
           const tx = Math.floor(x / TILE), base = floorRow(r, tx);
           if (base === null || (r.portalFrom && x < r.left + 90)) continue;
-          const pink = k % 2 === 1, col = pink ? 0xff7ac8 : 0x6aa8ff, y = base * TILE + 1;
-          this.add(s.add.image(x, y, spearCrystalArt(s, pink ? 'pink' : 'blue')).setOrigin(.5, 1).setDepth(6.2).setScale(k % 3 ? 1 : 1.3));
+          const pink = k % 2 === 1, col = pink ? 0xff7ac8 : 0x6aa8ff, key = spearCrystalArt(s, pink ? 'pink' : 'blue'), sc = k % 3 ? 1 : 1.3;
+          const cy = this.standY(key, x, .5, base, { scale: sc, up: 0, down: 0 });
+          if (cy === null) continue;   // 땅 밀착: 결정 밑동이 턱 끝에 걸리면 두지 않는다
+          const y = this.groundY + 1;
+          this.add(s.add.image(x, cy, key).setOrigin(.5, 1).setDepth(6.2).setScale(sc));
           const h = this.add(s.add.image(x, y - 14, 'glow').setBlendMode(ADD).setTint(col).setScale(.9).setAlpha(.5).setDepth(6.3));
           this.pulses.push({ o: h, base: .45, amp: .25, sp: 1.2 + (k % 3) * .5 });
           if (k % 2 === 0) this.light(x, y - 14, 110, col, .8);
@@ -1897,8 +2021,9 @@ export class Props {
         for (let x = r.left + 70; x < r.right; x += 170) this.add(s.add.image(x, r.top + 6, 'glow').setOrigin(.5, 0).setBlendMode(ADD).setTint(0xe8dcff).setScale(1.1, 5.5).setAlpha(.14).setDepth(3.3).setAngle(-12));
         // 디아루가 · 펄기아 제단 (아레나 가운데 뒤) + 그 뒤 차원 균열 (평소엔 닫혀 있다)
         if (r.spearAltar) {
-          const Y = (r.arena && r.arena.altarY ? r.arena.altarY : r.F) * TILE;   // 결전장: 4계단 단상 꼭대기
-          this.lit(s.add.image(r.cx, Y + 2, spearAltarArt(s)).setOrigin(.5, 1).setDepth(3.5));
+          const row0 = r.arena && r.arena.altarY ? r.arena.altarY : r.F, key = spearAltarArt(s), ay = this.standY(key, r.cx, .5, row0, { sink: 2, up: 3, down: 3, low: true });
+          const Y = ay === null ? row0 * TILE : this.groundY;   // 결전장: 4계단 단상 꼭대기 (땅 밀착 — 못 찾으면 처음 자리)
+          this.lit(s.add.image(r.cx, ay ?? Y + 2, key).setOrigin(.5, 1).setDepth(3.5));
           for (const [d, col] of [[-1, 0x6aa8ff], [1, 0xff7ac8]]) {
             const o = this.add(s.add.image(r.cx + d * 70, Y - 61, 'glow').setBlendMode(ADD).setTint(col).setScale(.7).setAlpha(.6).setDepth(3.55));
             this.pulses.push({ o, base: .5, amp: .25, sp: 1.6 });
@@ -2072,8 +2197,9 @@ export class Props {
   }
   // 탑 · 성소 안 1층 출입문 (나가면 정문 앞)
   innerDoor(r, art, pair, text, prompt, col) {
-    const PY = (r.portalY ?? r.F) * TILE, x = r.left + 40;
-    this.lit(this.s.add.image(x, PY, art).setOrigin(.5, 1).setDepth(2.8));
+    const row = r.portalY ?? r.F, x0 = r.left + 40, at = this.fitX(art, [0, 8, 16, 24, 32, -8, -16, 40, 48].map(d => x0 + d), .5, row, { sink: 0, up: 0, down: 0, plat: true });   // 땅 밀착: 문 전체가 바닥 · 발판을 딛는 자리로
+    const PY = row * TILE, x = at ? at.x : x0;
+    this.lit(this.s.add.image(x, at ? at.y : PY, art).setOrigin(.5, 1).setDepth(2.8));
     const gl = this.glow(x, PY - 30, 1, col, .22, 2.85);
     this.pulses.push({ o: gl, base: .2, amp: .08, sp: 1.4 });
     this.light(x, PY - 30, 120, col, .6);
@@ -2142,7 +2268,7 @@ export class Props {
             }
           }
         }
-        for (let x = r.left + 80, k = 0; x < r.right - 60; x += 260, k++) this.add(s.add.image(x, Y + 2, glassStairsArt(s, k % 2 ? -1 : 1)).setOrigin(.5, 1).setDepth(3.3).setAlpha(.6));
+        for (let x = r.left + 80, k = 0; x < r.right - 60; x += 260, k++) { const key = glassStairsArt(s, k % 2 ? -1 : 1), gy = this.standY(key, x, .5, r.F, { low: true }); if (gy !== null) this.add(s.add.image(x, gy, key).setOrigin(.5, 1).setDepth(3.3).setAlpha(.6)); }
         for (let x = r.left + 50; x < r.right; x += 180) this.add(s.add.image(x, r.top + 4, 'glow').setOrigin(.5, 0).setBlendMode(ADD).setTint(0xfff0c8).setScale(1.2, 5.5).setAlpha(.16).setDepth(3.3).setAngle(-12));   // 내려오는 빛줄기
         this.light(r.cx, r.top + 40, Math.max(320, W * .7), 0xfff4d8, .7);
       }
@@ -2225,10 +2351,11 @@ export class Props {
       }
       // 바닥 증기 배출구
       for (let x = r.left + 100, k = 0; x < r.right - 60; x += 190 + (k * 29) % 70, k++) {
-        const tx = Math.floor(x / TILE);
-        if (this.level.grid[r.F][tx] !== 'S' || this.level.grid[r.F - 1][tx] !== '.') continue;
         if (r.plantGate && Math.abs(x - (r.doorTx * TILE + 8)) < 150) continue;
-        this.lit(s.add.image(x, Y + 1, ventArt(s)).setOrigin(.5, 1).setDepth(10.36));
+        const vy = this.standY(ventArt(s), x, .5, r.F, { sink: 1, up: 0, down: 0 });
+        if (vy === null) continue;   // 땅 밀착: 배출구 전체가 바닥 위에
+        const Y = this.groundY;
+        this.lit(s.add.image(x, vy, ventArt(s)).setOrigin(.5, 1).setDepth(10.36));
         this.vents.push({ x, y: Y - 4, t: (k * .7) % 2.4 });
       }
       this.light(r.cx, r.top + 40, Math.max(300, W * .6), 0xff5a7a, .45);
@@ -2359,10 +2486,10 @@ export class Props {
           f.sp = sp; f.tilePositionY = 14; this.fogs.push(f);
         }
       }
-      if (area.forest && room.type === 'combat') for (let k = 0; k < 5; k++) {
+      if (area.forest && room.type === 'combat' && !room.isPurified) for (let k = 0; k < 5; k++) {
         const ex = rand(room.left + 60, room.right - 60), ey = rand(room.ty0 + 2, room.F - 4) * TILE, gap = 4 + Math.random() * 3;
         const pair = [-gap / 2, gap / 2].map(dx => this.add(s.add.image(ex + dx, ey, 'glow').setBlendMode(ADD).setTint(0xff1a3a).setScale(.08, .05).setDepth(3.5).setAlpha(0)));
-        this.eyes.push({ pair, t: Math.random() * 6, open: false });
+        this.eyes.push({ pair, t: Math.random() * 6, open: false, room });
       }
     }
   }
@@ -2374,12 +2501,13 @@ export class Props {
     const s = this.s, { grid, cols, rows } = this.level, key = veinArt(s);
     for (const r of this.level.rooms) {
       const d = r.depth || 0;
-      if (d < .5 || r.type === 'village' || r.arenaStyle) continue;
+      if (d < .5 || r.type === 'village' || r.arenaStyle || r.isPurified) continue;   // ✨ 정화한 샛길 구역엔 균열이 없다
       const p = (d - .45) * .32;
       for (let y = r.ty0 + 1; y <= r.F && y < rows; y++) for (let x = r.tx0; x < r.tx1 && x < cols; x++) {
         if (grid[y][x] !== 'S' || grid[y - 1][x] !== '.' || Math.random() > p) continue;
         const v = this.add(s.add.image(x * TILE + 8, y * TILE + 1, key).setOrigin(.5, 0).setBlendMode(ADD).setTint(d > .75 ? 0xff3a5a : 0xb05aff).setDepth(10.25).setFlipX(Math.random() < .5));
         this.pulses.push({ o: v, base: .45 + d * .2, amp: .3, sp: 1.5 + Math.random() * 1.5 });
+        (this.veinList = this.veinList || []).push({ img: v, room: r });
       }
     }
   }
@@ -2391,17 +2519,20 @@ export class Props {
         if (grid[y][x] !== 'S' || grid[y - 1][x] !== '.') continue;
         const room = roomAt(this.level, x * TILE + 8, y * TILE - 8), village = room && room.type === 'village';
         if (!room || room.lab || room.arenaStyle) continue;   // 연구소 안엔 풀·버섯이 없다 · 보스 결전장은 그 방 그림이 제 장식을 그린다 (systems/ArenaArt.js)
-        const gy = y * TILE + 2;
+        const gy = y * TILE + 2, ledge = c => grid[y][c] !== 'S' || grid[y - 1][c] === 'S';   // 옆 칸이 같은 높이 바닥이 아니다 (턱 끝 · 벽)
         if (Math.random() < .5) {
-          const g = this.lit(s.add.image(x * TILE + rand(1, 14), gy, `dec:grass:${this.si}:${Math.floor(Math.random() * 3)}`).setOrigin(.5, 1).setDepth(13).setFlipX(Math.random() < .5));
+          const key = `dec:grass:${this.si}:${Math.floor(Math.random() * 3)}`, f = this.footOf(key), hw = (f.r - f.l + 1) / 2;
+          let gx = x * TILE + rand(1, 14);
+          if (ledge(x - 1)) gx = Math.max(gx, x * TILE + hw); if (ledge(x + 1)) gx = Math.min(gx, x * TILE + TILE - hw);   // 땅 밀착: 턱 끝 밖으로 삐져나와 허공에 뜨지 않게
+          const g = this.lit(s.add.image(gx, gy + 1 + f.pad, key).setOrigin(.5, 1).setDepth(13).setFlipX(Math.random() < .5));
           g.ph = x * .37 + Math.random(); this.grass.push(g);
         }
         if (village && Math.random() < .3) this.lit(s.add.image(x * TILE + rand(2, 13), gy - 1, `dec:flower:${Math.floor(Math.random() * 4)}`).setOrigin(.5, 1).setDepth(13));
         if (Math.random() < .14) this.lit(s.add.image(x * TILE + rand(2, 13), gy - 1, `dec:pebble:${Math.random() < .5 ? 0 : 1}`).setOrigin(.5, 1).setDepth(13));
         if (!village && Math.random() < (cave || room.under ? .1 : .05)) {   // 동굴·지하엔 빛나는 버섯이 더 많다
           const mx = x * TILE + rand(3, 12);
-          this.lit(s.add.image(mx, gy - 1, 'dec:mush').setOrigin(.5, 1).setDepth(13));
-          this.add(s.add.image(mx, gy - 1, `dec:mush:${this.si}:e`).setOrigin(.5, 1).setDepth(13.1));
+          this.lit(s.add.image(mx, gy + 1, 'dec:mush').setOrigin(.5, 1).setDepth(13));
+          this.add(s.add.image(mx, gy + 1, `dec:mush:${this.si}:e`).setOrigin(.5, 1).setDepth(13.1));
           const gl = this.glow(mx, gy - 5, .18, this.stage.palette.light, .5, 13.2); gl.ph = Math.random() * 6; this.mush.push(gl);
         }
       }
@@ -2475,6 +2606,7 @@ export class Props {
     }
     // 숲의 붉은 안광: 잠깐 떴다가 감는다
     for (const e of this.eyes) {
+      if (e.gone) continue;
       e.t -= dt;
       if (e.t <= 0) { e.open = !e.open; e.t = e.open ? 1.2 + Math.random() * 2.5 : 2 + Math.random() * 5; }
       const a = e.open ? Math.min(1, (e.pair[0].alpha || 0) + dt * 3) : Math.max(0, e.pair[0].alpha - dt * 4);
@@ -2519,7 +2651,8 @@ export class Props {
   shelter(tm, x, Y, signX) {
     const s = this.s, G = this.level.grid;
     const floor = tx => G[tm.g] && (G[tm.g][tx] === 'S' || G[tm.g][tx] === 'B') && [1, 2, 3].every(h => G[tm.g - h] && G[tm.g - h][tx] === '.');
-    this.add(s.add.image(x, Y + 1, shelterArchArt(s)).setOrigin(.5, 1).setDepth(5.6).setAlpha(.95));
+    const ak = shelterArchArt(s), ay = this.standY(ak, x, .5, tm.g, { sink: 1, up: 0, down: 0 });
+    if (ay !== null) this.add(s.add.image(x, ay, ak).setOrigin(.5, 1).setDepth(5.6).setAlpha(.95));   // 땅 밀착: 아치 두 기둥이 다 바닥을 디딜 때만
     this.add(s.add.image(x, Y - 26, 'glow').setBlendMode(ADD).setTint(0xffb060).setScale(2.6, 1.4).setAlpha(.18).setDepth(5.65));
     const side = signX !== null && signX < x ? 1 : -1;   // 표지판 반대쪽에 벤치
     const tx = Math.floor(x / TILE);

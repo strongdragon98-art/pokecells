@@ -1145,7 +1145,25 @@ function makeBgMid(scene, si, kind, p) {
     const hz = (c, t) => { const k = (v, sh) => (v >> sh) & 255, m = sh => Math.round(k(c, sh) + (k(p.accent, sh) - k(c, sh)) * t) << sh; return m(16) | m(8) | m(0); };
     LANDMARKS[kind]({ F, cm, r, W, H, mc: hz(p.wall2, .2), ml: hz(p.wall2, .32), rim, p, smoke, glow: (x, y, rad, rgba) => glowAt(cm, x, y, rad, rgba) });
   }
+  if (!FLOATING_MID.has(kind)) groundBase(cm, W, H, shade(mc, .82), si * 7 + kind.length);
   mid.refresh();
+}
+
+// 중경 땅 실루엣 받침 (Ground Silhouette Base): 숲 · 건물 · 기둥 실루엣 아래를 낮은 언덕 띠가 그림 맨 아래(화면 하단 끝)까지 받친다
+//  기존 그림 뒤(destination-over)에 깔아 실루엣은 그대로 두고 빈 틈만 메운다 — 카메라가 높은 발판으로 올라가 중경 아래쪽이 드러나도
+//  뿌리 · 기둥 밑동 사이로 하늘이 비치거나 허공에 붕 뜬 것처럼 보이지 않는다
+//  평소 화면(줌 1.25)엔 그림의 48 ~ 352줄이 보인다 → 띠 윗선을 318 ~ 336줄에 두어 화면 아래에 늘 땅이 깔린다 (보스전 줌 1 은 더 두껍게)
+//  하늘에 뜬 세계(깨어진 세계 · 균열 · 천계 · 시초의 방) · 구름 위 방울탑 · 바다 위 등대는 받침을 깔지 않는다
+const FLOATING_MID = new Set(['distortion', 'rift', 'azure', 'origin', 'belltower', 'lighthouse']);
+function groundBase(ctx, W, H, col, ph) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-over';
+  for (let x = 0; x < W; x += 2) {   // 가로로 이어 붙여도 끊기지 않게 W 주기 사인만 쓴다
+    const t = x / W * Math.PI * 2, top = Math.round(H - 74 + Math.sin(t * 2 + ph) * 7 + Math.sin(t * 5 + ph * 1.7) * 3);
+    bgF(ctx, x, top, 2, H - top, col);
+    bgF(ctx, x, top, 2, 1, shade(col, 1.35), .8);   // 언덕 능선의 옅은 윤
+  }
+  ctx.restore();
 }
 
 // 먼 산등성이 (원경·중경 아래쪽)

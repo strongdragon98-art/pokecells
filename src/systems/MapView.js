@@ -100,11 +100,17 @@ export class MapView {
     const { blocks, corridors } = this.model, col = b => mapColor(st.areas[b.r.ai]);
     const g = ui.add.graphics(); C.add(g);
     // ① 방 블록: 지역 색 반투명 채우기 + 밝은 외곽선 (지하는 더 어둡게, 샛길 끝방은 하늘색 외곽선)
+    //  ✨ 샛길 정화 구역 (GameScene.sideRoomsOf): 정화 전엔 어두운 핏빛 · 잿빛 · 정화하면 밝은 에메랄드 + 금빛 테두리 (정화한 지방은 지역 색 그대로)
+    const sideOn = !lv.purified && gs.isSideRoom;
     for (const b of blocks) {
       if (!b.seen) continue;
       const c = col(b), x = X(b.xa), y = Y(b.ya), w = (b.xb - b.xa) * s, h = (b.yb - b.ya) * s, side = b.r.branch && !ARENA.has(b.r.type);
-      g.fillStyle(c.fill, b.r.under ? .5 : .74); g.fillRect(x, y, w, h);
-      g.lineStyle(Math.max(1.2, Math.min(2.4, s * 1.4)), side ? 0x9ad8ff : 0xefeae0, b.r.under ? .62 : .9); g.strokeRect(x, y, w, h);
+      const sp = sideOn && gs.isSideRoom(b.r, lv), pure = sp && b.r.isPurified;
+      g.fillStyle(pure ? 0x2fb487 : sp ? 0x4a1c28 : c.fill, pure ? .82 : sp ? .86 : b.r.under ? .5 : .74); g.fillRect(x, y, w, h);
+      if (sp && !pure) { g.fillStyle(0x7a7078, .22); for (let yy = y + 2; yy < y + h - 1; yy += 4) g.fillRect(x + 1, yy, w - 2, 1); }   // 잿빛 침식 줄무늬
+      if (pure) { g.fillStyle(0xffe08a, .28); g.fillRect(x, y, w, Math.max(2, h * .22)); }   // 금빛 햇살
+      g.lineStyle(Math.max(1.2, Math.min(2.4, s * 1.4)), pure ? 0xffd860 : sp ? 0xa83a52 : side ? 0x9ad8ff : 0xefeae0, b.r.under && !sp ? .62 : .9); g.strokeRect(x, y, w, h);
+      if (pure && s > 1.2) { const t = hkText(ui, x + w / 2, y + h / 2, '✦', Math.min(14, Math.max(7, s * 3)), '#fff4c0', { origin: .5 }); C.add(t); }
     }
     // ② 통로: 둘 다 봤으면 외곽선을 덮어 이어 붙이고, 한쪽만이면 안 가 본 쪽으로 흰 점선 (비밀 문은 점선도 없다)
     for (const cd of corridors) {

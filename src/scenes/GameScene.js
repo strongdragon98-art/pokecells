@@ -18,9 +18,12 @@ import { bakeArenaTiles } from '../systems/ArenaArt.js';
 import { buildArenaBackdrop, craneArt, chainArt } from '../systems/ArenaBackdrop.js';
 
 const ARENA_ZOOM = 1;
+// ✨ 샛길 정화: 정화 전 샛길 구역의 화면 침식 깊이 하한 (검붉은 비네팅 · 채도 · 주변광 · 포자) · 본길 전투 방은 다른 방에 이만큼(ms) 다녀오면 쓰러뜨린 자리에 다시 나타난다
+const SIDE_GLOOM = .62, MAIN_RESPAWN_MS = 4000;
 // 보스 결전장 주변광: [물들일 색, 밝기 하한(초입 밝기 대비)] (game/Arenas.js 의 결전장 종류)
 const ARENA_AMB = { biolab: [0x8ad8e8, .8], bellroof: [0xffc890, .92], summit: [0xc8f0ff, .92], spear: [0xe0dcff, .9], distortion: [0xb898ff, .8], yinyang: [0xf0e8f4, .86], origin: [0xfff4d8, .96], reactor: [0xffb0b8, .8] };   // 보스전 월드 배율 (평소 ZOOM 1.25 → 화면에 아레나가 더 많이 들어온다)
 import { Props } from '../game/Props.js';
+import { SideRooms } from '../game/SideRooms.js';
 import { Player } from '../game/Player.js';
 import { Enemy } from '../game/Enemy.js';
 import { Boss } from '../game/Boss.js';
@@ -45,7 +48,7 @@ import { Settings, keyLabel } from '../systems/Settings.js';
 import { Save } from '../systems/Save.js';
 import { RunSave, seeded, newSeed, snapshotWorld, applyWorld, snapshotPlayer, restorePlayer } from '../systems/RunSave.js';
 import { itemArt, shade, TILE_MARGIN, TILE_SPACING } from '../systems/Textures.js';
-import { rollCards, applyCard, TM_CARDS, heldLv, dressCard, CARD_MAX_LV, BONUS_CARDS, cardScore, ownedUpgrades, upgradeInfo, masterySteps, MASTERY_HEAL, MASTERY_CARDS } from '../data/tm.js';
+import { rollCards, applyCard, TM_CARDS, heldLv, dressCard, CARD_MAX_LV, BONUS_CARDS, cardScore, ownedUpgrades, upgradeInfo, sideSteps, MASTERY_HEAL, MASTERY_CARDS } from '../data/tm.js';
 import { PERKS, onKill as perkKill } from '../game/Perks.js';
 import { bossSpec, specOf, gearCheck, applyGearPreset, recommendedCardScore, GEAR_WARN } from '../data/balance.js';
 
@@ -439,6 +442,7 @@ export default class GameScene extends Phaser.Scene {
     this.drawBreakables();
     this.props = new Props(this, level, st, si);
     this.npcs = new Npcs(this, level, this.props);   // 마을 사람들 · 오박사 (말을 걸면 대화창)
+    this.side = level.purified || this.test ? null : new SideRooms(this, level, this.sideRoomsOf(level));   // ✨ 샛길 정화 구역: 침식 덩굴 · 안개 / 정화한 방은 성역
     this.physics.world.setBounds(0, 0, level.width, level.height + 200);
 
     // 패럴랙스 배경 (보스전에서 가장 멀리 당긴 줌 기준으로도 화면을 채우도록 배치)
@@ -516,7 +520,7 @@ export default class GameScene extends Phaser.Scene {
   // ---------------- 침식 (Room.depth 0 입구 ~ 1 보스방 앞) · 지방 정화 ----------------
   // 방의 침식 깊이 (정화한 지방은 어디든 0)
   depthOf(room) {
-    if (!room || (this.level && this.level.purified) || room.trail || room.seaBridge) return 0;   // 방울로드: 가을 햇살 · 131번 수로: 85% 밤바다
+    if (!room || (this.level && this.level.purified) || room.trail || room.seaBridge || room.isPurified) return 0;   // 방울로드: 가을 햇살 · 131번 수로: 85% 밤바다 · ✨ 정화한 샛길 구역: 95 ~ 100% 따뜻한 빛
     const d = room.depth || 0;
     if (room.tower || room.pillar) return Math.min(.45, d);   // 방울탑 안: 횃불로 은은하게 · 하늘기둥 안: 벽 틈 채광
     if (room.stratosphere) return Math.min(.3, d);   // 성층권: 별빛
@@ -530,6 +534,11 @@ export default class GameScene extends Phaser.Scene {
     if (room.plant) return Math.min(.25, d);   // 너클시티 지하 에너지 플랜트: 75% · 검붉은 파이프 · 홀로그램
     if (room.plantHeart) return Math.min(.3, d);   // 블랙나이트의 심장
     return d;
+  }
+  // 화면 분위기(비네팅 · 채도 · 주변광 · 포자)에 쓰는 침식 깊이: 아직 정화하지 않은 샛길 구역은 검붉은 침식이 짙게 깔려 있다 (몹 세기는 depthOf 그대로)
+  atmoDepthOf(room) {
+    const d = this.depthOf(room);
+    return this.isSideRoom(room) && !room.isPurified && !(this.level && this.level.purified) ? Math.max(d, SIDE_GLOOM) : d;
   }
   // 몹의 침식 단계 Ⅰ~Ⅳ: 보스방에 가까울수록 높다
   corruptLevel(room) { const d = this.depthOf(room); return d < .25 ? 1 : d < .5 ? 2 : d < .75 ? 3 : 4; }
@@ -580,6 +589,7 @@ export default class GameScene extends Phaser.Scene {
   repaintWorld() {
     if (!this.level || this.overlay === 'tm') { this.time.delayedCall(600, () => this.repaintWorld()); return; }
     this.tintRooms(); this.colorTorches();
+    if (this.side && this.level.purified) { this.side.destroy(); this.side = null; }   // 지방 정화: 샛길 구역의 침식도 함께 걷힌다
     if (this.npcs) { this.npcs.destroy(); this.npcs = null; }
     if (this.props) this.props.destroy();
     this.props = new Props(this, this.level, this.stage, this.stageIdx);
@@ -644,6 +654,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.portal) { this.portal.g.destroy(); this.portal.glow.destroy(); this.portal = null; }
     if (this.npcs) { this.npcs.destroy(); this.npcs = null; }
     if (this.props) { this.props.destroy(); this.props = null; }
+    if (this.side) { this.side.destroy(); this.side = null; }
     if (this.promptText) { this.promptText.destroy(); this.promptText = null; }
     if (this.torches && this.webgl) for (const t of this.torches) if (t.light) this.lights.removeLight(t.light);
     for (const bd of this.arenaDrops || []) bd.destroy();   // 조명 · 배경 텍스처 (그림은 위 worldObjs 로 이미 내렸다)
@@ -1452,6 +1463,7 @@ export default class GameScene extends Phaser.Scene {
     this.updateOverdrive(dt);
     this.updateLights(dt);
     this.updateAtmosphere(dt);
+    if (this.side) this.side.update(dt, this.cameras.main.worldView);
     this.updateWeather(dt);
     this.updateCracks(dt);
     this.updateArenaDrops(dt);
@@ -1471,8 +1483,9 @@ export default class GameScene extends Phaser.Scene {
   //  초입: 나뭇잎 사이로 비스듬히 내리쬐는 햇빛 줄기 + 떠다니는 금빛 먼지 · 따뜻하고 선명한 색
   //  보스방 쪽: 햇빛이 사라지고 채도가 빠지며 어두워진다 + 포스트 비네팅이 좁고 진해진다 (안개·검붉은 테두리는 UIScene)
   updateAtmosphere(dt) {
-    const want = this.depthOf(this.room);
-    this.atmo = (this.atmo ?? want) + (want - (this.atmo ?? want)) * Math.min(1, dt * .6);
+    const want = this.atmoDepthOf(this.room);
+    this.atmoRush = Math.max(0, (this.atmoRush || 0) - dt);   // ✨ 샛길 정화 순간: 2초쯤에 걸쳐 환하게 (평소엔 천천히 따라간다)
+    this.atmo = (this.atmo ?? want) + (want - (this.atmo ?? want)) * Math.min(1, dt * (this.atmoRush > 0 ? 2.2 : .6));
     const c = this.atmo, cam = this.cameras.main, v = cam.worldView, t = this.time.now / 1000;
     const cg = this.room && this.room.arenaStyle ? Math.min(c, .3) : c;   // 보스 결전장은 제 색 그대로 (침식 깊이로 칙칙해지지 않게)
     if (this.gradeFx) { const fx = this.gradeFx; fx.reset(); fx.saturate(.18 - cg * .62, true); fx.brightness(1.06 - cg * .2, true); }
@@ -1480,7 +1493,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.vignetteFx) { this.vignetteFx.radius = .98 - c * .06; this.vignetteFx.strength = .18 + c * .17; }
     // 햇빛 줄기: 화면 위에서 비스듬히 (깊어질수록 옅어지다 사라진다)
     const R0 = this.room, sky = R0 && !R0.under ? skyKindOf(R0) : null;
-    const sun = Phaser.Math.Clamp(1 - c / .45, 0, 1) * (R0 && (R0.under || R0.trailEnd) ? .25 : sky === 'coronet' || sky === 'icirrus' ? .4 : 1) * (R0 && (R0.seaBridge || R0.rain || R0.drought || R0.stratosphere || sky === 'spear' || sky === 'distortion' || sky === 'spiral' || sky === 'plant' || sky === 'heart') ? 0 : 1);   // 설산 · 습지엔 옅은 겨울 햇살 · 천계엔 금빛 햇살 · 가라르 지하엔 없다
+    const sun = Phaser.Math.Clamp(1 - c / .45, 0, 1) * (R0 && (R0.under || R0.trailEnd) ? (R0.isPurified ? .7 : .25) : sky === 'coronet' || sky === 'icirrus' ? .4 : 1) * (R0 && (R0.seaBridge || R0.rain || R0.drought || R0.stratosphere || sky === 'spear' || sky === 'distortion' || sky === 'spiral' || sky === 'plant' || sky === 'heart') ? 0 : 1);   // 설산 · 습지엔 옅은 겨울 햇살 · 천계엔 금빛 햇살 · 가라르 지하엔 없다
     if (!this.sunbeams) {
       sunbeamTexture(this);
       this.sunbeams = [0, 1, 2, 3, 4].map(i => this.add.image(0, 0, 'fx:sunbeam').setOrigin(.5, 0).setBlendMode(Phaser.BlendModes.ADD).setTint(0xfff0c0).setDepth(23.5).setAngle(-22).setAlpha(0));
@@ -1544,6 +1557,7 @@ export default class GameScene extends Phaser.Scene {
       const pure = this.level && this.level.purified;   // 진 엔딩 뒤엔 가라르 지하도 황금빛 새벽처럼 밝게
       if (R && R.plant && !pure) base = shade(lerpColor(lit0, 0xff9aaa, .3), .75);   // 너클시티 지하 에너지 플랜트: 75% · 검붉은 다이맥스 빛
       if (R && R.plantHeart && !pure) base = shade(lerpColor(lit0, 0xff6a80, .4), .72);   // 블랙나이트의 심장: 핏빛 반응로 (70% 남짓)
+      if (R && R.isPurified && !pure) base = lumFloor(lerpColor(lit0, 0xfff0c8, .3), lumOf(lit0) * .97);   // ✨ 정화한 샛길 구역: 지하여도 95 ~ 100% 밝기 · 따뜻한 햇살빛
       const AMB = R && R.arenaStyle && ARENA_AMB[R.arenaStyle];   // 보스 결전장: 그 방 그림이 살도록 밝기 하한 · 방 색
       if (AMB) base = lumFloor(lerpColor(base, AMB[0], .35), lumOf(lit0) * AMB[1]);
       if (this.overdrive) base = lerpColor(base, 0xffd8a0, .3);   // 유대의 불꽃 오버드라이브: 황금빛이 아레나를 밝힌다
@@ -2449,7 +2463,10 @@ export default class GameScene extends Phaser.Scene {
     const p = this.player, room = roomAt(this.level, p.x, p.y - 4) || this.room;
     if (room !== this.room) {
       const wasLab = this.room && (this.room.lab || this.room.gateFront);
+      if (this.room) this.room.leftAt = this.time.now;
       this.room = room;
+      this.respawnMainRoom(room);   // 본길: 다른 방에 다녀왔으면 다시 나타난다
+      this.sideHint(room);
       if ((wasLab || room.lab || room.gateFront) && !this.arenaRoom) this.cameras.main.setBounds(...this.camBounds());   // 연구소 지하(튜토리얼 기술머신)로 내려가거나 올라올 때
       this.updateLabCover();
       for (const m of p.members) m.sturdyUsed = false;   // 기합의띠(특성 카드)는 방마다 1번
@@ -2481,13 +2498,22 @@ export default class GameScene extends Phaser.Scene {
     this.updateExplored();
   }
 
+  // 샛길 구역에 처음 들어설 때 한 줄 안내 (지방마다 처음 세 곳만 — 그 뒤로는 HUD 의 남은 수로)
+  sideHint(room) {
+    if (!room || room.isPurified || room.sideTold || this.test || !this.level || this.level.purified || !this.isSideRoom(room)) return;
+    room.sideTold = true;
+    if ((this.level.sideTold = (this.level.sideTold || 0) + 1) > 3) return;
+    this.time.delayedCall(500, () => this.events.emit('toast', '⚠️ 침식된 샛길 구역 — 이 구역의 침식된 포켓몬을 마지막 한 마리까지 쓰러뜨리면 영구히 정화된다'));
+  }
   // 방마다 미리 정해 둔 적 자리: 화면 가장자리쯤 다가가면 나타난다
   updateSpawns() {
     const p = this.player, reach = this.cameras.main.worldView.width / 2 + 40, reachY = this.cameras.main.worldView.height / 2 + 40;
     for (const s of this.level.spawns) {
       if (s.spawned || Math.abs(s.x - p.x) > reach || Math.abs(s.y - p.y) > reachY) continue;
-      s.spawned = true;
-      if (s.room) this.time.delayedCall(0, () => this.checkRoomClear(s.room));   // 마지막 자리가 안전 구역이라 아무도 나오지 않은 채 끝난 방 (지방 탐색 숙련도)
+      if (s.minGap && Math.abs(s.x - p.x) < s.minGap && Math.abs(s.y - p.y) < 90) continue;   // 본길 다시 나타나기: 바로 곁이면 조금 떨어진 뒤에
+      s.spawned = true; s.minGap = 0;
+      if (s.room && s.room.isPurified) continue;   // ✨ 정화한 샛길 구역: 다시 와도 · 이어하기로 와도 몬스터가 절대 나오지 않는다
+      if (s.room) this.time.delayedCall(0, () => this.checkRoomClear(s.room));   // 마지막 자리가 안전 구역이라 아무도 나오지 않은 채 끝난 샛길 구역
       if (s.room && (s.room.type === 'village' || s.room.lab || s.room.peaceful)) continue;   // 마을 · 방울로드 성역엔 침식된 포켓몬이 하나도 나오지 않는다
       if (this.level.purified) { if (!s.elite && Math.random() < .5) this.spawnWanderer(s); continue; }   // 정화한 지방: 세뇌된 적 대신 평화로운 야생 포켓몬
       if (s.elite && s.room && s.room.hidden && !(this.level.sides || []).some(sd => sd.room === s.room && sd.revealed)) { s.spawned = false; continue; }   // 숨은 굴의 수문장은 흙이 걷힌 뒤에
@@ -2513,6 +2539,7 @@ export default class GameScene extends Phaser.Scene {
     e.line = pk.line; e.stage = stage; e.elite = true;
     if (!def.flying) e.b.reset(s.x, gy - e.b.height / 2 - 1);
     this.addEnemy(e, s.room || this.room);
+    s.enemy = e;
     this.fx.ring(s.x, e.y, 34, 0xff3a2a, 460); this.fx.glow(s.x, e.y, 40, 0xff3a2a, 520, 1);
     this.fx.burst(s.x, e.y, [0xff3a2a, 0xffa040, 0xffffff], 20, 130, { glow: true, up: 80 });
     this.events.emit('toast', `🔥 엘리트 ${def.name}이(가) 길을 막아섰다! 쓰러뜨리면 이상한사탕 · 금구슬 · 빛나는 TM 코어`);
@@ -2532,6 +2559,7 @@ export default class GameScene extends Phaser.Scene {
     e.line = line; e.stage = stage;
     if (!def.flying) e.b.reset(x, gy - e.b.height / 2 - 1);
     this.addEnemy(e, room);
+    s.enemy = e;   // 본길 다시 나타나기 (respawnMainRoom): 이 자리의 몬스터가 아직 살아 있는가
     this.fx.ring(x, e.y, 22, typeColor(def.types[0]), 380);
     this.fx.glow(x, e.y, 26, typeColor(def.types[0]), 420, .9);
   }
@@ -2553,7 +2581,7 @@ export default class GameScene extends Phaser.Scene {
 
   addEnemy(e, room) {
     e.room = room;
-    if (room && !e.boss) room.foes = (room.foes || 0) + 1;   // 이 방에 나타난 몬스터 수 (지방 탐색 숙련도: 몬스터가 있던 전투 방만 센다)
+    if (room && !e.boss) room.foes = (room.foes || 0) + 1;   // 이 방에 나타난 몬스터 수 (샛길 정화: 몬스터를 한 마리라도 마주친 방만 정화된다)
     e.colliders = [this.physics.add.collider(e.obj, this.gateGroup)];
     if (!e.def.noclip) e.colliders.push(this.physics.add.collider(e.obj, this.layers, null, e.boss ? (o, tile) => !PLAT_SET.has(tile.index) : null));   // 보스는 통과 발판에 올라서지 않는다
     this.enemies.push(e);
@@ -2749,7 +2777,7 @@ export default class GameScene extends Phaser.Scene {
     }
     else if (Math.random() < ITEM_DROP.wild) this.spawnPickup('item', e.x, e.y, pick(RANDOM_ITEM_KEYS));   // 야생은 아이템 대신 가끔 오렌열매
     else if (Math.random() < .16) this.spawnPickup('oran', e.x, e.y);
-    this.checkRoomClear(e.room);   // 🗺️ 지방 탐색 숙련도: 이 방의 몬스터를 모두 정화했는가
+    this.checkRoomClear(e.room);   // ✨ 샛길 정화: 이 샛길 구역의 침식된 포켓몬을 모두 정화했는가
     const r = Save.addKill(e.line || e.key);   // 정화 진행도는 진화 계열로 센다 (피카츄를 정화해도 피츄 계열 +1)
     if (r) {
       if (r.unlockedNow) { this.runStats.unlocked.push(e.line); this.queueJoin(e.line, 'dex'); }   // 10번 정화: 정화 완료 쇼케이스
@@ -3263,41 +3291,80 @@ export default class GameScene extends Phaser.Scene {
     if (this.joinBlur) { this.cameras.main.postFX.remove(this.joinBlur); this.joinBlur = null; }
     if (this.joinQueue && this.joinQueue.length) this.time.delayedCall(350, () => this.nextJoin());
   }
-  // ---------------- 🗺️ 지방 탐색 숙련도: 새로 들어가 몬스터를 모두 정화한 일반 전투 방마다 +1 → 그 지방 전투 방의 40% · 80%(masterySteps)에 보유 카드 강화 ----------------
-  //  지방마다 정확히 2번 (그 뒤로는 세지 않고 보스전에 집중) · 센 방은 room.mastered 로 저장된다 (RunSave) — 다시 와도 · 이어하기로 몬스터가 다시 나와도 또 세지 않는다
-  //  안 세는 곳: 이미 센 방 · 몬스터가 한 마리도 없던 방 · 마을 · 성역(peaceful) · 연구소 · 상점 · 보스방 · 정화한 지방 · 테스트룸
-  isNewClearedCombatRoom(room) {
-    const lv = this.level;
-    if (!room || !lv || room.mastered || room.type !== 'combat' || room.peaceful || room.lab || lv.purified || lv.test || this.test) return false;
-    if (!(room.foes > 0)) return false;
-    if (lv.spawns.some(s => s.room === room && !s.spawned)) return false;   // 아직 나타나지 않은 자리가 남았다
-    return !this.enemies.some(e => e.alive && e.room === room);
-  }
-  masteryCount() { return this.level ? this.level.rooms.reduce((n, r) => n + (r.mastered ? 1 : 0), 0) : 0; }
-  // 이 지방에서 셀 수 있는 전투 방 수: 몬스터가 실제로 나오는 일반 전투 방 (성역 · 연구소 · 안전 구역뿐인 방 · 숨은 샛길 방은 뺀다)
-  //  지형은 시드로 정해지므로 이어하기 · 다시 와도 같은 값 — 지방(level)에 한 번 세어 둔다
-  masteryRooms(lv = this.level) {
-    if (!lv) return 0;
-    if (lv.masteryRoomN == null) {
+  // ---------------- ✨ 샛길 정화 (오염 구역 정화 보상) ----------------
+  //  방은 둘로 나뉜다 (room.zone):
+  //   · main_path — 입구에서 보스방까지 곧장 가는 본길(World 의 room.main). 어둡고 긴장감 있는 분위기 그대로 ·
+  //     몬스터를 다 잡아도 세지 않고, 다른 방에 다녀오면 다시 나타난다 (respawnMainRoom)
+  //   · side_purifiable_room — 갈림길에서 빠지는 샛길 · 고리 길 · 막다른 굴(엘리트 수문장 굴 · 보물방)처럼 본길이 아닌 방 중 침식된 포켓몬이 나오는 곳
+  //     처음엔 보랏빛 가시 덩굴 · 검붉은 침식 안개 · 오염된 포자가 뒤덮고 있다 (game/SideRooms.js)
+  //  샛길 구역 안의 침식된 포켓몬을 마지막 한 마리까지 쓰러뜨리는 순간에만 그 방이 [✨ 정화 완료 (Purified)] 로 영구히 바뀐다 (방에 들어서기만 해서는 세지 않는다)
+  //   → 유대의 불꽃 파동 · 침식이 걷히고 환하고 따뜻한 성역 · 지도에 에메랄드 · 금빛 · 다시 와도(이어하기도) 몬스터가 절대 나오지 않는다 (room.isPurified — RunSave)
+  //  정화한 샛길 구역이 SIDE_STEPS(3곳 · 6곳)에 닿을 때마다 보유 카드 강화 (지방마다 2번 · lv.masteryGot)
+  //  안 세는 곳: 본길 · 몬스터가 없는 방 · 마을 · 성역(peaceful) · 연구소 · 기술머신 비밀방 · 보스방 · 정화한 지방 · 테스트룸
+  sideRoomsOf(lv = this.level) {
+    if (!lv) return [];
+    if (!lv.sideList) {   // 지형은 시드로 정해지므로 이어하기 · 다시 와도 같은 목록 — 지방(level)에 한 번 세어 둔다
       const live = new Set();
-      for (const s of lv.spawns) if (s.room && !s.elite && !this.safeSpawn(s, lv)) live.add(s.room);
-      lv.masteryRoomN = lv.rooms.filter(r => live.has(r) && r.type === 'combat' && !r.peaceful && !r.lab && !r.secret).length;
+      for (const sp of lv.spawns) if (sp.room && !this.safeSpawn(sp, lv)) live.add(sp.room);
+      lv.sideList = lv.test ? [] : lv.rooms.filter(r => !r.main && live.has(r) && !r.lab && !r.tutorial && !r.peaceful && (r.type === 'combat' || r.type === 'pocket' || r.type === 'treasure'));
+      lv.sideSet = new Set(lv.sideList);
+      for (const r of lv.rooms) r.zone = lv.sideSet.has(r) ? 'side_purifiable_room' : r.main ? 'main_path' : null;
     }
-    return lv.masteryRoomN;
+    return lv.sideList;
   }
-  masterySteps(lv = this.level) { return masterySteps(this.masteryRooms(lv)); }
+  isSideRoom(room, lv = this.level) { if (!room || !lv) return false; this.sideRoomsOf(lv); return lv.sideSet.has(room); }
+  sideCount(lv = this.level) { return this.sideRoomsOf(lv).reduce((n, r) => n + (r.isPurified ? 1 : 0), 0); }
+  sideSteps(lv = this.level) { return sideSteps(this.sideRoomsOf(lv).length); }
+  // 이 샛길 구역에 남은 침식된 포켓몬: 아직 나타나지 않은 자리(안전 구역은 빼고) + 살아 있는 몬스터
+  sideRemain(room) {
+    const lv = this.level;
+    if (!room || !lv) return 0;
+    let n = 0;
+    for (const sp of lv.spawns) if (sp.room === room && !sp.spawned && !this.safeSpawn(sp)) n++;
+    for (const e of this.enemies) if (e.alive && !e.boss && e.room === room) n++;
+    return n;
+  }
+  // 몬스터가 쓰러질 때 · 마지막 자리가 안전 구역이라 아무도 나오지 않은 채 끝날 때: 샛길 구역의 침식된 포켓몬을 모두 정화했는가
   checkRoomClear(room) {
-    const lv = this.level, got = (lv && lv.masteryGot) || 0, S = this.masterySteps();
-    if (got >= S.length || !this.isNewClearedCombatRoom(room)) return;
-    room.mastered = true;
-    const n = this.masteryCount(), step = S[got];
+    const lv = this.level;
+    if (!room || !lv || room.isPurified || lv.purified || lv.test || this.test || this.over || !this.isSideRoom(room)) return;
+    if (!(room.foes > 0)) return;   // 아직 한 마리도 마주치지 않았다 (들어서기만 해서는 세지 않는다)
+    if (lv.spawns.some(sp => sp.room === room && !sp.spawned)) return;   // 아직 나타나지 않은 자리가 남았다 (흙에 덮인 굴의 수문장 포함)
+    if (this.enemies.some(e => e.alive && !e.boss && e.room === room)) return;
+    this.purifySideRoom(room);
+  }
+  purifySideRoom(room) {
+    const lv = this.level, p = this.player;
+    room.isPurified = true;
+    if (this.side) this.side.purify(room, p.x, p.y - 10);   // 유대의 불꽃 파동 · 덩굴이 타 사라지고 안개가 걷힌다 → 성역
+    this.atmoRush = 2;   // 비네팅 · 채도 · 주변광이 2초쯤에 걸쳐 환하고 따뜻하게
+    Sfx.play('purify_world');
+    this.fx.floatText(p.x, p.y - 30, '✨ 정화 완료 (Purified)', '#fff0b0', 12);
+    this.time.delayedCall(350, () => { if (this.level === lv) { this.tintRooms(); this.colorTorches(); } });   // 타일 · 횃불이 따뜻한 빛으로
+    this.time.delayedCall(650, () => { if (this.level === lv && this.props) this.props.repaintRoom(room); });   // 시든 나무 · 풀이 푸르게 · 바닥 균열이 사라진다
+    const n = this.sideCount(), S = this.sideSteps(), got = lv.masteryGot || 0;
     this.events.emit('mastery', n);
+    if (got >= S.length) { this.events.emit('toast', '[✨ 정화 완료 (Purified)] 침식된 샛길 구역을 정화했다 — 이제 몬스터가 나오지 않는 성역이다', 'tm'); return; }
+    const step = S[got];
+    this.events.emit('toast', `[✨ 정화 완료 (Purified)] 침식된 샛길 구역을 정화했다! — 샛길 정화 ${Math.min(n, step)} / ${step} 구역`, 'tm');
     if (n < step) return;
     lv.masteryGot = got + 1;
-    const p = this.player;
-    this.fx.ring(p.x, p.y, 40, 0xffd25a, 420); this.fx.burst(p.x, p.y, [0xffd25a, 0x8affb0, 0xffffff], 18, 140, { glow: true, up: 80 });
-    this.events.emit('toast', `🗺️ 전투 구역 ${step}곳 돌파! 지방 탐색 숙련도 보상 — 보유 카드 강화`, 'tm');
-    this.queueBonusCards({ up: step }, .8);   // 전투가 끝난 직후 (보스전 · 연출 · 다른 창이 끝나면)
+    this.time.delayedCall(900, () => {
+      if (this.level !== lv) return;
+      this.events.emit('toast', `✨ 침식된 샛길 구역 ${step}곳 정화! 오염 구역 정화 보상 — 유대의 힘으로 보유 카드 강화`, 'tm');
+      this.fx.ring(p.x, p.y, 40, 0xffd25a, 420); this.fx.burst(p.x, p.y, [0xffd25a, 0x8affb0, 0xffffff], 18, 140, { glow: true, up: 80 });
+    });
+    this.queueBonusCards({ up: step }, 1.8);   // 정화 연출이 끝난 뒤 (보스전 · 다른 창이 끝나면)
+  }
+  // 본길 전투 방(main_path): 다른 방에 MAIN_RESPAWN_MS 넘게 다녀오면 쓰러뜨린 자리에 침식된 포켓몬이 다시 나타난다 (엘리트는 빼고)
+  //  바로 곁 자리는 플레이어가 조금 떨어진 뒤에 나타난다 (minGap — 눈앞에 갑자기 솟지 않게)
+  respawnMainRoom(room) {
+    const lv = this.level, p = this.player;
+    if (!lv || !room || lv.purified || this.test || !room.main || room.type !== 'combat' || room.leftAt == null || this.time.now - room.leftAt < MAIN_RESPAWN_MS) return;
+    for (const sp of lv.spawns) {
+      if (sp.room !== room || !sp.spawned || sp.elite || (sp.enemy && sp.enemy.alive)) continue;
+      sp.spawned = false; sp.enemy = null; sp.minGap = 130;
+    }
   }
   // 강화 창 열기: 보유 카드 중 강화할 수 있는 것 가운데 무작위 3장 (1 ~ 2장뿐이면 그만큼) — 하나도 없으면 체력 30% 회복으로 대신
   openUpgrade(q) {
@@ -3311,7 +3378,7 @@ export default class GameScene extends Phaser.Scene {
     if (!cards.length) {   // 강화할 카드가 없다 (아직 없거나 모두 +3강 ★초월): 체력 회복 보너스
       p.heal(p.m.maxhp * MASTERY_HEAL);
       this.fx.ring(p.x, p.y, 34, 0x7dff9a, 380); this.fx.glow(p.x, p.y, 34, 0x7dff9a, 420, .8); Sfx.play('heal');
-      this.events.emit('toast', `🗺️ 지방 탐색 숙련도 보상 — 강화할 보유 카드가 없어 ${p.formName()} 체력 ${Math.round(MASTERY_HEAL * 100)}% 회복`, 'tm');
+      this.events.emit('toast', `✨ 오염 구역 정화 보상 — 강화할 보유 카드가 없어 ${p.formName()} 체력 ${Math.round(MASTERY_HEAL * 100)}% 회복`, 'tm');
       return;
     }
     this.upActive = { up: q.up, cards, sel: 0, used: false };
@@ -3342,7 +3409,7 @@ export default class GameScene extends Phaser.Scene {
   tryBonusCards() {
     if (!this.bonusQueue || !this.bonusQueue.length || !this.player || this.over || this.paused || this.overlay || this.transitioning || this.cinema || this.storyWait || this.arenaRoom || this.tmOpening) return;
     const q = this.bonusQueue.shift(), p = this.player;
-    if (q && q.up) { this.openUpgrade(q); return; }   // 🗺️ 지방 탐색 숙련도 강화
+    if (q && q.up) { this.openUpgrade(q); return; }   // ✨ 오염 구역 정화 보상: 보유 카드 강화
     const it = typeof q === 'object' ? q : { kind: 'tm', bonus: q, used: false, member: p.m, cards: rollCards(p, { n: BONUS_CARDS }), flipped: Array(BONUS_CARDS).fill(false), sel: -1,
       title: '✨ 빛나는 TM 코어', note: '엘리트 · 보스를 정화하고 얻은 빛나는 TM 코어가 카드 3장을 전송한다' };
     this.tmActive = it;

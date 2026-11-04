@@ -55,7 +55,7 @@ export function snapshotWorld(W) {
     chests: idxWhere(lv.chests, c => c.opened), potions: idxWhere(lv.potions, p => p.taken),
     sides: idxWhere(lv.sides, s => s.revealed), walls: idxWhere(lv.breakables, b => b.broken),
     props: idxWhere(lv.props, p => p.used), tmx: idxWhere(lv.tmx || [], t => t.used),   // tmx: 길목 기술머신 (World 끝)
-    mastered: idxWhere(lv.rooms, r => r.mastered), masteryGot: lv.masteryGot || 0,   // 🗺️ 지방 탐색 숙련도: 센 전투 방 · 받은 강화 수 (GameScene.checkRoomClear)
+    sidePure: idxWhere(lv.rooms, r => r.isPurified), masteryGot: lv.masteryGot || 0,   // ✨ 샛길 정화: 정화한 샛길 구역(다시 몬스터가 나오지 않는다) · 받은 강화 수 (GameScene.purifySideRoom)
     explored: W.explored ? packBits(W.explored) : null,
     areas: [...W.areasSeen]
   };
@@ -72,7 +72,8 @@ export function applyWorld(W, s) {
   for (const i of s.sides) lv.sides[i].revealed = true;
   for (const i of s.props) lv.props[i].used = true;
   for (const i of s.tmx || []) if (lv.tmx && lv.tmx[i]) lv.tmx[i].used = true;
-  set(lv.rooms, s.mastered || [], 'mastered'); lv.masteryGot = s.masteryGot || 0;
+  set(lv.rooms, s.sidePure || [], 'isPurified'); lv.masteryGot = s.masteryGot || 0;
+  if (!s.sidePure && s.mastered) for (const i of s.mastered) if (lv.rooms[i] && !lv.rooms[i].main) lv.rooms[i].isPurified = true;   // 예전 저장(지방 탐색 숙련도): 몬스터를 모두 정화해 센 샛길 방은 정화한 샛길 구역으로
   // 무너진 벽: 격자에서 지우고 이웃 칸 타일 모양을 다시 맞춘다 (GameScene.breakWall 과 같은 계산, 타일 지도는 아직 없다)
   const touched = new Set();
   for (const i of s.walls) {
