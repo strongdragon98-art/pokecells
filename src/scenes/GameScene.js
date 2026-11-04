@@ -45,8 +45,9 @@ import { Settings, keyLabel } from '../systems/Settings.js';
 import { Save } from '../systems/Save.js';
 import { RunSave, seeded, newSeed, snapshotWorld, applyWorld, snapshotPlayer, restorePlayer } from '../systems/RunSave.js';
 import { itemArt, shade, TILE_MARGIN, TILE_SPACING } from '../systems/Textures.js';
-import { rollCards, applyCard, TM_CARDS, heldLv, dressCard, CARD_MAX_LV, BONUS_CARDS, cardStacks, STACK_HP, STACK_ATK, ownedUpgrades, upgradeInfo, masterySteps, MASTERY_HEAL, MASTERY_CARDS } from '../data/tm.js';
+import { rollCards, applyCard, TM_CARDS, heldLv, dressCard, CARD_MAX_LV, BONUS_CARDS, cardScore, ownedUpgrades, upgradeInfo, masterySteps, MASTERY_HEAL, MASTERY_CARDS } from '../data/tm.js';
 import { PERKS, onKill as perkKill } from '../game/Perks.js';
+import { bossSpec, specOf, gearCheck, applyGearPreset, recommendedCardScore, GEAR_WARN } from '../data/balance.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[Math.floor(Math.random() * a.length)];
@@ -2507,13 +2508,14 @@ export default class GameScene extends Phaser.Scene {
     for (let k = 0; k < 5 && WILD[pk.line].flying; k++) pk = pickWildStage(this.stage.pool, tier);   // 수문장은 되도록 땅에 버티고 선 쪽으로
     const top = WILD[pk.line].forms.length - 1, stage = Math.min(top, Math.max(pk.stage, Math.min(2, tier) + 1));
     const { key, def } = wildForm(pk.line, stage), gy = s.y, lv = Math.min(4, this.corruptLevel(s.room) + 1);   // 엘리트는 침식이 한 단계 더 짙다
-    const e = new Enemy(this, key, s.x, def.flying ? gy - 40 : gy - 14, { def, cLv: lv, scale: 1.25, hpMul: (1 + this.stageIdx * .4) * 3.4 * (1 + .25 * (lv - 1)), dmgMul: (1 + this.stageIdx * .25) * 1.5 * (1 + .15 * (lv - 1)) });
+    const S = specOf(this.stageIdx);   // 📊 챕터별 고정 스펙 (data/balance.js) — 플레이어 카드 수와 상관없이 그 지방 기대 빌드에 맞춘 체력 · 공격력
+    const e = new Enemy(this, key, s.x, def.flying ? gy - 40 : gy - 14, { def, cLv: lv, scale: 1.25, hpMul: (1 + this.stageIdx * .4) * 3.4 * (1 + .25 * (lv - 1)) * S.hp, dmgMul: (1 + this.stageIdx * .25) * 1.5 * (1 + .15 * (lv - 1)) * S.atk });
     e.line = pk.line; e.stage = stage; e.elite = true;
     if (!def.flying) e.b.reset(s.x, gy - e.b.height / 2 - 1);
     this.addEnemy(e, s.room || this.room);
     this.fx.ring(s.x, e.y, 34, 0xff3a2a, 460); this.fx.glow(s.x, e.y, 40, 0xff3a2a, 520, 1);
     this.fx.burst(s.x, e.y, [0xff3a2a, 0xffa040, 0xffffff], 20, 130, { glow: true, up: 80 });
-    this.events.emit('toast', `🔥 엘리트 ${def.name}이(가) 길을 막아섰다! 쓰러뜨리면 이상한사탕 · 금구슬${e.stacks > 0 ? ' · ⚔ ' + this.stackNote(e) : ''}`);
+    this.events.emit('toast', `🔥 엘리트 ${def.name}이(가) 길을 막아섰다! 쓰러뜨리면 이상한사탕 · 금구슬 · 빛나는 TM 코어`);
     Sfx.play('boss');
   }
 
@@ -2551,22 +2553,11 @@ export default class GameScene extends Phaser.Scene {
 
   addEnemy(e, room) {
     e.room = room;
-    if ((e.elite || e.boss) && !e.stacks) this.stackScale(e);
     if (room && !e.boss) room.foes = (room.foes || 0) + 1;   // 이 방에 나타난 몬스터 수 (지방 탐색 숙련도: 몬스터가 있던 전투 방만 센다)
     e.colliders = [this.physics.add.collider(e.obj, this.gateGroup)];
     if (!e.def.noclip) e.colliders.push(this.physics.add.collider(e.obj, this.layers, null, e.boss ? (o, tile) => !PLAT_SET.has(tile.index) : null));   // 보스는 통과 발판에 올라서지 않는다
     this.enemies.push(e);
   }
-
-  // 카드 스택 비례 동적 스케일링: 파티가 지닌 · 강화한 기술머신 카드 수(data/tm.js cardStacks)만큼 엘리트 · 보스 체력 +STACK_HP · 공격력 +STACK_ATK (스택마다)
-  stackScale(e) {
-    const n = cardStacks(this.player);
-    e.stacks = n || -1;   // 한 번만 (이어 싸우기 · 짝 보스도 저마다)
-    if (n <= 0) return;
-    const hk = 1 + STACK_HP * n;
-    e.maxhp = Math.round(e.maxhp * hk); e.hp = Math.round(e.hp * hk); e.dmg *= 1 + STACK_ATK * n;
-  }
-  stackNote(e) { const n = e.stacks || 0; return n > 0 ? `카드 ${n}스택 · 체력 +${Math.round(STACK_HP * n * 100)}% · 공격 +${Math.round(STACK_ATK * n * 100)}%` : ''; }
 
   // 아레나 보스: 방의 보스 키 (중간 보스 · 지방 최종 보스 · 히든 전설). 날아다니는 보스는 공중에서
   // 아레나 보스전 시작. 이어 싸우는 순서(chain): prelude(레드의 포켓몬들) → 방 보스 → then(디아루가 → 펄기아)
@@ -2607,8 +2598,9 @@ export default class GameScene extends Phaser.Scene {
       boss.partner = twin; twin.partner = boss; boss.lead = true;
       this.bosses.push(twin);
     }
+    this.gearWarn = gearCheck(this.player, key);   // 🔴 전력 부족: 카드 점수가 이 보스 권장 점수의 75% 미만 (UI 가 보스 체력 바 아래에 붉게)
     this.events.emit('boss', boss);   // UI 가 할로우 나이트식 보스 이름 타이틀을 띄운다
-    if (boss.stacks > 0) this.time.delayedCall(1800, () => { if (boss.alive) this.events.emit('toast', `⚔ ${boss.name} 강화 — ${this.stackNote(boss)}`); });
+    if (this.gearWarn) { const w = this.gearWarn; this.time.delayedCall(1800, () => { if (boss.alive && this.boss === boss) this.events.emit('toast', `⚠️ 전력 부족 — 카드 점수 ${w.score} / 이 보스 권장 ${w.rec} (보유 카드 수 + 강화 단계) · 탐색하며 기술머신 카드를 더 모으고 강화하자`); }); }
     this.fx.shake(.01, 500); Sfx.play('boss');
     Music.play(def.bgm || (def.tier === 'boss' ? this.stage.bossBgm : 'boss_ruin'));   // 보스 전용곡(아비스 네크로즈마) · 지방 최종 보스는 지방 전용곡, 중간·히든 보스는 공용 전투곡
   }
@@ -2683,7 +2675,8 @@ export default class GameScene extends Phaser.Scene {
 
   spawnBoss(key, room, x) {
     const def = BOSSES[key], gy = this.floorAt(x, room);   // 아레나 바닥 (공중 발판 위가 아니라)
-    const boss = new Boss(this, key, x, def.fly ? Math.max(room.top + 40, gy - 70) : gy - 40, { room, hpMul: 1, dmgMul: 1 });
+    const S = bossSpec(key);   // 📊 챕터별 고정 스펙 (data/balance.js): 그 보스가 사는 지방의 체력 · 공격력 · 탄속 배율 — 테스트룸 · 이어 싸우기 · 짝 보스도 같다
+    const boss = new Boss(this, key, x, def.fly ? Math.max(room.top + 40, gy - 70) : gy - 40, { room, hpMul: S.hp, dmgMul: S.atk, shotMul: S.shot });
     if (!def.fly) boss.b.reset(x, gy - boss.b.height / 2 - 1);
     boss.state = 'intro'; boss.intangible = true;
     this.addEnemy(boss, room);
@@ -3693,6 +3686,28 @@ export default class GameScene extends Phaser.Scene {
     p.grantAll();
     this.fx.ring(p.x, p.y, 34, 0x9ad8ff, 380);
     Sfx.play('select');
+  }
+  // ⚡ 테스트룸: 지금 보스(싸우는 중이면 그 보스 · 아니면 워프해 온 보스방 · 고른 보스)의 지방 기대 카드 스펙을 자동 장착 (data/balance.js applyGearPreset)
+  //  지금 카드는 모두 지운 뒤 · 유대의 불꽃도 그 시점 단계로 · 파티 회복
+  testPresetTarget() {
+    const live = (this.bosses || []).find(b => b.alive);
+    const key = live ? live.bossKey : (this.testOpt && this.testOpt.arena) || (this.scene.get('UI') || {}).testBossKey || null;
+    const ci = key ? bossSpec(key).ci : this.testReal ? this.stageIdx : (this.testOpt ? this.testOpt.ci : this.stageIdx);
+    return { key, ci, rec: key ? recommendedCardScore(key) : specOf(ci).score };
+  }
+  testGearPreset() {
+    const p = this.player;
+    if (!p || !this.test) return null;
+    const t = this.testPresetTarget();
+    this.testResetCards();
+    const r = applyGearPreset(p, t.ci, t.rec);
+    const keys = [0, 1, 2, 3, HEROES_KEY, 4], bond = specOf(t.ci).bond;
+    this.bondStages = new Set(keys.slice(0, bond));   // 그 시점 유대의 불꽃 (정화한 지방 + 용나선탑 흑백 영웅)
+    for (const m of p.members) { p.refreshMods(m); m.alive = true; m.hp = m.maxhp; }
+    this.testHeal(true);
+    this.fx.ring(p.x, p.y, 44, 0xffd25a, 460); this.fx.burst(p.x, p.y, [0xffd25a, 0xffffff, 0x8ad8ff], 22, 150, { glow: true, up: 90 });
+    Sfx.play('unlock');
+    return Object.assign(r, { key: t.key, bossRec: t.rec, bond: this.bondStage });
   }
   // 🃏 카드 샌드박스: 고른 카드 한 장을 실전과 같은 적용 창(포켓몬 지정 → 기술 자리)으로 — lv: 0 명함 · 1~3 강화 단계 (적용하면 그 단계까지 바로 합성)
   //  쓸 수 있는 포켓몬 제한 없음 (파티 모두)

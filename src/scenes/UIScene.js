@@ -12,7 +12,8 @@ import { BOND_POWERS } from '../data/bond.js';
 import { PERKS } from '../game/Perks.js';
 import { STAGES, areaLabel } from '../data/stages.js';
 import { typeName, typeColor, hex, matchups } from '../data/types.js';
-import { GRADE_STYLE, UPGRADES, BOOSTS, TM_CARDS, BONUS_CARDS, rollCards, heldLv, mergePreview, lvTag, CARD_MAX_LV, MAX_BONUS, sandboxCards, SANDBOX_GROUPS, GRADES } from '../data/tm.js';
+import { GRADE_STYLE, UPGRADES, BOOSTS, TM_CARDS, BONUS_CARDS, rollCards, heldLv, mergePreview, lvTag, CARD_MAX_LV, MAX_BONUS, sandboxCards, SANDBOX_GROUPS, GRADES, cardScore } from '../data/tm.js';
+import { bossSpec, recommendedCardScore, WARN_RATIO, GEAR_WARN } from '../data/balance.js';
 
 // 특성 카드 분류 → 카드 가운데 아이콘 글자 (기술 아이콘이 없는 카드)
 const TM_K = .88, TM_GAP = 150;   // 기술머신 카드 4장: 크기 배율 · 카드 사이 간격 (한 줄 590px 안)
@@ -33,7 +34,7 @@ import { npcArt } from '../game/Npc.js';
 import { bossHome, TEST_LANDMARKS, landmarkCi } from '../game/TestRoom.js';
 // 🃏 카드 샌드박스 적용 단계 (0 명함 · 1~3 강화 — data/tm.js applyCard 를 그 단계까지 거듭한다)
 const SANDBOX_LV = ['명함', '+1강', '+2강', '+3강 ★초월'];
-const SB_PER = 21;   // 카드 샌드박스 한 쪽 (3열 × 7줄)
+const SB_PER = 18;   // 카드 샌드박스 한 쪽 (3열 × 6줄 — 위에 ⚡ 권장 스펙 자동 장착 줄)
 const TEST_TABS = [['mon', '🧪 포켓몬 · 진화'], ['boss', '👑 보스방 워프'], ['land', '🗺️ 랜드마크 입구 & 길목'], ['cards', '🃏 카드 샌드박스']];
 import { Save } from '../systems/Save.js';
 import { RosterPanel } from '../systems/RosterPanel.js';
@@ -250,6 +251,8 @@ export default class UIScene extends Phaser.Scene {
     // ── 보스 체력 (아래 가운데) + 보스 등장 타이틀 (오른쪽)
     this.tBoss = hkText(this, 320, 330, '', 10, HK.ivory, { ls: 3, bold: true, origin: [.5, 1] });
     this.tStagger = hkText(this, 210, 343.5, '', 7, '#ffb040', { bold: true, origin: [1, .5] });   // 보스 그로기 게이지 이름표
+    this.tGearWarn = hkText(this, 320, 352.5, GEAR_WARN, 7, '#ff5a4a', { bold: true, origin: .5 });   // 🔴 전력 부족 경고 (보스 체력 바 아래 · data/balance.js gearCheck)
+    fitText(this.tGearWarn, 430); this.tGearWarn.setVisible(false);
     this.tBossSub = hkText(this, 626, 236, '', 10, HK.dim, { ls: 2, origin: [1, 0] }).setDepth(21).setAlpha(0);
     this.tBossName = hkText(this, 626, 250, '', 26, HK.ivory, { ls: 3, bold: true, origin: [1, 0], glow: true }).setDepth(21).setAlpha(0);
     this.bossLine = fadeLine(this, 540, 288, 200, .8).setDepth(21).setAlpha(0);
@@ -749,6 +752,7 @@ export default class UIScene extends Phaser.Scene {
       const gro = duo ? duo.map((q, i) => q.alive && sg(q, 214 + i * 110, 102)).some(Boolean) : sg(boss, 214, 212);
       this.tStagger.setText(gro ? 'GROGGY' : '그로기').setColor(gro ? '#ffe060' : '#ffb040');
     } else this.tStagger.setText('');
+    this.tGearWarn.setVisible(!!(showBoss && gs.gearWarn)).setAlpha(.72 + Math.sin(time / 260) * .28);   // 🔴 전력 부족: 카드 점수가 이 보스 권장 점수의 75% 미만
     // 화면 밖 보스: 가장자리에 그쪽을 가리키는 표식 (아레나가 화면보다 넓을 때 · 땅속에 숨은 동안은 없음)
     if (showBoss) for (const bq of duo || [boss]) {
       if (!bq.alive || bq.sprite.alpha <= .2) continue;
@@ -1807,7 +1811,7 @@ export default class UIScene extends Phaser.Scene {
       ? (touch ? '카드를 고르고 아래 모습 버튼을 누르면 그 자리에 바로 출전 · 카드를 한 번 더 누르면 1단으로' : '←→↑↓ 카드 · Q/E 분류 · 0~9 세대 · Z X C V B 모습 · A S D 자리 · Enter 1단으로 · Tab 다음 탭 · T · Esc 닫기')
       : tab === 'boss' ? (touch ? '보스를 고르고 한 번 더 누르거나 「보스방 워프」 · 실제 지방 맵의 보스방에서 등장 연출부터 싸운다' : '←→↑↓ 보스 · Enter 보스방 워프 · A 허브 아레나 · H 보스 체력 50% · Tab 다음 탭 · T · Esc 닫기')
       : tab === 'land' ? (touch ? '길목 · 정문 앞 버튼을 누르면 실제 지방 맵 그 자리로 · 정문 앞에서 F(조사)로 출입문 포털 확인' : '↑↓ 랜드마크 · ← → 길목 / 정문 · Enter 워프 · 1~7 바로 · Tab 다음 탭 · T · Esc 닫기')
-      : (touch ? '카드를 누르면 실전과 같은 포켓몬 지정 창 · 위에서 분류 · 등급 · 적용 단계를 고른다' : '←→↑↓ 카드 · Enter 적용 · Q/E 분류 · G 등급 · 1~4 단계 · PgUp/PgDn 쪽 · R 초기화 · F1 · Esc 닫기');
+      : (touch ? '⚡ 버튼은 지금 보스 지방의 기대 빌드를 한 번에 · 카드를 누르면 실전과 같은 포켓몬 지정 창 · 위에서 분류 · 등급 · 적용 단계' : '←→↑↓ 카드 · Enter 적용 · Q/E 분류 · G 등급 · 1~4 단계 · PgUp/PgDn 쪽 · P 권장 스펙 · R 초기화 · F1 · Esc 닫기');
     L.add(hkText(this, 320, 351, msg || hint, 8, msg ? HK.gold : HK.faint, { origin: .5 }));
     if (tab === 'mon') this.testMonTab(L); else if (tab === 'boss') this.testBossTab(L); else if (tab === 'land') this.testLandTab(L); else this.testCardTab(L);
     this.input.keyboard.on('keydown', this.onOverlayKey, this);
@@ -1887,7 +1891,8 @@ export default class UIScene extends Phaser.Scene {
     L.add(hkText(this, 18, 291, `${st.short} · ${st.areas[home.ai].name} · ${real ? '실제 보스방 (지형 · 배경 · 조명 · 기믹 그대로)' : '실제 보스방 없음 → 허브 아레나'}`, 8, real ? '#8ad8ff' : HK.dim));
     let tx = 18;
     for (const t of def.types) tx += typePill(this, L, tx, 306, t, 8) + 4;
-    L.add(hkText(this, tx + 4, 306, `체력 ${def.hp} · 공격 ${def.dmg}`, 8, HK.dim));
+    const BS = bossSpec(k);   // 📊 챕터별 고정 스펙 (data/balance.js)
+    L.add(fitText(hkText(this, tx + 4, 306, `체력 ${Math.round(def.hp * BS.hp)} (×${BS.hp}) · 공격 ${Math.round(def.dmg * BS.atk)} (×${BS.atk})${BS.shot > 1 ? ` · 탄속 ×${BS.shot}` : ''} · 권장 카드 점수 ${recommendedCardScore(k)}`, 8, HK.dim), 392 - tx));
     const notes = [];
     if (def.megaName || def.rage) notes.push(`체력 50%에서 ${def.megaName ? def.megaName + '(으)로' : '폭주'}`);
     if (def.pair) notes.push(`${BOSSES[def.pair].name}와(과) 함께`);
@@ -1965,15 +1970,19 @@ export default class UIScene extends Phaser.Scene {
     const pages = Math.max(1, Math.ceil(list.length / SB_PER));
     S.sel = Phaser.Math.Clamp(S.sel, 0, Math.max(0, list.length - 1)); S.page = Math.floor(S.sel / SB_PER);
     this.sbList = list; this.sbPages = pages;
+    // ⓪ ⚡ 지금 보스의 권장 카드 스펙 자동 장착 (그 지방 기대 빌드 · data/balance.js)
+    const T = gs.testPresetTarget(), sc = cardScore(p), low = sc < T.rec * WARN_RATIO;
+    glassButton(this, 16, 52, 318, 21, '[ ⚡ 현재 보스 권장 카드 스펙 자동 장착 (Auto-Preset) ]', () => this.testPreset(), { size: 8.5, ls: 0, bold: true, layer: L, primary: true });
+    L.add(fitText(hkText(this, 342, 62.5, `${STAGES[T.ci].short}${T.key ? ' · ' + this.testBossName(T.key) : ''} 기준  ·  권장 카드 점수 ${T.rec}  ·  지금 ${sc}${low ? '  ⚠️ 전력 부족' : ''}`, 8, low ? '#ff7a6a' : '#8ad8ff', { bold: true, origin: [0, .5] }), 282));
     // ① 분류
     SANDBOX_GROUPS.reduce((x, [id, name]) => {
       const n = id === 'all' ? all.length : all.filter(c => c.group === id).length;
-      return x + this.sbChip(L, x, 56, `${name} ${n}`, S.group === id, HK.goldN, () => { S.group = id; S.sel = 0; Sfx.play('select'); this.showTest('cards'); }) + 4;
+      return x + this.sbChip(L, x, 78, `${name} ${n}`, S.group === id, HK.goldN, () => { S.group = id; S.sel = 0; Sfx.play('select'); this.showTest('cards'); }) + 4;
     }, 16);
     // ② 등급 · 적용 단계
-    [['all', '전 등급'], ...GRADES.map(g => [g, g])].reduce((x, [id, name]) => x + this.sbChip(L, x, 76, name, S.grade === id, id === 'all' ? HK.goldN : GRADE_STYLE[id].glow, () => { S.grade = id; S.sel = 0; Sfx.play('select'); this.showTest('cards'); }) + 4, 16);
-    L.add(hkText(this, 366, 84, '적용 단계', 8, HK.dim, { bold: true, origin: [1, .5] }));
-    SANDBOX_LV.reduce((x, name, lv) => { const w = lv === 3 ? 78 : 50; glassButton(this, x, 76, w, 17, name, () => { S.lv = lv; Sfx.play('select'); this.showTest('cards'); }, { size: 8, ls: 0, layer: L, primary: S.lv === lv, bold: S.lv === lv }); return x + w + 4; }, 372);
+    [['all', '전 등급'], ...GRADES.map(g => [g, g])].reduce((x, [id, name]) => x + this.sbChip(L, x, 98, name, S.grade === id, id === 'all' ? HK.goldN : GRADE_STYLE[id].glow, () => { S.grade = id; S.sel = 0; Sfx.play('select'); this.showTest('cards'); }) + 4, 16);
+    L.add(hkText(this, 366, 106, '적용 단계', 8, HK.dim, { bold: true, origin: [1, .5] }));
+    SANDBOX_LV.reduce((x, name, lv) => { const w = lv === 3 ? 78 : 50; glassButton(this, x, 98, w, 17, name, () => { S.lv = lv; Sfx.play('select'); this.showTest('cards'); }, { size: 8, ls: 0, layer: L, primary: S.lv === lv, bold: S.lv === lv }); return x + w + 4; }, 372);
     // ③ 카드
     const desc = hkText(this, 16, 304, '', 7.5, HK.dim, { style: { wordWrap: { width: 380, useAdvancedWrap: true } } });
     const showDesc = c => desc.setText(c ? `${c.name}  —  ${c.desc}` : '조건에 맞는 카드가 없어요').setColor(c ? HK.ivory : HK.faint);
@@ -1981,7 +1990,7 @@ export default class UIScene extends Phaser.Scene {
     for (let k = 0; k < SB_PER; k++) {
       const idx = S.page * SB_PER + k, card = list[idx];
       if (!card) break;
-      const x = 16 + (k % 3) * 204, y = 98 + Math.floor(k / 3) * 29, on = idx === S.sel, st = GRADE_STYLE[card.grade] || GRADE_STYLE.커먼;
+      const x = 16 + (k % 3) * 204, y = 120 + Math.floor(k / 3) * 29, on = idx === S.sel, st = GRADE_STYLE[card.grade] || GRADE_STYLE.커먼;
       const g = this.add.graphics(); L.add(g);
       const draw = hot => { g.clear(); glassPanel(g, x, y, 200, 27, { r: 5, fill: hot ? 0x1e1a30 : 0x0d0c16, border: st.glow, borderAlpha: hot ? .95 : .3, alpha: .88 }); g.fillStyle(st.glow, hot ? 1 : .75); g.fillRect(x + 2, y + 4, 2.5, 19); };
       draw(on); cells.push(draw);
@@ -2019,6 +2028,12 @@ export default class UIScene extends Phaser.Scene {
     return w;
   }
   testCardPick(card) { if (!card) return; Sfx.play('select'); this.gs.testCardSandbox(card, (this.sb && this.sb.lv) || 0); }
+  // ⚡ 권장 카드 스펙 자동 장착: 지금 카드를 지우고 그 지방 기대 빌드로 (GameScene.testGearPreset)
+  testPreset() {
+    const r = this.gs.testGearPreset();
+    if (!r) return;
+    this.showTest('cards', `⚡ ${r.name} 권장 스펙 장착 — 카드 ${r.cards}장 · 카드 점수 ${r.score} (권장 ${r.bossRec}) · ★초월 ${r.max3}장 · 유대의 불꽃 Lv.${r.bond} · 파티 회복`);
+  }
   testCardPage(d) { const S = this.sb; if (!S) return; const pg = Phaser.Math.Clamp(S.page + d, 0, (this.sbPages || 1) - 1); if (pg === S.page) return; S.sel = pg * SB_PER; Sfx.play('select'); this.showTest('cards'); }
   testCardReset() { this.gs.testResetCards(); this.showTest('cards', '🔄 파티 모두 기술머신 카드 효과를 지우고 지금 모습의 기본 기술로 되돌렸어요'); }
   testCardKey(e) {
@@ -2032,6 +2047,7 @@ export default class UIScene extends Phaser.Scene {
     else if (e.code === 'KeyG') { const ids = ['all', ...GRADES]; S.grade = ids[(ids.indexOf(S.grade) + 1) % ids.length]; S.sel = 0; Sfx.play('select'); this.showTest('cards'); }
     else if (e.code === 'PageUp' || e.code === 'PageDown') this.testCardPage(e.code === 'PageDown' ? 1 : -1);
     else if (e.code === 'KeyR') this.testCardReset();
+    else if (e.code === 'KeyP') this.testPreset();
   }
 
   // ---------------- 퀵 디버그 바 (테스트 모드 — 허브 · 워프한 보스방 · 랜드마크 어디서든 오른쪽 위, 반투명) ----------------

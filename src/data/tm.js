@@ -204,10 +204,9 @@ export function masterySteps(n) {
   const b = Math.max(1, Math.min(n, Math.round(n * MASTERY_FRAC[1])));
   return [Math.max(1, Math.min(b - 1, Math.round(n * MASTERY_FRAC[0]))), b];
 }
-// 카드 스택: 파티가 지닌 · 강화한 기술머신 카드 수 (특성 장 수 · 스킬 강화 1 + 단계 · 기술 카드 1 + 단계 · 원작 개조 · 숙련)
-//  엘리트 · 보스는 나타날 때 스택마다 체력 +STACK_HP · 공격력 +STACK_ATK (GameScene.stackScale) — 카드로 강해진 만큼 적도 버틴다
-export const STACK_HP = .06, STACK_ATK = .03;
-export function cardStacks(p) {
+// 카드 점수(총 카드 가치): 파티가 지닌 · 강화한 기술머신 카드 = 보유 카드 수 + 강화 단계 합 (특성 장 수 · 스킬 강화 1 + 단계 · 기술 카드 1 + 단계 · 원작 개조 · 숙련)
+//  보스 · 엘리트 스탯에는 쓰지 않는다 (챕터별 고정 스펙 — data/balance.js) · 보스전 🔴 전력 부족 경고와 테스트룸 자동 장착이 권장 점수와 견준다
+export function cardScore(p) {
   let n = 0;
   for (const m of (p && p.members) || []) {
     for (const v of Object.values(m.perks || {})) n += v || 0;
@@ -537,6 +536,6 @@ export function applyCard(player, m, card, slot) {
     return n > 1 ? `${pk.name} 강화 합성 ${lvTag(lv - 1)} → ${lvTag(lv)}${lv === 2 ? ' · 등급 승급!' : ''}${lv >= CARD_MAX_LV ? ' · ' + MAX_BONUS.perk : ''} · ${pk.desc} (효과 ×${lvMul(lv).toFixed(1)})` : pk.desc;
   }
   MASTERY[card.id].apply(m, player);
-  m.mastery = (m.mastery || 0) + 1;   // 카드 스택 (cardStacks)
+  m.mastery = (m.mastery || 0) + 1;   // 카드 점수 (cardScore)
   return card.name;
 }

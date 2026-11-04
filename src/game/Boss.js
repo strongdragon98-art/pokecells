@@ -26,7 +26,7 @@ const STAGGER_GAIN = { super: 6, normal: 0, weak: 0, immune: 0 };
 const STAGGER_REF = .025, STAGGER_MIN = .8, STAGGER_MAX = 7, STAGGER_DECAY = 6, STAGGER_TOUGH = .6;
 export const GROGGY_T = 2.25, GROGGY_MUL = 1.35;
 // 보스 탄 규칙: 한 번의 시전(idle 을 떠나 다음 idle 까지)에 쏘는 탄은 최대 MAX_CAST_SHOTS 발 (넘치면 쏘지 않는다 — Boss.shot) — 연속 패링 반사 딜이 과하게 쌓이지 않게
-//  탄속: 직선으로 나는 보스 탄은 Combat 이 BOSS_MIN_SPEED 이상으로 (보스마다 def.shotMul 배 — 다크라이 2배) · 스스로 움직이는 탄은 날아가기 시작할 때 bossSpeed
+//  탄속: 직선으로 나는 보스 탄은 Combat 이 BOSS_MIN_SPEED 이상으로 (보스마다 shotK 배 = def.shotMul(다크라이 2배) × 지방 고정 스펙 탄속) · 스스로 움직이는 탄은 날아가기 시작할 때 bossSpeed
 export const MAX_CAST_SHOTS = 5;
 // ⚠️ 붉은 안광 (패링 불가): 강력한 돌진 · 내려찍기 · 대폭발 직전 — 보스 눈에 붉은 십자 안광 + 「⚠️ DANGER!」 (dangerOn)
 //  강력한 패턴(DANGER_STATES: 몸통 돌진 · 도약 내려찍기 · 잡기 · 폭격 질주)은 시전마다 DANGER_P(광폭화면 DANGER_RAGE_P) 확률로 — 시작 직전 DANGER_HOLD 초 멈칫하며 번쩍인다
@@ -36,12 +36,13 @@ const DANGER_P = .5, DANGER_RAGE_P = .7, DANGER_HOLD = .42, DANGER_BOOM_R = 40, 
 // 🔥 광폭화: 체력 RAGE_HP 이하 — 패턴 시계(예비 동작 · 후딜레이 · 쿨타임)와 몸놀림이 RAGE 배 빨라지고, 패턴이 끝난 뒤 쉬는 시간이 RAGE_CD 배로 한 번 더 준다
 export const RAGE_HP = .4, RAGE = 1.25;
 const RAGE_CD = .8;
-const bossSpeed = (sp, e) => Math.max(sp * ENEMY_FAST * ((e && e.def.shotMul) || 1), BOSS_MIN_SPEED);
+const bossSpeed = (sp, e) => Math.max(sp * ENEMY_FAST * ((e && (e.shotK || e.def.shotMul)) || 1), BOSS_MIN_SPEED);
 
 export class Boss extends Enemy {
   constructor(scene, key, x, y, o = {}) {
     super(scene, BOSSES[key].sprite || key, x, y, { def: BOSSES[key], boss: true, scale: 2, hpMul: o.hpMul, dmgMul: o.dmgMul });   // sprite: 레드의 피카츄·리자몽처럼 도트만 빌려 쓰는 보스
     this.bossKey = key;
+    this.shotK = (this.def.shotMul || 1) * (o.shotMul || 1);   // 탄속: 보스 고유 배율(다크라이 2배) × 지방 고정 스펙(data/balance.js — 성도부터 상향)
     this.room = o.room;
     this.state = 'intro'; this.timer = 1.6; this.cd = 1.4; this.last = null; this.phase = 1;
     this.sprite.setAlpha(1);
@@ -78,7 +79,7 @@ export class Boss extends Enemy {
     this.castShots = (this.castShots || 0) + 1;
     const big = c.boom && c.boom.r >= DANGER_BOOM_R && (c.dmg ?? this.dmg) > 0;   // 큰 폭발탄: 붉은 안광 (패링 불가)
     if (big && !this.danger) this.dangerOn(false);
-    return this.scene.combat.spawnProjectile(Object.assign({ owner: 'enemy', dmg: this.dmg, type: this.types[0], tier: this.megaForm ? 3 : 2, stream: !c.boom, fast: true, boss: true, spdMul: this.def.shotMul || 1, src: this, danger: !!this.danger }, c));   // src: 패링 반사탄이 이 보스를 겨눈다
+    return this.scene.combat.spawnProjectile(Object.assign({ owner: 'enemy', dmg: this.dmg, type: this.types[0], tier: this.megaForm ? 3 : 2, stream: !c.boom, fast: true, boss: true, spdMul: this.shotK, src: this, danger: !!this.danger }, c));   // src: 패링 반사탄이 이 보스를 겨눈다
   }
   spare(n) { return MAX_CAST_SHOTS - (this.castShots || 0) >= n; }   // 이번 시전에 아직 n 발을 쏠 수 있는지 (양쪽 충격파처럼 짝지어 나가는 탄)
   groundY() { return this.scene.level ? this.scene.groundBelow(this.x, this.b.y) : this.bottom; }

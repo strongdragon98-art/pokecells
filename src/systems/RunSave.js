@@ -103,7 +103,7 @@ function memberSnap(m) {
   return {
     key: m.key, hp: Math.round(m.hp), alive: m.alive, tier: m.tier, peakTier: Math.max(m.peakTier || 0, m.tier), exp: m.exp, mega: m.mega, megaPick: m.megaPick || 0,
     items: { ...m.items }, perks: { ...(m.perks || {}) }, skills: { ...m.skills }, ups: [...m.ups], atkBonus: m.atkBonus, cdBonus: m.cdBonus, learned: [...m.learned], chargeType: m.chargeType || null, cardGrade: { ...(m.cardGrade || {}) }, cardLv: { ...(m.cardLv || {}) },
-    gear: { ...(m.gear || {}) }, boostCards: (m.boostCards || []).map(e => ({ ...e })), vit: { ...(m.vit || {}) }, mastery: m.mastery || 0   // mastery: 숙련 카드 수 (카드 스택)
+    gear: { ...(m.gear || {}) }, boostCards: (m.boostCards || []).map(e => ({ ...e })), vit: { ...(m.vit || {}) }, mastery: m.mastery || 0   // mastery: 숙련 카드 수 (카드 점수)
   };
 }
 // 저장해 둔 진행을 포켓몬 m 에 덮어쓴다
