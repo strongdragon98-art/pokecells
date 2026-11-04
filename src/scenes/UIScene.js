@@ -12,7 +12,7 @@ import { BOND_POWERS } from '../data/bond.js';
 import { PERKS } from '../game/Perks.js';
 import { STAGES, areaLabel } from '../data/stages.js';
 import { typeName, typeColor, hex, matchups } from '../data/types.js';
-import { GRADE_STYLE, UPGRADES, BOOSTS, TM_CARDS, BONUS_CARDS, DATA_KILLS, rollCards, heldLv, mergePreview, lvTag, CARD_MAX_LV, MAX_BONUS, sandboxCards, SANDBOX_GROUPS, GRADES } from '../data/tm.js';
+import { GRADE_STYLE, UPGRADES, BOOSTS, TM_CARDS, BONUS_CARDS, MASTERY_STEPS, rollCards, heldLv, mergePreview, lvTag, CARD_MAX_LV, MAX_BONUS, sandboxCards, SANDBOX_GROUPS, GRADES } from '../data/tm.js';
 
 // 특성 카드 분류 → 카드 가운데 아이콘 글자 (기술 아이콘이 없는 카드)
 const TM_K = .88, TM_GAP = 150;   // 기술머신 카드 4장: 크기 배율 · 카드 사이 간격 (한 줄 590px 안)
@@ -213,9 +213,9 @@ export default class UIScene extends Phaser.Scene {
       return { t, s, act };
     });
     this.tTip = this.add.text(MASK_X - 8, 104, '', txt(10, HK.ivory, { backgroundColor: '#0d0c16ee', padding: { x: 7, y: 5 }, lineSpacing: 3 })).setDepth(30);
-    // ── 전투 데이터 축적 게이지 (HUD 링크 줄 아래): 일반 야생 DATA_KILLS(20) 마리마다 현장 기술머신 전송 (GameScene.addBattleData)
-    this.gData = this.add.graphics().setDepth(3); this.dataPulse = 0;
-    this.tData = hkText(this, 14, 131, '', 8, '#9ad8ff', { ls: 0 }).setDepth(3);
+    // ── 🗺️ 지방 탐색 숙련도 미니 게이지 (화면 위쪽 가운데 · 유대의 불꽃 아래): 새로 정화한 전투 방 n / 5 → n / 10 (GameScene.checkRoomClear)
+    this.gMastery = this.add.graphics().setDepth(3); this.masteryPulse = 0;
+    this.tMastery = hkText(this, B.x, B.y + 4, '', 8, '#ffe8a8', { origin: [.5, 0] }).setDepth(3);
     if (this.gs.test) this.buildDebugBar();   // 테스트 모드: 오른쪽 위 퀵 디버그 바
 
     // ── 스킬 바: 사각 카드 칸 (대시 · Z · X · C · Q Z기술) — 디자인은 설정 → 스킬 UI 스타일 (샘플 A · B · C)
@@ -321,7 +321,8 @@ export default class UIScene extends Phaser.Scene {
       banner: (a, b) => this.banner(a, b),
       area: a => this.areaTitle(a),
       overlay: kind => kind === 'map' ? this.showMap() : kind === 'inv' ? (this.invMember = null, this.showInv()) :   // 가방은 열 때마다 출전 중인 포켓몬부터
-         kind === 'tm' ? (this.tmModal = this.gs.tmActive && this.gs.tmActive.sandbox ? { step: 'who', target: null, tip: null } : null, this.showTM())   // 🃏 카드 샌드박스: 카드를 누른 순간 실전과 같은 포켓몬 지정 창
+         kind === 'tm' ? (this.tmModal = this.gs.tmActive && this.gs.tmActive.sandbox ? { step: 'who', target: null, tip: null } : null, this.showTM())
+        : kind === 'upgrade' ? this.showUpgrade()   // 🗺️ 지방 탐색 숙련도: 보유 카드 강화 (3장 앞면 · 누르면 바로 +1)   // 🃏 카드 샌드박스: 카드를 누른 순간 실전과 같은 포켓몬 지정 창
         : kind === 'shop' ? (this.shopMoneyShown = null, this.shopQty = 1, this.shopConfirm = null, this.showShop())   // 포켓샵 (scenes/ShopMenu.js)
         : kind === 'taxi' ? this.showTaxi() : kind === 'talk' ? this.showTalk() : kind === 'debug' ? this.showDebug() : kind === 'test' ? this.showTest() : kind === 'settings' ? this.showSettings(0) : kind === 'box' ? this.showBox() : kind === 'join' ? this.showJoin() : this.clearOverlay(),
       lore: s => this.showLore(s),
@@ -330,7 +331,7 @@ export default class UIScene extends Phaser.Scene {
       caption: (s, ms) => this.showCaption(s, ms),   // 이야기 자막 (GameScene.bondFlameCinematic)
       bond: (s, n) => this.showBondNote(s, n),   // 유대의 불꽃 공명 (GameScene.bondPurify · bondStageGain)
       bondPower: n => this.showBondPower(n),   // 유대의 불꽃 Lv.n 권능 해금 배너 (GameScene.bondPowerUnlock)
-      battleData: () => { this.dataPulse = 1; },   // 전투 데이터 축적 (GameScene.addBattleData)
+      mastery: () => { this.masteryPulse = 1; },   // 🗺️ 지방 탐색 숙련도 +1 (GameScene.checkRoomClear)
       boss: b => { if (b) this.bossTitle(b); },
       clearTitles: () => { this.tweens.killTweensOf([this.loreBox, this.captionBox, this.bondBox]); this.loreBox.setAlpha(0); this.captionBox.setAlpha(0); this.bondBox.setAlpha(0); this.bossTitleT = 0; },   // 테스트룸에서 보스를 바로 바꿀 때 앞 보스의 이름 · 트레이너 대사를 지운다
       unlock: (k, kind) => this.onUnlock(k, kind),
@@ -447,19 +448,21 @@ export default class UIScene extends Phaser.Scene {
     this.tweens.add({ targets: box, alpha: 0, duration: 800, delay: 4500, ease: 'Sine.easeIn', onComplete: () => { ev.remove(); box.destroy(); if (this.bondPowerBox === box) this.bondPowerBox = null; } });
     this.bondPulse = 1;
   }
-  // 전투 데이터 축적 게이지 (HUD 링크 줄 아래 · 가는 하늘색 막대)
-  drawData(dt) {
-    const p = this.gs.player, g = this.gData;
+  // 🗺️ 지방 탐색 숙련도 미니 게이지: [ 🗺️ 지방 숙련도: 3 / 5 방 ] → (첫 강화 뒤) [ … 7 / 10 방 ] → 완료 · 가는 금빛 막대 (테스트룸 · 정화한 지방은 숨김)
+  drawMastery(dt) {
+    const gs = this.gs, lv = gs.level, g = this.gMastery;
     g.clear();
-    const show = !!p && !this.overlayMode;
-    this.tData.setVisible(show);
+    const show = !!(gs.player && lv && !this.overlayMode && !gs.test && !lv.purified);
+    this.tMastery.setVisible(show);
     if (!show) return;
-    this.dataPulse = Math.max(0, (this.dataPulse || 0) - dt * 2);
-    const n = p.dataKills || 0, x = 14, y = 143, w = 84;
-    this.tData.setText(`📡 전투 데이터 ${n}/${DATA_KILLS}`).setColor(this.dataPulse > 0 ? '#ffffff' : '#9ad8ff');
-    g.fillStyle(0x0a1420, .85); g.fillRect(x, y, w, 3);
-    g.fillStyle(0x6ad8ff, .95); g.fillRect(x, y, w * n / DATA_KILLS, 3);
-    if (this.dataPulse > 0) { g.fillStyle(0xffffff, this.dataPulse * .8); g.fillRect(x, y - 1, w * n / DATA_KILLS, 5); }
+    this.masteryPulse = Math.max(0, this.masteryPulse - dt * 1.6);
+    const got = lv.masteryGot || 0, done = got >= MASTERY_STEPS.length, step = MASTERY_STEPS[Math.min(got, MASTERY_STEPS.length - 1)], n = done ? step : Math.min(step, gs.masteryCount());
+    this.tMastery.setText(done ? '[ 🗺️ 지방 숙련도: 완료 ✓ ]' : `[ 🗺️ 지방 숙련도: ${n} / ${step} 방 ]`).setColor(this.masteryPulse > 0 ? '#ffffff' : done ? '#8affb0' : '#ffe8a8');
+    const w = 96, x = B.x - w / 2, y = B.y + 16, k = Math.min(1, n / step);
+    g.fillStyle(0x140c06, .85); g.fillRect(x, y, w, 3);
+    g.fillStyle(done ? 0x6aff9a : 0xffc24a, .95); g.fillRect(x, y, w * k, 3);
+    if (!done && got > 0) { g.fillStyle(0xffffff, .6); g.fillRect(Math.round(x + w * MASTERY_STEPS[got - 1] / step), y - 1, 1, 5); }   // 지난 강화 지점 눈금
+    if (this.masteryPulse > 0) { g.fillStyle(0xffffff, this.masteryPulse * .7); g.fillRect(x, y - 1, w * k, 5); }
   }
   // HUD 유대의 불꽃: 정화 단계(0~6)에 따라 목표 크기가 정해지고, 화면의 불꽃은 그 크기까지 천천히 자란다 (단계가 오르면 크게 맥동하며 커진다)
   //  세 겹 불꽃은 서로 다른 박자로 일렁이고(가로 · 세로 · 기울기), 곁불꽃은 엇박으로 솟았다 잦아든다 · 불씨가 위로 피어오른다 · Lv.6 은 빛살 고리
@@ -659,7 +662,7 @@ export default class UIScene extends Phaser.Scene {
     g.fillGradientStyle(HK.ivoryN, HK.ivoryN, HK.ivoryN, HK.ivoryN, .18, 0, .18, 0); g.fillRect(tailX, V.y - 1.5, tailEnd - tailX, 3);
     g.fillGradientStyle(HK.ivoryN, HK.ivoryN, HK.ivoryN, HK.ivoryN, .95, 0, .95, 0); g.fillRect(tailX, V.y - .4, tailEnd - tailX, .9);
     this.drawBond(dt, time);
-    this.drawData(dt);
+    this.drawMastery(dt);
     this.tName.setText(`${p.name}${mg.active ? ' ★' : ''}`);
     this.tType.setText(`${p.types.map(typeName).join(' · ')}${p.slowT > 0 ? ' · 둔화됨' : ''}`).setX(this.tName.x + this.tName.width + 7);
 
@@ -1248,6 +1251,87 @@ export default class UIScene extends Phaser.Scene {
     const label = everyone ? '📌 적용 가능: 모든 포켓몬 공용' : qs.length === 1 ? `📌 적용 가능: ${p.formName(qs[0])} 전용` : `📌 적용 가능: ${qs.map(q => p.formName(q)).join(', ')}`;
     if (!card.merge && !pk) qs.forEach((q, k) => face.add(this.add.image((k - (qs.length - 1) / 2) * 20, H / 2 - 27, roundPortrait(this, p.portraitKey(q))).setScale(.32)));   // 합성 카드는 그 자리에 수치 비교
     face.add(fitText(hkText(this, 0, H / 2 - 16, label, 7.5, HK.gold, { origin: [.5, 0], bold: true }), W - 14));
+  }
+
+  // ================= 🗺️ 지방 탐색 숙련도 보상: 보유 카드 강화 (GameScene.openUpgrade) =================
+  //  랜덤 뽑기가 아니라 뒤집기 연출 없이 처음부터 앞면 3장 (0.15초 페이드인) · 위에 보상 사유 배너 · 카드마다 [Lv 배지] · [강화 전 ➔ 🔼 강화 후] 수치
+  //  카드를 누르거나 1 · 2 · 3 → 포켓몬을 다시 고르지 않고 그 자리에서 황금 스파크와 함께 +1 (GameScene.applyUpgrade) → 토스트 · 바로 탐험으로
+  showUpgrade(again = false) {
+    const gs = this.gs, it = gs.upActive, p = gs.player;
+    if (!it || !p) return;
+    this.clearOverlay();
+    this.toastT = 0; this.tmAnims = []; this.upBusy = false; this.upWraps = [];
+    const g = this.gOver, L = this.overlay.setVisible(true), W = 150, H = 200, K = .74, CY = 156, N = it.cards.length, GAP = 196;
+    if (it.sel < 0 || it.sel >= N) it.sel = 0;
+    g.fillStyle(0x05040a, .9); g.fillRect(0, 0, GAME_W, GAME_H);
+    L.add(this.add.image(320, CY, 'glow').setBlendMode(ADD).setTint(0xffb040).setScale(9, 5).setAlpha(.12));
+    // 상단 보상 사유 배너 · 안내
+    const bw = 616, by = 6;
+    const band = this.add.graphics(); band.fillStyle(0x2a1a06, .92); band.fillRoundedRect(320 - bw / 2, by, bw, 26, 7); band.lineStyle(1.2, 0xffc24a, .9); band.strokeRoundedRect(320 - bw / 2, by, bw, 26, 7); L.add(band);
+    L.add(fitText(hkText(this, 320, by + 13, `🗺️ [지방 탐색 숙련도 보상] 전투 구역 ${it.up}곳을 돌파하여 보유 기술머신(TM)의 위력이 한 단계 개량됩니다!`, 11, HK.gold, { bold: true, origin: .5, glow: true }), bw - 16));
+    L.add(hkText(this, 320, 42, '강화할 보유 카드를 1장 선택하세요 (선택 즉시 카드 레벨 +1 상승, +3강 만렙까지 가능)', 9, HK.ivory, { origin: .5 }));
+    L.add(fadeLine(this, 320, 54, 320, .8));
+    this.tmTextures(W, H);
+    it.cards.forEach((c, i) => {
+      const m = p.members.find(q => q.key === c.key), info = c.info, x = 320 + (i - (N - 1) / 2) * GAP, on = it.sel === i;
+      if (!m || !info) return;
+      if (on) L.add(this.add.image(x, CY, 'glow').setBlendMode(ADD).setTint(0xffd27a).setScale(3, 3.8).setAlpha(.4));
+      if (curseOf(c.card)) this.tmCurseAura(L, x, CY);
+      else if (c.card.grade !== '커먼') this.tmAura(L, x, CY, W * K, H * K, c.card.grade, true);
+      const wrap = this.add.container(x, CY).setScale(K); L.add(wrap);
+      const face = this.add.container(0, 0); wrap.add(face);
+      this.tmFace(face, c.card, m, W, H, on, { foot: `📌 ${p.formName(m)} 보유 카드` });
+      if (on) { const fr = this.add.graphics(); fr.lineStyle(2, HK.goldN, 1); fr.strokeRoundedRect(-W / 2 - 4, -H / 2 - 4, W + 8, H + 8, 11); wrap.add(fr); }
+      this.upWraps[i] = wrap;
+      // Lv 배지: Lv.1 (+1강) ➔ 🔼 Lv.2 (+2강 승급!)
+      const tag = lv => (lv > 0 ? `+${lv}강` : '기본');
+      const badge = `Lv.${info.from} (${tag(info.from)}) ➔ 🔼 Lv.${info.to} (${tag(info.to)}${info.max ? ' ★초월!' : info.promote ? ' 승급!' : ''})`;
+      const bt = hkText(this, x, CY - H * K / 2 - 10, badge, 8, '#ffe08a', { origin: .5, bold: true }), bbw = Math.min(GAP - 6, bt.width + 14);
+      fitText(bt, GAP - 16);
+      const bb = this.add.graphics(); bb.fillStyle(0x2a1606, .97); bb.fillRoundedRect(x - bbw / 2, CY - H * K / 2 - 18, bbw, 16, 8); bb.lineStyle(1.2, 0xffb703, 1); bb.strokeRoundedRect(x - bbw / 2, CY - H * K / 2 - 18, bbw, 16, 8);
+      L.add([bb, bt]);
+      // 강화 전 ➔ 🔼 강화 후 수치 (상승분은 초록 · 황금 / 양날의 검 대가는 붉게 — 완화)
+      let ly = CY + H * K / 2 + 8;
+      for (const ln of info.lines.slice(0, 3)) {
+        const t1 = hkText(this, 0, ly, `${ln.label} ${ln.a}`, 7.5, ln.cost ? '#ff9a9a' : HK.ivory, { origin: [0, .5] });
+        const t2 = hkText(this, 0, ly, ` ➔ 🔼 ${ln.b}`, 7.5, ln.cost ? '#ffb0a0' : '#8affb0', { origin: [0, .5], bold: true });
+        const tw = t1.width + t2.width, k = Math.min(1, (GAP - 14) / tw);
+        t1.setScale(k); t2.setScale(k); t1.x = x - tw * k / 2; t2.x = t1.x + t1.width * k;
+        L.add([t1, t2]); ly += 11;
+      }
+      if (info.bonus) { L.add(fitText(hkText(this, x, ly, info.bonus, 7, '#ffd27a', { origin: .5 }), GAP - 14)); ly += 11; }
+      L.add(hkText(this, x, ly + 4, String(i + 1), 9, on ? HK.gold : HK.faint, { origin: .5 }));
+      const z = this.add.zone(x, CY, W * K, H * K).setInteractive({ useHandCursor: true }); L.add(z);
+      z.on('pointerover', () => { if (!this.upBusy && it.sel !== i) { it.sel = i; this.showUpgrade(true); } });
+      z.on('pointerdown', () => this.upPick(i));
+    });
+    L.add(hkText(this, 320, 346, `1 · 2 · 3 또는 카드를 누르면 바로 강화  ·  ← → 고르고 Enter · Z  ·  Esc 나중에 (잠시 뒤 다시 열린다)`, 8, HK.faint, { origin: .5 }));
+    if (!again) { L.setAlpha(0); this.tweens.add({ targets: L, alpha: 1, duration: 150 }); }   // 0.15초 페이드인
+    if (this.tmAnims.length) this.tmEvents.push(this.time.addEvent({ delay: 16, loop: true, callback: () => { const t = this.time.now / 1000; for (const f of this.tmAnims) f(t); } }));
+    this.input.keyboard.on('keydown', this.onOverlayKey, this);
+    this.overlayMode = 'upgrade';
+  }
+  // 카드를 골랐다: 그 자리에서 +1 (GameScene.applyUpgrade) · 황금 스파크 · 배지가 「강화 완료」로 → 잠시 뒤 창을 닫고 토스트 (finishUpgrade)
+  upPick(i) {
+    const gs = this.gs, it = gs.upActive;
+    if (!it || it.used || this.upBusy || !it.cards[i]) return;
+    this.upBusy = true; it.sel = i;
+    const r = gs.applyUpgrade(i), w = this.upWraps[i], L = this.overlay;
+    if (w) {
+      const x = w.x, y = w.y;
+      this.tweens.add({ targets: w, scale: w.scale * 1.08, duration: 110, yoyo: true, ease: 'Quad.easeOut' });
+      const fl = this.add.rectangle(x, y, 150 * w.scale, 200 * w.scale, 0xfff2c0, .85).setBlendMode(ADD); L.add(fl);
+      this.tweens.add({ targets: fl, alpha: 0, duration: 320, onComplete: () => fl.destroy() });
+      for (const [tint, s1, ms] of [[0xffffff, 3.4, 380], [0xffb703, 4.4, 520]]) { const h = this.add.image(x, y, 'glow').setBlendMode(ADD).setTint(tint).setScale(1).setAlpha(.9); L.add(h); this.tweens.add({ targets: h, scaleX: s1, scaleY: s1 * 1.2, alpha: 0, duration: ms, onComplete: () => h.destroy() }); }
+      for (let k = 0; k < 26; k++) {   // 황금 강화 스파크
+        const sp = this.add.image(x, y, 'glow').setBlendMode(ADD).setTint([0xffd25a, 0xffffff, 0xffb040][k % 3]).setScale(.12); L.add(sp);
+        const a = Math.random() * Math.PI * 2, d = 60 + Math.random() * 90;
+        this.tweens.add({ targets: sp, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 1.1, alpha: 0, scale: .04, duration: 420 + Math.random() * 260, ease: 'Cubic.easeOut', onComplete: () => sp.destroy() });
+      }
+      if (r) { const t = hkText(this, x, y - 4, `🔨 +${r.lv}강!`, 14, HK.gold, { origin: .5, bold: true, glow: true }).setScale(1.6); L.add(t); this.tweens.add({ targets: t, scale: 1, duration: 180, ease: 'Back.easeOut' }); }
+    }
+    Sfx.play('ting'); Sfx.play('card_rare');
+    this.time.delayedCall(520, () => { this.upBusy = false; gs.finishUpgrade(r); });
   }
 
   // ⚖️ 양날의 검 카드: 검붉은 · 보랏빛 이중 테두리 + 안쪽 보랏빛 오라 + 가장자리를 타고 튀는 붉은 스파크 (tmAnims 가 돌 때 움직인다)
@@ -2596,6 +2680,14 @@ export default class UIScene extends Phaser.Scene {
       return;
     }
     if (this.overlayMode === 'inv') { this.menuKey(e); return; }   // 통합 메뉴 (scenes/GameMenu.js)
+    if (this.overlayMode === 'upgrade') {   // 보유 카드 강화: 1 · 2 · 3 바로 강화 · ← → 고르고 Enter · Space · Z (Esc 는 GameScene — 잠시 뒤 다시)
+      const it = this.gs.upActive, n = /^(Digit|Numpad)[1-3]$/.test(e.code) ? +e.code.slice(-1) : 0;
+      if (!it || this.upBusy) return;
+      if (n) this.upPick(n - 1);
+      else if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') { it.sel = (it.sel + (e.code === 'ArrowRight' ? 1 : -1) + it.cards.length) % it.cards.length; Sfx.play('select'); this.showUpgrade(true); }
+      else if (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyZ' || keyNameFromEvent(e) === Settings.key('z')) this.upPick(it.sel);
+      return;
+    }
     if (this.overlayMode === 'tm') {
       const it = this.gs.tmActive, n = /^(Digit|Numpad)[1-4]$/.test(e.code) ? +e.code.slice(-1) : 0;
       if (!it) return;

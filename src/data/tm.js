@@ -9,9 +9,11 @@
 //   스킬 강화 카드도 같은 등급 확률 (커먼: 위력 · 광역 +15% · 가속 -10% · 분열탄 1갈래) · 원작 개조(유니크 · 전설)는 강화 칸에 6% 확률로만 · 차징 카드 보장 15%(등급 확률대로)
 //   커먼 · 레어를 합성해 +2 에 한 등급 승급하는 규칙은 그대로
 //  ⚖️ 양날의 검 특성 카드 8종(game/Perks.js curse): 대가를 안고 한 메커니즘을 폭발시킨다 — 특성 카드 풀에 그대로 섞인다 (레어 · 유니크)
+//  새 카드는 ① 필드 기술머신 캡슐(샛길 제단 · 길목 캡슐) ② 엘리트 · 보스가 떨어뜨리는 빛나는 TM 코어에서만 — 몬스터 처치 수 보상은 없다
+//  🗺️ 지방 탐색 숙련도: 지방마다 새로 정화한 일반 전투 방 MASTERY_STEPS(5 · 10)곳에 '보유 카드 강화' (ownedUpgrades · upgradeInfo · GameScene.checkRoomClear)
 import { SKILLS } from './pokemon.js';
 import { typeName } from './types.js';
-import { PERKS } from '../game/Perks.js';
+import { PERKS, perkMods } from '../game/Perks.js';
 import { LEARNSETS } from './MoveDatabase.js';
 
 // 계열(SPECIES 키)마다 기술머신으로 배울 수 있는 자속성 밖 기술 (원작 기술머신 습득 고증)
@@ -190,7 +192,10 @@ export function moveGrade(id) {
 }
 
 export const TM_CARDS = 4;   // 한 번에 뒤집는 카드 수
-export const DATA_KILLS = 20, BONUS_CARDS = 3;   // 전투 데이터 축적: 일반 야생 12마리마다 현장 기술머신 전송 · 현장 전송(전투 데이터 · 빛나는 TM 코어) 카드 수
+export const BONUS_CARDS = 3;   // 빛나는 TM 코어(엘리트 · 보스 드랍)가 전송하는 카드 수
+// 🗺️ 지방 탐색 숙련도: 새로 들어가 몬스터를 모두 정화한 일반 전투 방 수가 이 값에 닿을 때마다 보유 카드 강화 1번 (지방마다 2번 — 그 뒤로는 보스전에 집중)
+//  강화할 카드가 하나도 없으면(없거나 모두 +3강 ★초월) 대신 출전 중인 포켓몬 체력 MASTERY_HEAL 회복 · 한 번에 보여 주는 카드 MASTERY_CARDS 장
+export const MASTERY_STEPS = [5, 10], MASTERY_HEAL = .3, MASTERY_CARDS = 3;
 // 카드 스택: 파티가 지닌 · 강화한 기술머신 카드 수 (특성 장 수 · 스킬 강화 1 + 단계 · 기술 카드 1 + 단계 · 원작 개조 · 숙련)
 //  엘리트 · 보스는 나타날 때 스택마다 체력 +STACK_HP · 공격력 +STACK_ATK (GameScene.stackScale) — 카드로 강해진 만큼 적도 버틴다
 export const STACK_HP = .06, STACK_ATK = .03;
@@ -230,6 +235,94 @@ const MOVE_GRADE = {
   shadow_ball: '유니크', earth_power: '유니크', moonblast: '유니크', play_rough: '유니크', dark_pulse: '유니크', sludge_bomb: '유니크', flash_cannon: '유니크', x_scissor: '유니크',
   drain_punch: '유니크', wild_charge: '유니크', body_press: '유니크', psyshock: '유니크', night_slash: '유니크'
 };
+// ---------------- 🗺️ 보유 카드 강화 (지방 탐색 숙련도 보상) ----------------
+// 파티가 지닌 카드 가운데 한 단계 더 올릴 수 있는 것 [{ m, card }] — 기술머신으로 배운 기술 · 스킬 강화 · 특성 (+3강 ★초월 · 겹칠 수 없는 카드는 빠진다)
+//  card 는 기술머신 카드와 같은 모양이라 applyCard 가 그대로 합성한다 (원작 개조 · 숙련 카드는 강화 단계가 없다)
+export function ownedUpgrades(p) {
+  const out = [];
+  for (const m of (p && p.members) || []) {
+    for (const id of Object.keys(m.cardGrade || {})) {
+      const sk = SKILLS[id];
+      if (!sk || DASH_ONLY.has(id)) continue;
+      const card = { kind: 'move', id, name: sk.name, type: sk.type, grade: m.cardGrade[id], desc: sk.desc, cd: sk.cd, cat: '기술 카드 · 강화', who: [m.key], dup: true };
+      if (heldLv(m, card) < CARD_MAX_LV) out.push({ m, card });
+    }
+    const seen = new Set();
+    for (const e of m.boostCards || []) {
+      const k = e.skill + ':' + e.bk;
+      if (seen.has(k) || !SKILLS[e.skill] || !BOOSTS[e.bk]) continue;
+      seen.add(k);
+      const slot = ['z', 'x', 'c'].find(s => m.skills[s] === e.skill), card = Object.assign(boostCard(Object.assign({}, e, { owner: m.key }), slot), { who: [m.key] });
+      if (heldLv(m, card) < CARD_MAX_LV) out.push({ m, card });
+    }
+    for (const [id, n] of Object.entries(m.perks || {})) {
+      const pk = PERKS[id];
+      if (!pk || !n || n >= Math.min(pk.max, CARD_MAX_LV + 1)) continue;
+      out.push({ m, card: { kind: 'perk', id, name: pk.name, type: PERK_TYPE[id] || 'normal', grade: pk.grade, desc: pk.desc, cat: pk.cat, who: [m.key] } });
+    }
+  }
+  return out;
+}
+// 강화 미리보기 수치 표: 특성 카드 mods 키 → [이름, 모양, 배율] (up: 곱 +% · down: 곱 -% · pct: 더하는 % · n: 개수 · sec: 초 · x: 배)
+const PERK_STAT = {
+  atkMul: ['공격력', 'up'], cdMul: ['기술 쿨타임', 'down'], hpMul: ['최대 체력', 'up'], speedMul: ['이동 속도', 'up'], dashCdMul: ['대시 쿨타임', 'down'], guard: ['받는 피해', 'down'],
+  swapCdMul: ['교대 쿨타임', 'down'], regen: ['초당 회복', 'pct1'], crit: ['급소율', 'pct'], lifesteal: ['흡혈', 'pct'], sizeAdd: ['판정 · 이펙트 크기', 'pct'], dashInvAdd: ['대시 무적', 'sec'],
+  extraJumps: ['공중 점프', 'n'], pBurn: ['화상 확률', 'pct'], pFreeze: ['빙결 확률', 'pct'], pPara: ['마비 확률', 'pct'], pPoison: ['맹독 확률', 'pct'], extraProj: ['투사체', 'n'],
+  dashDist: ['대시 거리', 'pct'], dashGale: ['대시 뒤 이동 속도', 'pct', .25], extraAirDash: ['공중 대시', 'n'], dashSpark: ['스파크 피해 (평타 대비)', 'pct', .8], dashReload: ['회피 시 쿨타임 감소', 'sec', .8],
+  parryCdMul: ['헛방 쿨타임', 'down'], parryWinMul: ['패링 판정 시간', 'up'], parryHeal: ['패링 회복', 'pct'], reflectAmp: ['패링 반사 데미지', 'pct', .35], parryWave: ['충격파 위력', 'pct', .6],
+  parryCounter: ['반격 기술 피해', 'pct', .4], razorPow: ['반사 · 카운터 피해', 'pct'], razorStag: ['보스 그로기 누적', 'x'], overCharge: ['차징 샷 피해', 'pct'], overBoom: ['폭발 반경', 'x'],
+  allMul: ['최종 공격력', 'up'], dashInvX: ['대시 무적', 'x'], dashCrit: ['확정 치명타 시간', 'sec'], bloodRage: ['저체력 최대 공격력', 'pct'], heavyHit: ['평타 1타 피해', 'pct'],
+  heavyStag: ['평타 그로기', 'x'], skillPow: ['기술 피해', 'pct'], skillSize: ['기술 크기', 'x'], nearPow: ['근접 피해', 'pct'], berserk: ['위기 공격력', 'pct'], execute: ['마무리 피해', 'pct'],
+  thorns: ['가시 반사 피해', 'pct', 1 / 1.2]
+};
+// 양날의 검 대가 (합성하면 완화된다)
+const COST_STAT = {
+  parryWinMul: ['패링 판정 시간', 'signed'], whiffCdAdd: ['헛방 쿨타임', 'secp'], chargeSlow: ['차징 중 이동 속도', 'neg'], chargeHurt: ['차징 중 받는 피해', 'pctp'], hpMul: ['최대 체력', 'signed'],
+  invMul: ['피격 무적 시간', 'signed'], dashCdMul: ['대시 쿨타임', 'signed'], potionCut: ['상처약 회복 효율', 'neg'], comboSlow: ['평타 속도', 'neg'], finishLag: ['피니시 후딜레이', 'secp'],
+  castCost: ['기술 체력 코스트', 'pct1'], farCut: ['원거리 피해', 'neg']
+};
+const pctS = v => `${Math.round(v * 100)}%`;
+function fmtStat(f, v) {
+  const [, kind, k = 1] = f;
+  if (kind === 'up') return `+${pctS((v ?? 1) - 1)}`;
+  if (kind === 'down') return `-${pctS(1 - (v ?? 1))}`;
+  if (kind === 'signed') return (v ?? 1) >= 1 ? `+${pctS((v ?? 1) - 1)}` : `-${pctS(1 - (v ?? 1))}`;
+  if (kind === 'neg') return `-${pctS((v || 0) * k)}`;
+  if (kind === 'pctp' || kind === 'pct') return `+${pctS((v || 0) * k)}`;
+  if (kind === 'pct1') return `${((v || 0) * k * 100).toFixed(1)}%`;
+  if (kind === 'n') return `+${Math.round((v || 0) * k)}`;
+  if (kind === 'sec' || kind === 'secp') return `+${((v || 0) * k).toFixed(2)}초`;
+  if (kind === 'x') return `×${(1 + (v || 0) * k).toFixed(1)}`;
+  return String(v);
+}
+// 차징 카드는 수치 mods 가 없어 장 수로 설명한다 (Player.chargeMax · CHG_FAST · chargeShockField)
+const CHARGE_LINE = {
+  u_charge: (a, b) => ['차징 단계', `${a + 1}단`, `${b + 1}단`],
+  u_rapid: (a, b) => ['차징 시간', `-${[0, 35, 48, 60][Math.min(3, a)]}%`, `-${[0, 35, 48, 60][Math.min(3, b)]}%`],
+  u_shock: (a, b) => ['폭발 장판 크기 · 위력', `×${(1 + .3 * (a - 1)).toFixed(1)}`, `×${(1 + .3 * (b - 1)).toFixed(1)}`]
+};
+// 보유 카드 한 장을 한 단계 올렸을 때: { from, to, promote(+2 등급 승급), max(★초월), grade(올린 뒤 등급), lines: [{ label, a, b, cost }] }
+export function upgradeInfo(m, card) {
+  const from = heldLv(m, card), to = Math.min(CARD_MAX_LV, from + 1), pv = mergePreview(m, card), lines = [];
+  if (card.kind === 'boost') {
+    const e = (m.boostCards || []).find(q => q.skill === card.skill && q.bk === card.bk), a = e ? e.amt : card.amt, A = x => a * lvMul(x);
+    const label = { power: '기술 위력', haste: '쿨타임', wide: '범위 · 탄 크기', split: '분열 유도탄' }[card.bk];
+    if (card.bk === 'split') lines.push({ label, a: `${Math.round(A(from))}갈래`, b: `${Math.round(A(to))}갈래` });
+    else if (card.bk === 'haste') lines.push({ label, a: `-${pctS(Math.min(.6, A(from)))}`, b: `-${pctS(Math.min(.6, A(to)))}` });
+    else lines.push({ label, a: `+${pctS(A(from))}`, b: `+${pctS(A(to))}` });
+  } else if (card.kind === 'move') {
+    lines.push({ label: '기술 위력', a: `+${pctS(LV_GAIN * from)}`, b: `+${pctS(LV_GAIN * to)}` }, { label: '범위', a: `+${pctS(.25 * from)}`, b: `+${pctS(.25 * to)}` });
+  } else if (card.kind === 'perk') {
+    const pk = PERKS[card.id], n = (m.perks || {})[card.id] || 0, A = perkMods({ [card.id]: n }), B = perkMods({ [card.id]: n + 1 });
+    for (const k of Object.keys(pk.mods)) { const f = PERK_STAT[k]; if (f && lines.length < 2) lines.push({ label: f[0], a: fmtStat(f, A[k]), b: fmtStat(f, B[k]) }); }
+    if (!lines.length && CHARGE_LINE[card.id]) { const [label, a, b] = CHARGE_LINE[card.id](n, n + 1); lines.push({ label, a, b }); }
+    if (!lines.length) lines.push({ label: '효과', a: `×${lvMul(n - 1).toFixed(1)}`, b: `×${lvMul(n).toFixed(1)}` });
+    const ck = Object.keys(pk.cost || {})[0], cf = ck && COST_STAT[ck];
+    if (cf) lines.push({ label: '대가 · ' + cf[0], a: fmtStat(cf, A[ck]), b: fmtStat(cf, B[ck]), cost: true });
+  }
+  return { from, to, promote: to === 2, max: to >= CARD_MAX_LV, grade: pv ? pv.grade : card.grade, lines, bonus: to >= CARD_MAX_LV ? MAX_BONUS[card.kind] : '' };
+}
+
 // 특성 카드 분류 → 카드에 붙는 알약 글자 · 속성 부여 카드는 그 속성 색
 export const PERK_TYPE = { r_spark: 'electric', r_wave: 'fighting', r_amplify: 'psychic', u_rapid: 'electric', u_shock: 'fire', u_charge: 'electric', r_burn: 'fire', r_freeze: 'ice', r_para: 'electric', r_poison: 'poison', u_curse: 'ghost', u_chain: 'electric', l_storm: 'electric', u_flame: 'fire', u_toxic: 'poison', l_hole: 'dark' };
 

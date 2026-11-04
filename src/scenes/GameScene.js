@@ -45,7 +45,7 @@ import { Settings, keyLabel } from '../systems/Settings.js';
 import { Save } from '../systems/Save.js';
 import { RunSave, seeded, newSeed, snapshotWorld, applyWorld, snapshotPlayer, restorePlayer } from '../systems/RunSave.js';
 import { itemArt, shade, TILE_MARGIN, TILE_SPACING } from '../systems/Textures.js';
-import { rollCards, applyCard, TM_CARDS, heldLv, dressCard, CARD_MAX_LV, DATA_KILLS, BONUS_CARDS, cardStacks, STACK_HP, STACK_ATK } from '../data/tm.js';
+import { rollCards, applyCard, TM_CARDS, heldLv, dressCard, CARD_MAX_LV, BONUS_CARDS, cardStacks, STACK_HP, STACK_ATK, ownedUpgrades, upgradeInfo, MASTERY_STEPS, MASTERY_HEAL, MASTERY_CARDS } from '../data/tm.js';
 import { PERKS, onKill as perkKill } from '../game/Perks.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -925,14 +925,18 @@ export default class GameScene extends Phaser.Scene {
   // ---------------- 지도(M) · 가방(I): 게임을 멈추고 UI 가 그린다 ----------------
   toggleOverlay(kind) {
     if (this.over || this.transitioning) return;
-    if ((this.overlay === 'tm' || this.overlay === 'taxi' || this.overlay === 'debug' || this.overlay === 'test' || this.overlay === 'shop') && kind !== this.overlay) return;   // 카드·공중날기·디버그·테스트 창이 열려 있으면 다른 창으로 넘어가지 않는다
+    if ((this.overlay === 'tm' || this.overlay === 'upgrade' || this.overlay === 'taxi' || this.overlay === 'debug' || this.overlay === 'test' || this.overlay === 'shop') && kind !== this.overlay) return;   // 카드·공중날기·디버그·테스트 창이 열려 있으면 다른 창으로 넘어가지 않는다
     if (this.overlay === kind && kind === 'talk') this.talkClosedAt = this.time.now;
     if (this.overlay === kind) {
       this.overlay = null; this.setFrozen(false); this.consumeInput(); this.player.zBuf = 0; this.events.emit('overlay', null);
       if (kind === 'join') this.afterJoin();
       if (kind === 'tm' && this.tmActive && this.tmActive.bonus && !this.tmActive.used) {   // 현장 전송 카드를 고르지 않고 닫았다: 같은 카드로 잠시 뒤 다시
         (this.bonusQueue = this.bonusQueue || []).unshift(this.tmActive); this.tmActive = null; this.bonusT = 8;
-        this.events.emit('toast', '📡 받지 않은 기술머신 카드 — 8초 뒤 다시 전송된다', 'tm');
+        this.events.emit('toast', '✨ 받지 않은 기술머신 카드 — 8초 뒤 다시 전송된다', 'tm');
+      }
+      if (kind === 'upgrade' && this.upActive) {   // 🗺️ 숙련도 강화를 고르지 않고 닫았다: 같은 카드로 잠시 뒤 다시
+        if (!this.upActive.used) { (this.bonusQueue = this.bonusQueue || []).unshift(this.upActive); this.bonusT = 8; this.events.emit('toast', '🗺️ 고르지 않은 숙련도 강화 — 8초 뒤 다시 열린다', 'tm'); }
+        this.upActive = null;
       }
       if (kind === 'shop') { this.shopClosedAt = this.time.now; if (this.shopDirty) { this.shopDirty = false; this.saveRun(true, 'shop'); } }
       if (kind === 'talk' && this.talk && this.talk.onEnd) { const f = this.talk.onEnd; this.talk.onEnd = null; this.time.delayedCall(150, f); }   // 이야기 NPC 보상
@@ -2482,6 +2486,7 @@ export default class GameScene extends Phaser.Scene {
     for (const s of this.level.spawns) {
       if (s.spawned || Math.abs(s.x - p.x) > reach || Math.abs(s.y - p.y) > reachY) continue;
       s.spawned = true;
+      if (s.room) this.time.delayedCall(0, () => this.checkRoomClear(s.room));   // 마지막 자리가 안전 구역이라 아무도 나오지 않은 채 끝난 방 (지방 탐색 숙련도)
       if (s.room && (s.room.type === 'village' || s.room.lab || s.room.peaceful)) continue;   // 마을 · 방울로드 성역엔 침식된 포켓몬이 하나도 나오지 않는다
       if (this.level.purified) { if (!s.elite && Math.random() < .5) this.spawnWanderer(s); continue; }   // 정화한 지방: 세뇌된 적 대신 평화로운 야생 포켓몬
       if (s.elite && s.room && s.room.hidden && !(this.level.sides || []).some(sd => sd.room === s.room && sd.revealed)) { s.spawned = false; continue; }   // 숨은 굴의 수문장은 흙이 걷힌 뒤에
@@ -2543,6 +2548,7 @@ export default class GameScene extends Phaser.Scene {
   addEnemy(e, room) {
     e.room = room;
     if ((e.elite || e.boss) && !e.stacks) this.stackScale(e);
+    if (room && !e.boss) room.foes = (room.foes || 0) + 1;   // 이 방에 나타난 몬스터 수 (지방 탐색 숙련도: 몬스터가 있던 전투 방만 센다)
     e.colliders = [this.physics.add.collider(e.obj, this.gateGroup)];
     if (!e.def.noclip) e.colliders.push(this.physics.add.collider(e.obj, this.layers, null, e.boss ? (o, tile) => !PLAT_SET.has(tile.index) : null));   // 보스는 통과 발판에 올라서지 않는다
     this.enemies.push(e);
@@ -2731,6 +2737,7 @@ export default class GameScene extends Phaser.Scene {
     if (joinedBy) this.time.delayedCall(2800, () => this.announceJoin([joinedBy]));
     if (e.boss) { this.dropFormItem(e); this.bondPurify(e); }
     if (e.boss && coreOfBoss(e.bossKey)) this.time.delayedCall(1300, () => { if (this.level) this.spawnPickup('item', e.x, e.y - 14, coreOfBoss(e.bossKey)); });   // 보스의 코어 100% (짝 보스 · 이어 싸우기도 한 마리마다)
+    if (e.boss) this.time.delayedCall(1700, () => { if (this.level && !this.over) this.spawnPickup('tmcore', e.x, e.y - 16); });   // 빛나는 TM 코어 100% (보스 · 엘리트만 새 카드를 떨어뜨린다)
     if (e.boss) { this.bossDefeated(e); return; }
     if (e.elite && this.stageIdx === 2 && this.player.quests && this.player.quests.zTrial === 1) {   // 호연의 시련: 엘리트 수호자를 넘었다 → 루네시티 시련 캡틴에게
       this.player.quests.zTrial = 2;
@@ -2745,7 +2752,7 @@ export default class GameScene extends Phaser.Scene {
     }
     else if (Math.random() < ITEM_DROP.wild) this.spawnPickup('item', e.x, e.y, pick(RANDOM_ITEM_KEYS));   // 야생은 아이템 대신 가끔 오렌열매
     else if (Math.random() < .16) this.spawnPickup('oran', e.x, e.y);
-    if (!e.elite) this.addBattleData(e);   // 일반 야생: 전투 데이터 축적 (DATA_KILLS 마리마다 카드)
+    this.checkRoomClear(e.room);   // 🗺️ 지방 탐색 숙련도: 이 방의 몬스터를 모두 정화했는가
     const r = Save.addKill(e.line || e.key);   // 정화 진행도는 진화 계열로 센다 (피카츄를 정화해도 피츄 계열 +1)
     if (r) {
       if (r.unlockedNow) { this.runStats.unlocked.push(e.line); this.queueJoin(e.line, 'dex'); }   // 10번 정화: 정화 완료 쇼케이스
@@ -3259,26 +3266,76 @@ export default class GameScene extends Phaser.Scene {
     if (this.joinBlur) { this.cameras.main.postFX.remove(this.joinBlur); this.joinBlur = null; }
     if (this.joinQueue && this.joinQueue.length) this.time.delayedCall(350, () => this.nextJoin());
   }
-  // ---------------- 현장 기술머신 전송: 전투 데이터 축적(일반 야생 DATA_KILLS 마리) · 빛나는 TM 코어(엘리트 100%) → 카드 3장 중 1장 ----------------
-  //  보스전 · 연출 · 다른 창이 열려 있으면 기다렸다가 연다 (bonusQueue) · 고르지 않고 닫으면 같은 카드로 잠시 뒤 다시
-  addBattleData(e) {
-    const p = this.player;
-    if (!p || this.test) return;
-    p.dataKills = (p.dataKills || 0) + 1;
-    if (p.dataKills >= DATA_KILLS) {
-      p.dataKills = 0;
-      this.events.emit('toast', '📡 전투 데이터 축적 완료! 현장 기술머신 전송 — 카드 3장 중 1장', 'tm');
-      this.fx.ring(p.x, p.y, 36, 0x8ad8ff, 380);
-      this.queueBonusCards('data', 1);
-    }
-    this.events.emit('battleData', p.dataKills, DATA_KILLS);
+  // ---------------- 🗺️ 지방 탐색 숙련도: 새로 들어가 몬스터를 모두 정화한 일반 전투 방마다 +1 → 5 · 10 곳(MASTERY_STEPS)에 보유 카드 강화 ----------------
+  //  지방마다 정확히 2번 (그 뒤로는 세지 않고 보스전에 집중) · 센 방은 room.mastered 로 저장된다 (RunSave) — 다시 와도 · 이어하기로 몬스터가 다시 나와도 또 세지 않는다
+  //  안 세는 곳: 이미 센 방 · 몬스터가 한 마리도 없던 방 · 마을 · 성역(peaceful) · 연구소 · 상점 · 보스방 · 정화한 지방 · 테스트룸
+  isNewClearedCombatRoom(room) {
+    const lv = this.level;
+    if (!room || !lv || room.mastered || room.type !== 'combat' || room.peaceful || room.lab || lv.purified || lv.test || this.test) return false;
+    if (!(room.foes > 0)) return false;
+    if (lv.spawns.some(s => s.room === room && !s.spawned)) return false;   // 아직 나타나지 않은 자리가 남았다
+    return !this.enemies.some(e => e.alive && e.room === room);
   }
+  masteryCount() { return this.level ? this.level.rooms.reduce((n, r) => n + (r.mastered ? 1 : 0), 0) : 0; }
+  checkRoomClear(room) {
+    const lv = this.level, got = (lv && lv.masteryGot) || 0;
+    if (got >= MASTERY_STEPS.length || !this.isNewClearedCombatRoom(room)) return;
+    room.mastered = true;
+    const n = this.masteryCount(), step = MASTERY_STEPS[got];
+    this.events.emit('mastery', n);
+    if (n < step) return;
+    lv.masteryGot = got + 1;
+    const p = this.player;
+    this.fx.ring(p.x, p.y, 40, 0xffd25a, 420); this.fx.burst(p.x, p.y, [0xffd25a, 0x8affb0, 0xffffff], 18, 140, { glow: true, up: 80 });
+    this.events.emit('toast', `🗺️ 전투 구역 ${step}곳 돌파! 지방 탐색 숙련도 보상 — 보유 카드 강화`, 'tm');
+    this.queueBonusCards({ up: step }, .8);   // 전투가 끝난 직후 (보스전 · 연출 · 다른 창이 끝나면)
+  }
+  // 강화 창 열기: 보유 카드 중 강화할 수 있는 것 가운데 무작위 3장 (1 ~ 2장뿐이면 그만큼) — 하나도 없으면 체력 30% 회복으로 대신
+  openUpgrade(q) {
+    const p = this.player;
+    let cards = (q.cards || []).map(c => { const m = p.members.find(x => x.key === c.key); return m && heldLv(m, c.card) < CARD_MAX_LV && ownedUpgrades(p).some(o => o.m === m && o.card.kind === c.card.kind && o.card.id === c.card.id) ? Object.assign(c, { info: upgradeInfo(m, c.card) }) : null; }).filter(Boolean);   // 다시 열 때: 그 사이 강화된 카드는 새 수치로 · 더 못 올리면 뺀다
+    if (!cards.length) {
+      const pool = ownedUpgrades(p);
+      for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+      cards = pool.slice(0, MASTERY_CARDS).map(o => ({ key: o.m.key, card: o.card, info: upgradeInfo(o.m, o.card) }));
+    }
+    if (!cards.length) {   // 강화할 카드가 없다 (아직 없거나 모두 +3강 ★초월): 체력 회복 보너스
+      p.heal(p.m.maxhp * MASTERY_HEAL);
+      this.fx.ring(p.x, p.y, 34, 0x7dff9a, 380); this.fx.glow(p.x, p.y, 34, 0x7dff9a, 420, .8); Sfx.play('heal');
+      this.events.emit('toast', `🗺️ 지방 탐색 숙련도 보상 — 강화할 보유 카드가 없어 ${p.formName()} 체력 ${Math.round(MASTERY_HEAL * 100)}% 회복`, 'tm');
+      return;
+    }
+    this.upActive = { up: q.up, cards, sel: 0, used: false };
+    this.toggleOverlay('upgrade');
+    Sfx.play('mega');
+  }
+  // 강화 창에서 i 번째 카드를 골랐다: 포켓몬을 다시 고르지 않고 그 카드 주인에게 바로 +1 (기술머신 합성과 같은 applyCard)
+  applyUpgrade(i) {
+    const it = this.upActive, p = this.player, c = it && !it.used && it.cards[i], m = c && p.members.find(x => x.key === c.key);
+    if (!m) return null;
+    applyCard(p, m, c.card, c.card.slot || 'x');
+    it.used = true;
+    const lv = heldLv(m, c.card);
+    return { name: (c.card.baseName || c.card.name).replace(/^\[★초월\] /, ''), lv, who: p.formName(m) };
+  }
+  finishUpgrade(r) {
+    if (this.overlay === 'upgrade') this.toggleOverlay('upgrade');
+    if (!r) return;
+    const p = this.player;
+    this.events.emit('toast', `🔨 ${r.name}이(가) ${r.lv >= CARD_MAX_LV ? '+3강 ★초월' : '+' + r.lv + '강'}으로 강화되었습니다! (${r.who})`, 'tm');
+    this.fx.ring(p.x, p.y, 40, 0xffd25a, 420); this.fx.glow(p.x, p.y, 40, 0xffd25a, 500, 1);
+    this.fx.burst(p.x, p.y, [0xffd25a, 0xffffff, 0xffb040], 24, 150, { glow: true, up: 90 });
+    Sfx.play('unlock');
+  }
+  // ---------------- 빛나는 TM 코어 (엘리트 · 보스 100%) → 카드 3장 중 1장 ----------------
+  //  보스전 · 연출 · 다른 창이 열려 있으면 기다렸다가 연다 (bonusQueue — 숙련도 강화 { up } 도 같은 줄) · 고르지 않고 닫으면 같은 카드로 잠시 뒤 다시
   queueBonusCards(kind, wait = 0) { (this.bonusQueue = this.bonusQueue || []).push(kind); this.bonusT = Math.max(this.bonusT || 0, wait); }
   tryBonusCards() {
     if (!this.bonusQueue || !this.bonusQueue.length || !this.player || this.over || this.paused || this.overlay || this.transitioning || this.cinema || this.storyWait || this.arenaRoom || this.tmOpening) return;
     const q = this.bonusQueue.shift(), p = this.player;
+    if (q && q.up) { this.openUpgrade(q); return; }   // 🗺️ 지방 탐색 숙련도 강화
     const it = typeof q === 'object' ? q : { kind: 'tm', bonus: q, used: false, member: p.m, cards: rollCards(p, { n: BONUS_CARDS }), flipped: Array(BONUS_CARDS).fill(false), sel: -1,
-      title: q === 'elite' ? '✨ 빛나는 TM 코어' : '📡 현장 기술머신 전송', note: q === 'elite' ? '엘리트를 정화하고 얻은 빛나는 TM 코어가 카드 3장을 전송한다' : `일반 야생 포켓몬 ${DATA_KILLS}마리를 정화한 전투 데이터로 카드 3장이 전송됐다` };
+      title: '✨ 빛나는 TM 코어', note: '엘리트 · 보스를 정화하고 얻은 빛나는 TM 코어가 카드 3장을 전송한다' };
     this.tmActive = it;
     this.toggleOverlay('tm');
     Sfx.play('mega');
@@ -3362,7 +3419,7 @@ export default class GameScene extends Phaser.Scene {
       this.events.emit('toast', `[${ng.name}] 획득! (포켓샵에서 고가에 판매 가능 · ${ng.sell.toLocaleString('ko-KR')} ₽)`, p.id);
       Sfx.play('coin'); this.fx.burst(pl.x, pl.y - 6, [0xffd84a, 0xfff6c0, 0xffffff], 18, 130, { glow: true, up: 90 });
       this.fx.floatText(pl.x, pl.y - 22, `+${ng.sell.toLocaleString('ko-KR')} ₽`, '#ffd84a', 10);
-    } else if (p.kind === 'tmcore') {   // 빛나는 TM 코어 (엘리트 100%): 그 자리에서 기술머신 카드 3장 중 1장
+    } else if (p.kind === 'tmcore') {   // 빛나는 TM 코어 (엘리트 · 보스 100%): 그 자리에서 기술머신 카드 3장 중 1장
       this.events.emit('toast', '✨ 빛나는 TM 코어! 기술머신 카드가 전송된다', 'tm');
       Sfx.play('unlock'); this.fx.ring(pl.x, pl.y, 44, 0xffd25a, 420); this.fx.burst(pl.x, pl.y, [0xffd25a, 0xb08aff, 0xffffff], 22, 150, { glow: true, up: 90 });
       this.queueBonusCards('elite', .6);

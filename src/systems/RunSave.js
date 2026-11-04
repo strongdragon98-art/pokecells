@@ -55,6 +55,7 @@ export function snapshotWorld(W) {
     chests: idxWhere(lv.chests, c => c.opened), potions: idxWhere(lv.potions, p => p.taken),
     sides: idxWhere(lv.sides, s => s.revealed), walls: idxWhere(lv.breakables, b => b.broken),
     props: idxWhere(lv.props, p => p.used), tmx: idxWhere(lv.tmx || [], t => t.used),   // tmx: 길목 기술머신 (World 끝)
+    mastered: idxWhere(lv.rooms, r => r.mastered), masteryGot: lv.masteryGot || 0,   // 🗺️ 지방 탐색 숙련도: 센 전투 방 · 받은 강화 수 (GameScene.checkRoomClear)
     explored: W.explored ? packBits(W.explored) : null,
     areas: [...W.areasSeen]
   };
@@ -71,6 +72,7 @@ export function applyWorld(W, s) {
   for (const i of s.sides) lv.sides[i].revealed = true;
   for (const i of s.props) lv.props[i].used = true;
   for (const i of s.tmx || []) if (lv.tmx && lv.tmx[i]) lv.tmx[i].used = true;
+  set(lv.rooms, s.mastered || [], 'mastered'); lv.masteryGot = s.masteryGot || 0;
   // 무너진 벽: 격자에서 지우고 이웃 칸 타일 모양을 다시 맞춘다 (GameScene.breakWall 과 같은 계산, 타일 지도는 아직 없다)
   const touched = new Set();
   for (const i of s.walls) {
@@ -89,7 +91,7 @@ export function applyWorld(W, s) {
 // 파티 · 가방 등 플레이어 진행
 export function snapshotPlayer(p) {
   return {
-    idx: p.idx, stageBonus: p.stageBonus, bag: { ...p.bag }, formItems: [...p.formItems], candy: p.candy || 0, dataKills: p.dataKills || 0,   // dataKills: 전투 데이터 축적 (12마리마다 현장 기술머신 전송)
+    idx: p.idx, stageBonus: p.stageBonus, bag: { ...p.bag }, formItems: [...p.formItems], candy: p.candy || 0,
     money: p.money, nuggets: { ...p.nuggets }, uses: { ...p.uses }, shopLog: JSON.parse(JSON.stringify(p.shopLog || {})), shopStats: { ...p.shopStats },   // 포켓샵 경제 (data/shop.js)
     keyStone: !!p.keyStone, zRing: !!p.zRing, megaStones: [...p.stones], crystals: { ...p.crystals }, quests: { ...(p.quests || {}) },   // 메가스톤 · Z크리스탈 (data/gear.js) · 이야기 진행
     members: p.members.map(memberSnap),
@@ -134,7 +136,7 @@ export function restorePlayer(p, s) {
   }
   p.stageBonus = s.stageBonus || 1;
   p.bag = { ...(s.bag || {}) };
-  p.candy = s.candy || 0; p.dataKills = s.dataKills || 0;
+  p.candy = s.candy || 0;
   p.money = s.money ?? START_MONEY; p.nuggets = { ...(s.nuggets || {}) }; p.uses = { ...(s.uses || {}) };   // 예전 저장(포켓샵 전): 용돈부터
   p.shopLog = s.shopLog ? JSON.parse(JSON.stringify(s.shopLog)) : {}; p.shopStats = { bought: 0, sold: 0, spent: 0, earned: 0, ...(s.shopStats || {}) };
   p.keyStone = !!s.keyStone; p.zRing = !!s.zRing;
