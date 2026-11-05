@@ -600,16 +600,23 @@ export function buildChapter(ch, ci, retry = 0) {
   const npcs = [];
   {
     const BUSY = { center: [4, 11], mart: [0, 6], vending: [-1, 3], corvi: [0, 7], lore: [-1, 2], sign: [-1, 3], sidesign: [-2, 7], tm: [-3, 3], labdoor: [-2, 3], oakhouse: [5, 10] };
-    const placeNpcs = (r, ids, slots) => {
-      const busy = new Set();
-      for (const d of r.doors) if (d.dir === 'v' && d.U === r) for (let x = d.cap - (d.D.tutorial ? 7 : 3); x <= d.cap + 6; x++) busy.add(x);   // 철창 둘레 (튜토리얼은 표지까지)
+    //  must: 이야기 진행에 꼭 필요한 사람 (호연 시련 캡틴 등) — 엄격한 자리(머리 위 3칸 빈칸 · 벽 · 소품 여백)가 없으면
+    //   머리 위 3칸째의 통과 발판은 봐주고(머리끝이 살짝 닿는다) · 벽 여백 · 소품 여백을 줄여 다시 찾는다 (철창 구멍 위 · 사람끼리 붙어 서기는 끝까지 피한다)
+    //   격자는 건드리지 않는다 — 맵 생성 · 진행 저장 서명은 그대로
+    const placeNpcs = (r, ids, slots, must = false) => {
+      const busy = new Set(), grate = new Set();
+      for (const d of r.doors) if (d.dir === 'v' && d.U === r) for (let x = d.cap - (d.D.tutorial ? 7 : 3); x <= d.cap + 6; x++) { busy.add(x); if (x >= d.cap - 1 && x <= d.cap + 4) grate.add(x); }   // 철창 둘레 (튜토리얼은 표지까지)
       for (const pr of props) { const b = BUSY[pr.kind]; if (b && pr.x >= r.tx0 && pr.x < r.tx1 && pr.g === r.F) for (let x = pr.x + b[0]; x <= pr.x + b[1]; x++) busy.add(x); }
       const ok = x => x > r.tx0 + 3 && x < r.tx1 - 5 && !busy.has(x) && grid[r.F][x] === 'S' && [1, 2, 3].every(h => grid[r.F - h][x] === '.');
+      const placed = new Set();
+      const loose = x => x > r.tx0 + 1 && x < r.tx1 - 2 && !grate.has(x) && !placed.has(x) && grid[r.F][x] === 'S' && [1, 2].every(h => grid[r.F - h][x] === '.') && '.PH'.includes(grid[r.F - 3][x]);
       ids.forEach((id, i) => {
         const want = slots[i % slots.length];
         let x = null;
         for (let k = 0; k < 40 && x === null; k++) for (const c of [want + k, want - k]) if (ok(c)) { x = c; break; }
+        if (x === null && must) for (let k = 0; k < 40 && x === null; k++) for (const c of [want + k, want - k]) if (loose(c)) { x = c; break; }
         if (x === null) return;
+        for (let o = -2; o <= 2; o++) placed.add(x + o);
         for (let o = -3; o <= 3; o++) busy.add(x + o);   // 사람끼리도 붙어 서지 않게
         npcs.push({ id, x, g: r.F, room: r, face: i % 2 ? 1 : -1 });
       });
@@ -896,7 +903,7 @@ export function buildChapter(ch, ci, retry = 0) {
         for (const r of rooms) if (r.ai === pi) { if (r.type === 'boss') r.stratosphere = true; else if (r !== bridge) r.pillar = true; }
         if (bridge) {
           bridge.seaBridge = true;
-          placeNpcs(bridge, ['pillar_elder', 'trial_captain'], [bridge.tx0 + 4, bridge.tx0 + 8]);   // 좁은 다리 방: 장로 · 캡틴이 나란히 (하늘기둥 외관은 오른쪽 끝)
+          placeNpcs(bridge, ['trial_captain', 'pillar_elder'], [bridge.tx0 + 8, bridge.tx0 + 4], true);   // 좁은 다리 방: 캡틴 · 장로가 나란히 (하늘기둥 외관은 오른쪽 끝) — 캡틴(Z링)이 먼저 · 반드시 선다
           for (const n of npcs) if (n.room === bridge) { n.face = 1; n.guide = true; }
         }
       }

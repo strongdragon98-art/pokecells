@@ -541,6 +541,7 @@ export default class GameScene extends Phaser.Scene {
       this.physics.add.collider(this.player.obj, this.layers, null, (o, tile) => !((PLAT_SET.has(tile.index) || tile.oneWay) && this.player.dropT > 0)),
       this.physics.add.collider(this.player.obj, this.gateGroup)
     ];
+    this.ensureTrialGuardian();
 
     const cam = this.cameras.main;
     this.room = roomAt(level, pos.x, pos.y - 4) || level.start.room;
@@ -1349,14 +1350,16 @@ export default class GameScene extends Phaser.Scene {
     const p = this.player, q = p.quests || (p.quests = {});
     if (id === 'elder_monk') {
       const freed = this.purifiedSet.has(1) || !!(this.worlds[1] && this.worlds[1].purified);
-      if (q.monk) return { lines: ['그 돌의 빛이 흐려지지 않도록, 포켓몬과의 유대를 소중히 하시오.', '다른 포켓몬의 돌은 {b:숨겨진 심연의 균열}을 정화하거나, 마을을 떠도는 {b:고대석 수집가}에게 구해 보시오.'] };
+      if (q.monk) return { lines: ['그 돌의 빛이 흐려지지 않도록, 포켓몬과의 유대를 소중히 하시오.', '다른 포켓몬의 돌은 {b:호연 너머 숨겨진 심연의 균열}을 정화하거나, 마을을 떠도는 {b:고대석 수집가}에게 구해 보시오.'] };
       if (!freed) return null;   // 처음 대사 (칠색조를 정화해 달라)
-      const line = [p.m, ...p.members].map(m => m.key).find(k => usesStone(k)) || null;
+      //  첫 메가스톤: 출전 포켓몬부터 — 아직 돌이 없는 계열에만 (이미 가진 계열이면 다음 동료 · 모두 가졌으면 키스톤만)
+      const hasStone = k => p.stones.has(k) || p.members.some(m => m.key === k && m.gear.stone === k) || !!(p.stored && p.stored[k] && p.stored[k].gear.stone === k);
+      const line = [p.m, ...p.members].map(m => m.key).find(k => usesStone(k) && !hasStone(k)) || null;
       return {
         lines: ['종소리가… 다시 울리는구려! 탑 꼭대기에서 폭주하던 전설들을 구해 주었소.',
-          `그대와 포켓몬 사이의 깊은 유대가 이 고대의 돌을 공명시켰구려. {y:키스톤}과 {b:${line ? stoneName(line) : '메가스톤'}}을 받으시오.`,
+          line ? `그대와 포켓몬 사이의 깊은 유대가 이 고대의 돌을 공명시켰구려. {y:키스톤}과 {b:${stoneName(line)}}을 받으시오.` : '그대와 포켓몬 사이의 깊은 유대가 이 고대의 돌을 공명시켰구려. {y:키스톤}을 받으시오. 그대 동료들의 돌은 이미 제자리를 찾았구려.',
           '메가스톤은 그 포켓몬의 {y:메가스톤 칸}에 끼워야 하오. {y:3단 진화} 뒤 {y:<V 키|메가 버튼>}로 메가진화하면, 메가 중엔 {y:<R 키|MEGA SKILL 버튼>} 필살기도 쓸 수 있소.',
-          '다른 포켓몬의 돌은… {b:숨겨진 심연의 균열}을 정화하거나, 마을을 떠도는 {b:고대석 수집가}에게 구해 보시오.'],
+          '다른 포켓몬의 돌은… {b:호연 너머 숨겨진 심연의 균열}을 정화하거나, 마을을 떠도는 {b:고대석 수집가}에게 구해 보시오.'],
         onEnd: () => {
           if (q.monk) return;
           q.monk = 1; p.keyStone = true;
@@ -1380,13 +1383,13 @@ export default class GameScene extends Phaser.Scene {
           this.saveRun(true, 'story');
         }
       };
-      if (st === 1) return { lines: ['아직 시련이 끝나지 않았네. 이 지방 막다른 길 끝, {y:붉은 오라를 두른 엘리트 수호자}를 쓰러뜨리고 오게.'] };
+      if (st === 1) { this.ensureTrialGuardian(); return { lines: ['아직 시련이 끝나지 않았네. 이 돌다리 끝의 {y:시련의 수호자}(붉은 오라)를 쓰러뜨리고 오게.', '호연 어딘가의 {y:엘리트 수호자}를 쓰러뜨려도 자격으로 쳐 주지.'] }; }
       return {
         lines: ['알로라에서 파견 나온 시련 캡틴이라네. 카푸 수호신의 기척을 쫓다 이 호연까지 왔지.',
           '이 심연의 어둠을 꿰뚫으려면 알로라 지방에 전해 내려오는 태고의 빛, {y:Z파워}가 필요하네.',
-          '근처 고대 제단(샛길의 시련의 방)을 수호하는 주인 포켓몬 — {y:붉은 오라를 두른 엘리트 수호자}의 시련을 돌파하고 자격을 증명해 보게!',
+          '내가 이 돌다리 끝에 하늘기둥을 지키는 주인 포켓몬 — {y:붉은 오라를 두른 시련의 수호자}를 불러내겠네. 쓰러뜨리고 자격을 증명해 보게!',
           '시련을 넘으면 다시 오게. {b:Z링}과 자네 동료들의 {b:Z크리스탈}을 정식으로 내어 주지.'],
-        onEnd: () => { if (!q.zTrial) { q.zTrial = 1; this.events.emit('toast', '시련 시작 — 호연지방의 엘리트 수호자(붉은 오라)를 쓰러뜨리자'); Sfx.play('select'); } }
+        onEnd: () => { if (!q.zTrial) { q.zTrial = 1; this.events.emit('toast', '시련 시작 — 돌다리 끝에 시련의 수호자(붉은 오라)가 나타났다!'); Sfx.play('select'); this.ensureTrialGuardian(); } }
       };
     }
     if (id === 'stone_collector') {
@@ -2595,7 +2598,8 @@ export default class GameScene extends Phaser.Scene {
       if (s.room && s.room.isPurified) continue;   // ✨ 정화한 샛길 구역: 다시 와도 · 이어하기로 와도 몬스터가 절대 나오지 않는다
       if (s.room) this.time.delayedCall(0, () => this.checkRoomClear(s.room));   // 마지막 자리가 안전 구역이라 아무도 나오지 않은 채 끝난 샛길 구역
       if (s.room && (s.room.type === 'village' || s.room.lab || s.room.peaceful)) continue;   // 마을 · 방울로드 성역엔 침식된 포켓몬이 하나도 나오지 않는다
-      if (this.level.purified) { if (!s.elite && Math.random() < .5) this.spawnWanderer(s); continue; }   // 정화한 지방: 세뇌된 적 대신 평화로운 야생 포켓몬
+      if (s.trial && !(this.player.quests && this.player.quests.zTrial === 1)) continue;   // 시련을 이미 넘었으면(다른 엘리트로) 시련의 수호자는 나오지 않는다
+      if (this.level.purified && !s.trial) { if (!s.elite && Math.random() < .5) this.spawnWanderer(s); continue; }   // 정화한 지방: 세뇌된 적 대신 평화로운 야생 포켓몬 (시련의 수호자만은 나온다)
       if (s.elite && s.room && s.room.hidden && !(this.level.sides || []).some(sd => sd.room === s.room && sd.revealed)) { s.spawned = false; continue; }   // 숨은 굴의 수문장은 흙이 걷힌 뒤에
       if (this.safeSpawn(s)) continue;   // 간이 회복기 둘레 · 조작 힌트 NPC 와 연습용 과녁 자리는 안전 구역
       this.spawnAt(s);
@@ -2622,8 +2626,25 @@ export default class GameScene extends Phaser.Scene {
     s.enemy = e;
     this.fx.ring(s.x, e.y, 34, 0xff3a2a, 460); this.fx.glow(s.x, e.y, 40, 0xff3a2a, 520, 1);
     this.fx.burst(s.x, e.y, [0xff3a2a, 0xffa040, 0xffffff], 20, 130, { glow: true, up: 80 });
-    this.events.emit('toast', `🔥 엘리트 ${def.name}이(가) 길을 막아섰다! 쓰러뜨리면 이상한사탕 · 금구슬 · 빛나는 TM 코어`);
+    this.events.emit('toast', s.trial ? `🔥 시련의 수호자 ${def.name}이(가) 나타났다! 쓰러뜨리고 시련 캡틴에게 돌아가자` : `🔥 엘리트 ${def.name}이(가) 길을 막아섰다! 쓰러뜨리면 이상한사탕 · 금구슬 · 빛나는 TM 코어`);
+    if (s.trial) e.trialGuard = true;
     Sfx.play('boss');
+  }
+
+  // 🔥 호연 Z 시련의 수호자: 시련을 받은 동안(zTrial 1) 하늘기둥 돌다리 방 오른쪽에 엘리트 한 마리 자리를 둔다 (가까이 가면 나타난다)
+  //  자리는 지방을 깔 때마다 새로 만들어지니(진행 저장엔 없다) 이어하기 · 공중날기로 돌아와도 여기서 다시 둔다 · 쓰러뜨리면 zTrial 2 (killEnemy)
+  ensureTrialGuardian() {
+    const lv = this.level, p = this.player, q = p && p.quests;
+    if (!lv || lv.test || this.stageIdx !== 2 || !q || q.zTrial !== 1 || lv.spawns.some(s => s.trial)) return;
+    const r = lv.rooms.find(o => o.seaBridge);
+    if (!r) return;
+    const G = lv.grid, cap = (lv.npcs || []).find(n => n.id === 'trial_captain'), x0 = cap ? cap.x + 6 : r.tx0 + 14;
+    const okX = x => G[r.F] && (G[r.F][x] === 'S') && G[r.F - 1][x] === '.' && G[r.F - 2][x] === '.';
+    let tx = null;
+    for (let x = Math.min(r.tx1 - 4, Math.max(x0, r.tx1 - 8)); x > r.tx0 + 2 && tx === null; x--) if (okX(x) && (!cap || Math.abs(x - cap.x) >= 5)) tx = x;
+    if (tx === null) for (let x = r.tx0 + 2; x < r.tx1 - 2 && tx === null; x++) if (okX(x)) tx = x;
+    if (tx === null) return;
+    lv.spawns.push({ x: tx * TILE + 8, y: r.F * TILE, room: r, spawned: false, elite: true, trial: true });
   }
 
   spawnAt(s) {
@@ -2992,7 +3013,8 @@ export default class GameScene extends Phaser.Scene {
     }
     this.events.emit('boss', null);
     const drop = final ? (this.stageIdx === DROPS.megastone ? 'megastone' : null) : null;
-    const sub = drop === 'megastone' ? '정신을 되찾았다 · 메가스톤이 빛난다' : hidden ? '전설이 깨어났다 · 전설의 기술 카드와 메가스톤을 남겼다' : '정신을 되찾았다';
+    const hiddenStone = hidden && (room.main || this.stageIdx >= DROPS.hiddenStoneFrom);   // 샛길 히든 전설은 호연부터 메가스톤 (본길 기라티나는 늘)
+    const sub = drop === 'megastone' ? '정신을 되찾았다 · 메가스톤이 빛난다' : hidden ? (hiddenStone ? '전설이 깨어났다 · 전설의 기술 카드와 메가스톤을 남겼다' : '전설이 깨어났다 · 전설의 기술 카드를 남겼다') : '정신을 되찾았다';
     this.events.emit('banner', `${boss.name} 정화!`, sub);
     this.fx.hitStop(220);
     for (let k = 0; k < 3; k++) this.time.delayedCall(k * 160, () => { this.fx.ring(boss.x + rand(-20, 20), boss.y + rand(-20, 20), 40 + k * 10, 0xe0b0ff, 300); Sfx.play('boom'); });   // 껍질에 금이 가는 박자
@@ -3003,7 +3025,7 @@ export default class GameScene extends Phaser.Scene {
       this.unlockArena();
       if (drop) this.spawnPickup(drop, boss.x, boss.y - 10);
       bossNuggets(room.type, !!coreOfBoss(boss.bossKey)).forEach((id, k) => this.spawnPickup('nugget', boss.x - 10 + k * 20, boss.y - 18, id));   // 중간 보스 금구슬 · 지방/히든 보스 큰 금구슬 확정
-      if (hidden) this.spawnPickup('megastone', boss.x, boss.y - 24);   // 숨겨진 심연의 균열: 다른 포켓몬용 메가스톤
+      if (hiddenStone) this.spawnPickup('megastone', boss.x, boss.y - 24);   // 숨겨진 심연의 균열(호연부터): 다른 포켓몬용 메가스톤
       if (Math.random() < ITEM_DROP.boss) this.spawnPickup('item', boss.x + 14, boss.y - 10, pick(RANDOM_ITEM_KEYS));   // 보스는 강화 아이템 확정
       if (hidden) { this.spawnPickup('item', boss.x - 14, boss.y - 10, pick(RANDOM_ITEM_KEYS)); this.time.delayedCall(1500, () => this.openLegendCards()); }
     }));

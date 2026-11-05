@@ -38,7 +38,9 @@ export const XP_RULE = [
 export const XP_UNITS = { wild: 1, elite: 5, mini: 8, boss: 12, candy: 8, respawn: .25 };
 // 몇 번째 챕터(0부터) 최종 보스가 떨어뜨리나 — 레쿠쟈: 메가스톤 (키스톤 · 첫 메가스톤은 성도 방울탑 노승려 · Z링은 호연 시련 캡틴)
 //  모든 보스는 정화될 때 자기 「코어」(전설 유물 · data/cores.js)를 100% 떨어뜨린다 (GameScene.killEnemy)
-export const DROPS = { megastone: 2 };
+//  hiddenStoneFrom: 샛길 끝 숨겨진 심연의 균열(히든 전설)이 메가스톤을 남기기 시작하는 챕터 — 관동 강철톤 · 성도 전룡은 전설의 기술 카드 · 큰 금구슬만
+//   (본길의 기라티나는 히든이 아니라 그대로 메가스톤 · 키스톤과 첫 메가스톤은 성도 끝 방울탑 노승려)
+export const DROPS = { megastone: 2, hiddenStoneFrom: 2 };
 // 단계별 배율: atk 공격력 · hp 최대 체력 · size 몸집 · fx 스킬 이펙트(범위·궤적) 크기
 //  proj 투사체 크기·판정 반경 (진화할수록 눈에 띄게 커진다. 꼬리·적중 연출도 단계별로 화려해짐)
 //  1단은 수수하게: 공격력 ×0.8 · 이펙트·투사체 작게 · 투사체는 한 번에 1발만 (Combat.spawnProjectile) → 진화·카드로 강해지는 맛
