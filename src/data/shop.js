@@ -135,6 +135,8 @@ export const ELITE_NUGGET = { tiny_nugget: .6, nugget: .15 };
 export function eliteNuggets(stageIdx, rnd = Math.random) {
   return Object.entries(ELITE_NUGGET).filter(([, pr]) => rnd() < pr).map(([id]) => id);
 }
-export function bossNuggets(roomType) {
-  return [roomType === 'mini' ? 'nugget' : 'big_nugget'];
+// 보스 금구슬: 지방 최종 보스(코어를 떨어뜨린다)는 큰 금구슬 하나 · 코어가 없는 중간 보스 · 히든 · 서브 보스는 코어 대신 다량의 금구슬
+export function bossNuggets(roomType, finalCore = false) {
+  if (finalCore) return ['big_nugget'];
+  return roomType === 'mini' ? ['nugget', 'big_nugget'] : ['big_nugget', 'big_nugget'];
 }

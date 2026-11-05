@@ -24,6 +24,7 @@ const SIDE_GLOOM = .62, MAIN_RESPAWN_MS = 4000;
 const ARENA_AMB = { biolab: [0x8ad8e8, .8], bellroof: [0xffc890, .92], summit: [0xc8f0ff, .92], spear: [0xe0dcff, .9], distortion: [0xb898ff, .8], yinyang: [0xf0e8f4, .86], origin: [0xfff4d8, .96], reactor: [0xffb0b8, .8] };   // 보스전 월드 배율 (평소 ZOOM 1.25 → 화면에 아레나가 더 많이 들어온다)
 import { Props } from '../game/Props.js';
 import { SideRooms } from '../game/SideRooms.js';
+import { HoohAltar, BEAST_ORBS, ORB_KEYS, orbTexture, orbCount } from '../game/HoohAltar.js';
 import { Player } from '../game/Player.js';
 import { Enemy } from '../game/Enemy.js';
 import { Boss } from '../game/Boss.js';
@@ -443,6 +444,8 @@ export default class GameScene extends Phaser.Scene {
     this.props = new Props(this, level, st, si);
     this.npcs = new Npcs(this, level, this.props);   // 마을 사람들 · 오박사 (말을 걸면 대화창)
     this.side = level.purified || this.test ? null : new SideRooms(this, level, this.sideRoomsOf(level));   // ✨ 샛길 정화 구역: 침식 덩굴 · 안개 / 정화한 방은 성역
+    const hooh = level.test ? null : level.rooms.find(r => r.boss === 'ho-oh' && r.type === 'boss');
+    this.altar = hooh ? new HoohAltar(this, hooh) : null;   // 🌈 방울탑 최상층 삼색 방울의 제단: 성수의 구슬 셋을 바쳐야 칠색조가 강림한다
     this.physics.world.setBounds(0, 0, level.width, level.height + 200);
 
     // 패럴랙스 배경 (보스전에서 가장 멀리 당긴 줌 기준으로도 화면을 채우도록 배치)
@@ -655,6 +658,8 @@ export default class GameScene extends Phaser.Scene {
     if (this.npcs) { this.npcs.destroy(); this.npcs = null; }
     if (this.props) { this.props.destroy(); this.props = null; }
     if (this.side) { this.side.destroy(); this.side = null; }
+    if (this.altar) { this.altar.destroy(); this.altar = null; }
+    this.altarRite = null;
     if (this.promptText) { this.promptText.destroy(); this.promptText = null; }
     if (this.torches && this.webgl) for (const t of this.torches) if (t.light) this.lights.removeLight(t.light);
     for (const bd of this.arenaDrops || []) bd.destroy();   // 조명 · 배경 텍스처 (그림은 위 worldObjs 로 이미 내렸다)
@@ -1043,6 +1048,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.trainer) { this.trainer.destroy(); this.trainer = null; }
     if (this.player && this.player.flipT > 0) this.player.flipT = .001;   // 뒤틀린 중력도 푼다
     this.boss = null; this.bosses = []; this.chain = null; this.arenaRoom = null; r.entered = false;
+    if (this.altar && this.altar.room === r) { this.altar.reset(true); this.altarRite = null; this.cinema = false; }   // 칠색조: 박힌 구슬은 그대로 — 제단에서 다시 F 로 강림
     if (r.plantHeart) {   // 블랙나이트의 심장: 오버드라이브를 끄고 결정 속 레드부터 다시 (무한다이노부터 새로)
       this.endOverdrive(); this.cinema = false;
       if (this.player && this.player.inv > 100) this.player.inv = 1;   // 연출 중의 무적을 푼다
@@ -1183,6 +1189,7 @@ export default class GameScene extends Phaser.Scene {
     if (it.kind === 'journal') { this.readJournal(it); return; }   // 가라르 지하 플랜트의 기밀 연구 일지
     if (it.kind === 'door') { this.useDoor(it); return; }   // 오박사 연구소 문 (안 ↔ 밖)
     if (it.kind === 'tm') { this.openTM(it); return; }   // 카드를 확정해야 다 쓴 제단이 된다
+    if (it.kind === 'altar') { it.altar.use(); return; }   // 🌈 삼색 방울의 제단: 구슬이 모자라면 비문 · 셋이면 봉헌 & 칠색조 강림
     if (it.kind === 'taxi') { this.toggleOverlay('taxi'); Sfx.play('select'); return; }   // 아머까오 공중날기 (몇 번이고)
     if (it.kind === 'mart') { this.openShop(it); return; }   // 포켓샵 (몇 번이고)
     if (it.kind === 'terminal') {   // 간이 포켓몬 회복기: 파티 전원 회복 + 연결(자동 저장 · 부활 자리)
@@ -1432,6 +1439,8 @@ export default class GameScene extends Phaser.Scene {
       this.props.update(time, dt);
       this.updateResting();
       this.updateLights(dt); this.updateAtmosphere(dt); this.updateWeather(dt);
+      if (this.altar) this.altar.update(dt, this.cameras.main.worldView);
+      if (this.altarRite) for (const e of this.enemies) if (e.alive && e.boss) e.update(dt, this.player);   // 칠색조 제단 봉헌: 조작은 멈추고 강하는 흘러간다
       this.updateArenaDrops(dt);
       this.fx.update(dt);
       return;
@@ -1464,6 +1473,7 @@ export default class GameScene extends Phaser.Scene {
     this.updateLights(dt);
     this.updateAtmosphere(dt);
     if (this.side) this.side.update(dt, this.cameras.main.worldView);
+    if (this.altar) this.altar.update(dt, this.cameras.main.worldView);
     this.updateWeather(dt);
     this.updateCracks(dt);
     this.updateArenaDrops(dt);
@@ -2118,6 +2128,20 @@ export default class GameScene extends Phaser.Scene {
       later(1200, () => spawn(x, b => b.introPath(x, gy - 34, x, gy - 96, 1100, 'Cubic.easeOut')));
       return true;
     }
+    if (key === 'ho-oh' && this.altarRite && this.altarRite.room === room) {   // 🌈 제단 봉헌: 갈라진 무지개빛 후광에서 일곱 빛깔 깃털 · 성스러운 불꽃을 흩뿌리며 제단 위로 묵직하게 (2.2 ~ 3.5초)
+      const ax = this.altarRite.x, ly = this.altarRite.top - 64, v = cam.worldView;
+      for (let k = 0; k < 30; k++) this.time.delayedCall(k * 35, () => this.fx.burst(v.x + Math.random() * v.width, v.y - 4, [0xff4a4a, 0xff9a2a, 0xffe04a, 0x6aff6a, 0x4ac8ff, 0x8a6aff, 0xff6ad8], 1, 30, { angle: Math.PI / 2, spread: .6, up: -20, grav: 40, bounce: false, glow: true, life: 1.6, size: 2 }));
+      spawn(ax, b => {
+        b.introPath(ax, room.top - 70, ax, ly, 1150, 'Cubic.easeOut', () => {
+          this.fx.ring(ax, ly + 50, 130, 0xffb040, 650); this.fx.ring(ax, ly + 50, 80, 0xffffff, 450);
+          for (let k = 0; k < 7; k++) this.time.delayedCall(k * 50, () => this.fx.ring(ax, ly + 20, 40 + k * 18, [0xff4a4a, 0xff9a2a, 0xffe04a, 0x6aff6a, 0x4ac8ff, 0x8a6aff, 0xff6ad8][k], 520));
+          this.fx.burst(ax, ly + 50, [0xffd040, 0xff6a3a, 0xffffff], 44, 260, { up: 120, glow: true });
+          this.fx.shake(.028, 600); Sfx.play('roar'); Sfx.play('boom');
+        });
+        for (let k = 0; k < 20; k++) this.time.delayedCall(k * 55, () => { if (b.alive) this.fx.burst(b.x + (Math.random() - .5) * 70, b.y, [0xff6a2a, 0xffd040, 0xff3a5a, 0x6ac8ff, 0x8aff8a], 3, 90, { angle: -Math.PI / 2, spread: 1.4, up: 40, glow: true, life: .55 }); });
+      });
+      return true;
+    }
     if (key === 'ho-oh') {   // 황금빛 · 무지갯빛 깃털이 흩날리다가, 태양을 등지고 수직 강하해 옥상 한가운데 착지
       const v = cam.worldView;
       for (let k = 0; k < 36; k++) this.time.delayedCall(k * 30, () => this.fx.burst(v.x + Math.random() * v.width, v.y - 4, [0xffd040, 0xff6a3a, 0x8aff8a, 0x6ac8ff, 0xffffff], 1, 30, { angle: Math.PI / 2, spread: .6, up: -20, grav: 40, bounce: false, glow: true, life: 2.4, size: 2, drag: .99 }));
@@ -2487,7 +2511,7 @@ export default class GameScene extends Phaser.Scene {
     // 아레나: 안쪽으로 조금 들어서면 문이 닫히고 보스전
     //  아래 방에서 사다리로 올라오는 통로(철창 아래 줄)도 이 방 칸에 걸쳐 있다 — 아레나 바닥 위로 올라선 뒤에만 시작한다
     //  (예전엔 통로 안에서 시작돼 철창 관문이 머리 위에서 닫혀 못 올라갔다 — 방울탑 옥상 칠색조 등)
-    if (!room.cleared && !room.entered && (room.type === 'mini' || room.type === 'boss' || room.type === 'sanctuary') && p.x > (room.originHall || room.plantHeart ? room.cx - 70 : room.left + 20) && p.x < room.right - 20 && p.y > room.top && p.y <= room.F * TILE) {   // 시초의 방은 제단 한가운데로 걸어가야
+    if (!room.cleared && !room.entered && !room.altarGated && (room.type === 'mini' || room.type === 'boss' || room.type === 'sanctuary') && p.x > (room.originHall || room.plantHeart ? room.cx - 70 : room.left + 20) && p.x < room.right - 20 && p.y > room.top && p.y <= room.F * TILE) {   // 시초의 방은 제단 한가운데로 걸어가야
       room.entered = true;
       this.setGates(room, false);
       this.startBoss(room);
@@ -2628,7 +2652,7 @@ export default class GameScene extends Phaser.Scene {
       this.bosses.push(twin);
     }
     this.gearWarn = gearCheck(this.player, key);   // 🔴 전력 부족: 카드 점수가 이 보스 권장 점수의 75% 미만 (UI 가 보스 체력 바 아래에 붉게)
-    this.events.emit('boss', boss);   // UI 가 할로우 나이트식 보스 이름 타이틀을 띄운다
+    if (!this.altarRite) this.events.emit('boss', boss);   // UI 가 할로우 나이트식 보스 이름 타이틀을 띄운다 (칠색조 제단 봉헌은 강림이 끝난 3.5초에)
     if (this.gearWarn) { const w = this.gearWarn; this.time.delayedCall(1800, () => { if (boss.alive && this.boss === boss) this.events.emit('toast', `⚠️ 전력 부족 — 카드 점수 ${w.score} / 이 보스 권장 ${w.rec} (보유 카드 수 + 강화 단계) · 탐색하며 기술머신 카드를 더 모으고 강화하자`); }); }
     this.fx.shake(.01, 500); Sfx.play('boss');
     Music.play(def.bgm || (def.tier === 'boss' ? this.stage.bossBgm : 'boss_ruin'));   // 보스 전용곡(아비스 네크로즈마) · 지방 최종 보스는 지방 전용곡, 중간·히든 보스는 공용 전투곡
@@ -2763,7 +2787,8 @@ export default class GameScene extends Phaser.Scene {
     const joinedBy = e.boss && Save.unlockByBoss(e.bossKey);   // 전설 보스 정화 → 그 전설이 플레이어블로 합류 (한카리아스 → 딥상어동 계열)
     if (joinedBy) this.time.delayedCall(2800, () => this.announceJoin([joinedBy]));
     if (e.boss) { this.dropFormItem(e); this.bondPurify(e); }
-    if (e.boss && coreOfBoss(e.bossKey)) this.time.delayedCall(1300, () => { if (this.level) this.spawnPickup('item', e.x, e.y - 14, coreOfBoss(e.bossKey)); });   // 보스의 코어 100% (짝 보스 · 이어 싸우기도 한 마리마다)
+    if (e.boss && coreOfBoss(e.bossKey)) this.time.delayedCall(1300, () => { if (this.level) this.spawnPickup('item', e.x, e.y - 14, coreOfBoss(e.bossKey)); });   // 💎 지방 최종 보스만 그 지방의 코어 (data/cores.js FINAL_CORE)
+    if (e.boss && BEAST_ORBS[e.bossKey]) this.time.delayedCall(1300, () => { if (this.level) this.spawnPickup('orb', e.x, e.y - 14, e.bossKey); });   // 성도 3성수: 코어 대신 성수의 구슬 (칠색조의 제단 열쇠)   // 보스의 코어 100% (짝 보스 · 이어 싸우기도 한 마리마다)
     if (e.boss) this.time.delayedCall(1700, () => { if (this.level && !this.over) this.spawnPickup('tmcore', e.x, e.y - 16); });   // 빛나는 TM 코어 100% (보스 · 엘리트만 새 카드를 떨어뜨린다)
     if (e.boss) { this.bossDefeated(e); return; }
     if (e.elite && this.stageIdx === 2 && this.player.quests && this.player.quests.zTrial === 1) {   // 호연의 시련: 엘리트 수호자를 넘었다 → 루네시티 시련 캡틴에게
@@ -2919,7 +2944,7 @@ export default class GameScene extends Phaser.Scene {
       this.setGates(room, true);
       this.unlockArena();
       if (drop) this.spawnPickup(drop, boss.x, boss.y - 10);
-      bossNuggets(room.type).forEach((id, k) => this.spawnPickup('nugget', boss.x - 10 + k * 20, boss.y - 18, id));   // 중간 보스 금구슬 · 지방/히든 보스 큰 금구슬 확정
+      bossNuggets(room.type, !!coreOfBoss(boss.bossKey)).forEach((id, k) => this.spawnPickup('nugget', boss.x - 10 + k * 20, boss.y - 18, id));   // 중간 보스 금구슬 · 지방/히든 보스 큰 금구슬 확정
       if (hidden) this.spawnPickup('megastone', boss.x, boss.y - 24);   // 숨겨진 심연의 균열: 다른 포켓몬용 메가스톤
       if (Math.random() < ITEM_DROP.boss) this.spawnPickup('item', boss.x + 14, boss.y - 10, pick(RANDOM_ITEM_KEYS));   // 보스는 강화 아이템 확정
       if (hidden) { this.spawnPickup('item', boss.x - 14, boss.y - 10, pick(RANDOM_ITEM_KEYS)); this.time.delayedCall(1500, () => this.openLegendCards()); }
@@ -3442,13 +3467,14 @@ export default class GameScene extends Phaser.Scene {
     // 아이템·상처약은 가방과 같은 본가 그림을 16칸 크기로 (월드 배율만큼 곱게 줄여 둔다). 그림이 없으면 도트 아이콘
     const artId = kind === 'item' || kind === 'nugget' ? id : kind === 'potion' ? 'potion' : kind === 'candy' ? 'rare_candy' : null, art = artId && itemArt(this, artId, 16 * ZOOM);
     if (kind === 'tmcore') tmCoreTexture(this);
-    const img = this.physics.add.image(x, y, art || (kind === 'item' ? `it:${id}` : kind === 'potion' ? 'oran' : kind === 'formitem' ? 'megastone' : kind)).setDepth(19);   // 폼체인지 아이템은 구슬 모양 (색으로 구분)
+    if (kind === 'orb') orbTexture(this, id);
+    const img = this.physics.add.image(x, y, art || (kind === 'item' ? `it:${id}` : kind === 'orb' ? `orb:${id}` : kind === 'potion' ? 'oran' : kind === 'formitem' ? 'megastone' : kind)).setDepth(19);   // 폼체인지 아이템은 구슬 모양 (색으로 구분)
     if (kind === 'formitem') img.setTint(FORM_ITEMS[id].color);
     if (art) { img.setDisplaySize(16, 16); img.body.setSize(10 / img.scaleX, 16 / img.scaleY); }   // 몸통도 그림 크기에 맞춰 바닥에 딱 놓이게
     else img.body.setSize(10, 10);
     if (!still) img.setVelocity(rand(-70, 70), -190);
     img.body.setBounce(.35); img.body.setDragX(120);
-    const col = kind === 'tmcore' ? 0xffd25a : kind === 'formitem' ? FORM_ITEMS[id].color : kind === 'megastone' ? 0xff8ad0 : kind === 'zcrystal' ? 0xfff6a0 : kind === 'oran' ? 0x4a7aff : kind === 'potion' ? 0xd88aff : kind === 'candy' ? 0x9ad8ff : kind === 'nugget' ? NUGGETS[id].color : 0xffe08a;
+    const col = kind === 'orb' ? BEAST_ORBS[id].color : kind === 'tmcore' ? 0xffd25a : kind === 'formitem' ? FORM_ITEMS[id].color : kind === 'megastone' ? 0xff8ad0 : kind === 'zcrystal' ? 0xfff6a0 : kind === 'oran' ? 0x4a7aff : kind === 'potion' ? 0xd88aff : kind === 'candy' ? 0x9ad8ff : kind === 'nugget' ? NUGGETS[id].color : 0xffe08a;
     const glow = this.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(col).setScale(kind === 'nugget' ? .8 : .5).setDepth(18);
     if (kind === 'nugget') img.setVelocity(rand(-60, 60), -260);   // 금구슬은 더 높이 튀어 오른다
     const coll = this.physics.add.collider(img, this.layers);
@@ -3507,6 +3533,12 @@ export default class GameScene extends Phaser.Scene {
       this.events.emit('toast', `[${ng.name}] 획득! (포켓샵에서 고가에 판매 가능 · ${ng.sell.toLocaleString('ko-KR')} ₽)`, p.id);
       Sfx.play('coin'); this.fx.burst(pl.x, pl.y - 6, [0xffd84a, 0xfff6c0, 0xffffff], 18, 130, { glow: true, up: 90 });
       this.fx.floatText(pl.x, pl.y - 22, `+${ng.sell.toLocaleString('ko-KR')} ₽`, '#ffd84a', 10);
+    } else if (p.kind === 'orb') {   // 성수의 구슬: 방울탑 최상층 칠색조의 제단에 바친다 (game/HoohAltar.js)
+      const o = BEAST_ORBS[p.id];
+      pl.orbs = pl.orbs || {}; pl.orbs[p.id] = true;
+      const n = orbCount(this);
+      this.events.emit('banner', `${o.icon} ${o.name} (${o.en}) 획득!`, n >= 3 ? '성수의 구슬 3 / 3 — 방울탑 최상층, 칠색조의 제단에 바치자' : `성수의 구슬 ${n} / 3 — 세 개를 모아 방울탑 최상층의 제단에 바치면 칠색조가 강림한다`);
+      Sfx.play('bell'); this.fx.ring(pl.x, pl.y, 40, o.color, 420); this.fx.burst(pl.x, pl.y, [o.color, o.light, 0xffffff], 22, 140, { glow: true, up: 90 });
     } else if (p.kind === 'tmcore') {   // 빛나는 TM 코어 (엘리트 · 보스 100%): 그 자리에서 기술머신 카드 3장 중 1장
       this.events.emit('toast', '✨ 빛나는 TM 코어! 기술머신 카드가 전송된다', 'tm');
       Sfx.play('unlock'); this.fx.ring(pl.x, pl.y, 44, 0xffd25a, 420); this.fx.burst(pl.x, pl.y, [0xffd25a, 0xb08aff, 0xffffff], 22, 150, { glow: true, up: 90 });
@@ -3653,8 +3685,21 @@ export default class GameScene extends Phaser.Scene {
     this.testReset(rebuild, () => {
       const room = this.level.rooms[0];
       room.boss = key;
+      if (this.altar) { this.altar.destroy(); this.altar = null; }
+      room.altarGated = false;
+      if (key === 'ho-oh') { this.testAltar(room); return; }   // 🌈 칠색조: 구슬 셋을 들고 제단 앞에서 (F 로 봉헌 연출부터)
       this.time.delayedCall(350, () => { if (!this.over && !this.arenaRoom) this.startBoss(room); });
     });
+  }
+  // 테스트룸 칠색조: 성수의 구슬 3개(🔴 🟡 🔵)를 지급하고 제단 앞에 세운다 — F 만 누르면 봉헌 · 강림 연출을 바로 검수
+  testAltar(room) {
+    if (!this.altar || this.altar.room !== room) { if (this.altar) this.altar.destroy(); this.altar = new HoohAltar(this, room); }
+    room.entered = false; room.cleared = false;
+    this.altar.reset(false);
+    this.player.orbs = Object.fromEntries(ORB_KEYS.map(k => [k, true]));
+    const x = this.altar.x - 30;
+    this.teleport({ x, y: (this.testFloor ? this.testFloor(x, room) : this.floorAt(x, room)) - 14 });
+    this.events.emit('toast', '🧪 테스트룸: 성수의 구슬 3개(🔴 🟡 🔵) 지급 — 제단 앞에서 F / ↑ 로 봉헌하면 칠색조가 강림한다');
   }
   // ---------------- 테스트 모드: 실제 보스방 · 랜드마크로 워프 ----------------
   // 실제 보스방이 있는 보스면 { ci, arena: 그 방의 보스, skip: 이어 나오는 보스를 골랐으면 그 보스 } · 없으면 null
@@ -3676,8 +3721,12 @@ export default class GameScene extends Phaser.Scene {
     this.testLast = () => this.testWarpBoss(key);
     this.testWarp(t.ci, lv => {
       const r = lv.rooms.find(q => q.boss === t.arena && (q.type === 'boss' || q.type === 'mini' || q.type === 'sanctuary'));
+      if (r && this.altar && this.altar.room === r) return { room: r, x: this.altar.x - 30 };   // 칠색조: 제단 앞
       return r ? { room: r, x: r.portalFrom ? r.left + 56 : r.left + 40 } : null;   // 출입문으로 들어오는 결전장(시초의 방 · 블랙나이트의 심장)은 출입문 앞 — 한가운데로 걸어가야 강림
-    }, `🗺️ ${STAGES[t.ci].short} · ${arena.name}의 보스방${t.skip ? ` — ${arena.name}은(는) 등장 연출 뒤 바로 정화되고 ${def.name}(으)로 이어진다` : ''}`, () => { this.testSkipTo = t.skip; });
+    }, `🗺️ ${STAGES[t.ci].short} · ${arena.name}의 보스방${t.skip ? ` — ${arena.name}은(는) 등장 연출 뒤 바로 정화되고 ${def.name}(으)로 이어진다` : ''}`, r => {
+      this.testSkipTo = t.skip;
+      if (r && this.altar && this.altar.room === r) this.testAltar(r);   // 🌈 칠색조: 구슬 셋 지급 · 제단 앞
+    });
   }
   // 🗺️ 랜드마크 입구 & 길목: i 번째 랜드마크의 진입로(part 'path') 또는 정문 앞(part 'gate')
   testWarpLandmark(i, part = 'gate') {

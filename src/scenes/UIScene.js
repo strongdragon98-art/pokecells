@@ -23,6 +23,7 @@ const curseOf = card => (card && card.kind === 'perk' && PERKS[card.id] && PERKS
 const fitText = (t, w) => { if (t.width > w) t.setScale(w / t.width, 1); return t; };
 import { HK, hkText, darkBand, hkMenu, hiImage, fadeLine, bar3d, glassPanel, glassButton, typePill } from '../systems/ui.js';
 import { MapView, VP } from '../systems/MapView.js';
+import { BEAST_ORBS, ORB_KEYS, hasOrb } from '../game/HoohAltar.js';
 import { TouchControls } from '../systems/TouchControls.js';
 import { tagIcon, roundPortrait, itemArt, hiTex, dashIcon, skillIcon } from '../systems/Textures.js';
 import { CHG_SHOW } from '../game/Player.js';
@@ -218,6 +219,7 @@ export default class UIScene extends Phaser.Scene {
     this.gMastery = this.add.graphics().setDepth(3); this.masteryPulse = 0;
     this.tMastery = hkText(this, B.x, B.y + 4, '', 8, '#ffe8a8', { origin: [.5, 0] }).setDepth(3);
     this.tSideRoom = hkText(this, B.x, B.y + 21, '', 7, '#ff9ab8', { origin: [.5, 0] }).setDepth(3).setVisible(false);   // 지금 선 샛길 구역: 남은 침식 포켓몬 · 정화 완료
+    this.tOrbs = hkText(this, B.x, B.y + 21, '', 8, '#ffe8c0', { origin: [.5, 0] }).setDepth(3).setVisible(false);   // 성도: 성수의 구슬 현황 (drawOrbs)
     if (this.gs.test) this.buildDebugBar();   // 테스트 모드: 오른쪽 위 퀵 디버그 바
 
     // ── 스킬 바: 사각 카드 칸 (대시 · Z · X · C · Q Z기술) — 디자인은 설정 → 스킬 UI 스타일 (샘플 A · B · C)
@@ -475,6 +477,15 @@ export default class UIScene extends Phaser.Scene {
     if (!done && got > 0) { g.fillStyle(0xffffff, .6); g.fillRect(Math.round(x + w * S[got - 1] / step), y - 1, 1, 5); }   // 지난 강화 지점 눈금
     if (this.masteryPulse > 0) { g.fillStyle(0xffffff, this.masteryPulse * .7); g.fillRect(x, y - 1, w * k, 5); }
   }
+  // 🌈 성도: 성수의 구슬 현황 [ 성수의 구슬: 🔴 / ⚫ / 🔵 (2/3) ] — 칠색조를 정화해 지방이 맑아질 때까지 (숙련 게이지 · 샛길 줄 아래)
+  drawOrbs() {
+    const gs = this.gs, lv = gs.level, show = !!(gs.player && lv && !this.overlayMode && (gs.test ? gs.altar : gs.stageIdx === 1 && !lv.purified));   // 테스트룸 · 실제 맵 워프에선 제단이 있을 때
+    this.tOrbs.setVisible(show);
+    if (!show) return;
+    const n = ORB_KEYS.filter(k => hasOrb(gs, k)).length;
+    this.tOrbs.setText(`[ 성수의 구슬: ${ORB_KEYS.map(k => (hasOrb(gs, k) ? BEAST_ORBS[k].icon : '⚫')).join(' / ')} (${n}/3) ]`).setColor(n >= 3 ? '#ffe08a' : '#ffe8c0')
+      .setY(!this.tMastery.visible ? B.y + 4 : this.tSideRoom.visible ? B.y + 31 : B.y + 21);
+  }
   // HUD 유대의 불꽃: 정화 단계(0~6)에 따라 목표 크기가 정해지고, 화면의 불꽃은 그 크기까지 천천히 자란다 (단계가 오르면 크게 맥동하며 커진다)
   //  세 겹 불꽃은 서로 다른 박자로 일렁이고(가로 · 세로 · 기울기), 곁불꽃은 엇박으로 솟았다 잦아든다 · 불씨가 위로 피어오른다 · Lv.6 은 빛살 고리
   drawBond(dt, time) {
@@ -674,6 +685,7 @@ export default class UIScene extends Phaser.Scene {
     g.fillGradientStyle(HK.ivoryN, HK.ivoryN, HK.ivoryN, HK.ivoryN, .95, 0, .95, 0); g.fillRect(tailX, V.y - .4, tailEnd - tailX, .9);
     this.drawBond(dt, time);
     this.drawMastery(dt);
+    this.drawOrbs();
     this.tName.setText(`${p.name}${mg.active ? ' ★' : ''}`);
     this.tType.setText(`${p.types.map(typeName).join(' · ')}${p.slowT > 0 ? ' · 둔화됨' : ''}`).setX(this.tName.x + this.tName.width + 7);
 

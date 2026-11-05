@@ -91,6 +91,7 @@ export class Player extends Actor {
     this.candy = 0;                                     // 이상한사탕 (엘리트 처치 보상 · 가방에서 먹인다)
     // 포켓샵 경제 (data/shop.js): 포켓달러 · 금구슬(환금 전용) · 가방 소모품(회복약 · 영양제) · 포켓샵마다의 구매 이력
     this.money = START_MONEY;
+    this.orbs = {};                                     // 성수의 구슬 { entei · raikou · suicune: true } — 방울탑 최상층 칠색조의 제단 (game/HoohAltar.js)
     this.nuggets = {};                                  // { tiny_nugget · nugget · big_nugget: 개수 }
     this.uses = {};                                     // { potion · super_potion · … · hp_up …: 개수 }
     this.shopLog = {};                                  // { '지방:시내 방': { 품목 id: 산 개수 } } — 재고 제한

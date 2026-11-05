@@ -53,7 +53,7 @@ function coreMods(items) {
   for (const [k, n] of Object.entries(items)) {
     const c = n > 0 && ITEMS[k] && ITEMS[k].core;
     if (!c) continue;
-    if (c.flag) core[c.flag] = true;
+    for (const f of [c.flag, ...(c.flags || [])]) if (f) core[f] = true;   // 진실과 이상의 코어: 두 영웅의 효과를 함께
     for (const t of c.proj || []) coreProj[t] = (coreProj[t] || 0) + 1;
   }
   return { core, coreProj, psyCore: !!core.psy };

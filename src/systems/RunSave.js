@@ -93,7 +93,7 @@ export function applyWorld(W, s) {
 export function snapshotPlayer(p) {
   return {
     idx: p.idx, stageBonus: p.stageBonus, bag: { ...p.bag }, formItems: [...p.formItems], candy: p.candy || 0,
-    money: p.money, nuggets: { ...p.nuggets }, uses: { ...p.uses }, shopLog: JSON.parse(JSON.stringify(p.shopLog || {})), shopStats: { ...p.shopStats },   // 포켓샵 경제 (data/shop.js)
+    money: p.money, orbs: { ...(p.orbs || {}) }, nuggets: { ...p.nuggets }, uses: { ...p.uses }, shopLog: JSON.parse(JSON.stringify(p.shopLog || {})), shopStats: { ...p.shopStats },   // 포켓샵 경제 (data/shop.js)
     keyStone: !!p.keyStone, zRing: !!p.zRing, megaStones: [...p.stones], crystals: { ...p.crystals }, quests: { ...(p.quests || {}) },   // 메가스톤 · Z크리스탈 (data/gear.js) · 이야기 진행
     members: p.members.map(memberSnap),
     stored: Object.values(p.stored || {}).map(memberSnap)   // 포켓몬센터 보관함에 맡긴 포켓몬 (진화 · 아이템 · 기술 그대로)
@@ -144,7 +144,7 @@ export function restorePlayer(p, s) {
   p.stageBonus = s.stageBonus || 1;
   p.bag = { ...(s.bag || {}) };
   p.candy = s.candy || 0;
-  p.money = s.money ?? START_MONEY; p.nuggets = { ...(s.nuggets || {}) }; p.uses = { ...(s.uses || {}) };   // 예전 저장(포켓샵 전): 용돈부터
+  p.money = s.money ?? START_MONEY; p.orbs = { ...(s.orbs || {}) }; p.nuggets = { ...(s.nuggets || {}) }; p.uses = { ...(s.uses || {}) };   // 예전 저장(포켓샵 전): 용돈부터
   p.shopLog = s.shopLog ? JSON.parse(JSON.stringify(s.shopLog)) : {}; p.shopStats = { bought: 0, sold: 0, spent: 0, earned: 0, ...(s.shopStats || {}) };
   p.keyStone = !!s.keyStone; p.zRing = !!s.zRing;
   p.stones = new Set(s.megaStones || []); p.crystals = { ...(s.crystals || {}) }; p.quests = { ...(s.quests || {}) };

@@ -1,10 +1,13 @@
-// 보스의 코어 — 모든 보스(지방 보스 · 중간 보스 · 히든 전설 · 챔피언)가 정화될 때 100% 떨어뜨리는 전설 유물 (장착 도구 칸)
+// 보스의 코어 — 💎 지방을 대표하는 최종 메인 보스만 정화될 때 지방당 딱 하나 확정으로 떨어뜨리는 전설 유물 (장착 도구 칸 · FINAL_CORE)
+//  관동 뮤츠 · 성도 칠색조 · 호연 레쿠쟈 · 신오 기라티나 · 하나 제크로무 → 레시라무(진실과 이상) · 시초의 방 아르세우스 · 가라르 무한다이노
+//  중간 보스 · 히든 전설 · 서브 보스(롱스톤 · 팬텀 · 3성수 · 다크라이 …)는 코어 대신 빛나는 TM 코어(기술머신 카드) · 금구슬 · 이야기 열쇠(성수의 구슬)
+//  아래 표의 나머지 코어는 예전 저장에 남은 유물을 그대로 쓰도록 남겨 둔다 (더는 떨어지지 않는다)
 //  단순 수치가 아니라 기술의 '작동 방식'을 바꾼다. 효과는 game/Cores.js · 아이템 표는 data/items.js 가 이 표로 만든다
-//  flag: 고유 효과 (game/Cores.js) · proj: 이 속성 투사체 +1 · boost: 이 속성 피해 +20% (고유 효과가 없는 보스의 코어)
+//  flag: 고유 효과 (game/Cores.js · flags: 여러 개) · proj: 이 속성 투사체 +1 · boost: 이 속성 피해 +20% (고유 효과가 없는 보스의 코어)
 import { typeName } from './types.js';
 
 export const BOSS_CORES = {
-  mewtwo: { id: 'mewtwo_core', name: '뮤츠의 코어', color: 0xb05aff, flag: 'psy', proj: ['psychic'],
+  mewtwo: { id: 'mewtwo_core', name: '뮤츠의 사이코 코어', color: 0xb05aff, flag: 'psy', proj: ['psychic'],
     desc: '🔮 에스퍼 기술·평타·차징의 투사체 +1 · 에스퍼 기술이 맞으면 사이코 중력장(주변 폭발 + 끌어당김·경직) · 차징 샷 크기 +30%' },
   'ho-oh': { id: 'core_hooh', name: '칠색조의 무지개 코어', color: 0xff6a2a, flag: 'hooh', proj: ['fire', 'flying'],
     desc: '🔥 불꽃·비행 투사체가 무지갯빛 성스러운 불꽃으로 · 투사체 +1 · 맞으면 강한 화상 100% · 쓰러지는 순간 불사조 날개와 함께 체력 50%로 부활 (지방·보스전마다 1번)' },
@@ -32,8 +35,11 @@ export const BOSS_CORES = {
     desc: '🔥 불꽃·드래곤 기술 · 차징 샷(Z 홀드)의 화염이 초고온의 푸른 불꽃으로 — 반감 · 무효 · 보스의 방어 자세까지 무시하고 관통 · 맞은 자리(근접은 앞 바닥)에 3초간 타오르는 푸른 화염 장판' },
   'kyurem-black': { id: 'core_kyurem_black', name: '큐레무의 절대영도 코어', color: 0xbff0ff, flag: 'kyurem',
     desc: '❄️ 얼음·드래곤 기술이 맞으면 35% 확률로 즉시 빙결(보스는 짧게) · 빙결되거나 둔화된 적에게 주는 급소 피해 +60%' },
-  eternatus: { id: 'core_eternatus', name: '무한다이노의 다이맥스 코어', color: 0xff2a5a, flag: 'dynamax',
+  eternatus: { id: 'core_eternatus', name: '무한다이노의 무한 코어', color: 0xff2a5a, flag: 'dynamax',
     desc: '☄️ 차징 샷과 기술(X · C)이 거대한 다이맥스포 광선으로 — 폭발 범위 2배 · 보스에게 주는 피해 +50%' },
+  // 하나 최종: 용나선탑 꼭대기 제크로무 → 레시라무를 모두 정화하면 — 두 영웅의 코어 효과를 함께
+  truth_ideal: { id: 'core_truth_ideal', name: '진실과 이상의 코어', color: 0x8ab8ff, flags: ['zekrom', 'reshiram'],
+    desc: '☯️ 이상(제크로무): 전기·드래곤 · 근접 기술에 크로스썬더 · 패링 성공 시 화면 안 모든 적에게 낙뢰 + 5초간 공격 속도 +40% / 진실(레시라무): 불꽃·드래곤 기술 · 차징 샷이 반감 · 방어 자세를 무시하는 푸른 불꽃 · 맞은 자리에 푸른 화염 장판' },
   // 아비스 네크로즈마(진 최종 보스)를 쓰러뜨리면: 레드가 돌려준 유대의 불꽃 — 진 엔딩 클리어로 영구 획득 (다음 여정부터 가방에 · GameScene)
   necrozma: { id: 'core_red_bond', name: '🔥 레드의 유대의 불꽃', color: 0xffb040, flag: 'bond',
     desc: '🔥 진 엔딩 궁극 유물 — 몸 둘레에 늘 유대의 불꽃이 감돌고 모든 기술에 황금빛 추가 화염 타격 · 패링(↓ + Z)에 성공하면 레드의 환영이 나타나 가장 가까운 적(보스)에게 합동 카운터 일격' },
@@ -54,6 +60,11 @@ export const BOSS_CORES = {
 for (const c of Object.values(BOSS_CORES)) if (!c.desc) c.desc = `💠 ${c.boost.map(t => typeName(t)).join('·')} 속성 투사체 +1 · 그 속성 피해 +20%`;
 // 아이템 id → 코어 정의
 export const CORE_BY_ITEM = Object.fromEntries(Object.values(BOSS_CORES).map(c => [c.id, c]));
-// 보스 key → 코어 아이템 id
-export const coreOfBoss = key => (BOSS_CORES[key] ? BOSS_CORES[key].id : null);
+// 💎 지방 최종 보스 → 그 지방의 코어 (지방당 하나 · 이어 싸우는 하나의 영웅전은 마지막 레시라무가)
+export const FINAL_CORE = {
+  mewtwo: 'mewtwo_core', 'ho-oh': 'core_hooh', rayquaza: 'core_rayquaza', giratina: 'core_giratina',
+  reshiram: 'core_truth_ideal', arceus: 'core_arceus', eternatus: 'core_eternatus'
+};
+// 보스 key → 코어 아이템 id (지방 최종 보스가 아니면 null)
+export const coreOfBoss = key => FINAL_CORE[key] || null;
 

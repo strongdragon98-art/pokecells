@@ -166,6 +166,8 @@ class AudioSys {
       case 'fieldheal': [988, 1175, 1319, 1175, 1568].forEach((f, i) => this.tone(f, i === 4 ? .5 : .11, 'square', .05, 0, [0, .1, .2, .34, .46][i])); this.tone(784, .8, 'triangle', .04, 0, .02); break;   // 띠리리- 띠리!
       case 'steam': this.hiss(.7, .2, 1400, 0, .6); this.hiss(.4, .1, 4200, .1, 2); this.tone(90, .35, 'sine', .08, 60); break;
       case 'resonate': this.tone(196, .6, 'sine', .05, 98); this.tone(392, .5, 'triangle', .025, 196, .05); break;
+      case 'bell': this.tone(1568, 1.1, 'sine', .07); this.tone(2349, .7, 'sine', .035); this.tone(3136, .45, 'triangle', .02); this.tone(784, 1.2, 'sine', .03); break;   // 카랑-! 맑은 방울 (제단 홈)
+      case 'bigbell': this.tone(196, 2.2, 'sine', .09); this.tone(294, 1.8, 'sine', .05); this.tone(392, 1.4, 'triangle', .035); this.tone(587, 1, 'sine', .025); this.nz(.08, .05, 'highpass', 2400); break;   // 거대한 황금 방울
       case 'type': this.tone(1500, .018, 'square', .012); break;
       case 'chain': this.hiss(.3, .12, 900, 0, 3); this.tone(120, .3, 'square', .05, -40); break;
       case 'thunder': this.hiss(.7, .3, 180); this.tone(60, .6, 'sawtooth', .12, -20); break;
