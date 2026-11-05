@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 import { ZOOM, RES, TILE } from '../config.js';
 import { STAGES, areaLabel } from '../data/stages.js';
 import { FORM_ITEMS } from '../data/roster.js';
-import { WILD, DEX_ORDER, SPECIES, SKILLS, TIERS, wildForm, pickWildStage, EXP_PURIFY, EXP_BOSS, DROPS, EVO_EXP, ZMOVES, BOSSES } from '../data/pokemon.js';
+import { WILD, DEX_ORDER, SPECIES, SKILLS, TIERS, wildForm, pickWildStage, XP_UNITS, XP_RULE, DROPS, EVO_EXP, ZMOVES, BOSSES } from '../data/pokemon.js';
 import { ITEMS, RANDOM_ITEM_KEYS, ITEM_DROP, CONSUMABLES, MAX_EQUIP } from '../data/items.js';
 import { stoneName, crystalName, zTypeOf, usesStone } from '../data/gear.js';
 import { coreOfBoss } from '../data/cores.js';
@@ -2560,6 +2560,7 @@ export default class GameScene extends Phaser.Scene {
     if (!def.flying) e.b.reset(x, gy - e.b.height / 2 - 1);
     this.addEnemy(e, room);
     s.enemy = e;   // 본길 다시 나타나기 (respawnMainRoom): 이 자리의 몬스터가 아직 살아 있는가
+    e.respawned = !!s.respawn;
     this.fx.ring(x, e.y, 22, typeColor(def.types[0]), 380);
     this.fx.glow(x, e.y, 26, typeColor(def.types[0]), 420, .9);
   }
@@ -2752,10 +2753,11 @@ export default class GameScene extends Phaser.Scene {
     e.b.enable = false;
     this.purify(e);
     if (this.test) { if (e.boss) this.bossDefeated(e); return; }   // 테스트룸: 경험치·도감·드랍 없이 정화 연출만
-    // 진화 경험치: 정화할 때 출전 중이던 포켓몬이 받는다 (보스는 정화 연출이 끝날 무렵)
-    const who = this.player.m;
-    if (e.boss) this.time.delayedCall(1600, () => { if (this.player && !this.over) this.player.addExp(EXP_BOSS, who); });
-    else this.player.addExp(Math.round(EXP_PURIFY * (1 + .25 * ((e.cLv || 1) - 1))), who);   // 침식이 짙은 녀석일수록 경험치도 많다
+    // 진화 경험치 (📉 경험치 감쇠 — Player.gainXp · data/pokemon.js XP_RULE): 정화할 때 출전 중이던 포켓몬이 받는다 (보스는 정화 연출이 끝날 무렵)
+    //  일반 1 · 엘리트 5 · 중간 보스 8 · 지방 보스 · 히든 전설 12 마리분 × 그 지방 base × 진화 단계 배율 · 이미 지나간 본길에서 다시 나타난 몬스터는 25%
+    const who = this.player.m, units = e.boss ? (e.room && e.room.type === 'mini' ? XP_UNITS.mini : XP_UNITS.boss) : (e.elite ? XP_UNITS.elite : XP_UNITS.wild) * (e.respawned ? XP_UNITS.respawn : 1);
+    if (e.boss) this.time.delayedCall(1600, () => { if (this.player && !this.over) { this.player.gainXp(units, who); this.xpHint(who); } });
+    else { this.player.gainXp(units, who); this.xpHint(who, e.respawned); }
     this.runStats.kills++;
     this.announceJoin(Save.addPurify());   // 누적 정화로 합류하는 특수 포켓몬 (롱스톤·스라크)
     const joinedBy = e.boss && Save.unlockByBoss(e.bossKey);   // 전설 보스 정화 → 그 전설이 플레이어블로 합류 (한카리아스 → 딥상어동 계열)
@@ -2775,8 +2777,8 @@ export default class GameScene extends Phaser.Scene {
       this.spawnPickup('tmcore', e.x, e.y - 12);   // 빛나는 TM 코어 100%: 주우면 그 자리에서 기술머신 카드 3장
       this.fx.ring(e.x, e.y, 40, 0xffd27a, 420);
     }
-    else if (Math.random() < ITEM_DROP.wild) this.spawnPickup('item', e.x, e.y, pick(RANDOM_ITEM_KEYS));   // 야생은 아이템 대신 가끔 오렌열매
-    else if (Math.random() < .16) this.spawnPickup('oran', e.x, e.y);
+    else if (Math.random() < ITEM_DROP.wild * (e.respawned ? XP_UNITS.respawn : 1)) this.spawnPickup('item', e.x, e.y, pick(RANDOM_ITEM_KEYS));   // 야생은 아이템 대신 가끔 오렌열매 (다시 나타난 본길 몬스터는 전리품도 25%)
+    else if (Math.random() < .16 * (e.respawned ? XP_UNITS.respawn : 1)) this.spawnPickup('oran', e.x, e.y);
     this.checkRoomClear(e.room);   // ✨ 샛길 정화: 이 샛길 구역의 침식된 포켓몬을 모두 정화했는가
     const r = Save.addKill(e.line || e.key);   // 정화 진행도는 진화 계열로 센다 (피카츄를 정화해도 피츄 계열 +1)
     if (r) {
@@ -2785,6 +2787,16 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  // 📉 경험치 감쇠 안내 (한 번씩): 이 지방에서 거의 자라지 않는 진화 단계 · 다시 나타난 본길 몬스터
+  xpHint(m, respawned) {
+    const p = this.player, told = this.xpTold || (this.xpTold = new Set()), ci = this.stageIdx, k = p && m ? p.xpMulOf(m) : 1;
+    if (respawned && !told.has('respawn')) { told.add('respawn'); this.events.emit('toast', '다시 나타난 본길 몬스터 — 경험치 · 전리품은 25% 뿐이다 · 샛길과 다음 지방으로 나아가자'); return; }
+    if (!m || m.tier >= EVO_EXP.length || k >= .2 || told.has(ci + ':' + m.tier)) return;
+    told.add(ci + ':' + m.tier);
+    const after3 = XP_RULE[Math.min(ci, XP_RULE.length - 1)].after3 === k;
+    this.events.emit('toast', after3 ? `이 지방에선 이미 3단 진화를 이뤘다 — 남은 2단 포켓몬은 ${this.stage.region} 몬스터에게서 경험치 ${Math.round(k * 100)}% 뿐`
+      : `${this.stage.region}의 약한 몬스터로는 ${p.formName(m)}이(가) 거의 자라지 않는다 (경험치 ${Math.round(k * 100)}%) — 다음 지방에서 강해지자`);
+  }
   // 정화 피니시: HP 0 이 되어도 바로 사라지지 않는다 (일반 약 0.55초, 보스는 같은 순서를 길게)
   //  ① 검보라 세뇌 껍질에 금이 가고 유리처럼 사방으로 깨져 나감 → ② 하얀 섬광
   //  ③ 본래 밝은 색으로 돌아와 안도하듯 멈춤 (머리 위 하트·반짝임) → ④ 몬스터볼 빛줄기처럼 붉은 빛이 되어 귀환
@@ -3363,7 +3375,7 @@ export default class GameScene extends Phaser.Scene {
     if (!lv || !room || lv.purified || this.test || !room.main || room.type !== 'combat' || room.leftAt == null || this.time.now - room.leftAt < MAIN_RESPAWN_MS) return;
     for (const sp of lv.spawns) {
       if (sp.room !== room || !sp.spawned || sp.elite || (sp.enemy && sp.enemy.alive)) continue;
-      sp.spawned = false; sp.enemy = null; sp.minGap = 130;
+      sp.spawned = false; sp.enemy = null; sp.minGap = 130; sp.respawn = true;   // 다시 나타난 몬스터: 경험치 · 전리품 25% (killEnemy)
     }
   }
   // 강화 창 열기: 보유 카드 중 강화할 수 있는 것 가운데 무작위 3장 (1 ~ 2장뿐이면 그만큼) — 하나도 없으면 체력 30% 회복으로 대신

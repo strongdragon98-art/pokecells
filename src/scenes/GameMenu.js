@@ -203,7 +203,7 @@ export const GameMenu = {
     const done = m.tier >= EVO_EXP.length, ey = CY + 112;
     C.add(hkText(this, RX + 14, ey, '진화', 8, HK.dim, { origin: [0, .5] }));
     bar3d(g, RX + 62, ey - 2, 150, 4, p.expProgress(m), m.mega ? PINK : 0xb07aff);
-    C.add(hkText(this, RX + 220, ey, m.mega ? '메가진화 ★' : done ? '3단 진화 완료' : `${m.exp} / ${EVO_EXP[m.tier]} · 다음 진화까지 ${p.expToNext(m)}`, 8, HK.ivory, { origin: [0, .5] }));
+    C.add(hkText(this, RX + 220, ey, m.mega ? '메가진화 ★' : done ? '3단 진화 완료' : `${Math.floor(m.exp)} / ${EVO_EXP[m.tier]} · 남은 ${p.expToNext(m)} · 한 마리 +${Math.round(p.xpRate(m) * 100) / 100}`, 8, HK.ivory, { origin: [0, .5] }));
     // 장비 효과 요약 (오른쪽 위)
     const mt = this.modsText(m.mods);
     C.add(hkText(this, RX + RW - 12, CY + 12, `교대 · ${TAGS[sp.tag].name}`, 7.5, HK.faint, { origin: [1, .5] }));
@@ -529,7 +529,7 @@ export const GameMenu = {
     this.menuSel = sel;
     const art = (o, glowCol) => { C.add(this.add.image(DX + DW / 2, CY + 44, 'glow').setBlendMode(ADD).setTint(glowCol).setScale(1.3).setAlpha(.4)); C.add(o); };
     let title, cat, desc, col = HK.ivory;
-    if (sel.kind === 'candy') { art(this.itemImage(DX + DW / 2, CY + 44, 'rare_candy', 44, 2.6), CYAN); title = `이상한사탕 ×${p.candy}`; cat = '소비 · 파티 공용'; desc = '다음 진화 경험치의 40%를 바로 채운다 (차면 진화) · 최종 진화면 체력 회복 + 공격력 +3% · 고대석 수집가와 메가스톤을 바꿀 수도 있다'; }
+    if (sel.kind === 'candy') { art(this.itemImage(DX + DW / 2, CY + 44, 'rare_candy', 44, 2.6), CYAN); title = `이상한사탕 ×${p.candy}`; cat = '소비 · 파티 공용'; desc = '이 지방 몬스터 8마리분 경험치 (진화 단계 감쇠를 그대로 받는다) · 최종 진화면 체력 회복 + 공격력 +3% · 고대석 수집가와 메가스톤을 바꿀 수도 있다'; }
     else if (sel.kind === 'use') { const u = USES[sel.id]; art(this.itemImage(DX + DW / 2, CY + 44, sel.id, 44, 2.6), CYAN); title = `${u.name} ×${sel.n}`; cat = u.cat === 'vit' ? '영양제 · 영구 강화' : u.cat === 'revive' ? '소비 · 쓰러진 포켓몬' : '소비 · 회복약'; desc = `${u.desc} · 게임이 멈춘 가방에서 바로 쓴다`; }
     else if (sel.kind === 'nugget') { const ng = NUGGETS[sel.id]; art(this.itemImage(DX + DW / 2, CY + 44, sel.id, 44, 2.6), 0xffd84a); title = `${ng.name} ×${sel.n}`; cat = `환금 아이템 · 1개 ${won(ng.sell)}`; desc = `${ng.desc} 포켓몬센터 옆 포켓샵의 「금구슬 일괄 판매」로 한 번에 현금화할 수 있다. (지금 다 팔면 ${won(ng.sell * sel.n)})`; col = '#ffe08a'; }
     else if (sel.kind === 'tool') { const it = ITEMS[sel.id]; art(this.itemImage(DX + DW / 2, CY + 44, sel.id, 44, 2.6), it.relic ? 0xb05aff : HK.goldN); title = it.name; cat = it.relic ? '전설 유물 · 장착 도구' : '장착 도구'; desc = it.desc; col = it.relic ? '#e8b0ff' : HK.ivory; }
@@ -586,7 +586,7 @@ export const GameMenu = {
     const before = p.formName(m), r = p.feedCandy(m);
     if (!r) { Sfx.play('deny'); return; }
     Sfx.play(r.evolved ? 'evolve' : 'heal');
-    this.toast(r.maxed ? `${before}이(가) 이상한사탕을 먹었다! 체력 회복 · 공격력 +3%` : r.evolved ? `${before}이(가) 이상한사탕을 먹고 ${p.formName(m)}(으)로 진화했다!` : `${before}이(가) 이상한사탕을 먹었다! 경험치 +${r.gain}`, 'rare_candy');
+    this.toast(r.maxed ? `${before}이(가) 이상한사탕을 먹었다! 체력 회복 · 공격력 +3%` : r.evolved ? `${before}이(가) 이상한사탕을 먹고 ${p.formName(m)}(으)로 진화했다!` : `${before}이(가) 이상한사탕을 먹었다! 경험치 +${r.gain}${r.low ? ' (이 지방에선 거의 자라지 않는다)' : ''}`, 'rare_candy');
     this.invMember = i;
     this.showInv(p.candy > 0 ? { kind: 'candy', cat: 'use', n: p.candy } : null);
   },

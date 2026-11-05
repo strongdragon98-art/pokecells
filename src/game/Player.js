@@ -4,7 +4,7 @@
 // p.tier · p.exp · p.items · p.mods · p.mega.active 는 '지금 출전 중인 포켓몬'의 값을 돌려준다 (스킬·전투 코드는 그대로 쓴다)
 import Phaser from 'phaser';
 import { Actor } from './Actor.js';
-import { SPECIES, SKILLS, TAGS, TIERS, EVO_EXP, ZMOVES, Z_CD } from '../data/pokemon.js';
+import { SPECIES, SKILLS, TAGS, TIERS, EVO_EXP, ZMOVES, Z_CD, XP_RULE, XP_UNITS } from '../data/pokemon.js';
 import { FORM_ITEMS } from '../data/roster.js';
 import { computeMods, ITEMS, MAX_EQUIP } from '../data/items.js';
 import { START_MONEY, USES, VIT_MAX } from '../data/shop.js';
@@ -62,7 +62,7 @@ const CHARGE_SHOT = [null,
   { r: 7, mul: 3.5, speed: 360, life: .9, hits: 3, boom: { r: 36, mul: 1.5 }, sfx: 'cshot1', shake: .008 },
   { r: 12.6, mul: 4, speed: 460, life: 1, hits: 4, boom: { r: 58, mul: 2.5 }, sfx: 'cshot2', shake: .013 },
   { r: 21, mul: 6.5, speed: 560, life: 1.25, hits: 5, ghost: true, boom: { r: 104, mul: 4.5 }, sfx: 'cshot3', shake: .024 }];
-const CHG_FAST = [1, .65, .52, .4];   // 고속 축전 코일 장 수 → 차징 시간 배율 (-35% · -48% · -60%)
+const CHG_FAST = [1, .85, .75, .65];   // 고속 축전 코일(레어) 장 수 → 차징 시간 배율 (-15% · -25% · -35%)
 // 평타(Z 연타) 3타 콤보 리듬: 템포를 늦추고(동작 시간 ×COMBO_TEMPO · 공격 속도 약 -33%) 한 방을 키운다 (기본 ×1.35 · 1타 1 → 2타 1.2 → 3타 1.6)
 //  3타 피니시 뒤 COMBO_RECOVER 초 숨 고르기 (대시 · 점프 · X · C · 메가 · Z기술 입력으로 즉시 캔슬)
 const COMBO_TEMPO = 1.5, COMBO_DMG = 1.35, COMBO_STEP = [1, 1.2, 1.6], COMBO_RECOVER = .42;
@@ -283,13 +283,28 @@ export class Player extends Actor {
     m.exp += n * ((m.mods && m.mods.expMul) || 1);   // 메가스톤 코어: 경험치 2배
     if (m.exp >= EVO_EXP[m.tier]) this.evolve(m);
   }
+  // 📉 경험치 감쇠: 지금 지방에서 몬스터 한 마리가 이 포켓몬에게 주는 경험치 (data/pokemon.js XP_RULE · 3단이면 0)
+  //  성도처럼 after3 가 있는 지방: 이 지방에서 이미 3단 진화를 이룬 포켓몬이 있으면 남은 2단 포켓몬은 그 배율로 (두 번째 3단 진화를 막는다)
+  xpMulOf(m = this.m) {
+    if (m.tier >= EVO_EXP.length) return 0;
+    const ci = this.scene.stageIdx || 0, R = XP_RULE[Math.min(ci, XP_RULE.length - 1)];
+    if (m.tier >= 1 && R.after3 != null && this.members.some(q => q !== m && q.tier >= 2 && q.evoCi === ci)) return R.after3;
+    return R.mul[Math.min(m.tier, R.mul.length - 1)];
+  }
+  xpRate(m = this.m) { const ci = this.scene.stageIdx || 0; return XP_RULE[Math.min(ci, XP_RULE.length - 1)].base * this.xpMulOf(m); }
+  // 몬스터 units 마리분 경험치를 받는다 (엘리트 5 · 중간 보스 8 · 보스 12 · 다시 나타난 본길 몬스터 ×0.25) → 실제로 받은 양
+  gainXp(units, m = this.m) {
+    const n = units * this.xpRate(m);
+    if (n > 0) this.addExp(n, m);
+    return n;
+  }
   // 다음 진화까지 진행도 0~1 (3단 이후 1)
   expProgress(m = this.m) {
     if (m.tier >= EVO_EXP.length) return 1;
     const lo = m.tier ? EVO_EXP[m.tier - 1] : 0;
     return Phaser.Math.Clamp((m.exp - lo) / (EVO_EXP[m.tier] - lo), 0, 1);
   }
-  expToNext(m = this.m) { return m.tier >= EVO_EXP.length ? 0 : Math.max(0, EVO_EXP[m.tier] - m.exp); }
+  expToNext(m = this.m) { return m.tier >= EVO_EXP.length ? 0 : Math.max(0, Math.ceil(EVO_EXP[m.tier] - m.exp - 1e-6)); }   // 경험치는 소수(감쇠)로 쌓인다 — 남은 양은 올림
 
   evolve(m = this.m) {
     if (m.tier >= EVO_EXP.length) return;
@@ -297,6 +312,7 @@ export class Player extends Actor {
     m.tier++;
     m.peakTier = Math.max(m.peakTier || 0, m.tier);
     m.exp = Math.max(m.exp, EVO_EXP[m.tier - 1]);
+    if (m.tier >= 2 && m.evoCi == null) m.evoCi = sc.stageIdx || 0;   // 3단 진화를 이룬 지방 (성도: 남은 2단 포켓몬 경험치 5% — xpMulOf)
     if (sc.saveRun) sc.time.delayedCall(1600, () => { if (sc.player === this) sc.saveRun(true, 'evolve'); });   // 진화는 바로 저장 (새로고침·튕김에도 1단으로 돌아가지 않게 · 보스전 중이면 끝난 뒤 정화 저장에 담긴다)
     // 모습마다 기술이 다른 라인(잉어킹 → 갸라도스): 옛 기본 기술 자리를 새 기본 기술로 바꾸고 배운 기술에 더한다 (기술머신으로 바꿔 단 자리는 그대로)
     const oldSet = prev.skills || m.sp.skills, newSet = this.form(m).skills || m.sp.skills;
@@ -330,14 +346,13 @@ export class Player extends Actor {
   }
 
   // ---------------- 이상한사탕 (파티 공용 · 가방에서 먹일 포켓몬을 고른다) ----------------
-  //  다음 진화까지 필요한 경험치의 40%를 바로 채운다 (차면 그 자리에서 진화). 3단(최종)이면 체력을 모두 회복하고 공격력 +3%
+  //  지금 지방 몬스터 XP_UNITS.candy 마리분 경험치 (진화 단계 감쇠를 같이 받는다 — 관동에서 2단에게 먹여도 3단은 멀다). 3단(최종)이면 체력을 모두 회복하고 공격력 +3%
   feedCandy(m) {
     if (!this.candy) return null;
     this.candy--;
     if (m.tier >= EVO_EXP.length) { m.atkBonus = (m.atkBonus || 1) * 1.03; m.alive = true; m.hp = m.maxhp; return { maxed: true }; }
-    const lo = m.tier ? EVO_EXP[m.tier - 1] : 0, gain = Math.ceil((EVO_EXP[m.tier] - lo) * .4), t0 = m.tier;
-    this.addExp(gain, m);
-    return { gain, evolved: m.tier > t0 };
+    const t0 = m.tier, gain = Math.round(this.gainXp(XP_UNITS.candy, m) * 10) / 10;
+    return { gain, evolved: m.tier > t0, low: this.xpMulOf(m) < .2 };
   }
 
   // ---------------- 메가스톤 · Z크리스탈 (data/gear.js) ----------------
@@ -545,7 +560,7 @@ export class Player extends Actor {
     if (this.flipT > 0 && (this.flipT -= dt) <= 0) { this.b.setGravityY(0); this.sprite.setFlipY(false); }
     if (this.launchT > 0 && ((this.launchT -= dt) <= 0 || this.b.velocity.y >= 0)) { this.launchT = 0; this.b.setMaxVelocity(700, 640); }   // 꼭대기에 닿으면 원래 낙하 속도 한도로
     if (this.stallT > 0 && ((this.stallT -= dt) <= 0 || this.onGround || this.flipT > 0)) { this.stallT = 0; if (!(this.flipT > 0)) this.b.setGravityY(0); }   // 공중 평타 저중력이 끝났다
-    const speed = sp.speed * this.mods.speedMul * (this.speedBuff > 0 ? 1.25 : 1) * (this.galeT > 0 ? 1 + .25 * (this.mods.dashGale || 1) : 1) * (this.mods.chargeSlow && this.charging ? 1 - this.mods.chargeSlow : 1) * slow * (this.mega.active ? 1.1 : 1) * this.statOf('speed') * this.buffMul('speed') * Cores.speedMul(this);
+    const speed = sp.speed * this.mods.speedMul * (this.speedBuff > 0 ? 1.25 : 1) * (this.galeT > 0 ? 1 + .05 * (this.mods.dashGale || 1) : 1) * (this.mods.chargeSlow && this.charging ? 1 - this.mods.chargeSlow : 1) * slow * (this.mega.active ? 1.1 : 1) * this.statOf('speed') * this.buffMul('speed') * Cores.speedMul(this);
     if (this.dash && this.dash.tele) {   // 순간이동: 이미 옮겨졌다. 잠깐 멈춰 잔상만 남긴다
       this.dash.t += dt;
       b.setAllowGravity(false); b.setVelocity(0, 0);
@@ -612,7 +627,7 @@ export class Player extends Actor {
   }
 
   jump(v, air) {
-    this.b.setVelocityY(-v * (this.jumpMul || 1));   // 용나선탑 전자기장 안: 1.5배 높이
+    this.b.setVelocityY(-v * (this.jumpMul || 1) * (1 + (this.mods.jumpAdd || 0)));   // 용나선탑 전자기장 안: 1.5배 높이 · 순발력 강화 카드: 점프력 +4%
     this.jumpsUsed = air ? this.jumpsUsed + 1 : 1;
     if (air) this.airStalls = 0;   // 2단 점프: 공중 평타 체공 횟수를 다시 채운다
     this.coyote = 0; this.jbuf = 0;
@@ -1070,7 +1085,7 @@ export class Player extends Actor {
   //  해금된 마지막 단계가 차는 찰나(PERFECT_WIN 초)에 십자 섬광이 번쩍 — 그때 떼면 퍼펙트 차징 (확정 치명타 + 피해 ×1.5)
   chargeMax(m = this.m) { return 1 + Math.min(2, (m.perks || {}).u_charge || 0); }
   // k 단계(0부터)가 차는 시각 — 고속 축전 코일: -35% · -48% · -60%
-  chargeAt(k, m = this.m) { return CHG_AT[k] * CHG_FAST[Math.min(3, (m.perks || {}).u_rapid || 0)]; }
+  chargeAt(k, m = this.m) { return CHG_AT[k] * CHG_FAST[Math.min(3, (m.perks || {}).u_rapid || 0)] * (1 - Math.min(.5, (m.mods && m.mods.chargeFast) || 0)); }   // chargeFast: 차징 안정화 카드
   chargePerfect() { const c = this.chg; return c.fullAt != null && c.t - c.fullAt <= PERFECT_WIN; }
   updateCharge(dt, inp) {
     const c = this.chg, a = this.action, sc = this.scene;
@@ -1419,8 +1434,8 @@ export class Player extends Actor {
     sc.events.emit('hurt', big ? .9 : .58);   // UIScene: 화면 가장자리 붉은 비네팅 점멸 (충격음과 같은 순간)
     if (o.slow) this.slowT = o.slow;
     if ((!this.mega.active && !this.pas.superArmor) || o.force) {   // 메가·슈퍼아머(애버라스 계열)는 경직·넉백 없음
-      const dir = Math.sign(this.x - srcX) || -this.face;
-      this.b.setVelocity(dir * 170, -170);
+      const dir = Math.sign(this.x - srcX) || -this.face, kb = 1 - Math.min(.8, this.mods.kbResist || 0);   // 단단한 외피 카드: 피격 넉백 -30%
+      this.b.setVelocity(dir * 170 * kb, -170 * kb);
       if (this.action && !this.action.inv) this.endAction(true);
     }
     onHurt(this);   // 특성 카드: 가시 갑옷
@@ -1488,7 +1503,7 @@ export class Player extends Actor {
     }
   }
   // 카드가 바꾸는 행동 속도: 광전사의 혈투(잃은 체력만큼 최대 +100%) · 초중량 일격(평타 -25%)
-  cardSpeed(a) { return (1 + Math.min(1, this.bloodK())) * (a && a.comboStep && this.mods.comboSlow ? 1 - this.mods.comboSlow : 1); }
+  cardSpeed(a) { return (1 + Math.min(1, this.bloodK())) * (a && a.comboStep && this.mods.comboSlow ? 1 - this.mods.comboSlow : 1) * (a && a.comboStep && this.mods.comboHaste ? 1 + this.mods.comboHaste : 1); }   // comboHaste: 손목 스냅 훈련 카드 (평타 속도)
 
   faint() {
     if (Cores.revive(this)) return;   // 칠색조의 무지개 코어: 불사조 부활

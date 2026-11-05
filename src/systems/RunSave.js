@@ -102,16 +102,22 @@ export function snapshotPlayer(p) {
 // 포켓몬 한 마리의 진행 (진화 단계 · 최고 단계 · 경험치 · 장착 아이템 · 기술머신 특성 · 기술 · 카드 등급)
 function memberSnap(m) {
   return {
-    key: m.key, hp: Math.round(m.hp), alive: m.alive, tier: m.tier, peakTier: Math.max(m.peakTier || 0, m.tier), exp: m.exp, mega: m.mega, megaPick: m.megaPick || 0,
+    key: m.key, hp: Math.round(m.hp), alive: m.alive, tier: m.tier, peakTier: Math.max(m.peakTier || 0, m.tier), exp: Math.round(m.exp * 100) / 100, xpv: 2, evoCi: m.evoCi ?? null, mega: m.mega, megaPick: m.megaPick || 0,
     items: { ...m.items }, perks: { ...(m.perks || {}) }, skills: { ...m.skills }, ups: [...m.ups], atkBonus: m.atkBonus, cdBonus: m.cdBonus, learned: [...m.learned], chargeType: m.chargeType || null, cardGrade: { ...(m.cardGrade || {}) }, cardLv: { ...(m.cardLv || {}) },
     gear: { ...(m.gear || {}) }, boostCards: (m.boostCards || []).map(e => ({ ...e })), vit: { ...(m.vit || {}) }, mastery: m.mastery || 0   // mastery: 숙련 카드 수 (카드 점수)
   };
+}
+// 예전 저장의 경험치 눈금(2단 30 · 3단 150)을 지금 눈금(100 · 750)으로 — 진화 단계 안에서의 진행 비율은 그대로
+export function oldExp(tier, e) {
+  if (tier >= 2) return 750;
+  if (tier === 1) return 100 + Math.max(0, Math.min(.99, (e - 30) / 120)) * 650;
+  return Math.max(0, Math.min(.99, e / 30)) * 100;
 }
 // 저장해 둔 진행을 포켓몬 m 에 덮어쓴다
 function applyMember(m, d) {
   const tier = Math.max(0, Math.min(2, Math.max(d.tier || 0, d.peakTier || 0)));   // 저장된 최고 단계보다 낮게 복원하지 않는다
   Object.assign(m, {
-    tier, peakTier: tier, exp: d.exp, mega: !!d.mega, megaPick: d.megaPick || 0, alive: d.alive !== false,
+    tier, peakTier: tier, exp: d.xpv === 2 ? d.exp : oldExp(tier, d.exp || 0), evoCi: d.evoCi ?? null, mega: !!d.mega, megaPick: d.megaPick || 0, alive: d.alive !== false,
     items: { ...d.items }, perks: { ...(d.perks || {}) }, vit: { ...(d.vit || {}) }, mods: computeMods(d.items || {}, d.perks || {}, d.vit || {}), skills: { ...m.skills, ...d.skills }, ups: new Set(d.ups || []), cardGrade: { ...(d.cardGrade || {}) },
     atkBonus: d.atkBonus || 1, cdBonus: d.cdBonus || 1, learned: d.learned && d.learned.length ? [...d.learned] : m.learned, chargeType: d.chargeType || null,
     gear: { stone: (d.gear && d.gear.stone) || null, crystal: (d.gear && d.gear.crystal) || null },

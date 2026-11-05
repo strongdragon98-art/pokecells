@@ -58,7 +58,7 @@ export class Combat {
     if (this.s.overdrive) d *= 2;   // 유대의 불꽃 오버드라이브 (가라르 진 최종전): 평타 · 차징 샷 · 기술 · 패링 반사탄 모두 2배
     d *= this.s.bondMul || 1;   // 유대의 불꽃 정화 단계마다 모든 공격 소폭 상승 (GameScene.bondMul)
     if (mods.execute && e.hp <= e.maxhp * .25) d *= 1 + mods.execute;   // 특성 카드: 마무리 일격
-    if (!o.dot && p.counterBuffT > this.s.time.now) d *= 1 + .4 * (mods.parryCounter || 1);   // 반격의 일격 카드: 패링 뒤 2초 안에 쓴 기술 (Player.useSkill)
+    if (!o.dot && p.counterBuffT > this.s.time.now) d *= 1 + .15 * (mods.parryCounter || 1);   // 반격의 일격 카드: 패링 뒤 2초 안에 쓴 기술 +15% (Player.useSkill)
     if (mods.overCharge && (o.chg || o.src === 'charge')) d *= 1 + mods.overCharge;   // 과부하 차징 캐논(양날의 검): 차징 샷 · 폭발 피해 +120%
     if (!o.dot && (mods.nearPow || mods.farCut)) {   // 영거리 사격술(양날의 검): 가까이서 +75% · 멀리서 -30%
       const dist = Math.hypot(e.x - p.x, e.y - p.y);
@@ -69,7 +69,7 @@ export class Combat {
     const sure = !o.dot && p.critNext > this.s.time.now;   // 패링 카운터 뒤 다음 한 방은 확정 치명타
     if (sure) p.critNext = 0;
     const crit = sure || (!o.dot && Math.random() < .06 + (o.crit || 0) + mods.crit);
-    if (crit) d *= 1.6 * (mods.critMul || 1) * Cores.critMul(this, e);   // 피트렌즈: 급소 피해 +20% · 큐레무의 절대영도 코어: 빙결 · 둔화된 적 +60%
+    if (crit) d *= 1.6 * (mods.critMul || 1) * (1 + (mods.critDmg || 0)) * Cores.critMul(this, e);   // critDmg: 날카로운 타격 · 정밀 타격술 카드   // 피트렌즈: 급소 피해 +20% · 큐레무의 절대영도 코어: 빙결 · 둔화된 적 +60%
     d += o.flat || 0;
     d = Math.max(1, Math.round(d * (.92 + Math.random() * .16)));
     e.hp -= d;
@@ -96,8 +96,9 @@ export class Combat {
       if (o.parried) this.parryCounter(e, hx, hy, type, o.parryN || 1, o.parryDmg ?? 1);
       if (!o.proc && !o.parried && p.action && p.action.comboStep && !p.onGround) p.airHitHop();   // 공중 평타 적중: 반동으로 한 번 더 체공
     }
-    if (e.boss && o.parried) { if (e.addStaggerRaw && (o.parryStag ?? 1) > 0) e.addStaggerRaw(PARRY_STAGGER * (o.parryStag ?? 1)); }   // 패링 반사탄: 그로기 게이지가 뭉텅이로 (연속 패링은 60 → 35 → 15 → 0%)
-    else if (e.boss && e.addStagger && !o.dot) e.addStagger(m === 0 ? 'immune' : eff, d * (o.stagMul || 1));   // 보스 그로기 게이지 (약점 속성 공격만 · 준 피해에 비례 — Boss.addStagger) · stagMul: 차징 임팩트 웨이브 2배
+    const stagK = 1 + (mods.stagAdd || 0);   // 타격감 증폭 카드: 보스 그로기 누적 +7%
+    if (e.boss && o.parried) { if (e.addStaggerRaw && (o.parryStag ?? 1) > 0) e.addStaggerRaw(PARRY_STAGGER * (o.parryStag ?? 1) * stagK); }   // 패링 반사탄: 그로기 게이지가 뭉텅이로 (연속 패링은 60 → 35 → 15 → 0%)
+    else if (e.boss && e.addStagger && !o.dot) e.addStagger(m === 0 ? 'immune' : eff, d * (o.stagMul || 1) * stagK);   // 보스 그로기 게이지 (약점 속성 공격만 · 준 피해에 비례 — Boss.addStagger) · stagMul: 차징 임팩트 웨이브 2배
     const pa = p.action;
     if (mods.heavyStag && pa && pa.comboStep && !o.dot && !o.proc && !o.parried && e.hp > 0) {   // 초중량 일격(양날의 검): 평타 한 번에 적마다 한 번 — 보스 그로기 · 3타 피니시는 잡몹 경직
       const hs = pa.heavySet || (pa.heavySet = new Set());
@@ -364,12 +365,12 @@ export class Combat {
         } else {
         // 패링 자세(지상 ↓ + Z) → 반사: 아군 황금빛 탄이 되어 되돌아간다 (속도 2배 · 최대 900) · 250% 피해 × 연속 패링 점감
         //  쏜 적(없으면 가장 가까운 적)의 중심을 겨눠 날아가고, 그 적이 움직이면 초당 40° 까지 꺾어 따라간다 (q.seek)
-        const amp = p.mods.reflectAmp || 0;   // 증폭 반사경 카드: 반사탄 크기 · 비행 속도 +30% · 반사 피해 +35% (합성하면 더)
+        const amp = p.mods.reflectAmp || 0;   // 증폭 반사경 카드: 반사탄 크기 · 비행 속도 +30% · 반사 피해 +15% (합성하면 더)
         const ch = p.doParry(q.x, q.y, 'proj'), i = Math.min(ch.n, PARRY_SIZE.length) - 1, sp = Math.hypot(q.vx, q.vy) || 1, v = Math.min(900 * (1 + .3 * amp), sp * 2 * (1 + .3 * amp)) / sp;
         const tgt = this.reflectTarget(q);
         if (tgt) { const a = Math.atan2(tgt.y - q.y, tgt.x - q.x); q.vx = Math.cos(a) * sp * v; q.vy = Math.sin(a) * sp * v; } else { q.vx = -q.vx * v; q.vy = -q.vy * v; }
         q.seek = tgt; q.update = null;   // 스스로 움직이던 탄(떨어지는 바위 · 도는 구슬)도 이제 곧게 날아간다
-        q.owner = 'player'; q.grav = 0; q.dmg = Math.max(q.dmg * 2.5, p.atk * 2.5) * ch.dmg * (1 + .35 * amp) * (ch.pow || 1); q.hit = new Set(); q.life = 1.5; q.homing = 0; q.tier = 3; q.ghost = false;   // ch.pow: 천공의 반격 · 찰나의 카운터
+        q.owner = 'player'; q.grav = 0; q.dmg = Math.max(q.dmg * 2.5, p.atk * 2.5) * ch.dmg * (1 + .15 * amp) * (ch.pow || 1); q.hit = new Set(); q.life = 1.5; q.homing = 0; q.tier = 3; q.ghost = false;   // ch.pow: 천공의 반격 · 찰나의 카운터
         q.r = Math.max(3, q.r * PARRY_SIZE[i] * (1 + .3 * amp));   // 연속으로 쳐낼수록 반사탄이 작아진다
         q.color = PARRY_COL[i]; q.status = { kb: 0, parried: true, parryN: ch.n, parryDmg: ch.dmg, parryStag: ch.stag }; q.parried = true;   // 맞히면 무조건 약점 · 그로기 (damageEnemy)
         continue;

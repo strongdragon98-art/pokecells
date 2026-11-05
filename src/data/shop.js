@@ -66,7 +66,7 @@ const OLD_USE = { super_potion: 1500, full_restore: 3500 };   // 더는 팔지 �
 
 // 이름 · 설명 · 그림 id (UIScene.itemImage 로 그린다)
 export function goodsInfo(e) {
-  if (e.kind === 'candy') return { name: '이상한사탕', desc: '다음 진화 경험치의 40% 를 바로 채운다 (차면 진화) · 최종 진화면 체력 회복 + 공격력 +3%', art: 'rare_candy' };
+  if (e.kind === 'candy') return { name: '이상한사탕', desc: '이 지방 몬스터 8마리분 경험치 (진화 단계 감쇠를 그대로 받는다) · 최종 진화면 체력 회복 + 공격력 +3%', art: 'rare_candy' };
   if (e.kind === 'use') return { name: USES[e.id].name, desc: USES[e.id].desc, art: e.id };
   if (e.kind === 'tool') return { name: ITEMS[e.id].name, desc: ITEMS[e.id].desc, art: e.id };
   if (e.kind === 'nugget') return { name: NUGGETS[e.id].name, desc: NUGGETS[e.id].desc, art: e.id };

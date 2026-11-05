@@ -1092,10 +1092,13 @@ export default class UIScene extends Phaser.Scene {
     }
   }
 
-  // 등급 오라: 레어 사파이어 반짝임 · 유니크 보랏빛 일렁임 · 전설 황금 빛줄기(God Rays) + 번개 (뒷면일 때도)
+  // 등급 오라: 언커먼 옅은 초록 숨결 · 레어 사파이어 반짝임 · 유니크 보랏빛 일렁임 · 전설 황금 빛줄기(God Rays) + 번개 (뒷면일 때도)
   tmAura(L, x, y, W, H, grade, open) {
     const st = GRADE_STYLE[grade];
-    if (grade === '레어') {
+    if (grade === '언커먼') {
+      const a = this.add.image(x, y, 'glow').setBlendMode(ADD).setTint(st.glow).setScale(2.3, 3.1).setAlpha(.14); L.add(a);
+      this.tweens.add({ targets: a, alpha: { from: .08, to: .2 }, duration: 1100, yoyo: true, repeat: -1 });
+    } else if (grade === '레어') {
       const a = this.add.image(x, y, 'glow').setBlendMode(ADD).setTint(st.glow).setScale(2.6, 3.4).setAlpha(.22); L.add(a);
       this.tweens.add({ targets: a, alpha: { from: .14, to: .3 }, duration: 900, yoyo: true, repeat: -1 });
     } else if (grade === '유니크') {
@@ -1145,6 +1148,7 @@ export default class UIScene extends Phaser.Scene {
       };
       const wave = (tint, s1, ms) => { const h = this.add.image(x, y, 'glow').setBlendMode(ADD).setTint(tint).setScale(1).setAlpha(.9); L.add(h); this.tweens.add({ targets: h, scaleX: s1, scaleY: s1 * 1.25, alpha: 0, duration: ms, onComplete: () => h.destroy() }); };
       if (card.grade === '커먼') { wave(0xd8e4ff, 3.4, 380); spark(6, [0xffffff, 0xd0d7de], 50, 30); Sfx.play('card_common'); }
+      else if (card.grade === '언커먼') { wave(0x3ec46d, 3.7, 400); spark(11, [0x3ec46d, 0x8affb0, 0xffffff], 60, 45); Sfx.play('card_common'); }
       else if (card.grade === '레어') { wave(col, 4, 420); spark(18, [0x00b4d8, 0x48e5ff, 0xffffff], 70, 60, .1); Sfx.play('card_rare'); }
       else if (card.grade === '유니크') {
         wave(0xb5179e, 4.6, 520); wave(0x7209b7, 3.6, 640); spark(22, [0xb5179e, 0x7209b7, 0xffc8ff], 80, 70);

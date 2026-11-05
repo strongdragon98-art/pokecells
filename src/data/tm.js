@@ -5,10 +5,10 @@
 //   카드마다 쓸 수 있는 포켓몬(who: 계열 키 목록)을 달아 둔다 → 고를 때 둘 이상이면 누구에게 적용할지 고른다 (UIScene.showTM)
 //  4장 = 지금 가진 기술 강화 2장 (boost · up) + 새 기술 1장 확정 (파티에 없는 다른 속성 우선) + 자유 1장 (새 기술 60% 또는 특성 카드)
 //  기술은 그 포켓몬이 원작·타입상 배울 수 있는 것만 (TM_LEARN)
-//  등급 4단계: 커먼 62% · 레어 28% · 유니크 8% · 전설 2% — 기술 · 특성 카드는 등급을 먼저 굴리고(그 자리 후보에 있는 등급끼리 다시 나눈다) 그 등급 안에서 고른다
-//   스킬 강화 카드도 같은 등급 확률 (커먼: 위력 · 광역 +15% · 가속 -10% · 분열탄 1갈래) · 원작 개조(유니크 · 전설)는 강화 칸에 6% 확률로만 · 차징 카드 보장 15%(등급 확률대로)
-//   커먼 · 레어를 합성해 +2 에 한 등급 승급하는 규칙은 그대로
-//  ⚖️ 양날의 검 특성 카드 8종(game/Perks.js curse): 대가를 안고 한 메커니즘을 폭발시킨다 — 특성 카드 풀에 그대로 섞인다 (레어 · 유니크)
+//  등급 5단계: ⚪ 커먼 · 🟢 언커먼 · 🔵 레어 · 🟣 유니크 · 🟡 전설 — 지방(챕터)별 확률표 GRADE_W (관동은 커먼 68% · 전설 0%) · 칸마다 등급을 한 번 굴리고 그 등급 안에서 고른다
+//   (그 등급 카드가 없으면 낮은 등급으로 — 굴린 등급보다 높게는 올리지 않는다) · 스킬 강화 수치는 커먼 +5% · 언커먼 +8% · 레어 +15% (📉 스탯 인플레이션 억제)
+//   원작 개조(유니크 · 전설)는 그 등급이 굴러 나왔을 때만 · 차징 카드 보장 15%(등급 확률대로) · 합성 +2 에 한 등급 승급 (커먼 → 언커먼 → 레어 …)
+//  ⚖️ 양날의 검 특성 카드 8종(game/Perks.js curse): 대가를 안고 한 메커니즘을 폭발시킨다 — 특성 카드 풀에 그대로 섞인다 (모두 유니크 — 초반 지방엔 드물게)
 //  새 카드는 ① 필드 기술머신 캡슐(샛길 제단 · 길목 캡슐) ② 엘리트 · 보스가 떨어뜨리는 빛나는 TM 코어에서만 — 몬스터 처치 수 보상은 없다
 //  ✨ 샛길 정화: 지방마다 침식된 샛길 구역(본길에서 갈라지는 방)을 마지막 한 마리까지 정화해 3곳 · 6곳(sideSteps)에 닿으면 '보유 카드 강화' (ownedUpgrades · upgradeInfo · GameScene.checkRoomClear)
 import { SKILLS } from './pokemon.js';
@@ -49,12 +49,12 @@ export const UPGRADES = {
 //  효과는 Player.applyBoost(시전할 때 피해 · 크기 · 분열탄) · Player.cdOf(쿨타임)에서 읽는다 (m.boost = boostTotals(m.boostCards))
 export const BOOST_MAX = 3;
 export const BOOSTS = {
-  power: { name: '위력 증폭', icon: '⚔', amt: { 커먼: .15, 레어: .25, 유니크: .4, 전설: .6 }, desc: (sk, a) => `${sk}의 피해 +${Math.round(a * 100)}%` },
-  haste: { name: '가속 회로', icon: '⏱', cdOnly: true, amt: { 커먼: .1, 레어: .15, 유니크: .22, 전설: .3 }, desc: (sk, a) => `${sk}의 쿨타임 -${Math.round(a * 100)}% (누적 최대 -60%)` },
-  wide: { name: '광역 확장', icon: '◎', amt: { 커먼: .15, 레어: .25, 유니크: .4, 전설: .6 }, desc: (sk, a) => `${sk}의 범위 · 투사체 크기 +${Math.round(a * 100)}%` },
-  split: { name: '분열탄', icon: '✺', amt: { 커먼: 1, 레어: 2, 유니크: 3, 전설: 4 }, desc: (sk, a, ty) => `${sk}를 쓸 때마다 ${typeName(ty)} 유도탄 ${a}갈래가 함께 뻗어 나간다 (피해 45%)` }
+  // 📉 스탯 인플레이션 억제: 커먼 3 ~ 5% · 언커먼 6 ~ 10% · 레어 12 ~ 18% (유니크 · 전설은 그대로 — 초반 지방엔 거의 나오지 않는다)
+  power: { name: '위력 증폭', icon: '⚔', amt: { 커먼: .05, 언커먼: .08, 레어: .15, 유니크: .4, 전설: .6 }, desc: (sk, a) => `${sk}의 피해 +${Math.round(a * 100)}%` },
+  haste: { name: '가속 회로', icon: '⏱', cdOnly: true, amt: { 커먼: .04, 언커먼: .07, 레어: .12, 유니크: .22, 전설: .3 }, desc: (sk, a) => `${sk}의 쿨타임 -${Math.round(a * 100)}% (누적 최대 -60%)` },
+  wide: { name: '광역 확장', icon: '◎', amt: { 커먼: .05, 언커먼: .08, 레어: .15, 유니크: .4, 전설: .6 }, desc: (sk, a) => `${sk}의 범위 · 투사체 크기 +${Math.round(a * 100)}%` },
+  split: { name: '분열탄', icon: '✺', amt: { 커먼: 1, 언커먼: 1, 레어: 2, 유니크: 3, 전설: 4 }, desc: (sk, a, ty) => `${sk}를 쓸 때마다 ${typeName(ty)} 유도탄 ${a}갈래가 함께 뻗어 나간다 (피해 45%)` }
 };
-const BOOST_W = { 커먼: 62, 레어: 28, 유니크: 8, 전설: 2 };
 // ---- 중복 카드 합성: 같은 카드를 또 뽑으면 장수를 늘리지 않고 한 장의 강화 단계(+1 · +2 · +3)를 올린다 ----
 //  강화 1단계마다 핵심 수치가 기본값의 60%씩 더 오른다 (lvMul) · +2 에 등급 한 단계 승급 · +3 = ★초월(MAX): 이름 앞 [★초월] · 홀로그램 · 특수 보너스 · 더는 기술머신에 나오지 않는다
 //  합성되는 카드: 기술 카드(기술머신으로 배운 기술) · 스킬 강화 카드(같은 기술 · 같은 갈래) · 특성 카드 (원작 개조 카드는 한 번뿐 · 숙련 카드는 몇 번이고)
@@ -177,7 +177,7 @@ export function learnableMoves(types, line) {
   return [...new Set([...ids, ...(TM_POOL[line] || []), ...real])].filter(id => SKILLS[id] && !DASH_ONLY.has(id) && SKILLS[id].arch !== 'dash');
 }
 
-// 기술 카드 등급: 손으로 정한 값 → 없으면 GitHub 데이터의 위력으로 (130↑ 전설 · 100↑ 유니크 · 70↑ 레어 · 그 밖 커먼 · 변화 기술 레어)
+// 기술 카드 등급: 손으로 정한 값 → 없으면 GitHub 데이터의 위력으로 (130↑ 전설 · 100↑ 유니크 · 80↑ 레어 · 60↑ 언커먼 · 그 밖 커먼 · 변화 기술 언커먼)
 // 대시와 다를 바 없는 단순 돌진 기술: 기술머신 카드로 나오지 않는다 (그 기믹은 '대시 진화' 특성 카드로 — game/Perks.js)
 //  순간이동·잠복처럼 사라졌다 나타나는 기술(팬텀 그림자 잠복 등)은 여기에 넣지 않는다
 export const DASH_ONLY = new Set(['flame_charge', 'quick_attack', 'steel_wing', 'play_rough', 'super_fang', 'volt_tackle', 'night_slash', 'grassy_glide', 'wild_charge', 'flare_blitz', 'fake_out', 'u_turn']);
@@ -186,9 +186,9 @@ export function moveGrade(id) {
   if (MOVE_GRADE[id]) return MOVE_GRADE[id];
   const s = SKILLS[id];
   if (!s || !s.gen) return '레어';
-  if (s.cls === 'status') return '레어';
+  if (s.cls === 'status') return '언커먼';
   const pw = s.power || 0;
-  return pw >= 130 ? '전설' : pw >= 100 ? '유니크' : pw >= 70 ? '레어' : '커먼';
+  return pw >= 130 ? '전설' : pw >= 100 ? '유니크' : pw >= 80 ? '레어' : pw >= 60 ? '언커먼' : '커먼';
 }
 
 export const TM_CARDS = 4;   // 한 번에 뒤집는 카드 수
@@ -219,21 +219,33 @@ export function cardScore(p) {
 }
 // 카드가 모자랄 때 채우는 숙련 카드 (몇 번이고 겹친다 — 어떤 경우에도 카드 4장을 채운다)
 export const MASTERY = {
-  power_memory: { name: '숙련의 기억: 힘', grade: '커먼', desc: '이 포켓몬의 공격력 +8%.', apply: m => { m.atkBonus *= 1.08; } },
-  quick_memory: { name: '숙련의 기억: 집중', grade: '커먼', desc: '이 포켓몬의 모든 기술 쿨타임 -8%.', apply: m => { m.cdBonus *= .92; } },
-  life_memory: { name: '숙련의 기억: 생명', grade: '커먼', desc: '이 포켓몬의 체력을 모두 회복하고, 공격력 +4%.', apply: (m, p) => { m.atkBonus *= 1.04; m.hp = m.maxhp; m.alive = true; } }
+  power_memory: { name: '숙련의 기억: 힘', grade: '커먼', desc: '이 포켓몬의 공격력 +4%.', apply: m => { m.atkBonus *= 1.04; } },
+  quick_memory: { name: '숙련의 기억: 집중', grade: '커먼', desc: '이 포켓몬의 모든 기술 쿨타임 -4%.', apply: m => { m.cdBonus *= .96; } },
+  life_memory: { name: '숙련의 기억: 생명', grade: '커먼', desc: '이 포켓몬의 체력을 모두 회복하고, 공격력 +2%.', apply: (m, p) => { m.atkBonus *= 1.02; m.hp = m.maxhp; m.alive = true; } }
 };
 
-// 카드 등급 4단계 → 대표 색 (테두리 · 빛) / 등급 스타일 (UIScene 이 카드 앞면·뒷면·뒤집기 연출에 쓴다)
-export const GRADES = ['커먼', '레어', '유니크', '전설'];
-export const GRADE = { 커먼: 0xd0d7de, 레어: 0x00b4d8, 유니크: 0xb5179e, 전설: 0xffb703 };
+// 카드 등급 5단계 (⚪ 커먼 → 🟢 언커먼 → 🔵 레어 → 🟣 유니크 → 🟡 전설) → 대표 색 (테두리 · 빛) / 등급 스타일 (UIScene 이 카드 앞면·뒷면·뒤집기 연출에 쓴다)
+//  합성 +2 에 한 등급 승급 (커먼 → 언커먼 → 레어 …)
+export const GRADES = ['커먼', '언커먼', '레어', '유니크', '전설'];
+export const GRADE = { 커먼: 0xd0d7de, 언커먼: 0x3ec46d, 레어: 0x00b4d8, 유니크: 0xb5179e, 전설: 0xffb703 };
 export const GRADE_STYLE = {
   커먼: { en: 'COMMON', border: ['#d0d7de', '#d0d7de'], bg: ['#1c2638', '#0d1220'], glow: 0x9ab8ff },
+  언커먼: { en: 'UNCOMMON', border: ['#3ec46d', '#8affb0'], bg: ['#0e3a24', '#061a10'], glow: 0x3ec46d },
   레어: { en: 'RARE', border: ['#00b4d8', '#48e5ff'], bg: ['#08304a', '#061424'], glow: 0x00b4d8 },
   유니크: { en: 'UNIQUE', border: ['#b5179e', '#7209b7'], bg: ['#2e0a3e', '#12061e'], glow: 0xb5179e },
   전설: { en: 'LEGENDARY', border: ['#ffb703', '#ff0054'], bg: ['#3e2208', '#1e0612'], glow: 0xffb703 }
 };
-const WEIGHT = { 커먼: 62, 레어: 28, 유니크: 8, 전설: 2 };
+// 🎰 지방(챕터)별 카드 등급 등장 확률 (%) — 기술머신 캡슐 · 빛나는 TM 코어 · 스킬 강화 등급 · 특성 등급 · 원작 개조 모두 이 표를 따른다
+//  관동엔 전설이 아예 나오지 않는다 (히든 전설 보상도 관동에선 유니크 한 장이 최고) · 커먼 + 언커먼이 70 ~ 90%
+export const GRADE_W = [
+  { 커먼: 68, 언커먼: 25, 레어: 6.5, 유니크: .5, 전설: 0 },     // 1 관동
+  { 커먼: 55, 언커먼: 30, 레어: 12, 유니크: 2.5, 전설: .5 },     // 2 성도
+  { 커먼: 42, 언커먼: 33, 레어: 18, 유니크: 5.5, 전설: 1.5 },    // 3 호연
+  { 커먼: 42, 언커먼: 33, 레어: 18, 유니크: 5.5, 전설: 1.5 },    // 4 신오
+  { 커먼: 30, 언커먼: 35, 레어: 23, 유니크: 9, 전설: 3 },        // 5 하나
+  { 커먼: 30, 언커먼: 35, 레어: 23, 유니크: 9, 전설: 3 }         // 6 가라르
+];
+export const gradeW = ci => GRADE_W[Math.max(0, Math.min(GRADE_W.length - 1, ci || 0))];
 // 기술 카드 등급: 대기술은 전설 · 주력기는 유니크 · 나머지는 레어
 const MOVE_GRADE = {
   solar_beam: '전설', earthquake: '전설', draco_meteor: '전설', hyper_beam: '전설', giga_impact: '전설', thunder: '전설', fire_blast: '전설', hydro_pump: '전설', close_combat: '전설',
@@ -275,12 +287,14 @@ const PERK_STAT = {
   atkMul: ['공격력', 'up'], cdMul: ['기술 쿨타임', 'down'], hpMul: ['최대 체력', 'up'], speedMul: ['이동 속도', 'up'], dashCdMul: ['대시 쿨타임', 'down'], guard: ['받는 피해', 'down'],
   swapCdMul: ['교대 쿨타임', 'down'], regen: ['초당 회복', 'pct1'], crit: ['급소율', 'pct'], lifesteal: ['흡혈', 'pct'], sizeAdd: ['판정 · 이펙트 크기', 'pct'], dashInvAdd: ['대시 무적', 'sec'],
   extraJumps: ['공중 점프', 'n'], pBurn: ['화상 확률', 'pct'], pFreeze: ['빙결 확률', 'pct'], pPara: ['마비 확률', 'pct'], pPoison: ['맹독 확률', 'pct'], extraProj: ['투사체', 'n'],
-  dashDist: ['대시 거리', 'pct'], dashGale: ['대시 뒤 이동 속도', 'pct', .25], extraAirDash: ['공중 대시', 'n'], dashSpark: ['스파크 피해 (평타 대비)', 'pct', .8], dashReload: ['회피 시 쿨타임 감소', 'sec', .8],
-  parryCdMul: ['헛방 쿨타임', 'down'], parryWinMul: ['패링 판정 시간', 'up'], parryHeal: ['패링 회복', 'pct'], reflectAmp: ['패링 반사 데미지', 'pct', .35], parryWave: ['충격파 위력', 'pct', .6],
-  parryCounter: ['반격 기술 피해', 'pct', .4], razorPow: ['반사 · 카운터 피해', 'pct'], razorStag: ['보스 그로기 누적', 'x'], overCharge: ['차징 샷 피해', 'pct'], overBoom: ['폭발 반경', 'x'],
+  dashDist: ['대시 거리', 'pct'], dashGale: ['대시 뒤 이동 속도', 'pct', .05], extraAirDash: ['공중 대시', 'n'], dashSpark: ['스파크 피해 (평타 대비)', 'pct', .8], dashReload: ['회피 시 쿨타임 감소', 'sec', .8],
+  parryCdMul: ['헛방 쿨타임', 'down'], parryWinMul: ['패링 판정 시간', 'up'], parryHeal: ['패링 회복', 'pct'], reflectAmp: ['패링 반사 데미지', 'pct', .15], parryWave: ['충격파 위력', 'pct', .6],
+  parryCounter: ['반격 기술 피해', 'pct', .15], razorPow: ['반사 · 카운터 피해', 'pct'], razorStag: ['보스 그로기 누적', 'x'], overCharge: ['차징 샷 피해', 'pct'], overBoom: ['폭발 반경', 'x'],
   allMul: ['최종 공격력', 'up'], dashInvX: ['대시 무적', 'x'], dashCrit: ['확정 치명타 시간', 'sec'], bloodRage: ['저체력 최대 공격력', 'pct'], heavyHit: ['평타 1타 피해', 'pct'],
   heavyStag: ['평타 그로기', 'x'], skillPow: ['기술 피해', 'pct'], skillSize: ['기술 크기', 'x'], nearPow: ['근접 피해', 'pct'], berserk: ['위기 공격력', 'pct'], execute: ['마무리 피해', 'pct'],
-  thorns: ['가시 반사 피해', 'pct', 1 / 1.2]
+  thorns: ['가시 반사 피해', 'pct', 1 / 1.2],
+  bandMul: ['평타(Z) 피해', 'up'], specsMul: ['기술(X · C) 피해', 'up'], comboHaste: ['평타 속도', 'pct'], critDmg: ['치명타 피해', 'pct'], chargeFast: ['차징 시간', 'neg'],
+  jumpAdd: ['점프력', 'pct'], kbResist: ['피격 넉백', 'neg'], stagAdd: ['보스 그로기 누적', 'pct']
 };
 // 양날의 검 대가 (합성하면 완화된다)
 const COST_STAT = {
@@ -305,7 +319,7 @@ function fmtStat(f, v) {
 // 차징 카드는 수치 mods 가 없어 장 수로 설명한다 (Player.chargeMax · CHG_FAST · chargeShockField)
 const CHARGE_LINE = {
   u_charge: (a, b) => ['차징 단계', `${a + 1}단`, `${b + 1}단`],
-  u_rapid: (a, b) => ['차징 시간', `-${[0, 35, 48, 60][Math.min(3, a)]}%`, `-${[0, 35, 48, 60][Math.min(3, b)]}%`],
+  u_rapid: (a, b) => ['차징 시간', `-${[0, 15, 25, 35][Math.min(3, a)]}%`, `-${[0, 15, 25, 35][Math.min(3, b)]}%`],
   u_shock: (a, b) => ['폭발 장판 크기 · 위력', `×${(1 + .3 * (a - 1)).toFixed(1)}`, `×${(1 + .3 * (b - 1)).toFixed(1)}`]
 };
 // 보유 카드 한 장을 한 단계 올렸을 때: { from, to, promote(+2 등급 승급), max(★초월), grade(올린 뒤 등급), lines: [{ label, a, b, cost }] }
@@ -334,20 +348,22 @@ export function upgradeInfo(m, card) {
 export const PERK_TYPE = { r_spark: 'electric', r_wave: 'fighting', r_amplify: 'psychic', u_rapid: 'electric', u_shock: 'fire', u_charge: 'electric', r_burn: 'fire', r_freeze: 'ice', r_para: 'electric', r_poison: 'poison', u_curse: 'ghost', u_chain: 'electric', l_storm: 'electric', u_flame: 'fire', u_toxic: 'poison', l_hole: 'dark' };
 
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-// 등급을 먼저 굴리고(WEIGHT — 목록에 있는 등급끼리 다시 나눈다) 그 등급 안에서 w(카드) 가중으로 고른다
-function pickGraded(list, w = () => 1) {
-  const have = GRADES.filter(g => list.some(c => c.grade === g));
+// 등급을 지방 확률표 W 그대로 굴리고 → 그 등급 카드가 목록에 없으면 가까운 낮은 등급 → 그래도 없으면 높은 등급 (확률 0 인 등급은 아예 고르지 않는다)
+//  (예전엔 목록에 있는 등급끼리 다시 나눠, 낮은 등급 기술이 없는 파티에선 레어 · 유니크가 표보다 자주 나왔다) → 그 등급 안에서 w(카드) 가중으로 고른다
+//  noUp: 굴린 등급보다 높게는 올리지 않는다 (없으면 null — 그 칸은 같은 등급의 다른 카드로 채운다 · 위력 80 이상 기술뿐인 파티에서 레어가 표보다 많이 나오지 않게)
+function pickGraded(list, w = () => 1, W = GRADE_W[0], noUp = false) {
+  const have = GRADES.filter(g => W[g] > 0 && list.some(c => c.grade === g));
   if (!have.length) return null;
-  let r = Math.random() * have.reduce((s, g) => s + WEIGHT[g], 0), g = have[0];
-  for (const gg of have) if ((r -= WEIGHT[gg]) < 0) { g = gg; break; }
+  const gi = GRADES.indexOf(rollGrade(W)), order = [...GRADES.slice(0, gi + 1).reverse(), ...(noUp ? [] : GRADES.slice(gi + 1))], g = order.find(x => have.includes(x));
+  if (!g) return null;
   const sub = list.filter(c => c.grade === g);
   let q = Math.random() * sub.reduce((s, c) => s + w(c), 0);
   for (const c of shuffle(sub.slice())) if ((q -= w(c)) < 0) return c;
   return sub[0];
 }
-function rollGrade() {
-  let r = Math.random() * 100;
-  for (const g of GRADES) { r -= WEIGHT[g]; if (r < 0) return g; }
+function rollGrade(W = GRADE_W[0]) {
+  let r = Math.random() * GRADES.reduce((s, g) => s + W[g], 0);
+  for (const g of GRADES) { r -= W[g]; if (r < 0) return g; }
   return '커먼';
 }
 
@@ -393,7 +409,7 @@ function partyCandidates(p) {
 }
 
 // 차징 카드 (game/Perks.js · 모든 포켓몬 공용): 4장 중 하나도 없으면 이 확률로 자유 칸을 차징 카드로 바꾼다 (자연 등장과 합쳐 30% 이상)
-export const CHARGE_PERKS = ['u_charge', 'u_rapid', 'u_shock'];
+export const CHARGE_PERKS = ['u_charge', 'u_rapid', 'u_shock', 'c_charge_stab', 'n_focus_shot'];   // 커먼 차징 안정화 · 언커먼 응축 사격 훈련도 (지방 등급 확률을 지키며 차징 카드가 나오게)
 const CHARGE_CARD_P = .15;
 
 // 파티 p 에게 맞는 서로 다른 카드 '반드시 4장'
@@ -401,24 +417,23 @@ const CHARGE_CARD_P = .15;
 //  ② 새 기술 카드 1장 확정 — 파티 누구의 속성도 아닌 '다른 속성' 기술을 3배 자주 (속성 조합 짜기)
 //  ③ 자유 칸: 60% 새 기술 카드(대기술일수록 드물게 — 전설 1 : 유니크 3 : 레어 6) · 40% 특성 카드(등급을 굴려 가까운 등급부터)
 //  ④ 그래도 모자라면 남은 아무 카드 → 숙련 카드
-//  o.floor: 이 등급보다 낮게 나오면 끌어올린다 · o.legend: 한 장은 반드시 전설 (히든 전설 정화 보상)
+//  o.floor: 이 등급보다 낮게 나오면 끌어올린다 · o.legend: 한 장은 반드시 전설 (히든 전설 정화 보상 — 전설이 없는 관동은 유니크)
+//  🎰 등급은 지금 지방의 확률표(GRADE_W · o.ci 가 없으면 p.scene.stageIdx)를 따른다 — 그 지방 확률이 0 인 등급(관동의 전설)은 어떤 칸에도 나오지 않는다
 export function rollCards(p, o = {}) {
-  const { moves, ups, boosts, perks } = partyCandidates(p), out = [], used = new Set(), floor = GRADES.indexOf(o.floor || '커먼');
+  const W = gradeW(o.ci ?? (p.scene && p.scene.stageIdx) ?? 0), ok = c => W[c.grade] > 0, topI = GRADES.reduce((t, g, i) => (W[g] > 0 ? i : t), 0);
+  const C0 = partyCandidates(p), moves = C0.moves.filter(ok), ups = C0.ups.filter(ok), boosts = C0.boosts, perks = C0.perks.filter(ok), out = [], used = new Set();
+  const legendG = GRADES[topI], floor = Math.min(GRADES.indexOf(o.floor || '커먼'), o.legend && W['전설'] <= 0 ? topI - 1 : topI);
   const all = p.members.map(m => m.key);
   const key = c => c.kind + ':' + c.id;
   const take = list => { const c = shuffle(list.filter(q => !used.has(key(q))))[0]; if (c) { used.add(key(c)); out.push(c); } return c; };
   const takeMove = () => {
     const pool = moves.filter(c => !used.has(key(c)) && GRADES.indexOf(c.grade) >= floor);
     const list = pool.length ? pool : moves.filter(c => !used.has(key(c)));
-    const c = pickGraded(list);
+    const c = pickGraded(list, undefined, W, true);
     if (c) { used.add(key(c)); out.push(c); }
     return c;
   };
-  const boostGrade = () => {
-    let r = Math.random() * 100, g = '커먼';
-    for (const gg of GRADES) { r -= BOOST_W[gg]; if (r < 0) { g = gg; break; } }
-    return GRADES[Math.max(GRADES.indexOf(g), floor)];
-  };
+  const boostGrade = () => GRADES[Math.min(topI, Math.max(GRADES.indexOf(rollGrade(W)), floor))];
   const takeBoost = (grade = null) => {
     const list = boosts.filter(b => !used.has(`boost:${b.owner}:${b.skill}:${b.bk}`));
     if (!list.length) return null;
@@ -431,28 +446,31 @@ export function rollCards(p, o = {}) {
   };
   const takeEnhance = () => {
     const upList = ups.filter(c => !used.has(key(c)) && GRADES.indexOf(c.grade) >= floor);
-    if (upList.length && Math.random() < .06) { const c = pickGraded(upList); used.add(key(c)); out.push(c); return c; }   // 원작 개조(유니크 · 전설)는 드물게
-    return takeBoost() || take(upList);
+    const g = GRADES[Math.min(topI, Math.max(floor, GRADES.indexOf(rollGrade(W))))], same = upList.filter(c => c.grade === g);   // 한 칸에 등급은 한 번만 굴린다
+    if (same.length && Math.random() < .5) return take(same);   // 원작 개조(유니크 · 전설)는 그 등급이 굴러 나왔을 때만 — 지방 확률 그대로 드물게
+    return takeBoost(g) || (Math.random() < .15 && take(upList));
   };
   if (o.legend) {
-    const legendOthers = moves.concat(ups, perks).filter(c => c.grade === '전설');
-    if (!(Math.random() < .5 && takeBoost('전설'))) take(legendOthers) || takeBoost('전설');
+    const legendOthers = moves.concat(ups, perks).filter(c => c.grade === legendG);
+    if (!(Math.random() < .5 && takeBoost(legendG))) take(legendOthers) || takeBoost(legendG);
   }
   while (out.filter(c => c.kind === 'boost' || c.kind === 'up').length < 2 && out.length < TM_CARDS - 1 && takeEnhance());
   // 새 기술 확정 칸: 아직 배우지 않은 기술 · 파티에 없는 속성이면 3배 (카드에 '다른 속성' 표시)
   {
     const own = new Set(p.members.flatMap(m => p.typesOf(m))), open = moves.filter(c => !c.dup && !used.has(key(c)));
     const high = open.filter(c => GRADES.indexOf(c.grade) >= floor), fresh = high.length ? high : open;   // 전설 제단: 최소 등급부터
-    if (fresh.length) {
-      const pick = pickGraded(fresh, c => (own.has(c.type) ? 1 : 3));   // 등급을 굴린 뒤 그 등급 안에서 다른 속성 3배
-      if (!own.has(pick.type)) pick.cat = '새 기술 · 다른 속성';
-      used.add(key(pick)); out.push(pick);
+    if (fresh.length && fresh.some(ok)) {
+      const pick = pickGraded(fresh, c => (own.has(c.type) ? 1 : 3), W, !o.legend);   // 등급을 굴린 뒤 그 등급 안에서 다른 속성 3배 (굴린 등급의 새 기술이 없으면 이 칸은 다른 카드로)
+      if (pick) {
+        if (!own.has(pick.type)) pick.cat = '새 기술 · 다른 속성';
+        used.add(key(pick)); out.push(pick);
+      }
     }
   }
   while (out.length < TM_CARDS) {
     if (Math.random() < .6 && takeMove()) continue;
-    const gi = Math.max(floor, GRADES.indexOf(rollGrade())), g = GRADES[gi];
-    const order = [g, ...GRADES.slice(0, gi).reverse(), ...GRADES.slice(gi + 1)];   // 같은 등급 → 낮은 등급 → 높은 등급
+    const gi = Math.min(topI, Math.max(floor, GRADES.indexOf(rollGrade(W)))), g = GRADES[gi];
+    const order = [g, ...GRADES.slice(0, gi).reverse(), ...GRADES.slice(gi + 1)].filter(gg => W[gg] > 0);   // 같은 등급 → 낮은 등급 → 높은 등급 (이 지방에 없는 등급은 빼고)
     let got = null;
     for (const gg of order) if ((got = take(perks.filter(c => c.grade === gg)))) break;
     if (!got && !takeMove() && !takeEnhance()) break;
@@ -460,16 +478,20 @@ export function rollCards(p, o = {}) {
   // 차징 카드 등장 보장: 4장 중 차징 카드가 없으면 CHARGE_CARD_P 확률로 맨 뒤(자유 칸) 한 장을 차징 카드로 바꾼다 (전설 연출 카드는 그대로)
   //  초고압 차징 코어(단계 해금)를 가장 자주 · 다 익힌 카드는 partyCandidates 가 이미 뺐다
   const isChg = c => c.kind === 'perk' && CHARGE_PERKS.includes(c.id), chg = perks.filter(c => isChg(c) && !used.has(key(c)));
-  if (chg.length && !out.some(isChg) && Math.random() < CHARGE_CARD_P) {
-    const pick = pickGraded(chg, c => (c.id === 'u_charge' ? 3 : 1));   // 등급 확률(유니크 8% …)을 그대로 따른다 · 같은 등급이면 초고압 차징 코어 3배
+  const chgPick = chg.length && !out.some(isChg) && Math.random() < CHARGE_CARD_P ? pickGraded(chg, c => (c.id === 'u_charge' ? 3 : 1), W, true) : null;
+  if (chgPick) {
+    const pick = chgPick;   // 지방 등급 확률을 그대로 따른다 (굴린 등급보다 높게는 안 올린다) · 같은 등급이면 초고압 차징 코어 3배
     used.add(key(pick));
     const i = out.length < TM_CARDS ? out.length : out.map((c, k) => (o.legend && c.grade === '전설' ? -1 : k)).filter(k => k >= 0).pop();
-    out[i ?? out.length] = pick;
+    if (pick) out[i ?? out.length] = pick;
   }
   for (const [id, c] of Object.entries(MASTERY)) if (out.length < TM_CARDS) out.push({ kind: 'mastery', id, name: c.name, type: 'normal', grade: c.grade, desc: c.desc, cat: '숙련', who: all });
   // o.n: 그보다 적게 (전투 데이터 축적 보너스 · 빛나는 TM 코어는 3장) — 자유 칸부터 덜어 낸다
   const keep = o.n && o.n < out.length ? out.slice(0, o.n) : out;
-  return shuffle(keep).slice(0, TM_CARDS).map(c => dressCard(p, c));
+  // 합성 승급(+2 에 한 등급 위)으로 이 지방에 없는 등급이 되면(관동의 전설) 그 카드는 빼고 숙련 카드로 채운다
+  const dressed = shuffle(keep).slice(0, TM_CARDS).map(c => dressCard(p, c)).filter(c => c.kind === 'mastery' || W[c.grade] > 0);
+  for (const [id, c] of Object.entries(MASTERY)) if (dressed.length < Math.min(TM_CARDS, keep.length) && !dressed.some(q => q.id === id)) dressed.push({ kind: 'mastery', id, name: c.name, type: 'normal', grade: c.grade, desc: c.desc, cat: '숙련', who: all });
+  return dressed;
 }
 
 // 🃏 카드 샌드박스 (테스트 모드 · UIScene 테스트 패널 '카드' 탭): 제약 없이 모든 카드 — group 으로 분류
