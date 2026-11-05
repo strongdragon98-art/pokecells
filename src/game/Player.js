@@ -70,6 +70,17 @@ const COMBO_TEMPO = 1.5, COMBO_DMG = 1.35, COMBO_STEP = [1, 1.2, 1.6], COMBO_REC
 //  적에게 맞히면 반동으로 한 번 더 떠오른다(AIR_HIT_HOP) · 한 번 뜬 동안 AIR_STALLS 번(3타 콤보 한 바퀴)까지 온전히, 그 뒤로는 번마다 약해져 자연스럽게 내려앉는다
 //  (땅에 닿거나 대시 · 2단 점프를 하면 다시 채워진다 — 허공에서 Z 만 눌러 천장까지 떠오르지 못하게)
 const AIR_HOP = 75, AIR_HIT_HOP = 110, AIR_STALL_T = .26, AIR_STALL_G = .18, AIR_STALLS = 3, AIR_FADE = .35;
+// 점프 물리 (시원한 공중 기동 개편)
+//  JUMP_K: 기본 점프 초기 속도 ×1.25 (포켓몬마다의 jump 값에 곱한다 — 피카츄 315 → 394 px/s)
+//  RISE_G: 점프 키를 꾹 누른 채 오르는 동안 중력 ×0.8 (부드럽게 솟는다 — 꾹 누른 1단 점프 약 100px · 예전 51px)
+//  FALL_G: 떨어질 땐 중력 ×1.12 (둥실 떠 있지 않고 탁 내려앉는다)
+//  JUMP_CUT: 오르다 키를 떼면 위로 가는 속도를 그 점프 처음 속도의 50% 로 끊는다 — 톡 = 낮고 재빠른 소점프(약 26px) · 꾹 = 최대 높이
+//  DJ_K: 공중 점프(2단 · 3단)는 1단 점프 높이의 85% (속도 √0.85)
+//  FAST_FALL_*: 공중에서 ↓ (조이스틱 아래) — 중력 ×2.6 · 낙하 한도 900px/s · 누르는 순간 최소 220px/s 로 꺾어 내린다
+//  LEDGE_SNAP: 발이 벽(타일 옆면) 윗면에서 18px 안쪽 아래에 걸리면 윗면으로 올려 준다 · HEAD_NUDGE: 머리가 천장 모서리에 6px 이내로 걸리면 옆으로 비켜 계속 오른다
+//  AIR_ACC: 공중 좌우 가속 = 지상과 같다 (공중 조작 100%)
+export const JUMP_K = 1.25, RISE_G = .8, FALL_G = 1.12, JUMP_CUT = .5, DJ_K = Math.sqrt(.85);
+const FAST_FALL_G = 2.6, FAST_FALL_V = 900, FAST_FALL_KICK = 220, FALL_MAX = 640, LEDGE_SNAP = 18, HEAD_NUDGE = 6, GROUND_ACC = 1500, AIR_ACC = 1500, WORLD_G = 900;
 // 패링 자세 (지상 ↓ + Z 전용 — 평타에는 패링 판정이 없다): PARRY_WIN 초 동안 몸 둘레 PARRY_R px 의 근접 공격 · 적 투사체를 받아친다
 //  헛방이면 WHIFF_T 초 자세 무너짐 + 재사용 PARRY_CD 초 · 성공하면 둘 다 즉시 0 (연속 패링)
 //  성공: 피해 무효 + 0.35초 무적 · 투사체 반사(2배 속도 · 250%) · 근접 카운터(충격파 · 보스 그로기 +30 · X·C·필살기 쿨 -2초 · 다음 한 방 확정 치명타)
@@ -578,7 +589,7 @@ export class Player extends Actor {
     } else {
       b.setAllowGravity(!(a && a.noGrav));
       const mm = a ? (a.mm ?? .3) : 1;
-      const target = dir * speed * mm + (this.windT > 0 ? this.windV : 0), acc = (this.onGround ? 1500 : 1000) * dt, v = b.velocity.x;   // 칠색조 폭풍 날개짓 등 바람에 밀린다
+      const target = dir * speed * mm + (this.windT > 0 ? this.windV : 0), acc = (this.onGround ? GROUND_ACC : AIR_ACC) * dt, v = b.velocity.x;   // 공중에서도 지상과 같은 속도 · 같은 가속 (공중 조작 100%)   // 칠색조 폭풍 날개짓 등 바람에 밀린다
       b.setVelocityX(v < target ? Math.min(v + acc, target) : Math.max(v - acc, target));
       // 방향 전환: 행동 중에도 좌우 입력으로 바로 돌아선다 (불꽃세례·화염방사·연사·시전 대기 중 조준 전환 — 뒤따르는 탄도 새 방향으로)
       //  lockFace: 'hard' 인 행동만 막는다 (돌진처럼 속도를 직접 다루는 ctrl 행동은 위에서 따로 처리)
@@ -590,7 +601,7 @@ export class Player extends Actor {
 
     // 점프 (코요테 타임 + 입력 버퍼 + 다단 점프 + 발판 내려가기)
     const ground = this.onGround;
-    if (ground) { this.coyote = .1; this.jumpsUsed = 0; this.airDash = true; this.airDashX = Math.floor(this.mods.extraAirDash || 0); this.airStalls = 0; } else this.coyote -= dt;
+    if (ground) { this.coyote = .1; this.jumpsUsed = 0; this.airDash = true; this.airDashX = Math.floor(this.mods.extraAirDash || 0); this.airStalls = 0; this.jumpRise = false; } else this.coyote -= dt;
     if (inp.jumpP) { this.jbuf = .12; this.jbufDown = !!(inp.downAim ?? inp.down); } else this.jbuf -= dt;
     if (this.jbuf > 0 && !this.dash && !(a && a.mm === 0)) {
       // 하향 점프(↓ + 점프)는 일반 점프와 완전히 따로: 이 분기에 들어오면 위로 뛰는 점프는 절대 하지 않는다
@@ -600,13 +611,20 @@ export class Player extends Actor {
         this.jbuf = 0;
         if (ground && this.dropT <= 0 && sc.standingOnPlatform(this)) { this.dropT = .25; this.coyote = 0; b.setVelocityY(120); b.y += 2; }
       }
-      else if (ground || this.coyote > 0) { this.jump(sp.jump, false); }
-      else if (this.jumpsUsed < sp.jumps + this.mods.extraJumps) { this.jump(sp.jump * .92, true); }
+      else if (ground || this.coyote > 0) { this.jump(sp.jump * JUMP_K, false); }
+      else if (this.jumpsUsed < this.maxJumps()) { this.jump(sp.jump * JUMP_K * DJ_K, true); }   // 2단 점프 (모든 포켓몬 기본) · 3단 점프 (비상의 깃털 · 날개 달린 계열)
     }
     if (this.liftT > 0) this.liftT -= dt;
-    if (!inp.jumpH && b.velocity.y < -60 && !(a && a.ctrl) && !(this.launchT > 0) && !(this.liftT > 0)) b.setVelocityY(b.velocity.y * .86);   // 짧게 누르면 낮은 점프 (도약 수정 · 상승 기류로 솟구칠 땐 그대로)
+    // 가변 점프: 점프로 오르던 중 키를 떼면 한 번 끊는다 (톡 = 소점프) · 점프가 아닌 위로 튕김(스킬 · 반동)은 예전처럼 서서히 죽인다
+    if (b.velocity.y >= 0) this.jumpRise = false;
+    if (!inp.jumpH && b.velocity.y < -60 && !(a && a.ctrl) && !(this.launchT > 0) && !(this.liftT > 0)) {
+      if (this.jumpRise) { b.setVelocityY(Math.max(b.velocity.y, -this.jumpV0 * JUMP_CUT)); this.jumpRise = false; }
+      else b.setVelocityY(b.velocity.y * .86);
+    }
     const hover = sp.hover || (this.pas.hoverForm !== undefined && this.form().fi >= this.pas.hoverForm);
     if (hover && inp.jumpH && b.velocity.y > 40 && !this.dash) b.setVelocityY(40);              // 고오스·망나뇽·전설 부유
+    this.airGravity(dt, inp, a, ground, hover);
+    if (!ground) this.ledgeAssist(dt, dir, a);
 
     // 행동 진행 (스라크 계열은 모든 행동이 빠르다)
     if (a) {
@@ -618,7 +636,7 @@ export class Player extends Actor {
 
     // 착지 스쿼시
     if (ground && !this.wasGround && this.lastVy > 160) { this.squash(1.32, .72); sc.fx.burst(this.x, this.bottom - 1, 0xc8c0e0, 6, 60, { up: 30, life: .3 }); Sfx.play('land'); }
-    this.wasGround = ground; this.lastVy = b.velocity.y;
+    this.wasGround = ground; this.lastVy = b.velocity.y; if (Math.abs(b.velocity.x) > 20) this.moveVx = b.velocity.x;   // 벽에 막혀 0 이 된 뒤에도 어느 쪽으로 가던 중인지 (모서리 오르기)
 
     // 낙사 방지
     if (this.b.y > sc.level.height + 40) { this.b.reset(this.safeX ?? this.x, (this.safeY ?? 100) - 20); this.takeHit(this.m.maxhp * .1, 'none', this.x, { force: true }); }
@@ -627,14 +645,109 @@ export class Player extends Actor {
     this.updateAnim(dt);
   }
 
+  // 공중 점프 포함 최대 점프 횟수: 모든 포켓몬 2단 기본 · 날개 달린 계열(jumps 3) · 비상의 깃털 카드(extraJumps)마다 +1 (3단 점프)
+  maxJumps() { return Math.max(2, this.sp.jumps || 2) + (this.mods.extraJumps || 0); }
   jump(v, air) {
-    this.b.setVelocityY(-v * (this.jumpMul || 1) * (1 + (this.mods.jumpAdd || 0)));   // 용나선탑 전자기장 안: 1.5배 높이 · 순발력 강화 카드: 점프력 +4%
+    const v0 = v * (this.jumpMul || 1) * (1 + (this.mods.jumpAdd || 0));   // 용나선탑 전자기장 안: 1.5배 높이 · 순발력 강화 카드: 점프력 +4%
+    this.b.setVelocityY(-v0);
+    this.jumpV0 = v0; this.jumpRise = true;   // 가변 점프: 키를 떼면 이 속도의 JUMP_CUT 배로 끊는다
     this.jumpsUsed = air ? this.jumpsUsed + 1 : 1;
     if (air) this.airStalls = 0;   // 2단 점프: 공중 평타 체공 횟수를 다시 채운다
-    this.coyote = 0; this.jbuf = 0;
+    this.coyote = 0; this.jbuf = 0; this.ffKick = false;
     this.squash(.72, 1.32);
-    if (air) { this.scene.fx.ring(this.x, this.bottom, 10, 0xffffff, 200); Sfx.play('djump'); }
+    if (air) { this.airJumpFx(this.jumpsUsed); Sfx.play('djump'); }
     else { this.scene.fx.burst(this.x, this.bottom - 1, 0xd0c8e8, 5, 50, { up: 20, life: .3 }); Sfx.play('jump'); }
+  }
+  // 공중 도약 파동: 발밑에 뭉게구름이 좌우로 터지고, 그 포켓몬 속성 빛깔의 납작한 파동 고리가 퍼진다 (3단 점프부터는 금빛 고리를 한 겹 더)
+  airJumpFx(n) {
+    const sc = this.scene, x = this.x, y = this.bottom + 1, col = typeColor(this.types[0]);
+    sc.fx.burst(x, y, [0xffffff, 0xeef2fa, 0xd4dcec], 9, 75, { angle: 0, spread: Math.PI, up: 6, grav: -20, bounce: false, life: .38, size: 3, drag: .9 });
+    sc.fx.burst(x, y, [col, 0xffffff], 6, 55, { angle: Math.PI / 2, spread: .9, up: 0, grav: 40, bounce: false, glow: true, life: .3, size: 1 });
+    for (let k = 0; k < 3; k++) {   // 뭉게구름 세 덩이 (가운데 큰 덩이 + 양옆 작은 덩이)
+      const puff = sc.add.ellipse(x + (k - 1) * 7, y - 1, k === 1 ? 14 : 9, k === 1 ? 7 : 5, 0xffffff, .85).setDepth(21.5);
+      sc.tweens.add({ targets: puff, x: x + (k - 1) * 13, scaleX: 1.7, scaleY: 1.3, alpha: 0, duration: 300 + k * 30, ease: 'Quad.easeOut', onComplete: () => puff.destroy() });
+    }
+    const wave = sc.add.ellipse(x, y, 12, 4, col, .75).setDepth(21.4).setBlendMode(Phaser.BlendModes.ADD);
+    sc.tweens.add({ targets: wave, scaleX: 3.4, scaleY: 2, alpha: 0, duration: 280, ease: 'Cubic.easeOut', onComplete: () => wave.destroy() });
+    sc.fx.ring(x, y, 11, col, 220);
+    if (n >= 3) sc.fx.ring(x, y, 16, 0xffe07a, 260);
+  }
+  // 공중 중력 조절 (월드 중력 900 위에 덧붙인다): 꾹 눌러 오르는 동안 ×RISE_G · 떨어질 땐 ×FALL_G · ↓ 급강하는 ×FAST_FALL_G (낙하 한도 900)
+  //  대시 · 조작형 행동 · 무중력 행동 · 공중 평타 체공 · 중력 반전 · 도약 수정 · 상승 기류 · 부유 중엔 손대지 않는다
+  airGravity(dt, inp, a, ground, hover) {
+    const b = this.b, vy = b.velocity.y;
+    const free = !ground && !this.dash && !(a && (a.ctrl || a.noGrav || a.dive)) && !(this.stallT > 0) && !(this.flipT > 0) && !(this.launchT > 0) && !(this.liftT > 0) && b.allowGravity;
+    const down = !!(inp.downAim ?? inp.down);
+    let ff = false;
+    if (free && down && !(hover && inp.jumpH) && vy > -120) {   // 급강하: 꼭대기 근처 · 떨어지는 중에 ↓
+      ff = true;
+      if (!this.ffKick) { this.ffKick = true; if (vy < FAST_FALL_KICK) b.setVelocityY(FAST_FALL_KICK); this.scene.fx.ghost(this.sprite, typeColor(this.types[0]), .35, 160); }
+      b.setVelocityY(b.velocity.y + WORLD_G * (FAST_FALL_G - 1) * dt);
+      if ((this.ffT = (this.ffT || 0) - dt) <= 0) { this.ffT = .05; this.scene.fx.ghost(this.sprite, typeColor(this.types[0]), .22, 140); }
+    } else if (free) {
+      if (!down) this.ffKick = false;
+      if (vy < 0 && this.jumpRise && inp.jumpH) b.setVelocityY(vy - WORLD_G * (1 - RISE_G) * dt);   // 부드럽게 솟는다 (중력 덜 받기)
+      else if (vy > 0 && !(hover && inp.jumpH)) b.setVelocityY(vy + WORLD_G * (FALL_G - 1) * dt);
+    } else if (ground) this.ffKick = false;
+    if (!(this.launchT > 0)) b.maxVelocity.y = ff ? FAST_FALL_V : FALL_MAX;
+    this.fastFalling = ff;
+  }
+  // 벽처럼 막는 칸인가 (부유섬처럼 아래에서 뚫고 오르는 통과 지형은 벽이 아니다 — GameScene.isWallAt)
+  wallAt(x, y) { const sc = this.scene; return sc.isWallAt ? sc.isWallAt(x, y) : sc.isSolidAt(x, y); }
+  // 몸통(발바닥 by)이 x 쪽에 들어갈 자리가 비었나
+  roomFor(x0, x1, by) {
+    const h = this.b.height;
+    for (const yy of [by - 1, by - h * .5, by - h + 1]) for (const xx of [x0 + 1, (x0 + x1) / 2, x1 - 1]) if (this.wallAt(xx, yy)) return false;
+    return true;
+  }
+  // 모서리 자동 오르기 (Ledge Mantle) · 천장 모서리 비켜 오르기 (Corner Correction) · 통과 발판 꼭대기 보정
+  //  ① 공중에서 벽(타일 옆면)에 막혔는데 발이 그 벽 윗면에서 LEDGE_SNAP(18px) 안쪽 아래에 있으면 윗면으로 사뿐히 올려 세운다
+  //  ② 오르다 머리가 천장 모서리에 HEAD_NUDGE(6px) 이내로만 걸렸으면 옆으로 비켜 주고 속도를 되살린다
+  //  ③ 통과 발판(부유섬 윗면 포함)을 뚫고 오르다 꼭대기에서 발이 그 윗면 18px 안쪽 아래에 멈추면 위에 올려 세운다
+  ledgeAssist(dt, dir, a) {
+    const b = this.b, sc = this.scene;
+    if (this.dash || (a && (a.ctrl || a.noGrav || a.dive)) || this.flipT > 0 || this.dropT > 0 || this.intangible) return;
+    const T = 16, land = (ny, nx) => {
+      b.y = ny - b.height - .05; if (nx != null) b.x = nx;
+      b.setVelocityY(0); this.jumpRise = false; this.coyote = .1;
+      b.blocked.left = b.blocked.right = false;
+      this.squash(1.18, .86);
+      sc.fx.burst(this.x, ny - 1, 0xd8d0e8, 4, 40, { up: 18, life: .25 });
+    };
+    // ① 벽 모서리
+    const side = b.blocked.right ? 1 : b.blocked.left ? -1 : 0;
+    if (side && (dir === side || (b.velocity.y < 0 && Math.sign(this.moveVx || 0) === side)) && b.velocity.y < 460) {
+      const wx = side > 0 ? b.right + 2 : b.x - 2, foot = b.bottom - 1;
+      if (this.wallAt(wx, foot)) {
+        let ty = Math.floor(foot / T);
+        while (ty > 0 && this.wallAt(wx, (ty - 1) * T + 2)) ty--;
+        const top = ty * T, dy = b.bottom - top;
+        if (dy > 0 && dy <= LEDGE_SNAP) {
+          const nx = b.x + side * 5;
+          if (this.roomFor(nx, nx + b.width, top)) { land(top, nx); return; }
+        }
+      }
+    }
+    // ② 천장 모서리
+    if (b.blocked.up && (this.lastVy || 0) < -80) {
+      const hy = b.y - 2, L = this.wallAt(b.x + 1, hy), R = this.wallAt(b.right - 1, hy);
+      if (L !== R) {
+        const nx = L ? (Math.floor((b.x + 1) / T) + 1) * T + .1 : Math.floor((b.right - 1) / T) * T - b.width - .1, d = nx - b.x;
+        if (Math.abs(d) <= HEAD_NUDGE && this.roomFor(nx, nx + b.width, b.bottom) && !this.wallAt(nx + 1, hy) && !this.wallAt(nx + b.width - 1, hy)) {
+          b.x = nx; b.setVelocityY(this.lastVy); b.blocked.up = false;
+          return;
+        }
+      }
+    }
+    // ③ 통과 발판 꼭대기 (오르다 막 멈춘 순간)
+    if (b.velocity.y > -40 && b.velocity.y < 60 && (this.lastVy || 0) < 0 && sc.oneWayTopAt) {
+      const fr = Math.floor((b.bottom - 1) / T);
+      for (const ty of [fr, fr - 1]) {
+        const top = ty * T, dy = b.bottom - top;
+        if (dy <= 0 || dy > LEDGE_SNAP) continue;
+        for (const xx of [b.x + 3, b.x + b.width / 2, b.right - 3]) if (sc.oneWayTopAt(xx, top + 2) && this.roomFor(b.x, b.right, top)) { land(top); return; }
+      }
+    }
   }
 
   // 순간이동 (랄토스 계열 대시): 벽 앞까지 즉시 옮기고, 출발점에 잔상 · 완전 무적

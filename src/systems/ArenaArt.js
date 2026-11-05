@@ -622,12 +622,12 @@ const PAINT = {
       // 사선 트러스: 토막 발판을 굵은 붉은 강철 보로 잇는다 (벽에서 가운데로)
       for (const seg of r.arena.beams || []) {
         if (seg.length < 2) continue;
-        const a = seg[0], z = seg[seg.length - 1], dir = z.x > a.x ? 1 : -1;
-        const X0 = h.X(dir > 0 ? r.tx0 : r.tx1) , Y0 = h.Y(a.y) + 14, X1 = h.X(z.x) + (dir > 0 ? z.w * 16 : 0), Y1 = h.Y(z.y) + 12;
+        const a = seg[0], z = seg[seg.length - 1], dir = z.x > a.x ? 1 : -1, wall = seg.wall !== false;   // wall: 벽에 박힌 빔 · 아니면 공중의 첫 토막에서부터 (지그재그 2단)
+        const X0 = wall ? h.X(dir > 0 ? r.tx0 : r.tx1) : h.X(a.x) + (dir > 0 ? 0 : a.w * 16), Y0 = h.Y(a.y) + 14, X1 = h.X(z.x) + (dir > 0 ? z.w * 16 : 0), Y1 = h.Y(z.y) + 12;
         b.line(X0, Y0 + 6, X1, Y1 + 6, 3, 0x6a1010); b.line(X0, Y0 + 5, X1, Y1 + 5, 1, 0xc8302a);
         const n = Math.max(2, Math.round(Math.abs(X1 - X0) / 16));
         for (let i = 0; i < n; i++) { const t0 = i / n, t1 = (i + 1) / n, xa = X0 + (X1 - X0) * t0, ya = Y0 + (Y1 - Y0) * t0, xb = X0 + (X1 - X0) * t1, yb = Y0 + (Y1 - Y0) * t1; b.line(xa, ya - 10, xb, yb + 6, 1, 0x9a2020, .85); b.line(xa, ya + 6, xb, yb - 10, 1, 0x7a1818, .85); }
-        b.F(X0 - (dir > 0 ? 0 : 6), Y0 - 10, 6, 20, 0x4a4450); b.F(X0 - (dir > 0 ? 0 : 6), Y0 - 10, 6, 1, 0x8a8494);
+        if (wall) { b.F(X0 - (dir > 0 ? 0 : 6), Y0 - 10, 6, 20, 0x4a4450); b.F(X0 - (dir > 0 ? 0 : 6), Y0 - 10, 6, 1, 0x8a8494); }   // 벽 받침쇠
       }
       // 갠트리 아래 경고등 · 케이블
       const gt = r.arena.gantry;

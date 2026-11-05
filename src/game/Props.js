@@ -20,6 +20,8 @@ const WARM = 0xffc070;
 const GROUND_SINK = 3;
 const FOOT = new Map();   // 텍스처 키 → 맨 아래 불투명 줄 { pad: 아래 투명 여백, l, r: 그 줄의 왼쪽 · 오른쪽, w } (텍스처 픽셀 · 키마다 한 번)
 const PAD_VY = 760;
+// 하늘기둥 정상의 초록 바람 기류(wind)는 더 세다: 위로 가속 2600 · 최고 상승 속도 470 (기류 꼭대기에서 약 7칸 더 솟는다 — 점프 없이 가장 높은 부유석 위로)
+const WIND_ACC = 2600, WIND_V = 470;
 const FIELD_JUMP = 1.225, LIFT_ACC = 1500, LIFT_V = 300;   // 용나선탑 전자기장: 점프 속도 ×√1.5 (높이 1.5배) · 열기 상승 기류: 위로 가속 · 최고 상승 속도   // 차원 도약 수정이 솟구치는 속도 (최대 약 20칸 — 길 보장 Reach.PAD_TILES 18칸보다 넉넉히)
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -2294,7 +2296,7 @@ export class Props {
       const col = this.add(s.add.tileSprite(x + w / 2, y0, w + 8, y1 - y0, l.wind ? windLiftArt(s) : heatArt(s)).setOrigin(.5, 0).setDepth(9.6).setBlendMode(ADD).setAlpha(.8));
       this.add(s.add.image(x + w / 2, y1 - 4, 'glow').setBlendMode(ADD).setTint(tint).setScale(1.4, .5).setAlpha(.6).setDepth(9.65));
       this.light(x + w / 2, y1 - 20, 130, tint, 1.1);
-      this.lifts.push({ x0: x - 4, x1: x + w + 4, y0, y1, col });
+      this.lifts.push({ x0: x - 4, x1: x + w + 4, y0, y1, col, wind: !!l.wind });
     }
     // 푸른 전자기장: 테두리가 지지직 흐르는 푸른 장막 (안에서 뛰면 1.5배 높이)
     for (const f of this.level.fields || []) {
@@ -2420,9 +2422,9 @@ export class Props {
       break;
     }
     for (const l of this.lifts) if (p.x > l.x0 && p.x < l.x1 && p.bottom > l.y0 && p.bottom <= l.y1 + 4) {   // 붉은 열기에 실려 위로 활공
-      p.b.setVelocityY(Math.max(p.b.velocity.y - LIFT_ACC * dt, -LIFT_V));
+      p.b.setVelocityY(Math.max(p.b.velocity.y - (l.wind ? WIND_ACC : LIFT_ACC) * dt, -(l.wind ? WIND_V : LIFT_V)));
       p.liftT = .12; p.jumpsUsed = Math.min(p.jumpsUsed, 1); p.airDash = true;
-      if (Math.random() < .4) s.fx.burst(p.x + (Math.random() - .5) * 20, p.bottom, [0xff6a2a, 0xffb060, 0xffe0a0], 1, 30, { angle: -Math.PI / 2, spread: .4, up: 60, grav: -40, bounce: false, glow: true, life: .5, size: 1 });
+      if (Math.random() < .4) s.fx.burst(p.x + (Math.random() - .5) * 20, p.bottom, l.wind ? [0x4affb0, 0xc8ffe8, 0xffffff] : [0xff6a2a, 0xffb060, 0xffe0a0], 1, 30, { angle: -Math.PI / 2, spread: .4, up: 60, grav: -40, bounce: false, glow: true, life: .5, size: 1 });
       break;
     }
     // 천계의 유리 계단: 걸음마다 발밑에서 맑은 공명 (피리 · 하프)

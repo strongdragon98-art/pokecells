@@ -192,7 +192,7 @@ export const GameMenu = {
     const atk = sp.atk * Tm.atk * (m.mods.atkMul || 1) * (m.atkBonus || 1), spd = sp.speed * (m.mega ? 1.1 : 1) * (m.mods.speedMul || 1);
     const stats = [['체력', m.hp, m.maxhp, 420, `${Math.ceil(m.hp)} / ${m.maxhp}`, m.hp / m.maxhp > .25 ? 0x6ae08a : 0xff6a6a],
       ['공격', atk, atk, 40, (Math.round(atk * 10) / 10).toFixed(1), 0xff9a5a], ['속도', spd, spd, 170, String(Math.round(spd)), 0x6ad8ff],
-      ['점프', sp.jumps, sp.jumps, 4, `${sp.jumps}단${sp.hover ? ' · 부유' : ''}`, 0xb08aff], ['기술 크기', Tm.fx * (m.mods.sizeMul || 1), 1, 2.4, `×${(Tm.fx * (m.mods.sizeMul || 1)).toFixed(2)}`, 0xffd27a]];
+      ['점프', Math.max(2, sp.jumps) + (m.mods.extraJumps || 0), 0, 5, `${Math.max(2, sp.jumps) + (m.mods.extraJumps || 0)}단${sp.hover ? ' · 부유' : ''}`, 0xb08aff], ['기술 크기', Tm.fx * (m.mods.sizeMul || 1), 1, 2.4, `×${(Tm.fx * (m.mods.sizeMul || 1)).toFixed(2)}`, 0xffd27a]];
     stats.forEach(([k, v, , max, label, col], i) => {
       const y = CY + 36 + i * 15;
       C.add(hkText(this, RX + 14, y, k, 8, HK.dim, { origin: [0, .5] }));

@@ -378,6 +378,9 @@ export default class GameScene extends Phaser.Scene {
     this.exploredKey = '';
     // 방마다 작은 타일 지도 (빈 셀까지 큰 지도 하나로 만들면 타일 객체가 너무 많아진다)
     this.layers = [];
+    //  결전장 부유섬 (game/Arenas.js r.isleCells): 아래에서 뚫고 오르는 통과 지형 — 'x,y' → true 윗면 · false 몸통
+    level.pass = new Map();
+    for (const r of level.rooms) for (const [x, y, top] of r.isleCells || []) level.pass.set(x + ',' + y, !!top);
     for (const r of level.rooms) {
       const tsKey = st.areas[r.ai] && st.areas[r.ai].palette ? `tiles:${si}:${r.ai}` : `tiles:${si}`;   // 그 지역만 다른 타일 색 (하나의 천계 — systems/Textures.js)
       const map = this.make.tilemap({ data: level.data.slice(r.Y0, r.Y1).map(row => row.slice(r.X0, r.X1)), tileWidth: TILE, tileHeight: TILE });
@@ -385,7 +388,12 @@ export default class GameScene extends Phaser.Scene {
       const layer = map.createLayer(0, ts, r.X0 * TILE, r.Y0 * TILE).setDepth(10);
       layer.forEachTile(t => {
         if (PLAT_SET.has(t.index)) t.setCollision(false, false, true, false);   // 통과 발판: 위에서만 밟힌다
-        else if (t.index >= 0) t.setCollision(true, true, true, true);
+        else if (t.index >= 0) {
+          const ps = level.pass.get((t.x + r.X0) + ',' + (t.y + r.Y0));
+          if (ps === true) { t.setCollision(false, false, true, false); t.oneWay = true; }   // 부유섬 윗면: 통과 발판처럼 (↓ + Space 로 내려간다)
+          else if (ps === false) t.setCollision(false, false, false, false);                // 부유섬 몸통: 머리 · 몸이 막히지 않고 지나간다
+          else t.setCollision(true, true, true, true);
+        }
       });
       if (this.webgl) layer.setPipeline('Light2D');
       r.map = map; r.ts = ts; r.layer = layer;
@@ -530,7 +538,7 @@ export default class GameScene extends Phaser.Scene {
       this.player.b.reset(pos.x, pos.y); this.player.b.setVelocity(0, 0);
     }
     this.playerColliders = [
-      this.physics.add.collider(this.player.obj, this.layers, null, (o, tile) => !(PLAT_SET.has(tile.index) && this.player.dropT > 0)),
+      this.physics.add.collider(this.player.obj, this.layers, null, (o, tile) => !((PLAT_SET.has(tile.index) || tile.oneWay) && this.player.dropT > 0)),
       this.physics.add.collider(this.player.obj, this.gateGroup)
     ];
 
@@ -765,10 +773,16 @@ export default class GameScene extends Phaser.Scene {
     return lv.grid[ty][tx];
   }
   isSolidAt(x, y) { const c = this.cellAt(x, y); return c === 'S' || c === 'B'; }
+  // 부유섬 칸 (true 윗면 · false 몸통 · undefined 아님)
+  passAt(x, y) { const lv = this.level; return lv && lv.pass ? lv.pass.get(Math.floor(x / TILE) + ',' + Math.floor(y / TILE)) : undefined; }
+  // 몸을 옆 · 아래에서 막는 벽인가 (부유섬은 아래 · 옆에서 뚫고 지나간다) — 모서리 자동 오르기(Player.ledgeAssist)가 쓴다
+  isWallAt(x, y) { return this.isSolidAt(x, y) && this.passAt(x, y) === undefined; }
+  // 위에서만 밟히는 칸인가 (통과 발판 · 집 지붕 · 부유섬 윗면)
+  oneWayTopAt(x, y) { const c = this.cellAt(x, y); return c === 'P' || c === 'H' || this.passAt(x, y) === true; }
   isGroundAt(x, y) { const c = this.cellAt(x, y); return c === 'S' || c === 'B' || c === 'P' || c === 'H'; }
   standingOnPlatform(a) {
     const y = a.bottom + 2; let plat = false;
-    for (const x of [a.b.x + 2, a.b.right - 2]) { const c = this.cellAt(x, y); if (c === 'S' || c === 'B') return false; if (c === 'P' || c === 'H') plat = true; }
+    for (const x of [a.b.x + 2, a.b.right - 2]) { const c = this.cellAt(x, y), ps = this.passAt(x, y); if (ps === true) { plat = true; continue; } if (c === 'S' || c === 'B') return false; if (c === 'P' || c === 'H') plat = true; }
     return plat;
   }
   groundBelow(x, y) {

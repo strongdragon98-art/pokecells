@@ -12,6 +12,11 @@
 //  origin     아르세우스 — 시초의 방: 흙 한 줌 없는 황금빛 크리스탈 공중 회랑 · 둥글게 도는 천체 발판 고리 · 양옆 유리 회랑
 //  reactor    무한다이노 → 아비스 네크로즈마 — 블랙나이트의 심장: 가운데 볼록 솟은 원자로 해치 돔 · 양옆에서 가운데로 사선으로 뻗은 붉은 강철 트러스 빔
 //
+//  층고 규칙 (점프 개편 — 꾹 누른 1단 점프 약 100px · 6칸): 바닥 → 1층 발판 · 층과 층 사이는 4칸(64px · 1단 점프의 64%) 이하,
+//   가로 틈은 오르는 칸 수에 따라 5~7칸 이하 — 1단 점프 한 번이면 넉넉히 올라선다 (검증: 테스트 도구 seg-check 와 같은 규칙)
+//  공중 발판 · 부유섬은 모두 아래에서 뚫고 오르는 통과형: 'P' 발판은 원래 그렇고, 부유섬(isle)은 r.isleCells 에 칸을 적어 두면
+//   GameScene 이 윗면 칸만 위에서 밟히게 · 몸통 칸은 충돌 없이 만든다 (그림 · 격자 문자 'S' 는 그대로 — 탄환은 바위에 막힌다)
+//
 //  문: 좌우 문이 바닥 높이(F)에 있으면 그 벽 쪽 5칸은 평평하게 두고 2칸마다 1칸씩만 오르게 깎는다 (문 뚫기가 지형에 구멍을 내지 않게 · 걸어 들어오게)
 //   위층 문(2×2 방)은 World 가 벽 앞에 턱을 깔아 준다 · 바닥 철창(위아래 문)은 World 가 우물처럼 파서 잇는다
 export const ARENA_STYLE = { mewtwo: 'biolab', 'ho-oh': 'bellroof', rayquaza: 'summit', dialga: 'spear', giratina: 'distortion', darkrai: 'distortion', zekrom: 'yinyang', arceus: 'origin', eternatus: 'reactor' };
@@ -51,9 +56,12 @@ export function buildArena(style, r, o) {
     }
   };
   // 부유섬: 윗면 w칸 · 아래로 갈수록 shape 만큼 안쪽으로 깎인다 (심연 바로 위 한 줄은 비운다)
+  //  r.isleCells: [x, y, 윗면?] — 칸마다 그 기둥에서 가장 위 칸이 윗면 (모양이 안쪽으로 깎인 둘레 칸은 한 줄 아래가 윗면)
+  r.isleCells = [];
   const isle = (dx, h, w, shape) => {
     const ty = F - h, n = Math.min(shape.length, h - 1);
     for (let j = 0; j < n; j++) for (let i = shape[j]; i < w - shape[j]; i++) S(x0 + dx + i, ty + j);
+    for (let i = 0; i < w; i++) { let first = true; for (let j = 0; j < n; j++) { const x = x0 + dx + i, y = ty + j; if (grid[y][x] !== 'S' || i < shape[j] || i >= w - shape[j]) continue; r.isleCells.push([x, y, first]); first = false; } }
     return { x: x0 + dx, y: ty, w, h: n };
   };
   r.arenaStyle = style;
@@ -63,37 +71,45 @@ export function buildArena(style, r, o) {
     // 양 끝 데크(4칸 위) · 냉각수 경기장으로 내려서는 2칸 턱 · 가운데 오목한 경기장
     raise(0, 11, 4); raise(W - 12, W - 1, 4); raise(12, 13, 2); raise(W - 14, W - 13, 2);
     fill();
-    // 철제 캣워크 2 · 3층 (데크 위 4 · 9칸) + 맨 위 관제 브리지
+    // 철제 캣워크 3층 (8 · 12 · 16칸 — 데크(4) 위로 4칸씩) + 맨 위 관제 브리지(20 · 위 크레인에서 4칸)
     P(1, 8, 9); P(W - 10, 8, 9);
-    P(2, 13, 9); P(W - 11, 13, 9);
-    P(1, 18, 7); P(W - 8, 18, 7);
-    if (H > 26) P((W >> 1) - 4, 23, 8);
+    P(2, 12, 9); P(W - 11, 12, 9);
+    P(1, 16, 7); P(W - 8, 16, 7);
+    if (H > 26) P((W >> 1) - 4, 20, 8);
     A.pit = [x0 + 14, x1 - 15];
     A.decks = [[x0, x0 + 11], [x1 - 12, x1 - 1]];
     // 사슬 크레인 발판 (칸 단위 · 런타임에 좌우로 오간다 — GameScene.buildCranes): y 윗면 줄 · 왕복 구간 · 너비 · 속도(px/s) · 시작 위상
-    A.cranes = [{ y: F - 9, a: x0 + 15, b: x1 - 21, w: 6, sp: 26, ph: 0 }, { y: F - 16, a: x0 + 16, b: x1 - 22, w: 6, sp: 34, ph: .55 }].filter(c => c.y > top + 2);
+    //  아래 크레인 = 1층 캣워크 높이(8) · 위 크레인 = 3층 캣워크 높이(16) — 캣워크 끝에서 옆으로 건너 타고, 위 크레인에서 관제 브리지로 오른다
+    A.cranes = [{ y: F - 8, a: x0 + 15, b: x1 - 21, w: 6, sp: 26, ph: 0 }, { y: F - 16, a: x0 + 16, b: x1 - 22, w: 6, sp: 34, ph: .55 }].filter(c => c.y > top + 2);
   } else if (style === 'bellroof') {
     for (let i = 0; i < W; i++) raise(i, i, ROOF[Math.min(ROOF.length - 1, Math.min(i, W - 1 - i))]);
     fill();
-    // 청사초롱 · 풍등 발판 (윗면 = 초롱 뚜껑) — 처마 끝 · 지붕 비탈에서 한 번에 오르는 높이로 층층이
+    // 청사초롱 · 풍등 발판 (윗면 = 초롱 뚜껑) — 처마 끝(5) · 지붕 비탈 · 용마루(7)에서 1단 점프 한 번(4칸 이하)이면 다음 초롱 위로 넉넉히
+    //  처마 5 → 9 → 13 → 17 → 21 → 24 → 27 · 비탈 4~5 → 8 · 용마루 7 → 11 → 15 → 19 → 23 → 27 (좌우 대칭 · 가운데 셋)
+    //  이웃 초롱끼리 가로 틈 4칸 이하 (오르는 칸이 4면 3칸 이하) — 초롱 가운데에서 뛰어도 1단 점프 한 번에 닿는다
     A.lanterns = [];
-    for (const [dx, h, w] of [[6, 10, 4], [W - 10, 10, 4], [18, 11, 4], [W - 22, 11, 4], [27, 15, 6], [11, 16, 3], [W - 14, 16, 3], [4, 20, 3], [W - 7, 20, 3], [20, 21, 4], [W - 24, 21, 4], [28, 26, 4]]) {
+    for (const [dx, h, w] of [[6, 9, 4], [W - 10, 9, 4], [18, 8, 4], [W - 22, 8, 4], [24, 11, 3], [W - 27, 11, 3], [12, 13, 3], [W - 15, 13, 3],
+      [19, 15, 4], [W - 23, 15, 4], [6, 17, 3], [W - 9, 17, 3], [27, 19, 6], [11, 21, 3], [W - 14, 21, 3], [28, 23, 4], [17, 24, 4], [W - 21, 24, 4], [24, 27, 12]]) {
       if (F - h <= top + 1) continue;
       P(dx, h, w); A.lanterns.push({ x: x0 + dx, y: F - h, w });
     }
     A.ridge = [x0 + 25, x0 + W - 26];
     A.bells = [x0 + 1, x1 - 2];
   } else if (style === 'summit') {
-    // 3단 피라미드 제단 (4 · 8 · 12칸) · 좌우 끊어진 절벽 (모서리가 부서져 내려앉았다)
+    // 3단 피라미드 제단 (4 · 8 · 12칸 — 단차마다 64px: 꾹 누른 1단 점프 약 100px 로 가볍게) · 좌우 끊어진 절벽 (모서리가 부서져 내려앉았다)
     raise(14, W - 15, 4); raise(19, W - 20, 8); raise(24, W - 25, 12);
     raise(0, 5, 9); raise(6, 6, 8); raise(7, 7, 6);
     raise(W - 6, W - 1, 9); raise(W - 7, W - 7, 8); raise(W - 8, W - 8, 6);
     fill();
-    // 고대 문양 부유석 (상승 기류 곁 · 제단 위)
-    A.stones = [isle(4, 14, 4, [0, 0, 1]), isle(W - 8, 14, 4, [0, 0, 1]), isle(14, 19, 4, [0, 1]), isle(W - 18, 19, 4, [0, 1])];
-    if (H > 26) A.stones.push(isle(24, 24, 12, [0, 0, 2, 4]));
-    // 절벽과 제단 사이 틈: 초록빛 상승 기류 (바닥 구름바다에서 부유석 높이까지)
-    for (const dx of [9, W - 13]) lifts.push({ x0: x0 + dx, x1: x0 + dx + 3, y0: Math.max(top + 2, F - 20), y1: F - 1, room: r, wind: true });
+    // 고대 문양 부유석 (통과형 — 아래에서 뚫고 올라선다): 절벽(9) 위 13 · 제단 1단 위 17 · 꼭대기 21 (4칸 간격)
+    A.stones = [isle(4, 13, 4, [0, 1]), isle(W - 8, 13, 4, [0, 1]), isle(14, 17, 4, [0, 1]), isle(W - 18, 17, 4, [0, 1])];
+    if (H > 26) A.stones.push(isle(20, 21, 20, [0, 0, 2, 6]));   // 꼭대기 부유석: 20칸 — 안쪽 기류(한 칸 옆)에서 떠올라 → 만 누르면 바로 건너 앉는다
+    // 초록빛 상승 기류 (wind — Props.updateHeroes 가 열기보다 세게 밀어 올린다)
+    //  ① 절벽과 제단 사이 틈 (6칸 너비): 바닥 구름바다에서 꼭대기 부유석 높이(21)까지
+    //  ② 안쪽 부유석 아래 (제단 1단 윗면에서): 그대로 실려 꼭대기 부유석 위까지 붕 떠오른다 — 점프를 안 눌러도 레쿠쟈 머리 위로
+    const TOPL = Math.max(top + 2, F - 21);
+    for (const dx of [8, W - 14]) lifts.push({ x0: x0 + dx, x1: x0 + dx + 5, y0: TOPL, y1: F - 1, room: r, wind: true });
+    for (const dx of [14, W - 19]) lifts.push({ x0: x0 + dx, x1: x0 + dx + 4, y0: TOPL, y1: F - 5, room: r, wind: true });
     A.abyss = 'cloud';
     A.openWalls = true;
     A.altar = [x0 + 24, x1 - 25, F - 12];
@@ -122,36 +138,38 @@ export function buildArena(style, r, o) {
     // 바닥(F)은 반물질 심연 — 디디면 가장 가까운 섬으로 튕겨 올라온다 (GameScene.updateAbyss)
     //  바닥 높이 문이 있는 벽 쪽 첫 섬은 문 앞 터를 비켜 안쪽으로 (문 앞 디딤 땅에서 바로 뛰어오르게)
     const ia = floorDoors.has(-1) ? 7 : 1, ig = floorDoors.has(1) ? W - 14 : W - 8;
-    const big = [[ia, 5, 7, [0, 0, 1, 3]], [10, 10, 6, [0, 0, 2]], [18, 4, 6, [0, 1, 2]], [25, 8, 10, [0, 0, 1, 2, 4]], [W - 24, 4, 6, [0, 1, 2]], [W - 16, 10, 6, [1, 0, 2]], [ig, 5, 7, [0, 0, 2, 3]]];
-    if (H > 26) big.push([26, 21, 8, [0, 0, 1, 3]]);
-    const small = H > 20 ? [[6, 15, 3], [W - 9, 15, 3], [15, 17, 3], [W - 18, 17, 3]] : [[6, 8, 3], [W - 9, 8, 3]];
+    //  섬 높이: 낮은 섬 4 → 가운데 섬 7 · 날개 섬 8 → 작은 섬 11~12 → 꼭대기 섬 15 · 벽 쪽 디딤 섬 16 (위층 문 턱 20 까지 4칸) — 어디서든 1단 점프 4칸 이하
+    const big = [[ia, 4, 7, [0, 0, 1, 3]], [10, 8, 6, [0, 0, 2]], [18, 4, 6, [0, 1, 2]], [25, 7, 10, [0, 0, 1, 2, 4]], [W - 24, 4, 6, [0, 1, 2]], [W - 16, 8, 6, [1, 0, 2]], [ig, 4, 7, [0, 0, 2, 3]]];
+    if (H > 26) big.push([26, 15, 8, [0, 0, 1, 3]]);
+    const small = H > 20 ? [[6, 12, 3], [W - 9, 12, 3], [19, 11, 3], [W - 22, 11, 3], [2, 16, 3], [W - 5, 16, 3]] : [[6, 8, 3], [W - 9, 8, 3]];
     A.islands = big.map(([dx, h, w, sh]) => isle(dx, h, w, sh)).concat(small.map(([dx, h, w]) => isle(dx, h, w, [0, 1])));
     r.islands = A.islands.map(q => ({ x: q.x, y: q.y, w: q.w }));
     // 차원 도약 수정 (낮은 섬 둘): 밟거나 치면 높이 솟구친다
     for (const dx of [20, W - 22]) { const g = F - 4; if (grid[g][x0 + dx] === 'S' && grid[g][x0 + dx + 1] === 'S') pads.push({ x: x0 + dx, g, room: r, isl: null }); }
     A.abyss = 'void';
     A.openWalls = true;
-    A.throneY = F - 8;
+    A.throneY = F - 7;   // 가운데 섬(7칸) 윗면
   } else if (style === 'yinyang') {
     // 왼쪽 레시라무의 백색 대리석 계단 (벽 쪽으로 3단) · 오른쪽 제크로무의 흑요석 계단 (낮은 둔덕 + 솟은 흑요석 단) · 가운데 결투장
     //  (오른쪽 벽엔 늘 천계로 가는 문이 바닥 높이에 있어, 흑요석 계단은 벽에서 8칸 안쪽에 솟는다)
     raise(0, 5, 3); raise(6, 8, 2); raise(9, 11, 1);
     raise(W - 20, W - 18, 1); raise(W - 17, W - 15, 2); raise(W - 14, W - 12, 3); raise(W - 11, W - 9, 2);
     fill();
-    P(2, 7, 7); P(14, 5, 6);            // 흰 대리석 판
+    P(2, 7, 7); P(14, 5, 7);            // 흰 대리석 판 (가운데 쪽으로 한 칸 — 제단 상판까지 가로 틈 1칸)
     P(W - 23, 5, 6); P(W - 15, 7, 6);   // 검은 흑요석 파편
-    P(24, 9, 8);                        // 가운데 위: 흑백이 맞물린 제단 상판
+    P(22, 8, 12);                       // 가운데 위: 흑백이 맞물린 제단 상판 (8칸 — 양쪽 판(5)에서 3칸)
     A.split = mid;
   } else if (style === 'origin') {
     // 바닥은 유리 회랑 (밑으로 별이 비친다) · 둥근 천체 발판 고리 (12개 · 30도마다) · 가운데 원반 · 양옆 유리 회랑 3층
-    const cx = mid, cy = F - 14, rx = 13, ry = 9;
+    //  고리: 가운데 12칸 · 세로 반지름 8 → 발판 높이 4 · 5 · 8 · 12 · 16 · 19 · 20 (이웃 발판끼리 4칸 이하) · 유리 회랑 4 · 8 · 12 · 16
+    const cx = mid, cy = F - 12, rx = 13, ry = 8;
     A.ring = { cx, cy, rx, ry, pads: [] };
     if (H > 26) for (let k = 0; k < 12; k++) {
       const a = k * Math.PI / 6, x = Math.round(cx + rx * Math.cos(a)) - 2, y = Math.round(cy - ry * Math.sin(a));
       setP(x, y, 4); A.ring.pads.push({ x, y, w: 4 });
     }
-    if (H > 26) setP(cx - 3, cy, 6);
-    for (const [dx, h, w] of [[1, 5, 6], [3, 10, 6], [1, 15, 6], [W - 7, 5, 6], [W - 9, 10, 6], [W - 7, 15, 6]]) P(dx, h, w);
+    if (H > 26) setP(cx - 3, cy + 3, 6);   // 가운데 원반 (9칸 — 아래 고리 발판 5칸에서 4칸)
+    for (const [dx, h, w] of [[1, 4, 6], [3, 8, 6], [1, 12, 6], [3, 16, 6], [W - 7, 4, 6], [W - 9, 8, 6], [W - 7, 12, 6], [W - 9, 16, 6]]) P(dx, h, w);
     A.glass = true;
   } else if (style === 'reactor') {
     // 원자로 해치 돔: 가운데 29칸이 반원으로 5칸까지 솟는다
@@ -161,12 +179,14 @@ export function buildArena(style, r, o) {
     for (let i = W - 2; i >= 0; i--) dh[i] = Math.min(dh[i], dh[i + 1] + 1);
     dh.forEach((h, i) => { if (h) raise(i, i, h); });
     fill();
-    // 붉은 강철 트러스 빔: 양 벽에서 가운데로 사선으로 (아래 4토막 · 위 6토막 · 토막마다 1칸씩 오른다) + 꼭대기 갠트리
+    // 붉은 강철 트러스 빔: 벽에서 가운데로 오르다 꺾여 벽으로, 다시 가운데로 — 지그재그 3단 계단 (토막마다 1칸 · 꺾이는 곳 2~3칸 · 층 사이 3칸 틈)
+    //  1단 4~7 (벽 → 가운데) · 2단 9~13 (가운데 → 벽) · 3단 16~19 (벽 → 가운데, 위층 문 턱 20 바로 아래) + 꼭대기 갠트리 21
+    //  wall: 벽에 박힌 빔 (ArenaArt 가 벽에서부터 보를 긋는다) — 꺾여 돌아오는 2단은 공중에서 시작한다
     A.beams = [];
-    const beam = (dx0, h0, n, dir) => { const seg = []; for (let k = 0; k < n; k++) { const dx = dir > 0 ? dx0 + k * 3 : dx0 - k * 3, h = h0 + k; if (F - h <= top + 1) break; P(dx, h, 3); seg.push({ x: x0 + dx, y: F - h, w: 3 }); } A.beams.push(seg); };
-    beam(2, 5, 4, 1); beam(W - 5, 5, 4, -1);
-    if (H > 20) { beam(1, 12, 6, 1); beam(W - 4, 12, 6, -1); }
-    if (H > 26) { P(24, 22, W - 48); A.gantry = { x: x0 + 24, y: F - 22, w: W - 48 }; }
+    const beam = (dx0, h0, n, dir, wall = true) => { const seg = []; for (let k = 0; k < n; k++) { const dx = dir > 0 ? dx0 + k * 3 : dx0 - k * 3, h = h0 + k; if (F - h <= top + 1) break; P(dx, h, 3); seg.push({ x: x0 + dx, y: F - h, w: 3 }); } seg.wall = wall; A.beams.push(seg); };
+    beam(2, 4, 4, 1); beam(W - 5, 4, 4, -1);
+    if (H > 20) { beam(14, 9, 5, -1, false); beam(W - 17, 9, 5, 1, false); beam(5, 16, 4, 1); beam(W - 8, 16, 4, -1); }
+    if (H > 26) { P(20, 21, W - 40); A.gantry = { x: x0 + 20, y: F - 21, w: W - 40 }; }
     A.dome = { cx: x0 + W / 2, r: R, h: 5 };
     A.coreY = F - 5;
   }

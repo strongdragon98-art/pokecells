@@ -48,7 +48,7 @@ export const PERKS = {
   n_impact: { grade: '언커먼', cat: '능력치', name: '타격감 증폭', desc: '보스에게 입히는 모든 그로기(Stagger) 누적량 +7%.', max: 4, mods: { stagAdd: .07 } },
 
   // ================= 🔵 레어 =================
-  r_jump: { grade: '레어', cat: '기동', name: '비상의 깃털', desc: '공중 점프 횟수 +1.', max: 2, mods: { extraJumps: 1 } },
+  r_jump: { grade: '레어', cat: '기동', name: '비상의 깃털', desc: '공중 점프 횟수 +1 — 기본 2단 점프가 3단 점프가 된다.', max: 2, mods: { extraJumps: 1 } },
   r_dash: { grade: '레어', cat: '기동', name: '순풍의 가호', desc: '대시 쿨타임 -15%.', max: 1, mods: { dashCdMul: .85 } },
   r_speed: { grade: '레어', cat: '기동', name: '쾌속 스카프', desc: '이동 속도 +15%.', max: 2, mods: { speedMul: 1.15 } },
   r_burn: { grade: '레어', cat: '속성 부여', name: '불꽃 부여', desc: '적중 시 15% 확률로 화상 (4초 지속 피해).', max: 2, mods: { pBurn: .15 } },
