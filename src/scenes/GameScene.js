@@ -18,12 +18,37 @@ import { bakeArenaTiles } from '../systems/ArenaArt.js';
 import { buildArenaBackdrop, craneArt, chainArt } from '../systems/ArenaBackdrop.js';
 
 const ARENA_ZOOM = 1;
+// 🌀 지방 최종 보스를 정화한 뒤 (chapterGate): 보스방 오른쪽 끝에 빛과 함께 조력자 NPC(data/npcs.js guide_*) · 다음 지방 이동 포털 — 자동 이동은 없다 (포털 앞에서 F)
+//  late: 시초의 방은 아르세우스의 텔레파시가 끝난 뒤 포털 (arceusTelepathy) · 하나 용나선탑(제크로무 → 레시라무)은 조력자만 (위로 이어진 천계로 걸어간다)
+const CHAPTER_GATES = [
+  [{ boss: 'mewtwo', guide: 'guide_oak', portal: true }],
+  [{ boss: 'ho-oh', guide: 'guide_kimono', portal: true }],
+  [{ boss: 'rayquaza', guide: 'guide_steven', portal: true }],
+  [{ boss: 'giratina', guide: 'guide_cynthia', portal: true }],
+  [{ boss: 'zekrom', guide: 'guide_alder', portal: false }, { boss: 'arceus', guide: null, portal: true, late: true }],
+  []
+];
+const PORTAL_DEST = ['', '인주시티 방울탑 구역', '등화도시 · 하늘기둥 구역', '축복시티 · 천관산 창기둥 구역', '뇌문시티 · 용나선탑 구역', '너클시티 지하 에너지 플랜트 구역'];
+// 🖐️ 필드 아이템: 반경 PICK_R 안의 가장 가까운 하나에 포커스 · 작은 설명 툴팁 · F / ↑ / 조사 버튼 / 터치로 줍는다 (금구슬만 닿으면 자동)
+//  SAVE_DROPS: 줍지 않고 저장해도 이어하기에 그 자리에 다시 놓이는 것 (코어 · 열쇠 · 유대의 불꽃 · 진화 아이템 …)
+const PICK_R = 60, AUTO_PICK = new Set(['nugget']), SAVE_DROPS = new Set(['item', 'orb', 'bondflame', 'megastone', 'zcrystal', 'formitem', 'tmcore', 'candy']);
+// 유대의 불꽃 (보스가 있던 자리에 남는다 — 품으면 정화 단계 +1): 12×16 금빛 · 진홍빛 불꽃
+function bondFlameArt(scene) {
+  if (scene.textures.exists('bondflame')) return 'bondflame';
+  const t = scene.textures.createCanvas('bondflame', 12, 16), c = t.getContext(), F = (x, y, w, h, col) => { c.fillStyle = '#' + col.toString(16).padStart(6, '0'); c.fillRect(x, y, w, h); };
+  [[5, 0, 2], [4, 1, 3], [4, 2, 4], [3, 3, 5], [2, 4, 7], [2, 5, 8], [1, 6, 9], [1, 7, 10], [1, 8, 10], [0, 9, 12], [0, 10, 12], [1, 11, 10], [1, 12, 10], [2, 13, 8], [3, 14, 6], [4, 15, 4]].forEach(([x, y, w]) => F(x, y, w, 1, 0xff3a2a));
+  [[5, 3, 2], [4, 5, 4], [3, 7, 6], [3, 9, 6], [3, 11, 6], [4, 13, 4]].forEach(([x, y, w]) => { F(x, y, w, 2, 0xffb040); });
+  [[5, 8, 2], [4, 10, 4], [5, 12, 2]].forEach(([x, y, w]) => F(x, y, w, 2, 0xfff4c0));
+  t.refresh();
+  return 'bondflame';
+}
 // ✨ 샛길 정화: 정화 전 샛길 구역의 화면 침식 깊이 하한 (검붉은 비네팅 · 채도 · 주변광 · 포자) · 본길 전투 방은 다른 방에 이만큼(ms) 다녀오면 쓰러뜨린 자리에 다시 나타난다
 const SIDE_GLOOM = .62, MAIN_RESPAWN_MS = 4000;
 // 보스 결전장 주변광: [물들일 색, 밝기 하한(초입 밝기 대비)] (game/Arenas.js 의 결전장 종류)
 const ARENA_AMB = { biolab: [0x8ad8e8, .8], bellroof: [0xffc890, .92], summit: [0xc8f0ff, .92], spear: [0xe0dcff, .9], distortion: [0xb898ff, .8], yinyang: [0xf0e8f4, .86], origin: [0xfff4d8, .96], reactor: [0xffb0b8, .8] };   // 보스전 월드 배율 (평소 ZOOM 1.25 → 화면에 아레나가 더 많이 들어온다)
 import { Props } from '../game/Props.js';
 import { SideRooms } from '../game/SideRooms.js';
+import { NPCS } from '../data/npcs.js';
 import { HoohAltar, BEAST_ORBS, ORB_KEYS, orbTexture, orbCount } from '../game/HoohAltar.js';
 import { Player } from '../game/Player.js';
 import { Enemy } from '../game/Enemy.js';
@@ -280,7 +305,10 @@ export default class GameScene extends Phaser.Scene {
     this.eyeTrailG = this.add.graphics().setDepth(23).setBlendMode(Phaser.BlendModes.ADD);     // 붉은 안광 궤적
     this.combat = new Combat(this);
     this.buildWorld(rs ? rs.pos : null);
-    if (rs) { restorePlayer(this.player, rs.player); this.resume = null; }
+    if (rs) {
+      restorePlayer(this.player, rs.player); this.resume = null;
+      if (rs.drops && rs.drops.ci === this.stageIdx) for (const d of rs.drops.list || []) this.spawnPickup(d.kind, d.x, d.y - 4, d.id, true);   // 줍지 않고 저장했던 드랍을 그 자리에
+    }
     else if (!this.test && Save.data.bondFlame) this.time.delayedCall(1500, () => {   // 진 엔딩을 본 뒤의 새 여정: 레드의 유대의 불꽃을 처음부터 지닌다
       if (!this.player || this.over) return;
       this.player.addItem('core_red_bond');
@@ -446,6 +474,7 @@ export default class GameScene extends Phaser.Scene {
     this.side = level.purified || this.test ? null : new SideRooms(this, level, this.sideRoomsOf(level));   // ✨ 샛길 정화 구역: 침식 덩굴 · 안개 / 정화한 방은 성역
     const hooh = level.test ? null : level.rooms.find(r => r.boss === 'ho-oh' && r.type === 'boss');
     this.altar = hooh ? new HoohAltar(this, hooh) : null;   // 🌈 방울탑 최상층 삼색 방울의 제단: 성수의 구슬 셋을 바쳐야 칠색조가 강림한다
+    if (!this.test) for (const r of level.rooms) if (r.cleared && this.gateOf(r, level)) this.chapterGate(r, false);   // 🌀 이미 정화한 지방 관문: 조력자 · 다음 지방 포털 그대로
     this.physics.world.setBounds(0, 0, level.width, level.height + 200);
 
     // 패럴랙스 배경 (보스전에서 가장 멀리 당긴 줌 기준으로도 화면을 채우도록 배치)
@@ -585,8 +614,9 @@ export default class GameScene extends Phaser.Scene {
     }
     for (const sp of this.level.spawns) sp.spawned = false;   // 이제 그 자리엔 평화로운 야생 포켓몬이
     this.time.delayedCall(900, () => this.events.emit('banner', `${this.stage.region} 정화!`, '침식이 걷히고 하늘이 맑아졌다 · 마을 사람들을 다시 찾아가 보자'));
-    this.time.delayedCall(500, () => this.repaintWorld());
-    this.time.delayedCall(2400, () => this.saveRun(true, 'purify'));
+    const lvP = this.level;
+    this.time.delayedCall(500, () => { if (this.level === lvP) this.repaintWorld(); });
+    this.time.delayedCall(2400, () => { if (this.level === lvP) this.saveRun(true, 'purify'); });
   }
   // 정화한 지방을 다시 칠한다: 타일 · 횃불 · 소품(나무가 푸르게 · 풀이 연둣빛 · 균열이 사라짐) · 마을 사람
   repaintWorld() {
@@ -654,7 +684,8 @@ export default class GameScene extends Phaser.Scene {
     for (const o of this.worldObjs) o.destroy();
     this.worldObjs = []; this.sunbeams = null; this.rainSheet = this.weatherVeil = null; this.cloudSeas = []; this.cracks = [];
     this.regionSkies = {}; this.nebulae = null; this.nebulae2 = null; this.snowSheets = null; this.realmCovers = [];   // 햇빛 줄기도 worldObjs 와 함께 사라졌으니 새 월드에서 다시 만든다 (updateAtmosphere)
-    if (this.portal) { this.portal.g.destroy(); this.portal.glow.destroy(); this.portal = null; }
+    if (this.portal) { this.portal.g.destroy(); this.portal.glow.destroy(); if (this.portal.core) this.portal.core.destroy(); this.portal = null; }
+    this.portalNear = false; this.pickFocus = null; this.tip = null; this.pickRing = null;   // 툴팁 · 포커스 고리는 worldObjs 와 함께 사라졌다
     if (this.npcs) { this.npcs.destroy(); this.npcs = null; }
     if (this.props) { this.props.destroy(); this.props = null; }
     if (this.side) { this.side.destroy(); this.side = null; }
@@ -1090,7 +1121,8 @@ export default class GameScene extends Phaser.Scene {
       v: 1, at: Date.now(), stageIdx: this.stageIdx, stageName: this.stage.name, pos, seeds: this.seeds.slice(), worlds,
       hubs: this.unlockedHubs.slice(), lastCenter: c, purified: [...this.purifiedSet], bond: [...this.bondStages],
       stats: { kills: this.runStats.kills, unlocked: this.runStats.unlocked.slice(), items: this.runStats.items, time: (this.time.now - this.runStats.start) / 1000 },
-      player: snapshotPlayer(p)
+      player: snapshotPlayer(p),
+      drops: { ci: this.stageIdx, list: this.pickups.filter(q => SAVE_DROPS.has(q.kind) && q.img && q.img.scene).map(q => ({ kind: q.kind, id: q.id, x: Math.round(q.img.x), y: Math.round(q.img.y) })) }   // 줍지 않은 코어 · 열쇠 · 유대의 불꽃 …
     });
     this.events.emit('saved', { ok, auto, where });
     return ok;
@@ -1171,6 +1203,15 @@ export default class GameScene extends Phaser.Scene {
 
   // ---------------- 마을: 포켓몬센터 · 자판기 ----------------
   updateInteract() {
+    const pf = this.pickFocus, pn = !pf && this.portal && this.portalNear;
+    if (pf || pn) {   // 🖐️ 아이템 · 🌀 포털: 툴팁이 안내를 맡는다 (머리 위 안내 글자는 감춘다)
+      if (this.promptText) this.promptText.setVisible(false);
+      const tapped = this.promptTap; this.promptTap = false;
+      if (!this.inp.useP && !this.inp.upP && !tapped) return;
+      this.inp.jumpP = false;
+      if (pf) this.takePickup(pf); else this.enterPortal();
+      return;
+    }
     const p = this.player, it = this.props ? this.props.nearest(p.x, p.bottom) : null;
     if (!this.promptText) {
       this.promptText = this.add.text(0, 0, '', { fontFamily: 'Galmuri9', fontSize: '9px', color: '#fff2c0', stroke: '#1a1008', strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(60);
@@ -1186,6 +1227,7 @@ export default class GameScene extends Phaser.Scene {
     this.inp.jumpP = false;
     if (it.kind === 'lore') { if (this.time.now - (this.loreAt || 0) > 500) { this.loreAt = this.time.now; this.events.emit('lore', it.text); Sfx.play('select'); } return; }
     if (it.kind === 'npc') { this.talkTo(it); return; }   // 마을 사람 · 오박사와 대화
+    if (it.kind === 'guide') { this.talkGuide(it); return; }   // 🌀 지방 최종 보스 뒤 조력자: 브리핑 · 처음엔 파티 전원 회복 + 자동 저장
     if (it.kind === 'journal') { this.readJournal(it); return; }   // 가라르 지하 플랜트의 기밀 연구 일지
     if (it.kind === 'door') { this.useDoor(it); return; }   // 오박사 연구소 문 (안 ↔ 밖)
     if (it.kind === 'tm') { this.openTM(it); return; }   // 카드를 확정해야 다 쓴 제단이 된다
@@ -2787,9 +2829,10 @@ export default class GameScene extends Phaser.Scene {
     const joinedBy = e.boss && Save.unlockByBoss(e.bossKey);   // 전설 보스 정화 → 그 전설이 플레이어블로 합류 (한카리아스 → 딥상어동 계열)
     if (joinedBy) this.time.delayedCall(2800, () => this.announceJoin([joinedBy]));
     if (e.boss) { this.dropFormItem(e); this.bondPurify(e); }
-    if (e.boss && coreOfBoss(e.bossKey)) this.time.delayedCall(1300, () => { if (this.level) this.spawnPickup('item', e.x, e.y - 14, coreOfBoss(e.bossKey)); });   // 💎 지방 최종 보스만 그 지방의 코어 (data/cores.js FINAL_CORE)
-    if (e.boss && BEAST_ORBS[e.bossKey]) this.time.delayedCall(1300, () => { if (this.level) this.spawnPickup('orb', e.x, e.y - 14, e.bossKey); });   // 성도 3성수: 코어 대신 성수의 구슬 (칠색조의 제단 열쇠)   // 보스의 코어 100% (짝 보스 · 이어 싸우기도 한 마리마다)
-    if (e.boss) this.time.delayedCall(1700, () => { if (this.level && !this.over) this.spawnPickup('tmcore', e.x, e.y - 16); });   // 빛나는 TM 코어 100% (보스 · 엘리트만 새 카드를 떨어뜨린다)
+    const lvK = this.level;
+    if (e.boss && coreOfBoss(e.bossKey)) this.time.delayedCall(1300, () => { if (this.level === lvK) this.spawnPickup('item', e.x, e.y - 14, coreOfBoss(e.bossKey)); });   // 💎 지방 최종 보스만 그 지방의 코어 (data/cores.js FINAL_CORE)
+    if (e.boss && BEAST_ORBS[e.bossKey]) this.time.delayedCall(1300, () => { if (this.level === lvK) this.spawnPickup('orb', e.x, e.y - 14, e.bossKey); });   // 성도 3성수: 코어 대신 성수의 구슬 (칠색조의 제단 열쇠)   // 보스의 코어 100% (짝 보스 · 이어 싸우기도 한 마리마다)
+    if (e.boss) this.time.delayedCall(1700, () => { if (this.level === lvK && !this.over) this.spawnPickup('tmcore', e.x, e.y - 16); });   // 빛나는 TM 코어 100% (보스 · 엘리트만 새 카드를 떨어뜨린다)
     if (e.boss) { this.bossDefeated(e); return; }
     if (e.elite && this.stageIdx === 2 && this.player.quests && this.player.quests.zTrial === 1) {   // 호연의 시련: 엘리트 수호자를 넘었다 → 루네시티 시련 캡틴에게
       this.player.quests.zTrial = 2;
@@ -2919,6 +2962,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.chain && this.chain.i < this.chain.list.length - 1) { this.nextInChain(boss); return; }   // 이어 싸우기 (디아루가 → 펄기아 · 레드의 포켓몬 → 무한다이노)
     if (this.test) { this.testBossDone(boss); return; }
     const room = boss.room, final = room.type === 'boss', hidden = room.type === 'sanctuary', tr = this.trainer, last = this.stageIdx >= STAGES.length - 1;
+    const lv = this.level, here = f => () => { if (this.level === lv && !this.over) f(); };   // 지방에 묶인 연출: 그새 다른 지방으로 갔으면 건너뛴다 (예전엔 포털을 먼저 타면 관동 정화가 성도에서 터졌다)
     this.boss = null; this.bosses = []; this.chain = null; this.arenaRoom = null;
     if (this.player.flipT > 0) this.player.flipT = .001;
     if (tr) {   // 세뇌된 트레이너가 정신을 차린다 (레드는 이미 풀려 있으면 마지막 한마디)
@@ -2940,7 +2984,7 @@ export default class GameScene extends Phaser.Scene {
     for (let k = 0; k < 3; k++) this.time.delayedCall(k * 160, () => { this.fx.ring(boss.x + rand(-20, 20), boss.y + rand(-20, 20), 40 + k * 10, 0xe0b0ff, 300); Sfx.play('boom'); });   // 껍질에 금이 가는 박자
     room.cleared = true;
     if (final && room.riftTo) this.time.delayedCall(1300, () => this.openRift(room));   // 창기둥 제단: 디아루가 · 펄기아를 모두 정화하면 제단 뒤 균열이 영구히 열린다
-    this.time.delayedCall(700, () => {
+    this.time.delayedCall(700, here(() => {
       this.setGates(room, true);
       this.unlockArena();
       if (drop) this.spawnPickup(drop, boss.x, boss.y - 10);
@@ -2948,15 +2992,16 @@ export default class GameScene extends Phaser.Scene {
       if (hidden) this.spawnPickup('megastone', boss.x, boss.y - 24);   // 숨겨진 심연의 균열: 다른 포켓몬용 메가스톤
       if (Math.random() < ITEM_DROP.boss) this.spawnPickup('item', boss.x + 14, boss.y - 10, pick(RANDOM_ITEM_KEYS));   // 보스는 강화 아이템 확정
       if (hidden) { this.spawnPickup('item', boss.x - 14, boss.y - 10, pick(RANDOM_ITEM_KEYS)); this.time.delayedCall(1500, () => this.openLegendCards()); }
-      if (final && !room.originHall && !last) this.spawnPortal(room.right - 40, this.groundBelow(room.right - 40, room.top + 8));   // 시초의 방은 아르세우스의 텔레파시 뒤 · 마지막 장은 레드의 인사 뒤
-    });
+    }));
+    const gate = this.gateOf(room);
+    if (gate && !gate.late) this.time.delayedCall(1500, here(() => this.chapterGate(room, true)));   // 🌀 조력자 · 다음 지방 포털 (100% · 자동 이동은 없다)
     Save.data.bestStage = Math.max(Save.data.bestStage, this.stageIdx + 1); Save.write();
     if (final) {   // 지방 최종 보스 정화 = 그 지방 클리어 → 클리어로 합류하는 특수 포켓몬 (가디안·마기라스·망나뇽)
       Save.data.cleared = Math.max(Save.data.cleared || 0, this.stageIdx + 1);
-      if (!last) this.time.delayedCall(2600, () => this.purifyRegion());   // 지방 전체의 침식이 걷힌다
-      else this.time.delayedCall(1600, () => this.trueEnding(boss, room));   // 진 최종전: 황금빛 새벽 · 레드의 인사 · 유대의 불꽃 영구 획득 (포털로 들어가면 진 엔딩)
-      if (room.originHall) { this.storyWait = true; this.time.delayedCall(7000, () => this.arceusTelepathy(room)); }   // 시초의 방: 엔딩 대신 아르세우스의 텔레파시 (합류 창은 그 뒤로)
-      if (boss.bossKey === 'mewtwo') { this.storyWait = true; this.time.delayedCall(6400, () => this.telepathy('mewtwo', '뮤츠 · 텔레파시', MEWTWO_LINES, 0xd8a0ff, 'wave')); }   // 관동: 정화된 뮤츠가 알려 주는 첫 단서
+      if (!last) this.time.delayedCall(2600, here(() => this.purifyRegion()));   // 지방 전체의 침식이 걷힌다 · 방이 평화롭고 밝게
+      else this.time.delayedCall(1600, here(() => this.trueEnding(boss, room)));   // 진 최종전: 황금빛 새벽 · 레드의 인사 · 유대의 불꽃 영구 획득 (포털로 들어가면 진 엔딩)
+      if (room.originHall) this.time.delayedCall(7000, here(() => { this.storyWait = true; this.arceusTelepathy(room); }));   // 시초의 방: 엔딩 대신 아르세우스의 텔레파시 (합류 창은 그 뒤로)
+      if (boss.bossKey === 'mewtwo') this.time.delayedCall(6400, here(() => { this.storyWait = true; this.telepathy('mewtwo', '뮤츠 · 텔레파시', MEWTWO_LINES, 0xd8a0ff, 'wave'); }));   // 관동: 정화된 뮤츠가 알려 주는 첫 단서 (storyWait 는 막 열 때만 — 예전엔 먼저 떠나면 합류 창이 영영 멈췄다)
       const joined = Save.newlyJoined();
       this.time.delayedCall(5600, () => this.announceJoin(joined));
     }
@@ -2990,7 +3035,7 @@ export default class GameScene extends Phaser.Scene {
   //  가라르의 무한다이노는 nextInChain 의 유대의 불꽃 시네마틱이 단계를 채운다 · 진 최종전(아비스 네크로즈마)은 오버드라이브가 대신
   bondPurify(e) {
     if (this.test || this.overdrive || e.bossKey === 'necrozma' || e.bossKey === 'eternatus') return;
-    const p = this.player, room = e.room, ch = this.chain, si = this.stageIdx, ex = e.x, ey = e.y, name = e.name;
+    const p = this.player, room = e.room, ch = this.chain, si = this.stageIdx, ex = e.x, ey = e.y, name = e.name, lvB = this.level;
     const last = !ch || ch.i >= ch.list.length - 1, pair = e.partner && e.partner.alive;
     const core = !!(room && room.type === 'boss' && last && !pair && si < STAGES.length - 1);
     const heroes = !!(room && room.spiralTop && last && !pair);   // 용나선탑 꼭대기 제크로무 → 레시라무: 진실과 이상의 성화 (유대의 불꽃 Lv.5 — data/bond.js)
@@ -3015,9 +3060,12 @@ export default class GameScene extends Phaser.Scene {
       const q = this.player;
       for (let k = 0; k < 3; k++) this.time.delayedCall(k * 110, () => { if (this.player) this.fx.ring(q.x, q.y - 6, 24 + k * 22, k % 2 ? BOND_CRIMSON : BOND_GOLD, 500); });
       this.fx.burst(q.x, q.y - 6, [BOND_GOLD, BOND_CRIMSON, 0xffffff], 24, 160, { glow: true, up: 80, grav: -40, bounce: false, life: .7 });
-      if (core) this.bondStageGain(si);
-      else if (heroes) this.bondStageGain(HEROES_KEY);
-      else { this.events.emit('bond', `🔥 유대의 불꽃이 ${name}의 침식을 태워 냈다`, null); Sfx.play('purify'); }
+      if ((core || heroes) && this.level === lvB) {   // 🔥 침식의 핵: 보스가 있던 자리에 유대의 불꽃이 남는다 — 다가가 설명을 읽고 F 로 품으면 정화 단계 +1 (포털을 먼저 타도 · 저장해도 잃지 않는다)
+        const fy = Math.min(ey, this.floorAt(ex, room) - 20);
+        this.spawnPickup('bondflame', ex, fy, core ? si : HEROES_KEY, true);
+        this.fx.ring(ex, fy, 40, BOND_GOLD, 500); this.fx.glow(ex, fy, 40, BOND_CRIMSON, 600, .9);
+        this.events.emit('toast', '🔥 보스가 있던 자리에 유대의 불꽃이 남았다 — 다가가 F 로 품자');
+      } else if (!core && !heroes) { this.events.emit('bond', `🔥 유대의 불꽃이 ${name}의 침식을 태워 냈다`, null); Sfx.play('purify'); }
     });
   }
   // 정화 단계 +1: HUD 불꽃이 커지고 화면 위쪽 알림 (같은 핵은 한 번만) → 단계가 올랐으면 그 단계의 영구 권능 해금 (data/bond.js)
@@ -3467,19 +3515,21 @@ export default class GameScene extends Phaser.Scene {
     // 아이템·상처약은 가방과 같은 본가 그림을 16칸 크기로 (월드 배율만큼 곱게 줄여 둔다). 그림이 없으면 도트 아이콘
     const artId = kind === 'item' || kind === 'nugget' ? id : kind === 'potion' ? 'potion' : kind === 'candy' ? 'rare_candy' : null, art = artId && itemArt(this, artId, 16 * ZOOM);
     if (kind === 'tmcore') tmCoreTexture(this);
+    if (kind === 'bondflame') bondFlameArt(this);
     if (kind === 'orb') orbTexture(this, id);
-    const img = this.physics.add.image(x, y, art || (kind === 'item' ? `it:${id}` : kind === 'orb' ? `orb:${id}` : kind === 'potion' ? 'oran' : kind === 'formitem' ? 'megastone' : kind)).setDepth(19);   // 폼체인지 아이템은 구슬 모양 (색으로 구분)
+    const img = this.physics.add.image(x, y, art || (kind === 'item' ? `it:${id}` : kind === 'orb' ? `orb:${id}` : kind === 'bondflame' ? 'bondflame' : kind === 'potion' ? 'oran' : kind === 'formitem' ? 'megastone' : kind)).setDepth(19);   // 폼체인지 아이템은 구슬 모양 (색으로 구분)
     if (kind === 'formitem') img.setTint(FORM_ITEMS[id].color);
     if (art) { img.setDisplaySize(16, 16); img.body.setSize(10 / img.scaleX, 16 / img.scaleY); }   // 몸통도 그림 크기에 맞춰 바닥에 딱 놓이게
     else img.body.setSize(10, 10);
     if (!still) img.setVelocity(rand(-70, 70), -190);
     img.body.setBounce(.35); img.body.setDragX(120);
-    const col = kind === 'orb' ? BEAST_ORBS[id].color : kind === 'tmcore' ? 0xffd25a : kind === 'formitem' ? FORM_ITEMS[id].color : kind === 'megastone' ? 0xff8ad0 : kind === 'zcrystal' ? 0xfff6a0 : kind === 'oran' ? 0x4a7aff : kind === 'potion' ? 0xd88aff : kind === 'candy' ? 0x9ad8ff : kind === 'nugget' ? NUGGETS[id].color : 0xffe08a;
+    const col = kind === 'bondflame' ? BOND_GOLD : kind === 'orb' ? BEAST_ORBS[id].color : kind === 'tmcore' ? 0xffd25a : kind === 'formitem' ? FORM_ITEMS[id].color : kind === 'megastone' ? 0xff8ad0 : kind === 'zcrystal' ? 0xfff6a0 : kind === 'oran' ? 0x4a7aff : kind === 'potion' ? 0xd88aff : kind === 'candy' ? 0x9ad8ff : kind === 'nugget' ? NUGGETS[id].color : 0xffe08a;
     const glow = this.add.image(x, y, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(col).setScale(kind === 'nugget' ? .8 : .5).setDepth(18);
     if (kind === 'nugget') img.setVelocity(rand(-60, 60), -260);   // 금구슬은 더 높이 튀어 오른다
     const coll = this.physics.add.collider(img, this.layers);
     const pk = { kind, id, img, glow, coll, t: 0 };
     this.pickups.push(pk);
+    if (!AUTO_PICK.has(kind)) img.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.tapPickup(pk));   // 📱 아이템을 직접 눌러도 줍는다 (가까이 있을 때)
     return pk;
   }
 
@@ -3500,16 +3550,31 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  // 🖐️ 필드 아이템: 금구슬만 닿으면 자동 · 나머지는 반경 PICK_R 안에서 가장 가까운 하나에 포커스(금빛 고리) + 작은 설명 툴팁 → F / ↑ / 조사 버튼 / 터치로 줍는다 (updateInteract)
   updatePickups(dt) {
-    const pb = this.player.bounds();
+    const pl = this.player, pb = pl.bounds(), t = this.time.now / 1000;
+    let best = null, bd = PICK_R;
     for (let i = this.pickups.length - 1; i >= 0; i--) {
       const p = this.pickups[i];
       p.t += dt;
       p.glow.setPosition(p.img.x, p.img.y).setAlpha(.5 + Math.sin(p.t * 6) * .2);
       if (p.kind === 'nugget' && Math.random() < .1) this.fx.burst(p.img.x + rand(-6, 6), p.img.y + rand(-6, 4), [0xfff6c0, 0xffd84a, 0xffffff], 1, 18, { grav: -50, bounce: false, glow: true, life: .45, size: 1 });   // 찬란한 반짝임
+      if (p.kind === 'bondflame' && Math.random() < .3) this.fx.embers(p.img.x + rand(-4, 4), p.img.y - 4, [BOND_GOLD, BOND_CRIMSON], 1);
       if (p.img.y > this.level.height + 40) p.img.body.reset(p.img.x, 4 * TILE);
-      if (p.t > .4 && overlap(pb, { x: p.img.x - 8, y: p.img.y - 8, w: 16, h: 16 })) { this.collect(p); p.coll.destroy(); p.img.destroy(); p.glow.destroy(); this.pickups.splice(i, 1); }
+      if (AUTO_PICK.has(p.kind)) { if (p.t > .4 && overlap(pb, { x: p.img.x - 8, y: p.img.y - 8, w: 16, h: 16 })) this.takePickup(p); continue; }
+      const d = Math.hypot(p.img.x - pl.x, p.img.y - (pl.y - 4));
+      if (p.t > .3 && d < bd) { bd = d; best = p; }
     }
+    this.pickFocus = this.overlay || this.cinema || this.transitioning ? null : best;
+    // 포커스 고리: 가장 가까운 아이템 하나 (여러 개가 겹쳐 있어도 차례로)
+    if (!this.pickRing) { this.pickRing = this.add.image(0, 0, 'ring').setBlendMode(Phaser.BlendModes.ADD).setTint(0xffe08a).setDepth(18.6); this.worldObjs.push(this.pickRing); }
+    const f = this.pickFocus;
+    this.pickRing.setVisible(!!f);
+    if (f) this.pickRing.setPosition(f.img.x, f.img.y).setScale(.38 + Math.sin(t * 7) * .04).setAlpha(.75 + Math.sin(t * 7) * .2);
+    const pn = !f && this.portal && this.portalNear && !this.overlay && !this.cinema && !this.transitioning;
+    if (f) this.showTip(f, this.pickupInfo(f), f.img.x, f.img.y - 10);
+    else if (pn) this.showTip(this.portal, this.portalInfo(), this.portal.x, this.portal.y - 26);
+    else this.hideTip();
     for (const c of this.chests) {
       if (c.opened) continue;
       c.glow.setAlpha(.45 + Math.sin(this.time.now / 200) * .15);
@@ -3517,8 +3582,81 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  // 하나 줍기 (효과 · 소리는 collect) — 땅에서 치운다
+  takePickup(p) {
+    const i = this.pickups.indexOf(p);
+    if (i < 0) return;
+    this.pickups.splice(i, 1);
+    if (p.img.scene) this.fx.ring(p.img.x, p.img.y, 22, 0xffe08a, 260);
+    this.collect(p);
+    if (p.coll) p.coll.destroy(); p.img.destroy(); p.glow.destroy();
+    if (this.pickFocus === p) { this.pickFocus = null; this.hideTip(); }
+  }
+  // 📱 아이템을 직접 눌렀다: 가까이 있으면 줍는다
+  tapPickup(p) {
+    const pl = this.player;
+    if (!pl || this.overlay || this.paused || this.cinema || this.transitioning || p.t < .3) return;
+    if (Math.hypot(p.img.x - pl.x, p.img.y - pl.y) <= PICK_R + 30) this.takePickup(p);
+    else this.events.emit('toast', '조금 더 가까이 가야 주울 수 있다');
+  }
+  // 툴팁 세 줄: [등급 · 종류] 이름 / 한 줄 설명 / 습득 안내 (깜빡이는 노란 글자)
+  pickupInfo(p) {
+    const cut = (sx, n = 40) => { const s0 = String(sx || '').replace(/\{[a-z]:([^}]*)\}/g, '$1').split(' · ')[0].split('. ')[0].trim(); return s0.length > n ? s0.slice(0, n - 1) + '…' : s0; };
+    if (p.kind === 'item') {
+      const it = ITEMS[p.id] || {}, core = it.core;
+      return core ? { tag: '🟣 유니크', tagCol: '#d88aff', name: it.name, desc: cut(core.desc.replace(/^\S+\s/, ''), 44) } : { tag: '🔵 도구', tagCol: '#8ac8ff', name: it.name || p.id, desc: cut(it.desc) };
+    }
+    if (p.kind === 'tmcore') return { tag: '🟡 TM 캡슐', tagCol: '#ffd25a', name: '기술머신 데이터 (빛나는 TM 코어)', desc: '새로운 기술머신 카드를 1장 선택합니다' };
+    if (p.kind === 'orb') { const o = BEAST_ORBS[p.id]; return { tag: `${o.icon} 열쇠`, tagCol: '#' + o.color.toString(16).padStart(6, '0'), name: o.name, desc: '방울탑 최상층 칠색조의 제단에 바치는 성수의 구슬' }; }
+    if (p.kind === 'bondflame') return { tag: '🔥 유대', tagCol: '#ffc040', name: '유대의 불꽃', desc: '레드가 남긴 불꽃 — 정화 단계 +1 · 영구 권능 해금' };
+    if (p.kind === 'candy') return { tag: '🟢 성장', tagCol: '#7dff9a', name: '이상한사탕', desc: '이 지방 몬스터 8마리분 경험치 (가방에서 먹인다)' };
+    if (p.kind === 'potion') return { tag: '💊 회복', tagCol: '#ff9ad8', name: CONSUMABLES.potion.name, desc: '출전 중인 포켓몬 체력 40% 회복' };
+    if (p.kind === 'oran') return { tag: '💊 회복', tagCol: '#8ab8ff', name: '오렌열매', desc: '출전 중인 포켓몬 체력 20% 회복' };
+    if (p.kind === 'zcrystal') return { tag: '💎 Z파워', tagCol: '#fff6a0', name: 'Z크리스탈', desc: 'Q 로 Z기술을 쓸 수 있게 된다' };
+    if (p.kind === 'formitem') return { tag: '💎 폼체인지', tagCol: '#d8b8ff', name: FORM_ITEMS[p.id].name, desc: '그 전설이 파티에 있으면 V 로 폼체인지' };
+    return { tag: '💎 메가진화', tagCol: '#ff8ad0', name: '메가스톤', desc: '파티 포켓몬의 메가스톤 — 3단 진화 후 V 로 메가진화' };
+  }
+  portalInfo() {
+    const n = this.stageIdx + 1, last = n >= STAGES.length;
+    return last ? { tag: '🌀 여정의 끝', tagCol: '#ffd890', name: '진 엔딩 게이트', desc: '모두의 유대가 세상을 구했다 — 여정을 마친다', act: '입장' }
+      : { tag: `🌀 ${STAGES[n].region}(Ch.${n + 1}) 이동 게이트`, tagCol: '#8ad8ff', name: '', desc: `${PORTAL_DEST[n] || STAGES[n].areas[0].name}으로 이동합니다.`, act: '입장' };
+  }
+  // 작은 반투명 다크 박스 (아이템 바로 위 · 부드럽게 튀어나온다)
+  showTip(target, info, x, y) {
+    if (!this.tip) {
+      const bg = this.add.graphics(), mk = (sz, col) => this.add.text(0, 0, '', { fontFamily: 'Galmuri9', fontSize: sz + 'px', color: col, resolution: 2, wordWrap: { width: 156, useAdvancedWrap: true } }).setOrigin(.5, 0);
+      const t1 = mk(8, '#ffffff'), t2 = mk(7, '#d8d4e8'), t3 = mk(7, '#ffe14a');
+      this.tip = { box: this.add.container(0, 0, [bg, t1, t2, t3]).setDepth(62), bg, t1, t2, t3, target: null };
+      this.worldObjs.push(this.tip.box);
+    }
+    const T = this.tip, touch = this.touchInput && this.touchInput.on;
+    if (T.target !== target) {
+      T.target = target;
+      T.t1.setText(info.name ? `[${info.tag}] ${info.name}` : `[${info.tag}]`).setColor(info.tagCol);
+      T.t2.setText(info.desc);
+      T.t3.setText(touch ? `[ 🖐️ 조사 버튼 · 터치로 ${info.act || '습득'} ]` : `[ F 키를 눌러 ${info.act || '습득'} ]`);
+      const w = Math.min(166, Math.max(T.t1.width, T.t2.width, T.t3.width) + 12), h = T.t1.height + T.t2.height + T.t3.height + 9;
+      T.t1.setPosition(0, 3); T.t2.setPosition(0, 3 + T.t1.height + 1); T.t3.setPosition(0, 4 + T.t1.height + T.t2.height + 1);
+      T.bg.clear(); T.bg.fillStyle(0x0c0a16, .86); T.bg.fillRoundedRect(-w / 2, 0, w, h, 4); T.bg.lineStyle(1, Phaser.Display.Color.HexStringToColor(info.tagCol).color, .7); T.bg.strokeRoundedRect(-w / 2, 0, w, h, 4);
+      T.h = h; T.w = w;
+      this.tweens.killTweensOf(T.box);
+      T.box.setScale(.82).setAlpha(0);
+      this.tweens.add({ targets: T.box, scale: 1, alpha: 1, duration: 150, ease: 'Back.easeOut' });
+    }
+    const v = this.cameras.main.worldView;
+    T.box.setVisible(true).setPosition(Math.round(Phaser.Math.Clamp(x, v.x + T.w / 2 + 4, v.right - T.w / 2 - 4)), Math.round(Math.max(v.y + 4, y - T.h - 6)));
+    T.t3.setAlpha(.55 + Math.sin(this.time.now / 140) * .45);   // 깜빡이는 노란 안내
+  }
+  hideTip() { if (this.tip && this.tip.target) { this.tip.target = null; this.tip.box.setVisible(false); } }
+
   collect(p) {
     const pl = this.player;
+    if (p.kind === 'bondflame') {   // 🔥 유대의 불꽃: 품으면 정화 단계 +1 (이미 같은 핵의 불꽃을 품었으면 따뜻하게 스며들기만)
+      this.fx.ring(pl.x, pl.y - 6, 40, BOND_GOLD, 500); this.fx.burst(pl.x, pl.y - 6, [BOND_GOLD, BOND_CRIMSON, 0xffffff], 26, 150, { glow: true, up: 90, grav: -40, bounce: false, life: .7 });
+      if (this.bondStages.has(p.id)) { this.events.emit('toast', '🔥 유대의 불꽃이 따뜻하게 스며든다'); Sfx.play('heal'); }
+      else this.bondStageGain(p.id);
+      return;
+    }
     if (p.kind === 'item') {
       const worn = pl.addItem(p.id); this.runStats.items++;   // 출전 중인 포켓몬이 바로 장착 (5칸이 차 있으면 가방으로)
       this.events.emit('toast', worn ? `${ITEMS[p.id].name} → ${pl.formName()} 장착! ${ITEMS[p.id].desc}` : `${ITEMS[p.id].name} → 가방에 넣었다 (${pl.formName()} 장착 칸 ${MAX_EQUIP}개가 가득) · 가방에서 다른 포켓몬에게 장착`, p.id);
@@ -3585,28 +3723,97 @@ export default class GameScene extends Phaser.Scene {
     if (c.treasure) this.spawnPickup('oran', c.img.x - 4, c.img.y - 6);
   }
 
-  // ---------------- 출구 포털 / 스테이지 전환 ----------------
-  spawnPortal(x, gy, msg = null) {
-    const g = this.add.graphics().setDepth(13).setBlendMode(Phaser.BlendModes.ADD);
-    const glow = this.add.image(x, gy - 20, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(0x9a7aff).setScale(1.4).setDepth(12);
-    this.portal = { x, y: gy - 20, g, glow, t: 0 };
-    this.events.emit('toast', msg || (this.stageIdx >= STAGES.length - 1 ? '포털로 들어가 여정을 마치자' : `${STAGES[this.stageIdx + 1].region}으로 가는 포털이 열렸다!`));
+  // ---------------- 🌀 지방 최종 보스 정화 뒤: 조력자 · 다음 지방 포털 ----------------
+  // 이 방이 지방 관문(CHAPTER_GATES)인가
+  gateOf(room, lv = this.level) {
+    if (!room || !lv || lv.test) return null;
+    return (CHAPTER_GATES[lv.ci ?? this.stageIdx] || CHAPTER_GATES[this.stageIdx] || []).find(g => g.boss === room.boss) || null;
+  }
+  // 보스방 오른쪽 끝(다음 지방으로 가는 단상)에 빛과 함께 조력자 · 다음 지방 포털 — fresh: 방금 정화했다 (빛기둥 · 안내) / 아니면 이어하기 · 다시 들렀을 때 조용히
+  chapterGate(room, fresh = false) {
+    const g = this.gateOf(room), lv = this.level;
+    if (!g || !lv) return;
+    const px = room.right - 36, gx = room.right - 96;
+    if (g.guide && !(lv.npcs || []).some(n => n.id === g.guide)) {
+      const gy = this.floorAt(gx, room), n = { id: g.guide, x: Math.floor(gx / TILE), g: Math.round(gy / TILE), face: -1, room };
+      (lv.npcs = lv.npcs || []).push(n);
+      if (this.npcs) this.npcs.add(n);
+      if (fresh) {
+        const X = n.x * TILE + 8, Y = n.g * TILE, beam = this.add.image(X, Y, 'glow').setOrigin(.5, 1).setBlendMode(Phaser.BlendModes.ADD).setTint(0xfff0c0).setScale(.9, 5).setAlpha(.9).setDepth(30);
+        this.tweens.add({ targets: beam, alpha: 0, scaleX: .2, duration: 900, onComplete: () => beam.destroy() });
+        this.fx.burst(X, Y - 20, [0xfff0c0, 0xffffff, 0xb8ffd8], 26, 140, { glow: true, up: 80, life: .8 }); this.fx.ring(X, Y - 20, 40, 0xfff0c0, 500);
+        Sfx.play('resonate');
+      }
+    }
+    if (g.portal && !this.portal) this.spawnPortal(px, this.floorAt(px, room), fresh ? null : '');
+    if (fresh) this.time.delayedCall(400, () => { if (this.level === lv) this.events.emit('toast', g.guide ? `💬 ${NPCS[g.guide].name}이(가) 나타났다 — 다가가 F 로 대화하기${g.portal ? ' · 옆의 포털로 다음 지방에' : ''}` : '🌀 다음 지방으로 가는 포털이 열렸다 — 포털 앞에서 F'); });
+  }
+  // 조력자와 대화: 이 지방 브리핑 · 처음이면 파티 전원 체력 100% 회복 + 자동 저장 (지방마다 한 번)
+  talkGuide(it) {
+    if (this.overlay || this.paused || this.time.now - (this.talkClosedAt || 0) < 300) return;
+    const npc = it.npc, p = this.player, q = p.quests || (p.quests = {}), key = 'guide' + this.stageIdx + ':' + it.id, first = !q[key];
+    this.talk = { name: npc.name, look: npc.look, tint: npc.tint, page: 0, id: it.id,
+      lines: first ? [...npc.lines, '떠나기 전에 {y:포켓몬들을 모두 회복}시켜 주마. 여기까지의 여정도 {b:기록}해 두지.'] : npc.again || npc.lines,
+      onEnd: first ? () => {
+        q[key] = true;
+        for (const m of p.members) { m.hp = m.maxhp; m.alive = true; }
+        p.slowT = 0; if (p.flipT > 0) p.flipT = .001;
+        Sfx.play('fieldheal'); this.cameras.main.flash(260, 200, 255, 220, true);
+        this.fx.burst(p.x, p.y, [0x7dff9a, 0x4affd8, 0xffffff], 30, 90, { glow: true, up: 70, grav: -40, bounce: false, life: 1 });
+        const saved = this.saveRun(true, 'guide');
+        this.events.emit('banner', '파티 전원 체력 100% 회복!', saved ? `${npc.name}의 도움 · 자동 저장 완료` : `${npc.name}의 도움`);
+      } : null };
+    if (this.npcs) this.npcs.greet(it, p.x);
+    this.toggleOverlay('talk');
   }
 
+  // ---------------- 출구 포털 / 스테이지 전환 ----------------
+  // 🌀 다음 지방 차원 포털 (Next Chapter Gate): 다가가면 작은 안내창 · F 를 눌러야만 들어간다 (자동 이동 없음)
+  spawnPortal(x, gy, msg = null) {
+    if (this.portal) { this.portal.g.destroy(); this.portal.glow.destroy(); if (this.portal.core) this.portal.core.destroy(); }
+    const g = this.add.graphics().setDepth(13).setBlendMode(Phaser.BlendModes.ADD);
+    const glow = this.add.image(x, gy - 26, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(0x7ab8ff).setScale(1.8, 2.4).setDepth(12);
+    const core = this.add.image(x, gy - 26, 'glow').setBlendMode(Phaser.BlendModes.ADD).setTint(0xffe8a0).setScale(.7, 1.3).setDepth(12.5);
+    this.portal = { x, y: gy - 26, g, glow, core, t: 0 };
+    if (msg !== '') this.events.emit('toast', msg || (this.stageIdx >= STAGES.length - 1 ? '포털 앞에서 F — 여정을 마치자' : `🌀 ${STAGES[this.stageIdx + 1].region}으로 가는 차원 포털이 열렸다! 포털 앞에서 F`));
+  }
+  spawnNextChapterPortal(x, gy) { this.spawnPortal(x, gy); }
+
   updatePortal(dt) {
-    const pt = this.portal; if (!pt) return;
+    const pt = this.portal; if (!pt) { this.portalNear = false; return; }
     pt.t += dt;
     const g = pt.g; g.clear();
-    for (let k = 0; k < 4; k++) {
-      const r = 9 + k * 4 + Math.sin(pt.t * 4 + k) * 1.5;
-      g.lineStyle(2, [0x9a7aff, 0xff8ad0, 0x5ad0ff, 0xffffff][k], .7 - k * .12);
-      g.strokeEllipse(pt.x, pt.y, r * 1.1, r * 2);
+    for (let k = 0; k < 5; k++) {   // 푸른빛 · 금빛 소용돌이 고리 (크고 신비롭게)
+      const r = 11 + k * 4.5 + Math.sin(pt.t * 4 + k) * 1.6;
+      g.lineStyle(2, [0x5ab0ff, 0xffd870, 0x9a7aff, 0x8affe8, 0xffffff][k], .75 - k * .11);
+      g.strokeEllipse(pt.x, pt.y, r * 1.15, r * 2.2);
     }
-    if (Math.random() < .5) this.fx.embers(pt.x + rand(-10, 10), pt.y + 18, [0x9a7aff, 0xff8ad0], 1);
-    if (!this.transitioning && overlap(this.player.bounds(), { x: pt.x - 10, y: pt.y - 20, w: 20, h: 40 })) this.nextStage();
+    pt.core.setAlpha(.6 + Math.sin(pt.t * 5) * .25); pt.glow.setAlpha(.55 + Math.sin(pt.t * 2) * .15);
+    if (Math.random() < .55) this.fx.embers(pt.x + rand(-12, 12), pt.y + 22, [0x5ab0ff, 0xffd870, 0xffffff], 1);
+    const pl = this.player;
+    this.portalNear = !this.transitioning && Math.abs(pl.x - pt.x) < PICK_R * .8 && Math.abs(pl.y - pt.y) < 46;
+  }
+  // F: 포털 흡수 연출 → 다음 지방 (마지막 장이면 진 엔딩)
+  enterPortal() {
+    const pt = this.portal, pl = this.player;
+    if (!pt || this.transitioning || this.overlay || this.portalGoing || this.over) return;
+    this.portalGoing = true; this.cinema = true; this.hideTip();
+    if (!this.level.purified && this.stageIdx < STAGES.length - 1 && this.level.rooms.some(r => r.type === 'boss' && r.cleared)) this.purifyRegion();   // 정화 연출을 기다리지 않고 들어가도 그 지방은 맑아져 있다
+    Sfx.play('unlock'); Sfx.play('resonate');
+    this.fx.ring(pt.x, pt.y, 60, 0x8ad8ff, 500); this.fx.ring(pt.x, pt.y, 36, 0xffd870, 420);
+    for (let k = 0; k < 18; k++) this.time.delayedCall(k * 25, () => this.fx.burst(pt.x + Math.cos(k) * 40, pt.y + Math.sin(k) * 40, [0x8ad8ff, 0xffd870, 0xffffff], 1, 60, { angle: Math.atan2(-Math.sin(k), -Math.cos(k)), spread: .2, up: 0, grav: 0, bounce: false, glow: true, life: .35 }));
+    this.tweens.add({ targets: pl.sprite, alpha: 0, duration: 520, ease: 'Quad.easeIn' });
+    this.tweens.add({ targets: pt.glow, scaleX: 3, scaleY: 3.6, duration: 600, ease: 'Quad.easeIn' });
+    this.time.delayedCall(620, () => {
+      this.cinema = false; this.portalGoing = false;
+      this.cameras.main.flash(260, 200, 230, 255, true);
+      this.nextStage();
+    });
   }
 
   nextStage() {
+    if (this.transitioning) return;
+    this.storyWait = false; this.cinema = false; this.altarRite = null; this.hideTip();   // 앞 지방의 대화 대기 · 연출을 모두 풀고 간다
     // 포털에 먼저 들어가도 떨어진 메가스톤·아이템은 잃지 않게 자동으로 줍는다
     for (const p of this.pickups.slice()) if (p.kind !== 'oran' && p.kind !== 'potion') { this.collect(p); p.coll.destroy(); p.img.destroy(); p.glow.destroy(); }
     this.pickups = this.pickups.filter(p => p.kind === 'oran' || p.kind === 'potion');
@@ -3626,8 +3833,10 @@ export default class GameScene extends Phaser.Scene {
         m.alive = true;
       }
       this.buildWorld();
+      if (p.sprite) p.sprite.setAlpha(1);   // 포털에 빨려 들어가며 사라졌던 모습
       cam.fadeIn(450, 7, 6, 15);
       this.transitioning = false;
+      this.events.emit('banner', `${this.stage.region} 도착!`, `${STAGES[this.stageIdx].areas[0].name} — 새로운 여정이 시작된다`);
     });
   }
 

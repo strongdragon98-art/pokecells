@@ -109,6 +109,8 @@ const LOOKS = {
   green: t => ({ hair: 0x8a5a2a, hairStyle: 'messy', shirt: 0x3a2a4a, sleeve: 0x2a1a3a, pants: 0x6a5a8a, shoes: 0x2a2030, pack: 0x5a3a2a }),   // 그린: 덥수룩한 밤색 머리 · 보랏빛 셔츠
   researcher: t => ({ hair: 0x5a5a5a, hairStyle: 'short', glasses: 0x3a3a4a, coat: COAT, shirt: 0x8a2a3a, pants: 0x2a2a34, shoes: 0x1a1a22, board: true }),   // 수석 연구원: 흰 가운 · 안경 · 기록판
   red: t => ({ hair: 0x1a1414, hairStyle: 'short', cap: 0xd8282a, shirt: 0xc8282a, sleeve: 0x16141a, pants: 0x2a4a8a, shoes: 0xc8282a }),   // 레드: 빨간 모자 · 빨간 재킷 · 청바지 (대화 초상)
+  steven: t => ({ hair: 0xa8b8d8, hairStyle: 'swept', coat: 0x2a2a38, coatD: 0x1a1a24, shirt: 0xd8d4cc, pants: 0x2a2a38, shoes: 0x1a1a22 }),   // 성호: 은청색 머리 · 짙은 정장
+  cynthia: t => ({ hair: 0xf0e0a0, hairStyle: 'long', longHair: true, coat: 0x16161c, coatD: 0x2a2a34, shirt: 0x16161c, pants: 0x16161c, shoes: 0x16161c }),   // 난천: 긴 금발 · 검은 코트
   kimono: t => ({ hair: 0x1a1418, hairStyle: 'bun', pin: 0xe8c060, shirt: t || 0xc83a5a, skirt: t || 0xc83a5a, obi: 0xe8c060, shoes: 0x8a2a2a, legs: 0xf4f0e8 })
 };
 
@@ -153,16 +155,20 @@ function bubbleArt(scene) {
 
 export class Npcs {
   constructor(scene, level, props) {
-    this.s = scene; this.list = [];
-    const bub = bubbleArt(scene);
-    for (const n of level.npcs || []) {
+    this.s = scene; this.list = []; this.props = props;
+    for (const n of level.npcs || []) this.add(n);
+  }
+  // 한 사람 세우기 (n: { id, x 칸, g 바닥 줄, face }) — 지방 최종 보스를 정화한 뒤의 조력자(guide)는 [ 💬 F : 대화하기 ] · 대화하면 회복 · 저장 (GameScene.talkGuide)
+  add(n) {
+    const scene = this.s, props = this.props, bub = bubbleArt(scene);
+    {
       const def = NPCS[n.id];
-      if (!def) continue;
+      if (!def || this.list.some(o => o.it.id === n.id)) return null;
       const key = npcArt(scene, def.look, def.tint), X = n.x * TILE + 8, Y = n.g * TILE;
       const shadow = scene.add.ellipse(X, Y, 14, 3, 0x000000, .35).setDepth(7.7);
       const spr = scene.add.image(X, Y + 1, key + ':open').setOrigin(.5, 1).setDepth(7.8).setFlipX(n.face > 0);
       const bubble = scene.add.image(X + 6, Y - NH - 4, bub).setOrigin(.5, 1).setDepth(7.85).setAlpha(0);
-      const it = { kind: 'npc', npc: def, id: n.id, x: X, y: Y, range: 26, used: false, repeat: true, prompt: '[F 또는 ↑ : 대화]', promptY: Y - NH - 14 };
+      const it = { kind: def.guide ? 'guide' : 'npc', npc: def, id: n.id, x: X, y: Y, range: def.guide ? 30 : 26, used: false, repeat: true, prompt: def.guide ? '[ 💬 F : 대화하기 ]' : '[F 또는 ↑ : 대화]', promptY: Y - NH - 14 };
       // 조작 힌트 NPC: 가까이(120px) 오면 머리 위에 말풍선 힌트 · 옆엔 그 기술로만 부서지는 연습용 과녁 (data/npcs.js 의 hint · practice)
       const hint = def.hint ? scene.add.text(X, Y - NH - 6, def.hint, { fontFamily: 'Galmuri9', fontSize: '8px', color: '#ffe9a8', backgroundColor: 'rgba(16,12,26,0.88)', padding: { x: 4, y: 2 }, resolution: 2 }).setOrigin(.5, 1).setDepth(7.9).setAlpha(0) : null;
       if (def.practice && props.practice) {
@@ -173,6 +179,7 @@ export class Npcs {
       it.ref = o;
       props.interacts.push(it);
       this.list.push(o);
+      return o;
     }
   }
 
