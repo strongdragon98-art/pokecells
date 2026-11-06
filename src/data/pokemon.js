@@ -202,13 +202,13 @@ export const BOSSES = {
   // 트레이너(trainer): 아레나 뒤 단상에 세뇌된 트레이너가 서서 손짓으로 지시한다 (game/Trainer.js)
   garchomp: { name: '한카리아스', title: '조종당하는 챔피언 난천의', types: ['dragon', 'ground'], hp: 3000, dmg: 30, ai: 'garchomp', trainer: 'cynthia', color: 0x6a8aff, megaSprite: 'garchomp-mega', megaName: '메가한카리아스', megaLine: '키스톤이여… 한카리아스, 메가진화.', tier: 'mini' },
   // then: 정화되는 순간 같은 아레나에서 이어 싸우는 다음 보스 · entrance: 다음 보스 등장 연출 (shatter 공간이 깨진다 · abyss 심연에서 솟는다)
-  dialga: { name: '디아루가', title: '시간의 신', types: ['steel', 'dragon'], hp: 3000, dmg: 31, ai: 'dialga', color: 0x6ab0ff, then: 'palkia', tier: 'boss' },
-  palkia: { name: '펄기아', title: '공간의 신', types: ['water', 'dragon'], hp: 3000, dmg: 31, ai: 'palkia', color: 0xd88aff, entrance: 'shatter', intro: '공간이 유리처럼 깨진다 — 공간의 신 펄기아 강림', tier: 'boss' },
+  dialga: { name: '디아루가', scale: 1.7, title: '시간의 신', types: ['steel', 'dragon'], hp: 3000, dmg: 31, ai: 'dialga', color: 0x6ab0ff, then: 'palkia', tier: 'boss' },
+  palkia: { name: '펄기아', scale: 1.85, title: '공간의 신', types: ['water', 'dragon'], hp: 3000, dmg: 31, ai: 'palkia', color: 0xd88aff, entrance: 'shatter', intro: '공간이 유리처럼 깨진다 — 공간의 신 펄기아 강림', tier: 'boss' },
   darkrai: { name: '다크라이', title: '악몽의 만월섬', types: ['dark'], hp: 3400, dmg: 30, ai: 'darkrai', shotMul: 2, fly: true, color: 0x6a2a9a, tier: 'hidden' },
   giratina: { name: '기라티나', title: '깨어진 세계의', types: ['ghost', 'dragon'], hp: 4200, dmg: 32, ai: 'giratina', fly: true, color: 0xff3a5a, megaSprite: 'giratina-origin', megaName: '기라티나 오리진폼', startMega: true, tier: 'hidden' },   // 깨어진 세계의 왕좌: 처음부터 오리진폼으로 강림 (2페이즈는 폭주)
   // ---- 하나 · 심연 ----
   // 용나선탑 꼭대기 흑과 백의 제단: 다크스톤이 갈라지며 제크로무 → 정화되는 순간 라이트스톤이 갈라지며 레시라무 (이어 싸우기)
-  zekrom: { name: '제크로무', title: '용나선탑의 검은 영웅', types: ['dragon', 'electric'], hp: 3000, dmg: 33, ai: 'zekrom', color: 0x4a8aff, then: 'reshiram', tier: 'mini' },
+  zekrom: { name: '제크로무', scale: 1.9, title: '용나선탑의 검은 영웅', types: ['dragon', 'electric'], hp: 3000, dmg: 33, ai: 'zekrom', color: 0x4a8aff, then: 'reshiram', tier: 'mini' },
   reshiram: { name: '레시라무', title: '용나선탑의 하얀 영웅', types: ['dragon', 'fire'], hp: 3000, dmg: 33, ai: 'reshiram', color: 0xff9a4a, entrance: 'lightstone', intro: '라이트스톤이 갈라진다 — 진실의 영웅 레시라무 강림', tier: 'mini' },
   // 최종장: 세뇌된 레드의 피카츄 → 리자몽(메가리자몽X) → 레드가 풀려나면 심연의 핵에서 무한다이노 (체력 50% 무한다이맥스)
   // 가라르 · 블랙나이트의 심장: 레드를 가둔 결정 위 아공간에서 무한다이노 (체력 50% 무한다이맥스) → 정화되는 순간 유대의 불꽃이 레드에게 돌아가고, 몸에서 빠져나온 진짜 흑막 아비스 네크로즈마 (진 최종전 — 유대의 불꽃 공명)
@@ -216,7 +216,7 @@ export const BOSSES = {
   necrozma: { name: '아비스 네크로즈마', sprite: 'necrozma', title: '차원 너머의 심연의 지배자', types: ['psychic', 'dark'], hp: 7200, dmg: 40, ai: 'necrozma', fly: true, color: 0xff2a6a, glow: [0xc01a4a, 0xff1a3a], entrance: 'bondflame', bgm: 'boss_bond', rage: '심연의 빛이 폭주한다 — 프리즘이 검붉게 갈라진다', tier: 'boss' },
   'pikachu-red': { name: '피카츄', sprite: 'pikachu', title: '세뇌된 레드의 파트너', types: ['electric'], hp: 1500, dmg: 30, ai: 'pikachu', trainer: 'red', color: 0xffe040, tier: 'boss' },
   'charizard-red': { name: '리자몽', sprite: 'charizard', title: '세뇌된 레드의 에이스', types: ['fire', 'flying'], hp: 2200, dmg: 33, ai: 'charizard', trainer: 'red', color: 0xff7a2a, megaSprite: 'charizard-mega-x', megaName: '메가리자몽X', megaLine: '……', tier: 'boss' },
-  'kyurem-black': { name: '블랙큐레무', title: '얼어붙은 이상의', types: ['dragon', 'ice'], hp: 4800, dmg: 34, ai: 'kyuremB', color: 0xbff0ff, tier: 'hidden' },
+  'kyurem-black': { name: '블랙큐레무', scale: 1.5, title: '얼어붙은 이상의', types: ['dragon', 'ice'], hp: 4800, dmg: 34, ai: 'kyuremB', color: 0xbff0ff, tier: 'hidden' },
   // ---- 하나 · 시초의 방 ----
   // 아르세우스: 18 플레이트가 몸 둘레를 돌며 주기적으로 속성을 바꾼다(심판의뭉치) — 지금 속성의 약점을 찌르거나 고속 탄을 패링해 되받아치면 그로기가 크게 쌓인다
   arceus: { name: '아르세우스', title: '시초의 방의 창조신', types: ['normal'], hp: 6200, dmg: 38, ai: 'arceus', fly: true, color: 0xfff0b0, rage: '심연의 그림자가 걷히며 창조의 빛이 폭주한다', tier: 'boss' }

@@ -1704,7 +1704,7 @@ export class Props {
           this.lit(s.add.image(x, Y + 1, perchArt(s)).setOrigin(.5, 1).setDepth(6.5));
           const meta = s.registry.get('spriteMeta') || {}, cx = X + 52;
           if (meta.corviknight && meta.corviknight.hasSprite && s.anims.exists('corviknight:Idle:left')) {
-            const bird = this.lit(s.add.sprite(cx, Y, 'corviknight').setDepth(6.6));
+            const bird = this.lit(s.add.sprite(cx, Y, 'px').setDepth(6.6));   // 기본 텍스처 키는 없다 — 바로 Idle 애니메이션 프레임으로
             bird.play('corviknight:Idle:left');
             bird.setOrigin(.5, meta.corviknight.anims.Idle ? meta.corviknight.anims.Idle.oy : .75);
           }

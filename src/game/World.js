@@ -1119,6 +1119,22 @@ export function buildChapter(ch, ci, retry = 0) {
     for (const r of cand) { if (tmx.length >= want) break; const at = spotIn(r); if (at) { tmx.push({ kind: 'tm', x: at.x, g: at.g, room: r, roadside: true, used: false }); marks.push({ kind: 'tm', x: at.x, y: at.g, room: r }); } }
   }
 
+  // ---- 사람 자리 마무리: 세운 뒤에 깔린 지형(언덕 · 바위 · 길 보장 메우기)에 묻혔거나 발밑이 비었으면 같은 방의 가장 가까운 빈 땅으로 옮긴다 ----
+  //  (발밑 단단한 땅 · 위로 3칸 빈칸 — 머리 위 3칸째의 통과 발판은 봐준다) · 난수를 쓰지 않는다: 지형 · 진행 저장 서명은 그대로
+  {
+    const hard = c => c === 'S' || c === 'B', fits = (x, g) => grid[g] && hard(grid[g][x]) && grid[g - 1][x] === '.' && grid[g - 2][x] === '.' && '.PH'.includes(grid[g - 3][x]);
+    for (const n of npcs) {
+      const r = n.room;
+      if (!r || fits(n.x, n.g)) continue;
+      let best = null;
+      for (let d = 1; d < 40 && !best; d++) for (const x of [n.x - d, n.x + d]) {
+        if (best || x <= r.tx0 + 1 || x >= r.tx1 - 2) continue;
+        for (let g = r.ty0 + 3; g <= r.F; g++) if (fits(x, g) && (!best || Math.abs(g - n.g) < Math.abs(best.g - n.g))) best = { x, g };
+      }
+      if (best) { n.x = best.x; n.g = best.g; }
+    }
+  }
+
   const start = mainRooms[0];
   return {
     ci, chapter: ch, data, grid, cols, rows, width: cols * TILE, height: rows * TILE, ncx, ncy, cellRoom,

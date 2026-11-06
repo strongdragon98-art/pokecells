@@ -40,7 +40,7 @@ const bossSpeed = (sp, e) => Math.max(sp * ENEMY_FAST * ((e && (e.shotK || e.def
 
 export class Boss extends Enemy {
   constructor(scene, key, x, y, o = {}) {
-    super(scene, BOSSES[key].sprite || key, x, y, { def: BOSSES[key], boss: true, scale: 2, hpMul: o.hpMul, dmgMul: o.dmgMul });   // sprite: 레드의 피카츄·리자몽처럼 도트만 빌려 쓰는 보스
+    super(scene, BOSSES[key].sprite || key, x, y, { def: BOSSES[key], boss: true, scale: BOSSES[key].scale || 2, hpMul: o.hpMul, dmgMul: o.dmgMul });   // scale: 1칸 높이(192px) 방에서 싸우는 큰 보스는 방 높이의 55% 안쪽으로 (data/pokemon.js)   // sprite: 레드의 피카츄·리자몽처럼 도트만 빌려 쓰는 보스
     this.bossKey = key;
     this.shotK = (this.def.shotMul || 1) * (o.shotMul || 1);   // 탄속: 보스 고유 배율(다크라이 2배) × 지방 고정 스펙(data/balance.js — 성도부터 상향)
     this.room = o.room;
@@ -84,6 +84,13 @@ export class Boss extends Enemy {
   spare(n) { return MAX_CAST_SHOTS - (this.castShots || 0) >= n; }   // 이번 시전에 아직 n 발을 쏠 수 있는지 (양쪽 충격파처럼 짝지어 나가는 탄)
   groundY() { return this.scene.level ? this.scene.groundBelow(this.x, this.b.y) : this.bottom; }
 
+  // 큰 기술을 내지르는 순간: 몸에서 속성색 고리 두 겹 · 빛 · 파편 (몸집에 맞춰) — 예비 동작과 실제 공격 사이에 또렷한 '쾅'
+  castFlare() {
+    const sc = this.scene, col = typeColor(this.types[0] || 'normal'), s = Math.max(1, Math.min(2.4, this.b.height / 46)), x = this.x, y = this.y;
+    sc.fx.ring(x, y, 22 * s, col, 300); sc.time.delayedCall(70, () => sc.fx.ring(x, y, 36 * s, 0xffffff, 280));
+    sc.fx.glow(x, y, 30 * s, col, 280, .85);
+    sc.fx.burst(x, y, [col, 0xffffff, col], Math.round(10 * s), 130 * s, { glow: true, grav: 0, bounce: false, life: .38, size: 2 });
+  }
   update(dt, p) {
     const sc = this.scene, st = this.status;
     if (this.rageV) { this.rageV = false; this.b.velocity.x /= RAGE; this.b.velocity.y /= RAGE; }   // 광폭화: 지난 물리 단계 동안만 키운 몸놀림을 되돌린다 (끝에서 다시)
@@ -127,7 +134,7 @@ export class Boss extends Enemy {
       (BOSS_AI[this.def.ai] || BOSS_AI.legend)(this, this.rage ? dt * RAGE : dt, p);   // 광폭화: 패턴 시계가 RAGE 배 빠르다 (예비 동작 · 후딜레이 · 쿨타임)
       this.lastVx = this.b.velocity.x;
       if (prev === 'idle' && this.state !== 'idle') this.castShots = (this.castShots || 0) - s0;   // 새 시전: 이번 프레임에 쏜 탄부터 다시 센다
-      if (prev === 'wind' && this.state !== 'wind') this.bigN = (this.bigN || 0) + 1;   // 큰 기술 하나를 썼다
+      if (prev === 'wind' && this.state !== 'wind') { this.bigN = (this.bigN || 0) + 1; if (this.state !== 'idle' && this.state !== 'recover') this.castFlare(); }   // 큰 기술 하나를 썼다 · 내지르는 순간 연출
       if (this.state === 'idle') {   // 시전이 끝났다: 붉은 안광도 꺼지고 · 광폭화면 다음 패턴까지 한 번 더 짧게
         if (prev !== 'idle' && this.rage) this.cd *= RAGE_CD;
         this.dangerCast = false;

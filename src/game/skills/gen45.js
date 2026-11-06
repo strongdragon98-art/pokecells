@@ -5,7 +5,7 @@
 import Phaser from 'phaser';
 import { typeColor } from '../../data/types.js';
 import { Sfx } from '../../systems/Audio.js';
-import { sizeMul, slashHit, shoot, lineFx, dashAction, view, groundAt } from '../skillKit.js';
+import { sizeMul, slashHit, shoot, lineFx, dashAction, view, groundAt, skillFlash } from '../skillKit.js';
 
 // 일시 강화/약화 (atk·speed 배율, guard = 받는 피해 배율). addBuff 가 없으면 속도 버프로 대신한다
 const buff = (p, o) => { if (p.addBuff) p.addBuff(o); else if ((o.speed || 1) > 1) p.speedBuff = Math.max(p.speedBuff, o.t); };
@@ -191,7 +191,7 @@ export const SKILL_IMPL = {
       sc.combat.clearEnemyProjectiles(rect);
       sc.fx.glow(x0, y, 20 * s, 0xe8f0ff, 260, 1); sc.fx.glow(x0 + p.face * len, y, 16 * s, typeColor('steel'), 260, .9);
       sc.fx.burst(x0 + p.face * len, y, [0xffffff, typeColor('steel'), 0xd8e0ff], 12, 150, { glow: true });
-      sc.cameras.main.flash(70, 230, 240, 255, true); sc.fx.shake(.006, 140);
+      skillFlash(p, 70, 230, 240, 255); sc.fx.shake(.006, 140);
       Sfx.play('beam'); p.squash(1.2, .85);
     };
     return {

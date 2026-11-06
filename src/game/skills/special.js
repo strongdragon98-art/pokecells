@@ -5,7 +5,7 @@
 import Phaser from 'phaser';
 import { typeColor } from '../../data/types.js';
 import { Sfx } from '../../systems/Audio.js';
-import { sizeMul, slashHit, shoot, lineFx, dashAction, view, groundAt } from '../skillKit.js';
+import { sizeMul, slashHit, shoot, lineFx, dashAction, view, groundAt, skillFlash } from '../skillKit.js';
 
 const ADD = Phaser.BlendModes.ADD;
 const PSY = typeColor('psychic'), FAIRY = typeColor('fairy'), DRAGON = typeColor('dragon');
@@ -107,7 +107,7 @@ export const SKILL_IMPL = {
             lineFx(sc, p.x + p.face * 6, p.y - 6, e.x, e.y, PSY, { seg: 6, jag: 10, w: 2, ms: 260 });
           }
           sc.fx.ring(p.x, p.y, (m ? 210 : 150) * s, PSY, 360); sc.fx.glow(p.x, p.y - 6, 30 * s, PSY, 400, .9);
-          sc.cameras.main.flash(90, 255, 140, 200, true);
+          skillFlash(p, 90, 255, 140, 200);
           Sfx.play('wave'); p.squash(.85, 1.2);
         }],
         // 내리꽂기
@@ -151,7 +151,7 @@ export const SKILL_IMPL = {
         if (orb) { orb.destroy(); orb = null; }
         shoot(p, { speed: m ? 130 : 110, r: m ? 10 : 9, mul: 0, type: 'fairy', kind: 'moon', life: 2.2, pierce: 1, color: 0xffc8f0, light: true, oy: -6, grow: m ? 6 : 0, status: { slow: 2 }, boom: { r: (m ? 84 : 62) * s, mul: m ? 4 : 3.4, kb: 280 } });
         sc.fx.ring(p.x + p.face * 12, p.y - 6, 30 * s, FAIRY, 300);
-        sc.cameras.main.flash(90, 255, 220, 250, true);
+        skillFlash(p, 90, 255, 220, 250);
         Sfx.play('wave'); Sfx.play('beam'); p.squash(.8, 1.2);
       }]]
     };
@@ -264,7 +264,7 @@ export const SKILL_IMPL = {
       ev: [[.24, () => {
         const h = p.b.height + 14 * s, rect = { x: Math.min(x0, x1) - hw - 4, y: y0 - h / 2, w: d + hw * 2 + 8, h };
         for (const e of sc.combat.enemiesIn(rect)) { sc.fx.slash(e.x, e.y, 14 * s, face, 0xffffff, { thick: 5, flipV: Math.random() < .5 }); sc.fx.ring(e.x, e.y, 18 * s, 0xc8d8ff, 220); }
-        if (sc.combat.hitRect(rect, m ? 3.3 : 2.7, 'normal', Object.assign({ kbx: 260, kby: -180, hs: 120 }, m ? { stun: .6 } : {}))) { sc.cameras.main.flash(80, 255, 255, 255, true); sc.fx.shake(.012, 200); }
+        if (sc.combat.hitRect(rect, m ? 3.3 : 2.7, 'normal', Object.assign({ kbx: 260, kby: -180, hs: 120 }, m ? { stun: .6 } : {}))) { skillFlash(p, 80, 255, 255, 255); sc.fx.shake(.012, 200); }
         Sfx.play('swing');
       }]],
       end(p) { p.b.setVelocity(face * 120, 0); p.jumpsUsed = Math.min(p.jumpsUsed, 1); }
@@ -457,7 +457,7 @@ export const SKILL_IMPL = {
           if (!a.fired) {
             a.fired = true; a.tk = .1;
             sc.combat.hitRect(rect, m ? 3.3 : 3, 'normal', { kbx: 360, kby: -200, hs: 130 });
-            sc.cameras.main.flash(140, 255, 220, 160, true); sc.fx.shake(.022, 480);
+            skillFlash(p, 140, 255, 220, 160); sc.fx.shake(.022, 480);
             Sfx.play('beam'); Sfx.play('boom'); p.squash(1.3, .8);
           }
           a.tk -= dt;

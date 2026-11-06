@@ -467,6 +467,29 @@ export class Combat {
   //      round(둥근 경고 → draw:'burst' 둥근 폭발), onUpdate(z, dt), onEnd(z), dispose(z) — 끝나거나 전투가 정리될 때 그림 치우기 }
   spawnZone(c) { const z = Object.assign({ owner: 'player', t: 0, tt: 0, tick: .25, life: 1, delay: 0, done: false }, c); this.zones.push(z); return z; }
 
+  // 적 장판이 예고를 끝내고 실제로 터지는 순간 (보스 기둥 · 광선 · 지진 · 바닥 장판 공통): 모양에 맞춰 파편 · 고리 · 빛
+  zonePop(z) {
+    const fx = this.s.fx, col = z.color ?? typeColor(z.type), cx = z.x + z.w / 2, cy = z.y + z.h / 2;
+    if (!z.w || !z.h || z.draw === 'none' || z.draw === 'burst') return;
+    if (z.draw === 'pillar') {   // 바닥에서 솟구치는 기둥: 밑동 파편 · 고리 · 기둥 빛
+      const by = z.y + z.h;
+      fx.burst(cx, by - 2, [col, 0xffffff, col], 8, 150, { angle: -Math.PI / 2, spread: .7, up: 120, grav: 320, glow: true, life: .45, size: 2 });
+      fx.ring(cx, by - 2, Math.max(14, z.w * .9), col, 260);
+      fx.glow(cx, cy, Math.max(18, z.w * 1.3), col, 240, .55);
+    } else if (z.draw === 'beam') {   // 가로 광선: 양 끝 불꽃 · 가운데 빛
+      for (const x of [z.x + 4, z.x + z.w - 4]) fx.burst(x, cy, [col, 0xffffff], 6, 120, { grav: 0, bounce: false, glow: true, life: .35, size: 2 });
+      fx.glow(cx, cy, Math.min(120, z.w * .3), col, 260, .5);
+    } else if (z.draw === 'seed' && z.w > 160) {   // 바닥 전체를 흔드는 지진: 가운데서 바깥으로 흙먼지 물결
+      const n = Math.min(26, Math.round(z.w / 36)), by = z.y + z.h - 1;
+      for (let k = 0; k <= n; k++) {
+        const x = z.x + (k / n) * z.w, d = Math.abs(x - cx) / Math.max(1, z.w / 2) * 420;
+        this.s.time.delayedCall(d, () => { fx.burst(x, by, [0x5a4a38, 0x8a7a62, col], 4, 120, { angle: -Math.PI / 2, spread: .8, up: 110, grav: 420, life: .7, size: 3 }); if (k % 3 === 0) fx.ring(x, by, 14, col, 220); });
+      }
+      fx.glow(cx, by, Math.min(220, z.w * .25), col, 360, .4);
+    } else {   // 그 밖의 바닥 장판 (구름 · 독 · 씨앗): 테두리에서 가볍게
+      fx.burst(cx, z.y + z.h - 2, [col, 0xffffff], Math.min(10, 3 + Math.round(z.w / 40)), 90, { angle: -Math.PI / 2, spread: 1.2, up: 60, grav: 120, glow: true, life: .4, size: 2 });
+    }
+  }
   updateZones(dt) {
     const p = this.p, g = this.zg, gn = this.zgn, now = this.s.time.now;
     g.clear(); gn.clear();
@@ -474,6 +497,7 @@ export class Combat {
       const z = this.zones[i];
       z.t += dt; z.tt -= dt;
       const live = z.t >= z.delay;
+      if (live && !z.popped && z.owner === 'enemy') { z.popped = true; this.zonePop(z); }   // 예고가 끝나 실제로 터지는 순간: 파편 · 고리 · 빛
       if (live && z.tt <= 0 && z.onTick) { z.tt = z.tick; z.onTick(z); }
       if (live && z.owner === 'enemy' && z.dmg && !z.done && overlap(z, p.bounds())) { if (p.takeHit(z.dmg, z.type, z.x + z.w / 2, z.status || {})) z.done = !z.multi; }
       // 그리기
@@ -487,11 +511,15 @@ export class Combat {
         g.fillStyle(col, .12 + z.t / z.delay * .2); g.fillRect(z.x, z.y, z.w, z.h);
         g.fillStyle(col, blink); g.fillRect(z.x, z.y + z.h - 2, z.w, 2); g.fillRect(z.x, z.y, z.w, 1); g.fillRect(z.x, z.y, 1, z.h); g.fillRect(z.x + z.w - 1, z.y, 1, z.h);
       } else if (z.draw === 'seed') {
-        g.fillStyle(col, .18 * k); g.fillRect(z.x, z.y, z.w, z.h);
+        const wide = z.w > 160;   // 바닥 전체를 흔드는 지진: 띠를 진하게 · 솟는 흙줄기를 굵게 · 윗면에 갈라지는 빛
+        g.fillStyle(col, (wide ? .3 : .18) * k); g.fillRect(z.x, z.y, z.w, z.h);
         g.fillStyle(col, .8 * k); g.fillRect(z.x, z.y + z.h - 2, z.w, 2);
-        for (let j = 0; j < z.w / 6; j++) { const yy = z.y + z.h - ((now / 30 + j * 13) % z.h); g.fillRect(z.x + j * 6 + 2, Math.round(yy), 1, 2); }
+        for (let j = 0; j < z.w / 6; j++) { const yy = z.y + z.h - ((now / 30 + j * 13) % z.h); g.fillRect(z.x + j * 6 + 2, Math.round(yy), wide ? 2 : 1, wide ? 3 : 2); }
+        if (wide) { g.fillStyle(0xffffff, .55 * k); for (let x = z.x + 3; x < z.x + z.w - 8; x += 11) g.fillRect(x, z.y + 1 + ((x * 7 + Math.floor(now / 80)) % 4), 6, 1); }
       } else if (z.draw === 'pillar' || z.draw === 'beam') {
-        const fade = 1 - (z.t - z.delay) / Math.max(.01, z.life - z.delay);
+        const fade = 1 - (z.t - z.delay) / Math.max(.01, z.life - z.delay), wob = 1 + Math.sin(now / 45 + z.x) * .12;
+        if (z.draw === 'beam') { g.fillStyle(col, .2 * fade); g.fillRect(z.x, z.y - 5 * wob, z.w, z.h + 10 * wob); }   // 바깥 빛 테두리 (일렁인다)
+        else { g.fillStyle(col, .2 * fade); g.fillRect(z.x - 5 * wob, z.y, z.w + 10 * wob, z.h); }
         g.fillStyle(col, .7 * fade); g.fillRect(z.x, z.y, z.w, z.h);
         g.fillStyle(0xffffff, .8 * fade);
         if (z.draw === 'beam') g.fillRect(z.x, z.y + z.h / 2 - 1, z.w, 3); else g.fillRect(z.x + z.w / 2 - 1, z.y, 3, z.h);

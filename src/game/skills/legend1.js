@@ -4,7 +4,7 @@
 import Phaser from 'phaser';
 import { typeColor } from '../../data/types.js';
 import { Sfx } from '../../systems/Audio.js';
-import { sizeMul, slashHit, shoot, lineFx, dashAction, view, groundAt } from '../skillKit.js';
+import { sizeMul, slashHit, shoot, lineFx, dashAction, view, groundAt, skillFlash } from '../skillKit.js';
 
 const ADD = Phaser.BlendModes.ADD;
 const RAINBOW = [0xff5a4a, 0xffa03a, 0xffe04a, 0x7aff6a, 0x5ac8ff, 0xb07aff];
@@ -78,7 +78,7 @@ export const SKILL_IMPL = {
       const R = Math.max(...[[v.x, v.y], [v.right, v.y], [v.x, v.bottom], [v.right, v.bottom]].map(([cx, cy]) => Math.hypot(cx - x, cy - y))) + 30;
       waves.push({ x, y, t: 0, R, set: new Set(), shown: new Set(), last, type: last && mx ? 'fighting' : 'psychic', mul: last ? (mx ? 1.4 : 1.1) : (my ? .78 : .85) });
       sc.fx.glow(x, y, 50 * s, PSY, 260, 1); sc.fx.ring(x, y, 40 * s, 0xffffff, 220);
-      sc.cameras.main.flash(90, 255, 110, 190, true);
+      skillFlash(p, 90, 255, 110, 190);
       sc.fx.shake(last ? .016 : .01, last ? 260 : 140);
       sc.combat.clearEnemyProjectiles(v);   // 파동이 적 탄을 짓눌러 없앤다
       Sfx.play('wave'); if (k === 0 || last) Sfx.play('beam');
@@ -130,7 +130,7 @@ export const SKILL_IMPL = {
           mk.dot = sc.add.image(mk.x, mk.y, 'glow').setTint(PSY_L).setBlendMode(ADD).setDepth(44).setScale(.3 * s);
           lineFx(sc, p.x, p.y - 6, mk.x, mk.y, PSY_L, { seg: 5, jag: 4, w: 1, ms: 200 });
         }
-        sc.cameras.main.flash(140, 255, 150, 220, true); sc.fx.glow(p.x, p.y - 6, 40 * s, PSY, 300, 1);
+        skillFlash(p, 140, 255, 150, 220); sc.fx.glow(p.x, p.y - 6, 40 * s, PSY, 300, 1);
         Sfx.play('wave'); Sfx.play('ghost');
         tickFor(sc, 1.2, t => {
           for (const mk of marks) {
@@ -141,7 +141,7 @@ export const SKILL_IMPL = {
           }
         }, () => {
           for (const mk of marks) { mk.ring.destroy(); mk.dot.destroy(); strike(mk); }
-          sc.cameras.main.flash(180, 255, 220, 240, true); sc.fx.shake(.018, 300);
+          skillFlash(p, 180, 255, 220, 240); sc.fx.shake(.018, 300);
           Sfx.play('beam'); Sfx.play('boom');
         });
       }]]
@@ -175,7 +175,7 @@ export const SKILL_IMPL = {
     const g = sc.add.graphics().setDepth(43).setBlendMode(ADD);
     return {
       dur: 1.05, mm: .2, anim: 'Shoot', lockFace: true, inv: .3, cx: p.x + dir * 18 * s, ft: 0, st: 0,
-      ev: [[0, () => { sc.cameras.main.flash(160, 255, 220, 120, true); sc.fx.glow(p.x, p.y, 60 * s, 0xffd04a, 320, 1); Sfx.play('fire'); Sfx.play('beam'); }]],
+      ev: [[0, () => { skillFlash(p, 160, 255, 220, 120); sc.fx.glow(p.x, p.y, 60 * s, 0xffd04a, 320, 1); Sfx.play('fire'); Sfx.play('beam'); }]],
       update(p, a, dt) {
         const gy = sc.groundBelow(a.cx, p.y - 30);
         if (!a.stop && !sc.isSolidAt(a.cx + dir * w / 2, gy - 12)) a.cx += dir * sp * dt; else a.stop = true;   // 벽에 막히면 그 자리에서 타오른다
@@ -218,7 +218,7 @@ export const SKILL_IMPL = {
       // 재생의 불꽃: 파티 전원 소량 회복
       for (const m of p.members) if (m.alive) m.hp = Math.min(m.maxhp, m.hp + m.maxhp * (aw ? .1 : .06));
       sc.fx.floatText(p.x, p.b.y - 16, '재생의 불꽃!', '#ffd070', 12);
-      sc.cameras.main.flash(200, 255, 210, 140, true); sc.fx.shake(.02, 340); sc.fx.hitStop(110);
+      skillFlash(p, 200, 255, 210, 140); sc.fx.shake(.02, 340); sc.fx.hitStop(110);
       Sfx.play('boom'); Sfx.play('fire'); Sfx.play('heal');
       p.squash(1.4, .7);
       a.dur = Math.min(a.dur, a.t + .2);
@@ -277,7 +277,7 @@ export const SKILL_IMPL = {
       dur: .55, mm: .2, anim: 'Shoot', lockFace: true, inv: .4, ev: [[.15, () => {
         const v = view(p), x0 = dir > 0 ? v.x - 50 : v.right + 50, x1 = dir > 0 ? v.right + 120 : v.x - 120, T = aw ? 1.3 : 1.1, W = 96 * s, H = (aw ? 110 : 80) * s;
         const g = sc.add.graphics().setDepth(43), ga = sc.add.graphics().setDepth(44).setBlendMode(ADD), cool = new Map();
-        sc.cameras.main.flash(140, 120, 190, 255, true); sc.fx.shake(.012, 300);
+        skillFlash(p, 140, 120, 190, 255); sc.fx.shake(.012, 300);
         Sfx.play('water'); Sfx.play('wave');
         tickFor(sc, T, (t, dt) => {
           const k = t / T, fx = x0 + (x1 - x0) * k, rise = Math.min(1, t / .2) * Math.min(1, (T - t) / .18 + .25);
@@ -397,7 +397,7 @@ export const SKILL_IMPL = {
         const q = sc.combat.spawnProjectile({
           owner: 'player', x: p.x + p.face * 14, y: p.y - 4, vx: p.face * 230, vy: 0, r: 9 * s, mul: 0, type: 'fire', kind: 'fire', life: 1.1, pierce: 1, light: true, color: 0xff6a1a,
           status: { burn: 4 }, boom: { r: (aw ? 66 : 50) * s, mul: 2.2, kb: 260 },
-          onExpire: q => { done = true; g.destroy(); prongs(q.x, q.y); sc.fx.shake(.016, 260); sc.cameras.main.flash(120, 255, 170, 90, true); }
+          onExpire: q => { done = true; g.destroy(); prongs(q.x, q.y); sc.fx.shake(.016, 260); skillFlash(p, 120, 255, 170, 90); }
         });
         // 날아가는 동안 '大' 모양 불꽃을 그린다
         tickFor(sc, 1.3, t => {
@@ -435,7 +435,7 @@ export const SKILL_IMPL = {
         sc.combat.hitCircle(x, by - 10, 40 * s, 1.2, 'fire', { burn: 3, kbx: 160, kby: -240, hs: 90 });
         sc.fx.ring(x, by - 4, 46 * s, 0xffa03a, 320); sc.fx.glow(x, by - 6, 50 * s, 0xff5a1a, 320, 1);
         sc.fx.burst(x, by - 2, [0xc0a070, 0xff7a2a, 0xffd04a], 26, 200, { up: 150 });
-        sc.cameras.main.flash(120, 255, 150, 80, true); sc.fx.shake(.018, 320);
+        skillFlash(p, 120, 255, 150, 80); sc.fx.shake(.018, 320);
         Sfx.play('boom'); p.squash(1.4, .68);
         for (const dir of [-1, 1]) { const set = new Set(); for (let k = 1; k <= n; k++) sc.time.delayedCall(k * 65, () => erupt(x + dir * k * step, by, set, k)); }
       }]]
@@ -475,7 +475,7 @@ export const SKILL_IMPL = {
       sc.fx.glow(x, gy - 6, 34 * s, 0xffe040, 240, 1); sc.fx.ring(x, gy - 4, 24 * s, 0xfff6a0, 220);
       sc.fx.burst(x, gy - 2, [0xffe040, 0xffffff], 10, 140, { up: 120, glow: true });
       hitEvery(p, cool, t, .26, { x: x - w / 2, y: top, w, h: gy - top + 4 }, .85, 'electric', { paralyze: .35, kb: 0, kby: -60, hs: 30 });
-      if (Math.random() < .3) sc.cameras.main.flash(60, 255, 250, 200, true);
+      if (Math.random() < .3) skillFlash(p, 60, 255, 250, 200);
       sc.fx.shake(.006, 90);
       if (Math.random() < .5) Sfx.play('zap');
     };
@@ -483,7 +483,7 @@ export const SKILL_IMPL = {
       dur: .5, mm: .2, anim: 'Shoot', inv: .3, ev: [[.14, () => {
         const T = aw ? 1.6 : 1.2, cool = new Map();
         let nt = 0;
-        sc.cameras.main.flash(200, 30, 30, 70, true); sc.fx.glow(p.x, p.y, 50 * s, 0xffe040, 300, 1);
+        skillFlash(p, 200, 30, 30, 70); sc.fx.glow(p.x, p.y, 50 * s, 0xffe040, 300, 1);
         lineFx(sc, p.x, p.y - 6, p.x + (Math.random() - .5) * 30, view(p).y - 10, 0xffe040, { seg: 8, jag: 12, w: 3, ms: 240 });   // 하늘로 쏘아 올림
         Sfx.play('thunder');
         tickFor(sc, T, t => {
@@ -558,7 +558,7 @@ export const SKILL_IMPL = {
       sc.fx.burst(x, y, [0x3ad06a, 0x5aff8a, 0xffd84a, 0xffffff], 90, 340 * s, { up: 240, glow: true, life: 1 });
       sc.fx.burst(x, y, [0x8a7a5a, 0xc0a070], 30, 220, { up: 160 });
       for (let k = 0; k < 4; k++) { const lx = x + (Math.random() - .5) * r * 1.6; lineFx(sc, lx, v.y, lx + (Math.random() - .5) * 30, groundAt(p, lx), k % 2 ? 0xffd84a : 0x5aff8a, { seg: 8, jag: 14, w: 3, ms: 320 }); }
-      sc.cameras.main.flash(260, 200, 255, 170, true); sc.fx.shake(.026, 460); sc.fx.hitStop(140);
+      skillFlash(p, 260, 200, 255, 170); sc.fx.shake(.026, 460); sc.fx.hitStop(140);
       Sfx.play('boom'); Sfx.play('thunder');
       p.squash(1.5, .62);
       a.dur = Math.min(a.dur, a.t + .3);
@@ -613,7 +613,7 @@ export const SKILL_IMPL = {
         let nt = 0;
         const orb = sc.add.image(p.x, p.y - 6, 'glow').setTint(0xff7a3a).setBlendMode(ADD).setScale(.6 * s).setDepth(45);
         sc.tweens.add({ targets: orb, y: view(p).y - 40, scale: 1.4 * s, duration: 260, ease: 'Quad.easeIn', onComplete: () => orb.destroy() });   // 하늘로 쏘아 올린 용의 기운
-        sc.cameras.main.flash(220, 120, 80, 255, true); sc.fx.shake(.01, 240);
+        skillFlash(p, 220, 120, 80, 255); sc.fx.shake(.01, 240);
         Sfx.play('beam');
         tickFor(sc, T, t => {
           if (t < .2 || t < nt) return; nt = t + (m ? .05 : .07);

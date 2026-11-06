@@ -7,7 +7,15 @@ import { Sfx } from '../systems/Audio.js';
 import { SLASH_PAL } from '../systems/Fx.js';
 
 // 기술 크기 배율: 아이템 × 진화 단계 (1단 1 · 2단 1.2 · 3단 1.4 · 메가 1.65) → 판정·궤적·투사체가 같이 커진다
-const sizeMul = p => p.mods.sizeMul * p.fxMul * (p.sp.reach || 1);   // reach: 거대 몸집 포켓몬(롱스톤 계열)의 공격 범위 배율
+const sizeMul = p => p.mods.sizeMul * p.fxMul * (p.sp.reach || 1);
+// 기술의 화면 번쩍임은 진화 단계만큼만: 1단 30% · 2단 50% · 3단 · 전설 70% · 메가 85% (번쩍임 세기 = 처음 알파 — GameScene 이 cameras.main.flashA 를 읽는다)
+//  Z기술 · 진화 · 메가진화 연출의 번쩍임은 그대로 100%
+const FLASH_A = [.3, .5, .7];
+export function skillFlash(p, ms, r, g, b) {
+  const cam = p.scene.cameras.main;
+  cam.flashA = p.mega && p.mega.active ? .85 : FLASH_A[Math.max(0, Math.min(2, p.tier || 0))];
+  cam.flash(ms, r, g, b, true);
+}   // reach: 거대 몸집 포켓몬(롱스톤 계열)의 공격 범위 배율
 const up = (p, id) => p.hasUp(id);   // 기술머신 강화 카드를 받았나 (data/tm.js 의 UPGRADES)
 
 // 전방 근접 판정 + 3겹 도트 검기 (가장자리 오라 → 중간 → 순백 코어) + 맞은 자리 톱니 섬광
@@ -367,7 +375,7 @@ export const SKILL_IMPL = {
           if (!t.fake) sc.combat.damageEnemy(t, p.atk * 2.6, 'electric', { paralyze: .5, hx: t.x, hy: t.y });
           prev = t;
         }
-        sc.cameras.main.flash(80, 255, 240, 160, true);
+        skillFlash(p, 80, 255, 240, 160);
         Sfx.play('zap'); Sfx.play('boom');
       }]]
     };
@@ -715,7 +723,7 @@ export const SKILL_IMPL = {
     return {
       dur: .45, mm: .2, anim: 'Shoot', ev: [[.12, () => {
         const sc = p.scene, ts = sc.combat.nearest(p.x, p.y, 3, 240);
-        sc.cameras.main.flash(90, 255, 120, 200, true); Sfx.play('wave');
+        skillFlash(p, 90, 255, 120, 200); Sfx.play('wave');
         if (!ts.length) { sc.fx.ring(p.x + p.face * 40, p.y, 30, 0xff5a9a, 300); return; }
         for (const e of ts) {
           for (let k = 0; k < 3; k++) sc.time.delayedCall(k * 70, () => sc.fx.ring(e.x, e.y, 14 + k * 8, 0xff8ac0, 260));
@@ -794,7 +802,7 @@ export const SKILL_IMPL = {
           [0, 70, 140].forEach((d, k) => sc.time.delayedCall(d, () => sc.fx.ring(x, y, R * (.6 + k * .25), k === 1 ? 0xffffff : 0xffd860, 320)));
           sc.fx.glow(x, y, R, 0xffe08a, 360, 1); sc.fx.starburst(x, y, 0xfff0b0, 1.8, { debris: true });
           sc.fx.burst(x, y, GOLD, 34, 240, { up: 120, glow: true });
-          sc.fx.hitStop(110); sc.fx.shake(.02, 380, 'hit'); sc.cameras.main.flash(160, 255, 240, 200, true);
+          sc.fx.hitStop(110); sc.fx.shake(.02, 380, 'hit'); skillFlash(p, 160, 255, 240, 200);
           Sfx.play('hit_heavy'); Sfx.play('boom');
         }
         p.b.setVelocityX(p.b.velocity.x * .85);   // 반동: 남은 시간 동안 굳는다

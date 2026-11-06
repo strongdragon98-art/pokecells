@@ -169,7 +169,7 @@ export class Player extends Actor {
   get atk() {
     const md = this.mods, sl = this.action && this.action.slot, m = this.m;
     const slotMul = sl === 'z' ? md.bandMul : sl === 'x' || sl === 'c' ? md.specsMul : 1, rage = md.berserk && m.hp <= m.maxhp * .5 ? 1 + md.berserk : 1;
-    return this.sp.atk * this.T.atk * (m.atkBonus || 1) * this.statOf('atk') * this.buffMul('atk') * md.atkMul * slotMul * rage * (1 + this.bloodK()) * ((this.action && this.action.boostDmg) || 1);   // 스킬 강화 카드: 위력 증폭 · 광전사의 혈투: 잃은 체력만큼
+    return this.sp.atk * (this.sp.dmgK || 1) * this.T.atk * (m.atkBonus || 1) * this.statOf('atk') * this.buffMul('atk') * md.atkMul * slotMul * rage * (1 + this.bloodK()) * ((this.action && this.action.boostDmg) || 1);   // 스킬 강화 카드: 위력 증폭 · 광전사의 혈투: 잃은 체력만큼
   }
   // 고른 메가(리자몽·뮤츠 X/Y) · 모습별 타입 · 모습별 능력치 배율(잉어킹 → 갸라도스 10배)
   megaOf(m = this.m) { return m.sp.megas[m.megaPick || 0] || m.sp.mega; }

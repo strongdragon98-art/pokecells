@@ -25,6 +25,14 @@ const LEGEND_WHERE = {
 const T = (...t) => t;
 
 // 진화 3단계 스타팅 라인 공통 능력치
+// 📊 종별 피해 보정 (Player.atk 에 곱한다): 샌드백 앞에서 C → X → Z 콤보를 쿨타임대로 5초 돌린 피해가 같은 진화 단계 중앙값에서 ±30% 넘게 벗어난 계열만
+//  절반쯤 중앙값 쪽으로 당긴다 (기술 구성 · 사거리 · 보조기 성격은 그대로 두고 수치만 — 측정: 1 · 2 · 3단 평균 배율)
+const DMG_K = {
+  // 낮은 쪽 (중앙값 대비 · 3단 기준인 잉어킹은 1단 튀어오르기 '기다림 끝의 각성' 설계라 갸라도스만 보고)
+  'sprigatito': 1.35, 'oshawott': 1.35, 'zubat': 1.35, 'onix': 1.35, 'squirtle': 1.28, 'snivy': 1.27, 'scorbunny': 1.21, 'piplup': 1.18, 'popplio': 1.15, 'magikarp': 1.22, 'rayquaza': 1.32, 'darkrai': 1.29,
+  // 높은 쪽
+  'sobble': 0.86, 'rowlet': 0.85, 'gible': 0.85, 'fennekin': 0.81, 'charmander': 0.78, 'ho-oh': 0.81, 'mewtwo': 0.8, 'palkia': 0.8, 'entei': 0.75, 'latios': 0.75
+};
 const STARTER = { hp: 112, atk: 11, speed: 116, jump: 304, jumps: 2 };
 
 export const LINES = [
@@ -302,7 +310,7 @@ export function toSpecies(l) {
   const ptype = l.types[0];
   return {
     id: l.id, cat: l.cat, gen: l.gen || 0, legend: !!l.legend,
-    name: first.name, dex: first.dex, types: l.types, hp: l.hp, atk: l.atk, speed: l.speed, jump: l.jump ?? 304, jumps: l.jumps ?? 2, hover: !!l.hover,
+    name: first.name, dex: first.dex, types: l.types, hp: l.hp, atk: l.atk, speed: l.speed, jump: l.jump ?? 304, jumps: l.jumps ?? 2, hover: !!l.hover, dmgK: DMG_K[l.id] ?? 1,
     desc: l.desc, skills: l.skills, tag: TAG_OVERRIDE[l.id] || TAG_BY_TYPE[ptype], zmove: ZMOVE_BY_TYPE[ptype],
     evo, mega, megas, passive: l.passive || {}, reach: (l.passive && l.passive.big) || 1, unlock: l.unlock || {}
   };

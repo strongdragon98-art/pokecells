@@ -3,7 +3,7 @@
 import Phaser from 'phaser';
 import { typeColor } from '../../data/types.js';
 import { Sfx } from '../../systems/Audio.js';
-import { sizeMul, slashHit, shoot, lineFx, dashAction, view, groundAt } from '../skillKit.js';
+import { sizeMul, slashHit, shoot, lineFx, dashAction, view, groundAt, skillFlash } from '../skillKit.js';
 import { shockwave } from '../../systems/PostFX.js';
 
 const ADD = Phaser.BlendModes.ADD;
@@ -120,7 +120,7 @@ export const SKILL_IMPL = {
         sc.fx.glow(p.x, p.y, r * .8, 0xff9ad0, 420, .9);
         sc.fx.burst(p.x, p.y, [0xff9ad0, 0xffe0f0, 0x7dff9a, 0xffffff], 40, 160 * s, { grav: -30, bounce: false, glow: true, life: .9 });
         sc.fx.floatText(p.x, p.b.y - 18, '파티 회복!', '#7dff9a', 12);
-        sc.cameras.main.flash(160, 255, 200, 230, true);
+        skillFlash(p, 160, 255, 200, 230);
         Sfx.play('heal'); Sfx.play('wave');
       }]]
     };
@@ -193,7 +193,7 @@ export const SKILL_IMPL = {
       for (let k = 0; k < 4; k++) sc.time.delayedCall(k * 60, () => sc.fx.ring(x, y, r * (.5 + k * .25), k % 2 ? 0xffffff : 0x5a8aff, 380));
       sc.fx.glow(x, y, r * 1.2, 0x5a8aff, 420, 1);
       sc.fx.burst(x, p.bottom - 2, [0x5a8aff, 0xbfe0ff, 0xffffff, 0xc8c0e0], 50, 260 * s, { up: 180, glow: true });
-      sc.cameras.main.flash(140, 180, 210, 255, true); sc.fx.shake(.02, 300);
+      skillFlash(p, 140, 180, 210, 255); sc.fx.shake(.02, 300);
       if (m) for (const d of [-1, 1]) sc.combat.spawnProjectile({ owner: 'player', x: x + d * 10, y: p.bottom - 6, vx: d * 320, vy: 0, r: 6 * s, mul: 1, type: 'dragon', kind: 'wave', life: .5, pierce: 99, color: 0x9ad0ff, kb: 200 });
       Sfx.play('boom'); Sfx.play('punch'); p.squash(1.4, .7);
     };
@@ -259,7 +259,7 @@ export const SKILL_IMPL = {
       sc.fx.glow(x, y, r * 1.3, 0x6a4aff, 500, 1);
       sc.fx.burst(x, p.bottom - 2, [0x6a4aff, 0xa88aff, 0xd8b060, 0xffffff], 70, 300 * s, { up: 200, glow: true, life: .9 });
       sc.fx.burst(x, p.bottom - 2, [0xd8b060, 0xa08050], 30, 200 * s, { up: 140 });
-      sc.cameras.main.flash(160, 200, 170, 255, true); sc.fx.shake(.024, 380);
+      skillFlash(p, 160, 200, 170, 255); sc.fx.shake(.024, 380);
       Sfx.play('boom'); Sfx.play('punch'); p.squash(1.45, .65);
     };
     Sfx.play('jump');
@@ -361,7 +361,7 @@ export const SKILL_IMPL = {
         sc.combat.hitRect(rect, m ? 5 : 4.4, 'dragon', { slow: m ? 9 : 6, kbx: 240, kby: -120, hs: 140 });
         clockFx(sc, x0, y, hh * 1.4, 0x8ac0ff, 600);
         sc.fx.glow(x0, y, hh * 1.6, 0x4a7aff, 400, 1);
-        sc.cameras.main.flash(180, 140, 180, 255, true); sc.fx.shake(.024, 450);
+        skillFlash(p, 180, 140, 180, 255); sc.fx.shake(.024, 450);
         Sfx.play('beam'); Sfx.play('thunder');
       }]],
       end(p, a) { sc.combat.freeLight(a.light); a.light = null; if (g.scene) g.clear(); }
@@ -374,10 +374,10 @@ export const SKILL_IMPL = {
         [0, () => { sc.fx.glow(p.x, p.y, 40, 0x8ac0ff, 300, 1); sc.fx.ring(p.x, p.y, 30, 0xffffff, 300); Sfx.play('recall'); }],
         [.2, () => {
           const v = view(p), s = sizeMul(p);
-          screenTint(sc, 0x5a6a8a, .3, T * 1000, 300);
+          screenTint(sc, 0x5a6a8a, .22, T * 1000, 300);
           clockFx(sc, p.x, p.y, 80 * s, 0xa8c0ff, 900);
           for (let k = 0; k < 4; k++) sc.time.delayedCall(k * 80, () => sc.fx.ring(p.x, p.y, (60 + k * 50) * s, k % 2 ? 0xffffff : 0x8ac0ff, 500));
-          sc.cameras.main.flash(220, 190, 210, 240, true); sc.fx.hitStop(120); sc.fx.shake(.012, 200);
+          skillFlash(p, 220, 190, 210, 240); sc.fx.hitStop(120); sc.fx.shake(.012, 200);
           Sfx.play('boss'); Sfx.play('shatter');
           const frozen = [];
           for (const e of sc.enemies) {
@@ -426,7 +426,7 @@ export const SKILL_IMPL = {
       if (diag) for (let x = r.x + 20; x < r.x + r.w; x += 70) { lineFx(sc, x - 24, by - hh * .7, x + 24, by + hh * .7, 0xff7ad0, { seg: 3, jag: 2, w: 3, ms: 280 }); lineFx(sc, x + 24, by - hh * .7, x - 24, by + hh * .7, 0xffffff, { seg: 3, jag: 2, w: 2, ms: 280 }); }
       else { lineFx(sc, r.x, by, r.x + r.w, by, 0xff7ad0, { seg: 14, jag: 3, w: 5, ms: 320 }); lineFx(sc, r.x, by, r.x + r.w, by, 0xffffff, { seg: 14, jag: 2, w: 2, ms: 260 }); }
       for (let x = r.x + 20, k = 0; x < r.x + r.w; x += 46, k++) sc.fx.slash(x, by, 16 * s, k % 2 ? 1 : -1, 0xff9ae0, { flipV: diag && k % 2 === 0, thick: 6, ms: 200 });
-      sc.cameras.main.flash(140, 255, 150, 220, true); sc.fx.shake(diag ? .024 : .016, 300);
+      skillFlash(p, 140, 255, 150, 220); sc.fx.shake(diag ? .024 : .016, 300);
       Sfx.play(diag ? 'shatter' : 'crack'); Sfx.play('boom');
     };
     Sfx.play('recall');
@@ -538,7 +538,7 @@ export const SKILL_IMPL = {
           sc.fx.glow(cx, cy, r * 1.4, 0x6a2aff, 500, 1);
           sc.fx.burst(cx, cy, [0x2a0a3a, 0x6a2aff, 0x9a5aff, 0xffffff], 60, 280 * s, { grav: 0, bounce: false, glow: true, life: .8 });
           sc.fx.ghost(p.sprite, 0x9a5aff, .8, 400);
-          sc.cameras.main.flash(200, 90, 30, 140, true); sc.fx.shake(.024, 400);
+          skillFlash(p, 200, 90, 30, 140); sc.fx.shake(.024, 400);
           Sfx.play('boom'); Sfx.play('ghost');
         }]
       ],
@@ -555,7 +555,7 @@ export const SKILL_IMPL = {
         p.addBuff?.({ guard: .8, t: life, color: 0x9a5aff });
         sc.combat.hitCircle(p.x, p.y, R, 1.2, 'ghost', { curse: 4, slow: 2, kbx: 0, kby: -120, hs: 60 });
         for (let k = 0; k < 4; k++) sc.time.delayedCall(k * 70, () => sc.fx.ring(p.x, p.y, R * (1 - k * .2), k % 2 ? 0x2a0a3a : 0x9a5aff, 420));
-        sc.cameras.main.flash(260, 60, 20, 90, true); sc.fx.shake(.014, 260);
+        skillFlash(p, 260, 60, 20, 90); sc.fx.shake(.014, 260);
         Sfx.play('ghost'); Sfx.play('boss');
         sc.combat.spawnZone({
           x: p.x - R, y: p.y - R, w: R * 2, h: R * 2, life, tick: .3, type: 'ghost', color: 0x9a5aff,
@@ -613,7 +613,7 @@ export const SKILL_IMPL = {
           }
         });
         sc.fx.glow(p.x + p.face * 14, p.y - 3, 34, 0x4a1a7a, 300, 1); sc.fx.ring(p.x + p.face * 14, p.y - 3, 30, 0x9a5aff, 260);
-        sc.cameras.main.flash(160, 40, 10, 60, true);
+        skillFlash(p, 160, 40, 10, 60);
         Sfx.play('ghost'); Sfx.play('wave');
       }]]
     };
@@ -623,8 +623,8 @@ export const SKILL_IMPL = {
     return {
       dur: .55, mm: .2, anim: 'Shoot', ev: [[.18, () => {
         const v = view(p);
-        screenTint(sc, 0x2a0a3a, .3, 3600, 500);
-        sc.cameras.main.flash(300, 60, 0, 90, true); sc.fx.shake(.014, 260);
+        screenTint(sc, 0x2a0a3a, .22, 1600, 500);   // 화면을 덮는 악몽의 어둠은 짧게 (쿨타임마다 거의 늘 어두워 보이지 않게)
+        skillFlash(p, 300, 60, 0, 90); sc.fx.shake(.014, 260);
         sc.fx.glow(p.x, p.y, 70, 0x4a1a7a, 500, 1);
         Sfx.play('ghost'); Sfx.play('boss');
         for (const e of sc.enemies) {
