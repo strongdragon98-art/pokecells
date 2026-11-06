@@ -1350,7 +1350,7 @@ export default class GameScene extends Phaser.Scene {
     const p = this.player, q = p.quests || (p.quests = {});
     if (id === 'elder_monk') {
       const freed = this.purifiedSet.has(1) || !!(this.worlds[1] && this.worlds[1].purified);
-      if (q.monk) return { lines: ['그 돌의 빛이 흐려지지 않도록, 포켓몬과의 유대를 소중히 하시오.', '다른 포켓몬의 돌은 {b:호연 너머 숨겨진 심연의 균열}을 정화하거나, 마을을 떠도는 {b:고대석 수집가}에게 구해 보시오.'] };
+      if (q.monk) return { lines: ['그 돌의 빛이 흐려지지 않도록, 포켓몬과의 유대를 소중히 하시오.', '다른 포켓몬의 돌은… 하늘을 다스리는 {b:호연의 용}, 그리고 {b:신오 챔피언로드 깊은 곳의 숨겨진 균열}이 품고 있다 하오. 마을을 떠도는 {b:고대석 수집가}도 찾아보시오.'] };
       if (!freed) return null;   // 처음 대사 (칠색조를 정화해 달라)
       //  첫 메가스톤: 출전 포켓몬부터 — 아직 돌이 없는 계열에만 (이미 가진 계열이면 다음 동료 · 모두 가졌으면 키스톤만)
       const hasStone = k => p.stones.has(k) || p.members.some(m => m.key === k && m.gear.stone === k) || !!(p.stored && p.stored[k] && p.stored[k].gear.stone === k);
@@ -1359,7 +1359,7 @@ export default class GameScene extends Phaser.Scene {
         lines: ['종소리가… 다시 울리는구려! 탑 꼭대기에서 폭주하던 전설들을 구해 주었소.',
           line ? `그대와 포켓몬 사이의 깊은 유대가 이 고대의 돌을 공명시켰구려. {y:키스톤}과 {b:${stoneName(line)}}을 받으시오.` : '그대와 포켓몬 사이의 깊은 유대가 이 고대의 돌을 공명시켰구려. {y:키스톤}을 받으시오. 그대 동료들의 돌은 이미 제자리를 찾았구려.',
           '메가스톤은 그 포켓몬의 {y:메가스톤 칸}에 끼워야 하오. {y:3단 진화} 뒤 {y:<V 키|메가 버튼>}로 메가진화하면, 메가 중엔 {y:<R 키|MEGA SKILL 버튼>} 필살기도 쓸 수 있소.',
-          '다른 포켓몬의 돌은… {b:호연 너머 숨겨진 심연의 균열}을 정화하거나, 마을을 떠도는 {b:고대석 수집가}에게 구해 보시오.'],
+          '다른 포켓몬의 돌은… 하늘을 다스리는 {b:호연의 용}, 그리고 {b:신오 챔피언로드 깊은 곳의 숨겨진 균열}이 품고 있다 하오. 마을을 떠도는 {b:고대석 수집가}도 찾아보시오.'],
         onEnd: () => {
           if (q.monk) return;
           q.monk = 1; p.keyStone = true;
@@ -3013,7 +3013,7 @@ export default class GameScene extends Phaser.Scene {
     }
     this.events.emit('boss', null);
     const drop = final ? (this.stageIdx === DROPS.megastone ? 'megastone' : null) : null;
-    const hiddenStone = hidden && (room.main || this.stageIdx >= DROPS.hiddenStoneFrom);   // 샛길 히든 전설은 호연부터 메가스톤 (본길 기라티나는 늘)
+    const hiddenStone = hidden && (room.main || boss.bossKey === DROPS.hiddenStone);   // 샛길 히든 전설 중 메가스톤은 신오 다크라이 하나 (본길 기라티나는 늘)
     const sub = drop === 'megastone' ? '정신을 되찾았다 · 메가스톤이 빛난다' : hidden ? (hiddenStone ? '전설이 깨어났다 · 전설의 기술 카드와 메가스톤을 남겼다' : '전설이 깨어났다 · 전설의 기술 카드를 남겼다') : '정신을 되찾았다';
     this.events.emit('banner', `${boss.name} 정화!`, sub);
     this.fx.hitStop(220);
@@ -3025,7 +3025,7 @@ export default class GameScene extends Phaser.Scene {
       this.unlockArena();
       if (drop) this.spawnPickup(drop, boss.x, boss.y - 10);
       bossNuggets(room.type, !!coreOfBoss(boss.bossKey)).forEach((id, k) => this.spawnPickup('nugget', boss.x - 10 + k * 20, boss.y - 18, id));   // 중간 보스 금구슬 · 지방/히든 보스 큰 금구슬 확정
-      if (hiddenStone) this.spawnPickup('megastone', boss.x, boss.y - 24);   // 숨겨진 심연의 균열(호연부터): 다른 포켓몬용 메가스톤
+      if (hiddenStone) this.spawnPickup('megastone', boss.x, boss.y - 24);   // 숨겨진 심연의 균열(신오 다크라이 · 본길 기라티나): 다른 포켓몬용 메가스톤
       if (Math.random() < ITEM_DROP.boss) this.spawnPickup('item', boss.x + 14, boss.y - 10, pick(RANDOM_ITEM_KEYS));   // 보스는 강화 아이템 확정
       if (hidden) { this.spawnPickup('item', boss.x - 14, boss.y - 10, pick(RANDOM_ITEM_KEYS)); this.time.delayedCall(1500, () => this.openLegendCards()); }
     }));
