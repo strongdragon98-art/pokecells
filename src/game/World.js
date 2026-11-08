@@ -1074,9 +1074,11 @@ export function buildChapter(ch, ci, retry = 0) {
     if (!(grid[y] && grid[y][x] === 'S' && grid[y - 1][x] === '.' && grid[y - 2][x] === '.')) chests.splice(i, 1);
   }
 
-  // ---- 길목 기술머신: 전투방 바닥 곳곳에 캡슐을 더 놓는다 (지방마다 샛길 기술머신 수의 2배 이상 — 카드를 훨씬 자주 뽑게) ----
+  // ---- 길목 기술머신: 전투방에 캡슐을 더 놓는다 (지방마다 샛길 기술머신 수 이상 — 카드를 훨씬 자주 뽑게) ----
   //  격자 · 소품 · 난수를 건드리지 않는다 (진행 저장 서명 · 같은 시드의 지형 그대로) — 방 · 자리는 방 번호로 정한 해시 · 쓴 캡슐은 RunSave 의 tmx
   //  자리: 3칸 평평한 바닥 위 5칸이 빈 곳 · 문 · 철창 사다리 · 소품 · 상자 · 회복기 · 마을 사람과 떨어진 곳 (방마다 하나)
+  //  몹 사이에 덩그러니 놓이지 않게: ① 막다른 샛길 전투방(문 하나)의 문 반대쪽 끝 → ② 그 밖의 샛길 전투방에서 몹 자리와 가장 먼 곳 → ③ 그래도 모자라면 본길
+  //   캡슐 둘레(좌우 8칸 · 위아래 6칸)의 몹 자리는 지운다 — 기술머신 앞은 안전 구역 (엘리트 수문장은 그대로)
   const tmx = [];
   {
     const hsh = (a, b) => { let h = Math.imul(a + 7, 374761393) ^ Math.imul(b + 3, 668265263) ^ Math.imul(ci + 11, 1442695041); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
@@ -1089,8 +1091,21 @@ export function buildChapter(ch, ci, retry = 0) {
       }
       return out;
     };
+    const doorsOf = r => r.doors.filter(d => !d.virtual && !d.sealed);
+    const deadEnd = r => !r.main && doorsOf(r).length === 1;
+    const rankOf = r => deadEnd(r) ? 0 : !r.main ? 1 : 2;
+    const mobX = r => spawns.filter(s => s.room === r && !s.elite).map(s => s.x / TILE);
+    //  선호 자리: 막다른 방은 문 반대쪽 끝 · 그 밖은 방 안 몹 자리에서 가장 먼 칸
+    const prefOf = r => {
+      const span = r.tx1 - r.tx0;
+      if (deadEnd(r)) { const d = doorsOf(r)[0]; if (d.dir === 'h') return d.R === r ? r.tx1 - 7 : r.tx0 + 6; if (d.cap != null) return d.cap - r.tx0 < span / 2 ? r.tx1 - 7 : r.tx0 + 6; }
+      const xs = mobX(r); if (!xs.length) return r.tx0 + 6 + Math.floor(hsh(r.id, 2) * Math.max(1, span - 12));
+      let best = r.tx0 + 6, bd = -1;
+      for (let tx = r.tx0 + 6; tx < r.tx1 - 6; tx++) { const dd = Math.min(...xs.map(x => Math.abs(x - tx))) + hsh(r.id, tx) * .5; if (dd > bd) { bd = dd; best = tx; } }
+      return best;
+    };
     const spotIn = r => {
-      const busy = busyX(r), span = r.tx1 - r.tx0, pref = r.tx0 + 6 + Math.floor(hsh(r.id, 2) * Math.max(1, span - 12));
+      const busy = busyX(r), span = r.tx1 - r.tx0, pref = prefOf(r);
       const free = (tx, y) => {
         if (busy.some(([a, b]) => tx + 3 >= a && tx - 3 <= b)) return false;
         for (let x = tx - 1; x <= tx + 1; x++) { if (grid[y][x] !== 'S') return false; for (let yy = y - 5; yy < y; yy++) if (yy <= r.ty0 || grid[yy][x] !== '.') return false; }
@@ -1107,16 +1122,22 @@ export function buildChapter(ch, ci, retry = 0) {
       return null;
     };
     const cand = rooms.filter(r => r.type === 'combat' && !r.gateFront && !r.portalFrom && !r.lab)
-      .sort((a, b) => hsh(a.id, 1) - hsh(b.id, 1));
-    const byArea = new Map();   // 지역마다 고르게: 지역별로 줄 세워 번갈아 뽑는다
-    for (const r of cand) { if (!byArea.has(r.ai)) byArea.set(r.ai, []); byArea.get(r.ai).push(r); }
-    const lanes = [...byArea.values()];
-    for (let round = 0; tmx.length < want && lanes.some(l => l.length); round++) for (const l of lanes) {
+      .sort((a, b) => rankOf(a) - rankOf(b) || hsh(a.id, 1) - hsh(b.id, 1));
+    const place = (r, at) => {
+      tmx.push({ kind: 'tm', x: at.x, g: at.g, room: r, roadside: true, used: false, safe: true }); marks.push({ kind: 'tm', x: at.x, y: at.g, room: r });
+      for (let i = spawns.length - 1; i >= 0; i--) { const s = spawns[i]; if (s.room === r && !s.elite && Math.abs(s.x / TILE - at.x) < 8 && Math.abs(s.y / TILE - at.g) < 6) spawns.splice(i, 1); }   // 기술머신 앞 안전 구역
+    };
+    //  순위마다(막다른 샛길 → 샛길 → 본길) 지역별로 줄 세워 번갈아 뽑는다 (지역마다 고르게)
+    for (const rk of [0, 1, 2]) {
+      const byArea = new Map();
+      for (const r of cand) if (rankOf(r) === rk) { if (!byArea.has(r.ai)) byArea.set(r.ai, []); byArea.get(r.ai).push(r); }
+      const lanes = [...byArea.values()];
+      while (tmx.length < want && lanes.some(l => l.length)) for (const l of lanes) {
+        if (tmx.length >= want) break;
+        while (l.length) { const r = l.shift(), at = spotIn(r); if (at) { place(r, at); break; } }
+      }
       if (tmx.length >= want) break;
-      while (l.length) { const r = l.shift(), at = spotIn(r); if (at) { tmx.push({ kind: 'tm', x: at.x, g: at.g, room: r, roadside: true, used: false }); marks.push({ kind: 'tm', x: at.x, y: at.g, room: r }); if (r.gw >= 2 && !r.tmTwice) { r.tmTwice = true; l.push(r); } break; } }   // 넓은 방은 한 번 더 (양쪽 끝)
     }
-    // 그래도 모자라면 이미 캡슐이 있는 방의 반대쪽 끝에도 (16칸 넘게 떨어진 자리)
-    for (const r of cand) { if (tmx.length >= want) break; const at = spotIn(r); if (at) { tmx.push({ kind: 'tm', x: at.x, g: at.g, room: r, roadside: true, used: false }); marks.push({ kind: 'tm', x: at.x, y: at.g, room: r }); } }
   }
 
   // ---- 사람 자리 마무리: 세운 뒤에 깔린 지형(언덕 · 바위 · 길 보장 메우기)에 묻혔거나 발밑이 비었으면 같은 방의 가장 가까운 빈 땅으로 옮긴다 ----

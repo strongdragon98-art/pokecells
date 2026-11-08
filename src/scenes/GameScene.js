@@ -486,7 +486,7 @@ export default class GameScene extends Phaser.Scene {
     this.side = level.purified || this.test ? null : new SideRooms(this, level, this.sideRoomsOf(level));   // ✨ 샛길 정화 구역: 침식 덩굴 · 안개 / 정화한 방은 성역
     const hooh = level.test ? null : level.rooms.find(r => r.boss === 'ho-oh' && r.type === 'boss');
     this.altar = hooh ? new HoohAltar(this, hooh) : null;   // 🌈 방울탑 최상층 삼색 방울의 제단: 성수의 구슬 셋을 바쳐야 칠색조가 강림한다
-    if (!this.test) for (const r of level.rooms) if (r.cleared && this.gateOf(r, level)) this.chapterGate(r, false);   // 🌀 이미 정화한 지방 관문: 조력자 · 다음 지방 포털 그대로
+    //  🌀 이미 정화한 지방 관문(조력자 · 다음 지방 포털)은 이 함수 끝에서 — 보스 · 포털 상태 초기화 뒤에 (예전엔 만든 포털을 곧바로 지워 빛만 남은 '죽은 포털'이 됐다)
     this.physics.world.setBounds(0, 0, level.width, level.height + 200);
 
     // 패럴랙스 배경 (보스전에서 가장 멀리 당긴 줌 기준으로도 화면을 채우도록 배치)
@@ -555,7 +555,8 @@ export default class GameScene extends Phaser.Scene {
     cam.setFollowOffset(0, 10);
     cam.centerOn(pos.x, pos.y);
     for (const sp of level.spawns) sp.spawned = false;   // 챕터에 들어올 때마다 적이 다시 나온다
-    this.boss = null; this.bosses = []; this.portal = null; this.lowSeen = false;
+    this.boss = null; this.bosses = []; this.lowSeen = false;   // 포털은 앞 지방을 치울 때(clearWorld) 이미 지웠다
+    if (!this.test) for (const r of level.rooms) if (r.cleared && this.gateOf(r, level)) this.chapterGate(r, false);   // 🌀 이미 정화한 지방 관문: 조력자 · 다음 지방 포털 그대로 (이어하기 · 공중날기로 돌아와도)
     this.events.emit('stage', si, st);
     Music.play(st.bgm);
     this.buildBossProps();

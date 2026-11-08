@@ -22,6 +22,7 @@ const FOOT = new Map();   // 텍스처 키 → 맨 아래 불투명 줄 { pad: �
 const PAD_VY = 760;
 // 하늘기둥 정상의 초록 바람 기류(wind)는 더 세다: 위로 가속 2600 · 최고 상승 속도 470 (기류 꼭대기에서 약 7칸 더 솟는다 — 점프 없이 가장 높은 부유석 위로)
 const WIND_ACC = 2600, WIND_V = 470;
+const WARD_R = 72;   // 기술머신 성역 반경(px) — 캡슐 좌우 4.5칸 안엔 일반 몹이 들어오지 못한다
 const FIELD_JUMP = 1.225, LIFT_ACC = 1500, LIFT_V = 300;   // 용나선탑 전자기장: 점프 속도 ×√1.5 (높이 1.5배) · 열기 상승 기류: 위로 가속 · 최고 상승 속도   // 차원 도약 수정이 솟구치는 속도 (최대 약 20칸 — 길 보장 Reach.PAD_TILES 18칸보다 넉넉히)
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -1491,6 +1492,7 @@ export class Props {
 
   build() {
     const s = this.s, p = this.stage.palette, metal = this.stage.plat === 'metal';
+    this.wards = [];   // 기술머신 성역: 둘레에 일반 몹이 들어오지 못한다 (updateWards)
     for (const pr of [...this.level.props, ...(this.level.tmx || [])]) {   // tmx: 길목 기술머신 캡슐 (game/World.js 끝 — 샛길 제단과 같은 캡슐)
       if (pr.hide) continue;   // 방울탑 정문 앞 성역 마당에서 치운 장식 (game/World.js)
       const X = pr.x * TILE, Y = pr.g * TILE, room = roomAt(this.level, X + 8, Y - 4), village = room && room.type === 'village', area = this.areaOf(room);
@@ -1660,6 +1662,10 @@ export class Props {
           s.tweens.add({ targets: disc, scaleX: { from: 1, to: .15 }, duration: 950, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });   // 천천히 돈다
           s.tweens.add({ targets: coreG, scale: { from: .45, to: .7 }, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });   // 맥동
           this.pulses.push({ o: halo, base: .5, amp: .2, sp: 3 }, { o: sigil, base: .45, amp: .2, sp: 1.6 });
+          // 🛡️ 기술머신 성역: 바닥에 은은한 금빛 고리 · 일반 몹은 좌우 WARD_R 안으로 들어오지 못하고 밀려난다 (보스 · 엘리트 수문장은 그대로)
+          const floor = this.add(s.add.image(x, Y - 1, 'glow').setBlendMode(ADD).setTint(0xffe8a0).setScale(WARD_R / 22, .32).setAlpha(.32).setDepth(5.85));
+          this.pulses.push({ o: floor, base: .28, amp: .1, sp: 1.2 });
+          this.wards.push({ x, y: Y, pr, floor, t: 0 });
           const it = { kind: 'tm', pr, x, y: Y, range: 30, used: false, prompt: '[F 또는 ↑ : 기술머신 가동]', promptY: Y - 92, disc, halo, beam, core: coreG, cap, glass, sigil, lightObj: l, near: false };
           this.interacts.push(it);
           if (pr.used) this.markUsed(it);
@@ -2578,8 +2584,25 @@ export class Props {
     }
   }
 
+  // 기술머신 성역: 화면 안의 성역마다 일반 몹(보스 · 엘리트 · 샌드백 제외)이 고리 안에 들어오면 바깥으로 밀어낸다 (경계에 금빛 불티)
+  updateWards(dt, view) {
+    const s = this.s;
+    for (const w of this.wards || []) {
+      if (w.x < view.x - WARD_R || w.x > view.right + WARD_R || w.y < view.y - 80 || w.y > view.bottom + 80) continue;
+      for (const e of s.enemies) {
+        if (!e.alive || e.boss || e.elite || e.dummy || !e.b) continue;
+        const dx = e.x - w.x, dy = e.bottom - w.y;
+        if (Math.abs(dx) >= WARD_R || dy < -80 || dy > 20) continue;
+        const sg = Math.sign(dx) || (e.face || 1);
+        e.b.x += sg * Math.min(5, WARD_R - Math.abs(dx));
+        e.b.setVelocityX(sg * Math.max(Math.abs(e.b.velocity.x), 90));
+        if (Math.random() < .2) s.fx.burst(w.x + sg * WARD_R, e.y, [0xffe8a0, 0xffffff], 1, 40, { grav: -30, bounce: false, glow: true, life: .35, size: 1 });
+      }
+    }
+  }
   update(time, dt = .016) {
     const t = time / 1000, view = this.s.cameras.main.worldView, L = view.x - 20, R = view.right + 20, U = view.y - 40, D = view.bottom + 40;
+    this.updateWards(dt, view);
     if (this.byRoom && (this.cullT -= dt) <= 0) { this.cullT = .2; this.cull(view); }
     for (const g of this.grass) if (g.x > L && g.x < R && g.y > U && g.y < D) g.rotation = Math.sin(t * 2.2 + g.ph) * .13 + Math.sin(t * 5.3 + g.ph * 2) * .04;
     // 늘어진 덩굴: 위 끝을 축으로 느리게 살랑
