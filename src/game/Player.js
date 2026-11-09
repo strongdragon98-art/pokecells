@@ -81,6 +81,7 @@ const AIR_HOP = 75, AIR_HIT_HOP = 110, AIR_STALL_T = .26, AIR_STALL_G = .18, AIR
 //  AIR_ACC: 공중 좌우 가속 = 지상과 같다 (공중 조작 100%)
 export const JUMP_K = 1.25, RISE_G = .8, FALL_G = 1.12, JUMP_CUT = .5, DJ_K = Math.sqrt(.85);
 const FAST_FALL_G = 2.6, FAST_FALL_V = 900, FAST_FALL_KICK = 220, FALL_MAX = 640, LEDGE_SNAP = 18, HEAD_NUDGE = 6, GROUND_ACC = 1500, AIR_ACC = 1500, WORLD_G = 900;
+const GLIDE_V = 75;   // 비행 타입 활공: 점프를 꾹 누르면 이 속도보다 빨리 떨어지지 않는다 (전설은 ×0.7)
 // 패링 자세 (지상 ↓ + Z 전용 — 평타에는 패링 판정이 없다): PARRY_WIN 초 동안 몸 둘레 PARRY_R px 의 근접 공격 · 적 투사체를 받아친다
 //  헛방이면 WHIFF_T 초 자세 무너짐 + 재사용 PARRY_CD 초 · 성공하면 둘 다 즉시 0 (연속 패링)
 //  성공: 피해 무효 + 0.35초 무적 · 투사체 반사(2배 속도 · 250%) · 근접 카운터(충격파 · 보스 그로기 +30 · X·C·필살기 쿨 -2초 · 다음 한 방 확정 치명타)
@@ -164,7 +165,7 @@ export class Player extends Actor {
   tierOf(m) { return m.mega ? 3 : m.tier; }
   get tierIdx() { return this.tierOf(this.m); }
   get T() { return TIERS[this.tierIdx]; }
-  get fxMul() { return this.T.fx; }                    // 스킬 이펙트 크기 배율 (skills.js)
+  get fxMul() { return this.T.fx * ((this.mega.active ? this.megaOf().fx : this.form().fx) || 1); }   // 스킬 이펙트 크기 배율 (skills.js) · 모습별 fx (갸라도스 등 · data/roster.js)
   // 공격력: 특성 카드(힘·역린)와 구애머리띠(Z칸)·구애안경(X·C칸)은 지금 쓰는 기술 칸을 보고 곱한다
   get atk() {
     const md = this.mods, sl = this.action && this.action.slot, m = this.m;
@@ -259,6 +260,7 @@ export class Player extends Actor {
     if (this.sp.legend) {   // 전설은 모습이 하나라 예전 배율 (도트 높이를 맞춘 뒤 단계마다 조금씩) · 폼체인지·메가는 ×1.1
       scale = this.T.size * (this.mega.active ? MEGA_SIZE : 1);
       if (meta0) scale *= Phaser.Math.Clamp(40 / Math.max(10, meta0.height), .55, 1.4);
+      scale *= this.sp.size || 1;   // 명성에 맞는 몸집 (칠색조 등 · data/roster.js size)
     } else {
       const k0 = this.sp.evo[0].key, base = metas[k0] && metas[k0].hasSprite ? metas[k0] : metas[this.m.key];
       // 메가 컷아웃 리깅(본가 외형 도트 · 그림이 훨씬 크다): 같은 포켓몬의 지금 진화 모습이 화면에 보이는 키 × MEGA_SIZE 가 되게 맞춘다
@@ -623,7 +625,13 @@ export class Player extends Actor {
     }
     const hover = sp.hover || (this.pas.hoverForm !== undefined && this.form().fi >= this.pas.hoverForm);
     if (hover && inp.jumpH && b.velocity.y > 40 && !this.dash) b.setVelocityY(40);              // 고오스·망나뇽·전설 부유
-    this.airGravity(dt, inp, a, ground, hover);
+    // 비행 타입 활공: 떨어지는 중에 점프를 꾹 누르면 날개를 펴고 천천히 내려온다 (전설은 더 느리게) · 공중 날갯짓도 한 번 더 (maxJumps)
+    const glide = !hover && this.flyer && inp.jumpH && !ground && !this.dash && !(a && (a.ctrl || a.dive));
+    if (glide && b.velocity.y > GLIDE_V * (sp.legend ? .7 : 1)) {
+      b.setVelocityY(GLIDE_V * (sp.legend ? .7 : 1));
+      if ((this.glideT = (this.glideT || 0) - dt) <= 0) { this.glideT = .09; sc.fx.burst(this.x - this.face * 8, this.y, [typeColor(this.types[0]), 0xffffff], 1, 30, { angle: -Math.PI / 2, spread: 1.4, up: 10, grav: 60, bounce: false, glow: true, life: .45, size: 1 }); }
+    }
+    this.airGravity(dt, inp, a, ground, hover || glide);
     if (!ground) this.ledgeAssist(dt, dir, a);
 
     // 행동 진행 (스라크 계열은 모든 행동이 빠르다)
@@ -646,7 +654,9 @@ export class Player extends Actor {
   }
 
   // 공중 점프 포함 최대 점프 횟수: 모든 포켓몬 2단 기본 · 날개 달린 계열(jumps 3) · 비상의 깃털 카드(extraJumps)마다 +1 (3단 점프)
-  maxJumps() { return Math.max(2, this.sp.jumps || 2) + (this.mods.extraJumps || 0); }
+  maxJumps() { return Math.max(2, this.sp.jumps || 2) + (this.mods.extraJumps || 0) + (this.flyer ? 1 : 0); }
+  // 비행 타입 (지금 모습 · 메가 포함): 날갯짓 +1 · 활공
+  get flyer() { return this.types.includes('flying'); }
   jump(v, air) {
     const v0 = v * (this.jumpMul || 1) * (1 + (this.mods.jumpAdd || 0));   // 용나선탑 전자기장 안: 1.5배 높이 · 순발력 강화 카드: 점프력 +4%
     this.b.setVelocityY(-v0);
@@ -884,6 +894,13 @@ export class Player extends Actor {
       this.applyBoost(action, id, true);
       if (this.mods.skillPow) this.manaDrive(action);   // 마력 폭주 기관(양날의 검)
       Cores.cast(this, id);   // 보스의 코어: 분화 용암 · 델타스트림 · 모래폭풍 검기
+      const fk = (this.mega.active ? this.megaOf().fx : this.form().fx) || 1;
+      if (fk > 1.2) {   // 거대 이펙트 모습(갸라도스): 기술을 쓸 때마다 포효 — 두 겹 충격파 · 물보라 기둥 · 묵직한 흔들림
+        const sc = this.scene;
+        sc.fx.ring(this.x, this.y, 30 * fk, col, 260); sc.time.delayedCall(70, () => sc.fx.ring(this.x, this.y, 48 * fk, 0xffffff, 340));
+        sc.fx.burst(this.x, this.bottom - 2, [col, 0xbfe8ff, 0xffffff], 22, 220, { angle: -Math.PI / 2, spread: 1.1, up: 260, grav: 600, life: .7, size: 2 });
+        sc.fx.shake(.012, 220, 'hit'); Sfx.play('boom');
+      }
     }
     this.startAction(action, slot);
     if (combo && !this.onGround) this.airStall(action);

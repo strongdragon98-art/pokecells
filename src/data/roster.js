@@ -171,9 +171,9 @@ export const LINES = [
     skills: { z: 'dragon_tail', x: 'extreme_speed', c: 'outrage' }, desc: '드래곤 올라운더. 3단 점프, 망나뇽은 체공 비행. 신속과 역린.', unlock: { stage: 3 } },
   { id: 'magikarp', cat: 'special', gen: 1, hp: 120, atk: 13, speed: 112, jump: 300, jumps: 2, types: T('water'),
     forms: [{ key: 'magikarp', name: '잉어킹', dex: 129, skills: { z: 'splash', x: 'bounce', c: 'flail' } },
-            { key: 'gyarados', name: '갸라도스', dex: 130, types: T('water', 'flying') }],
+            { key: 'gyarados', name: '갸라도스', dex: 130, types: T('water', 'flying'), fx: 1.45 }],   // fx: 기술 이펙트 · 판정 크기 1.45배 + 시전 포효 (Player.useSkill)
     formAt: [0, 0, 1], formStat: [{ atk: .1, hp: .55, speed: .72 }, { atk: 1, hp: 1, speed: 1 }],
-    megas: [{ key: 'gyarados-mega', name: '메가갸라도스', types: T('water', 'dark'), pokeapi: 10041, sc: '0001' }],
+    megas: [{ key: 'gyarados-mega', name: '메가갸라도스', types: T('water', 'dark'), pokeapi: 10041, sc: '0001', fx: 1.55 }],
     passive: { flop: 0 },
     skills: { z: 'aqua_tail', x: 'hydro_pump', c: 'hyper_beam' }, desc: '대기만성. 잉어킹은 튀어오르기·뛰어오르기로 버티다가, 3단 진화 순간 공격력 10배 갸라도스로 각성한다.', unlock: { start: true } },
   { id: 'onix', cat: 'special', gen: 1, hp: 170, atk: 11, speed: 92, jump: 286, jumps: 2, types: T('rock', 'ground'),
@@ -215,7 +215,7 @@ export const LINES = [
     megas: [{ key: 'mewtwo-mega-x', name: '메가뮤츠X', types: T('psychic', 'fighting'), pokeapi: 10043, sc: '0001' },
             { key: 'mewtwo-mega-y', name: '메가뮤츠Y', types: T('psychic'), pokeapi: 10044, sc: '0002' }],
     skills: { z: 'psycho_cut', x: 'psystrike', c: 'future_sight' }, desc: '사이코브레이크로 모든 것을 짓누르는 최강의 유전자 포켓몬.', unlock: { legend: true } },
-  { id: 'ho-oh', cat: 'legend', legend: true, hp: 150, atk: 14, speed: 118, jump: 306, jumps: 3, types: T('fire', 'flying'),
+  { id: 'ho-oh', cat: 'legend', legend: true, hp: 150, atk: 14, speed: 118, jump: 306, jumps: 3, size: 1.45, types: T('fire', 'flying'),
     forms: [{ key: 'ho-oh', name: '칠색조', dex: 250 }], formAt: [0, 0, 0],
     skills: { z: 'flame_feather', x: 'sacred_fire', c: 'phoenix_dive' }, desc: '무지개 날개의 불사조. 성스러운불꽃은 꺼지지 않는다.', unlock: { legend: true } },
   { id: 'suicune', cat: 'legend', legend: true, hp: 150, atk: 14, speed: 130, jump: 312, jumps: 2, types: T('water'),
@@ -301,16 +301,16 @@ export function toSpecies(l) {
   const formAt = l.formAt || (l.forms.length >= 3 ? [0, 1, 2] : [0, 1, 1]);
   const evo = formAt.map((fi, ti) => {
     const f = l.forms[fi];
-    return { key: f.key, name: f.name, dex: f.dex, fi, types: f.types || l.types, skills: f.skills || null, stat: (l.formStat || [])[fi] || null,
+    return { key: f.key, name: f.name, dex: f.dex, fi, types: f.types || l.types, skills: f.skills || null, stat: (l.formStat || [])[fi] || null, fx: f.fx || 1,
       aura: ti > 0 && fi === formAt[ti - 1] && fi === l.forms.length - 1 && !l.legend };   // 더 진화할 모습이 없으면 오라로 대신
   });
   // item: 폼체인지 (오리진폼) — 메가스톤 대신 그 전설의 아이템(FORM_ITEMS)으로 발동
-  const megas = (l.megas || []).map(m => ({ name: m.name, key: m.key, sprite: m.sprite || m.key, portrait: m.key, types: m.types || last.types || l.types, bond: !!m.bond, item: m.item || null, scale: 1 }));
+  const megas = (l.megas || []).map(m => ({ name: m.name, key: m.key, sprite: m.sprite || m.key, portrait: m.key, types: m.types || last.types || l.types, bond: !!m.bond, item: m.item || null, scale: 1, fx: m.fx || 1 }));
   const mega = megas[0] || { name: `각성 ${last.name}`, sprite: null, portrait: null, types: last.types || l.types, scale: 1.1, awaken: true };
   const ptype = l.types[0];
   return {
     id: l.id, cat: l.cat, gen: l.gen || 0, legend: !!l.legend,
-    name: first.name, dex: first.dex, types: l.types, hp: l.hp, atk: l.atk, speed: l.speed, jump: l.jump ?? 304, jumps: l.jumps ?? 2, hover: !!l.hover, dmgK: DMG_K[l.id] ?? 1,
+    name: first.name, dex: first.dex, types: l.types, hp: l.hp, atk: l.atk, speed: l.speed, jump: l.jump ?? 304, jumps: l.jumps ?? 2, hover: !!l.hover, dmgK: DMG_K[l.id] ?? 1, size: l.size || 1,
     desc: l.desc, skills: l.skills, tag: TAG_OVERRIDE[l.id] || TAG_BY_TYPE[ptype], zmove: ZMOVE_BY_TYPE[ptype],
     evo, mega, megas, passive: l.passive || {}, reach: (l.passive && l.passive.big) || 1, unlock: l.unlock || {}
   };

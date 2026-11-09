@@ -261,9 +261,9 @@ export default class GameScene extends Phaser.Scene {
   }
 
   create() {
-    {   // 화면 번쩍임 세기: 기술은 진화 단계만큼만 (skills.js skillFlash 가 flashA 를 정해 둔다) · 그 밖의 번쩍임은 100%
+    {   // 화면 번쩍임 세기: 기술은 진화 단계만큼만 (skills.js skillFlash 가 flashA 를 정해 둔다) · 그 밖의 번쩍임은 60% (눈부심 방지)
       const cam = this.cameras.main, of = cam.flash.bind(cam);
-      cam.flash = (ms, r, g, b, force, cb, ctx) => { if (force || !cam.flashEffect.isRunning) cam.flashEffect.alpha = cam.flashA ?? 1; cam.flashA = null; return of(ms, r, g, b, force, cb, ctx); };
+      cam.flash = (ms, r, g, b, force, cb, ctx) => { if (force || !cam.flashEffect.isRunning) cam.flashEffect.alpha = cam.flashA ?? .6; cam.flashA = null; return of(ms, r, g, b, force, cb, ctx); };
     }
     this.stageIdx = 0;                     // 지금 챕터(지방) 번호
     this.worlds = [];                      // 챕터마다 한 번 만든 월드 (아머까오로 돌아오면 그대로)

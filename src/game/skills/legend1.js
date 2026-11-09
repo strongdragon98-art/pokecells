@@ -396,7 +396,7 @@ export const SKILL_IMPL = {
         let done = false;
         const q = sc.combat.spawnProjectile({
           owner: 'player', x: p.x + p.face * 14, y: p.y - 4, vx: p.face * 230, vy: 0, r: 9 * s, mul: 0, type: 'fire', kind: 'fire', life: 1.1, pierce: 1, light: true, color: 0xff6a1a,
-          status: { burn: 4 }, boom: { r: (aw ? 66 : 50) * s, mul: 2.2, kb: 260 },
+          status: { burn: 4 }, boom: { r: (aw ? 56 : 50) * s, mul: 2.2, kb: 260 },
           onExpire: q => { done = true; g.destroy(); prongs(q.x, q.y); sc.fx.shake(.016, 260); skillFlash(p, 120, 255, 170, 90); }
         });
         // 날아가는 동안 '大' 모양 불꽃을 그린다

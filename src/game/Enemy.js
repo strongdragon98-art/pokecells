@@ -20,6 +20,7 @@ const CLV_TINT = [.1, .16, .24, .32], CLV_SHELL_A = [.26, .34, .44, .56];
 const EYE_COLOR = 0xff0044;
 const SMOKE = [0x5a0a22, 0x2a0612, 0x8a1a3a, 0x3a0a2a];
 
+const WILD_DMG = 1.2;   // 일반 몬스터가 주는 피해 +20%
 export class Enemy extends Actor {
   constructor(scene, key, x, y, o = {}) {
     super(scene, key, x, y);
@@ -30,7 +31,7 @@ export class Enemy extends Actor {
     this.scaleBase = scale;
     this.resizeBody(Math.max(10, Math.round(this.meta.bodyW * scale)), Math.max(12, Math.round(this.meta.bodyH * scale)));
     this.maxhp = this.hp = Math.round(def.hp * (o.hpMul || 1));
-    this.dmg = def.dmg * (o.dmgMul || 1);
+    this.dmg = def.dmg * (o.dmgMul || 1) * (new.target === Enemy ? WILD_DMG : 1);   // 일반 몬스터(야생 · 엘리트)만 더 아프게 · 보스는 그대로
     this.cLv = Math.max(1, Math.min(4, o.cLv || 1));   // 침식 단계
     this.speed = (def.speed || 50) * (1 + .05 * (this.cLv - 1));
     this.status = { burn: 0, poison: 0, slow: 0, root: 0, stun: 0, curse: 0 };

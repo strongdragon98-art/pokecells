@@ -66,10 +66,10 @@ export function megaBeam(p, o = {}) {
   sc.tweens.add({ targets: st, t: 1, duration: T * 1000, onUpdate: () => {
     const k = Math.min(1, st.t * 6, (1 - st.t) * 4), w = hh * k;
     g.clear();
-    g.fillStyle(col, .35); g.fillRect(L, y - w * 1.5, len, w * 3);
-    g.fillStyle(col, .8); g.fillRect(L, y - w, len, w * 2);
-    g.fillStyle(0xffffff, 1); g.fillRect(L, y - w * .4, len, w * .8);
-    g.fillStyle(0xffffff, .9); g.fillCircle(x0, y, w * 1.6);
+    g.fillStyle(col, .25); g.fillRect(L, y - w * 1.5, len, w * 3);   // 메가 필살기 광선: 순백 심을 가늘고 은은하게 (눈부심 방지)
+    g.fillStyle(col, .6); g.fillRect(L, y - w, len, w * 2);
+    g.fillStyle(0xffffff, .6); g.fillRect(L, y - w * .25, len, w * .5);
+    g.fillStyle(0xffffff, .55); g.fillCircle(x0, y, w * 1.3);
     if (Math.random() < .8) sc.fx.burst(L + Math.random() * len, y + (Math.random() - .5) * w * 2, [col, 0xffffff], 2, 80, { grav: 0, bounce: false, glow: true, life: .3, size: 2 });
   }, onComplete: () => g.destroy() });
   for (let k = 0; k < 5; k++) sc.time.delayedCall(k * (T * 1000 / 5), () => {

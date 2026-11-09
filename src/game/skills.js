@@ -8,12 +8,12 @@ import { SLASH_PAL } from '../systems/Fx.js';
 
 // 기술 크기 배율: 아이템 × 진화 단계 (1단 1 · 2단 1.2 · 3단 1.4 · 메가 1.65) → 판정·궤적·투사체가 같이 커진다
 const sizeMul = p => p.mods.sizeMul * p.fxMul * (p.sp.reach || 1);
-// 기술의 화면 번쩍임은 진화 단계만큼만: 1단 30% · 2단 50% · 3단 · 전설 70% · 메가 85% (번쩍임 세기 = 처음 알파 — GameScene 이 cameras.main.flashA 를 읽는다)
-//  Z기술 · 진화 · 메가진화 연출의 번쩍임은 그대로 100%
-const FLASH_A = [.3, .5, .7];
+// 기술의 화면 번쩍임은 진화 단계만큼만, 눈이 부시지 않게: 1단 18% · 2단 26% · 3단 · 전설 34% · 메가 40% (번쩍임 세기 = 처음 알파 — GameScene 이 cameras.main.flashA 를 읽는다)
+//  그 밖의 번쩍임(Z기술 · 진화 · 보스 연출)은 60% (GameScene.create)
+const FLASH_A = [.18, .26, .34];
 export function skillFlash(p, ms, r, g, b) {
   const cam = p.scene.cameras.main;
-  cam.flashA = p.mega && p.mega.active ? .85 : FLASH_A[Math.max(0, Math.min(2, p.tier || 0))];
+  cam.flashA = p.mega && p.mega.active ? .4 : FLASH_A[Math.max(0, Math.min(2, p.tier || 0))];
   cam.flash(ms, r, g, b, true);
 }   // reach: 거대 몸집 포켓몬(롱스톤 계열)의 공격 범위 배율
 const up = (p, id) => p.hasUp(id);   // 기술머신 강화 카드를 받았나 (data/tm.js 의 UPGRADES)
@@ -197,7 +197,7 @@ export const SKILL_IMPL = {
         }],
         [.12, () => {   // 불꽃세례
           const m = p.mega.active, inferno = up(p, 'blue_inferno');
-          shoot(p, { speed: 270, r: m ? 5 : 4, mul: (m ? 1.3 : 1.5) * (inferno ? 1.5 : 1), type: 'fire', kind: 'fire', stream: true, life: .8, status: { burn: 2.5 }, light: true, color: blue ? 0x5ab0ff : undefined, count: (m ? 3 : 1) + (inferno ? 2 : 0), spread: .16 });
+          shoot(p, { speed: 270, r: m ? 5 : 4, mul: (m ? .85 : 1.5) * (inferno ? 1.5 : 1), type: 'fire', kind: 'fire', stream: true, life: .8, status: { burn: 2.5 }, light: true, color: blue ? 0x5ab0ff : undefined, count: (m ? 3 : 1) + (inferno ? 2 : 0), spread: .16 });
           Sfx.play('fire');
         }]
       ]
@@ -209,9 +209,9 @@ export const SKILL_IMPL = {
       dur: m ? 1.6 : 1.2, mm: .3, anim: 'Shoot', lockFace: true, tk: 0,
       update(p, a, dt) {
         a.tk -= dt;
-        const s = sizeMul(p), len = (m ? 150 : 92) * s, hh = (m ? 34 : 22) * s, mx = p.x + p.face * 8, my = p.y - 3;
+        const s = sizeMul(p), len = (m ? 112 : 92) * s, hh = (m ? 25 : 22) * s, mx = p.x + p.face * 8, my = p.y - 3;   // 메가: 예전 150 × 34 는 화면을 덮을 만큼 넓어 줄였다
         a.pt = (a.pt || 0) - dt;
-        while (a.pt <= 0) { a.pt += .022; p.scene.combat.pr.flameBreath(mx, my, p.face, len, hh, m, p.tierIdx); }   // 불꽃 덩어리가 앞으로 쏟아진다
+        while (a.pt <= 0) { a.pt += m ? .034 : .022; p.scene.combat.pr.flameBreath(mx, my, p.face, len, hh, m, p.tierIdx); }   // 불꽃 덩어리가 앞으로 쏟아진다 (메가는 덜 빽빽하게 — 눈부심 방지)
         if (a.tk <= 0) {
           a.tk = .1;
           p.scene.combat.hitRect({ x: p.face > 0 ? mx : mx - len, y: my - hh / 2, w: len, h: hh }, .55, 'fire', { burn: 2, kbx: 40, kby: -10, hs: 0 });

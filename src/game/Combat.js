@@ -32,6 +32,9 @@ const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h 
 const circRect = (cx, cy, r, b) => { const nx = Math.max(b.x, Math.min(cx, b.x + b.w)), ny = Math.max(b.y, Math.min(cy, b.y + b.h)); return (nx - cx) ** 2 + (ny - cy) ** 2 <= r * r; };
 export { overlap, circRect };
 
+// 조준 보정 세기: 앞으로 260px 안 · 높이 차 54px 안의 적 · 초당 2.4라디안까지(가까울수록 최대 3배 빨리) · 처음 각도에서 최대 32°
+const ASSIST = { range: 260, dy: 54, turn: 2.4, max: 32 * Math.PI / 180 };
+const HIT_R_MIN = 5;
 export class Combat {
   constructor(scene) {
     this.s = scene;
@@ -315,6 +318,31 @@ export class Combat {
     return q;
   }
 
+  // 투사체 조준 보정 (적절히 약하게): 거의 수평으로 날아가는 플레이어 탄이 앞쪽 ASSIST.range 안 · 높이 차 ASSIST.dy 안의 적을 향해
+  //  초당 ASSIST.turn 라디안씩만 휘고, 처음 각도에서 ASSIST.max 이상은 꺾지 않는다 — 높이가 조금 안 맞아 빗나가는 일만 줄인다
+  //  유도 탄두 · 부메랑 · 포물선 · 거의 정지한 탄 · 이미 위아래로 쏜 탄은 손대지 않는다
+  aimAssist(q, dt) {
+    if (q.homing || q.boomerang || q.grav || q.noAssist || q.latch) return;
+    const sp = Math.hypot(q.vx, q.vy);
+    if (sp < 120) return;
+    if (q.a0 === undefined) { q.a0 = Math.atan2(q.vy, q.vx); q.assist = Math.abs(q.vy) < Math.abs(q.vx) * .6; }
+    if (!q.assist) return;
+    const dir = Math.sign(q.vx) || 1;
+    let best = null, bd = Infinity, bdx = 0;
+    for (const e of this.s.enemies) {
+      if (!e.alive || e.intangible || q.hit.has(e)) continue;
+      const dx = (e.x - q.x) * dir, dy = e.y - q.y;
+      if (dx < 6 || dx > ASSIST.range || Math.abs(dy) > ASSIST.dy) continue;
+      const d = dx + Math.abs(dy) * 2;
+      if (d < bd) { bd = d; best = e; bdx = dx; }
+    }
+    if (!best) return;
+    const want = Phaser.Math.Clamp(Phaser.Math.Angle.Wrap(Math.atan2(best.y - q.y, best.x - q.x) - q.a0), -ASSIST.max, ASSIST.max) + q.a0;
+    const turn = ASSIST.turn * (1 + 2 * Math.max(0, 1 - bdx / ASSIST.range)) * dt;   // 코앞의 적일수록 빨리 꺾여야 닿는다
+    const cur = Math.atan2(q.vy, q.vx), na = cur + Phaser.Math.Clamp(Phaser.Math.Angle.Wrap(want - cur), -turn, turn);
+    q.vx = Math.cos(na) * sp; q.vy = Math.sin(na) * sp;
+  }
+
   killProj(q, i) {
     this.pr.detach(q);
     this.freeLight(q.lightObj);
@@ -355,6 +383,7 @@ export class Combat {
         if (d < 12) q.life = 0;
         if (!q.returned) { q.returned = true; q.hit.clear(); }
       }
+      if (q.owner === 'player') this.aimAssist(q, dt);   // 높이가 살짝 어긋난 앞쪽 적에게 조금씩 휜다
       q.vy += q.grav * dt;
       q.x += q.vx * dt; q.y += q.vy * dt;
       if (q.grow) q.r += q.grow * dt;
@@ -368,8 +397,9 @@ export class Combat {
       }
       if (!dead && q.owner === 'player') {
         if (s.props) s.props.hitCircle(q.x, q.y, q.r, q.charge ? 'charge' : null);   // 차징 샷 탄은 연습용 나무 상자도 부순다
+        const hr = Math.max(q.r, HIT_R_MIN);   // 아주 가는 탄도 최소 판정 반지름 (염동 칼날 · 깃털 탄)
         for (const e of s.enemies) {
-          if (!e.alive || q.hit.has(e) || !circRect(q.x, q.y, q.r, e.bounds())) continue;
+          if (!e.alive || q.hit.has(e) || !circRect(q.x, q.y, hr, e.bounds())) continue;
           q.hit.add(e);
           if (q.boom) { dead = true; why = 'hit'; break; }
           if (q.onHit) q.onHit(e, q);
