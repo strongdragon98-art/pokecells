@@ -44,7 +44,8 @@ function unpackBits(b64, n) {
 
 const idxWhere = (arr, f) => arr.reduce((o, x, i) => (f(x) ? o.push(i) : 0, o), []);
 // 지형이 같은지 확인하는 서명 (게임이 업데이트돼 같은 시드로 다른 지형이 나오면 바뀐 것을 덮어쓰지 않는다)
-const sigOf = lv => `${lv.cols}x${lv.rows}:${lv.rooms.length}:${lv.chests.length}:${lv.potions.length}:${lv.breakables.length}:${lv.props.length}`;
+//  비밀 벽감의 금 간 벽(breakables 의 secret — 🟡 모험 보상 지형 C)은 세지 않는다: 예전 저장도 서명이 그대로 맞는다 (비밀 벽은 문 벽 뒤에 붙는다 → 문 벽 순번도 그대로)
+const sigOf = lv => `${lv.cols}x${lv.rows}:${lv.rooms.length}:${lv.chests.length}:${lv.potions.length}:${lv.breakables.filter(b => !b.secret).length}:${lv.props.length}`;
 
 // 챕터 월드 한 개 → 저장용 데이터
 export function snapshotWorld(W) {
@@ -54,7 +55,7 @@ export function snapshotWorld(W) {
     cleared: idxWhere(lv.rooms, r => r.cleared), entered: idxWhere(lv.rooms, r => r.entered),
     chests: idxWhere(lv.chests, c => c.opened), potions: idxWhere(lv.potions, p => p.taken),
     sides: idxWhere(lv.sides, s => s.revealed), walls: idxWhere(lv.breakables, b => b.broken),
-    props: idxWhere(lv.props, p => p.used), tmx: idxWhere(lv.tmx || [], t => t.used), tmxv: 2,   // tmx: 길목 기술머신 (World 끝) · tmxv 2: 막다른 샛길 · 안전 구역 배치
+    props: idxWhere(lv.props, p => p.used), tmx: idxWhere(lv.tmx || [], t => t.used), tmxv: 3,   // tmx: 모험 보상 기술머신 (World — B 정화 봉인 · C 비밀 벽감 · D 수문장 둥지) · tmxv 3: 모험 보상 지형
     sidePure: idxWhere(lv.rooms, r => r.isPurified), masteryGot: lv.masteryGot || 0,   // ✨ 샛길 정화: 정화한 샛길 구역(다시 몬스터가 나오지 않는다) · 받은 강화 수 (GameScene.purifySideRoom)
     explored: W.explored ? packBits(W.explored) : null,
     areas: [...W.areasSeen]
@@ -71,14 +72,14 @@ export function applyWorld(W, s) {
   for (const i of s.potions) lv.potions[i].taken = true;
   for (const i of s.sides) lv.sides[i].revealed = true;
   for (const i of s.props) lv.props[i].used = true;
-  if (s.tmxv === 2) for (const i of s.tmx || []) if (lv.tmx && lv.tmx[i]) lv.tmx[i].used = true;   // 예전 배치의 순번은 다른 캡슐 — 새로 깐다
+  if (s.tmxv === 3) for (const i of s.tmx || []) if (lv.tmx && lv.tmx[i]) lv.tmx[i].used = true;   // 예전 배치(길목 캡슐)의 순번은 다른 캡슐 — 새로 깐다
   set(lv.rooms, s.sidePure || [], 'isPurified'); lv.masteryGot = s.masteryGot || 0;
   if (!s.sidePure && s.mastered) for (const i of s.mastered) if (lv.rooms[i] && !lv.rooms[i].main) lv.rooms[i].isPurified = true;   // 예전 저장(지방 탐색 숙련도): 몬스터를 모두 정화해 센 샛길 방은 정화한 샛길 구역으로
   // 무너진 벽: 격자에서 지우고 이웃 칸 타일 모양을 다시 맞춘다 (GameScene.breakWall 과 같은 계산, 타일 지도는 아직 없다)
   const touched = new Set();
   for (const i of s.walls) {
     const b = lv.breakables[i]; b.broken = true; b.hp = 0;
-    for (const [x, y] of b.cells) { lv.grid[y][x] = '.'; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) touched.add((x + dx) + ',' + (y + dy)); }
+    for (const [x, y] of [...b.cells, ...(b.cover || [])]) { lv.grid[y][x] = '.'; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) touched.add((x + dx) + ',' + (y + dy)); }   // cover: 비밀 벽감 안쪽
   }
   for (const k of touched) {
     const [x, y] = k.split(',').map(Number);

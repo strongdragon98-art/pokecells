@@ -775,7 +775,80 @@ function tmArt(scene) {
     for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2; F(48 + Math.cos(a) * 40 - 1, 48 + Math.sin(a) * 40 - 1, 3, 3, k % 2 ? 0xffd25a : 0x8ae8ff); }
   });
   return { base, glass, frame, cap, disc, sigil };
-}// 샛길 갱도 옆 표지: TM 디스크 무늬 + 아래 화살표
+}
+// 🟡 모험 보상 기술머신 캡슐 (받침대에 딱 붙는 작은 캡슐 · 높이 약 46px — 도전 금고 선반 · 비밀 벽감 · 둥지 받침 단에 들어간다)
+//  고대 석조 제단(돌 · 금 상감 · 청록 룬 · 이끼) / 실프 하이테크 캡슐 포드(강철 · 노랑-검정 경고 줄 · 청록 표시등) — 지역 테마에 맞춘다 (Props 'tm')
+const TECH_BG = new Set(['silph', 'plant', 'radio', 'ferris', 'museum', 'lighthouse']);
+function tmPodArt(scene, tech) {
+  tmArt(scene);   // 디스크 · 바닥 마법진 그림을 같이 쓴다
+  const T = tech ? 'tech' : 'stone', stone = 0x7a7264, steel = 0x3a3c52, gold = 0xd8a63a, cyan = 0x6ae8ff, base = tech ? steel : stone, k = `prop:tmpod-${T}`;
+  canvasTex(scene, k + '-base', 44, 14, F => {
+    F(0, 8, 44, 6, shade(base, .5)); F(1, 9, 42, 4, base); F(1, 9, 42, 1, shade(base, 1.6));                    // 바닥 판 (땅에 딱 붙는다)
+    F(5, 3, 34, 6, shade(base, .55)); F(6, 4, 32, 4, shade(base, 1.12)); F(6, 4, 32, 1, shade(base, 1.7));     // 가운데 단
+    F(11, 0, 22, 4, shade(base, .65)); F(12, 1, 20, 2, shade(base, 1.3));                                        // 윗단
+    if (tech) {
+      for (let x = 3; x < 41; x += 6) { F(x, 10, 3, 2, 0xf0c020); F(x + 3, 10, 3, 2, 0x1a1a22); }               // 노랑-검정 경고 줄
+      F(9, 5, 2, 2, cyan); F(33, 5, 2, 2, cyan); F(19, 5, 6, 2, 0xffd25a); F(20, 5, 4, 1, 0xfff0b0); F(12, 3, 20, 1, gold);
+    } else {
+      for (const x of [4, 10, 16, 26, 32, 38]) F(x, 11, 2, 1, cyan, .9);                                          // 청록 룬 홈
+      F(6, 7, 32, 1, gold, .85); F(12, 3, 20, 1, gold, .8);                                                          // 금 상감
+      for (const [x, y] of [[9, 5], [14, 5], [29, 5], [34, 5]]) F(x, y, 1, 1, cyan);
+      F(1, 8, 4, 1, 0x4a7a3a); F(37, 8, 5, 1, 0x4a7a3a); F(2, 13, 2, 1, shade(base, .35));                        // 이끼 · 금
+    }
+  });
+  canvasTex(scene, 'prop:tmpod-glass', 20, 26, (F, c) => {   // 유리 캡슐 안: 아래서 차오르는 노랑 · 청록 빛 + 기포
+    const gr = c.createLinearGradient(0, 0, 0, 26); gr.addColorStop(0, 'rgba(30,60,80,.45)'); gr.addColorStop(.65, 'rgba(60,150,170,.45)'); gr.addColorStop(1, 'rgba(255,220,120,.7)');
+    c.fillStyle = gr; c.fillRect(0, 0, 20, 26);
+    for (let y = 3; y < 24; y += 5) F(3 + (y * 7) % 13, y, 2, 2, 0xd0f8ff, .5);
+  });
+  canvasTex(scene, k + '-frame', 26, 28, F => {   // 유리 앞 기둥 둘 (가운데는 비어 있다) · 아래 고리 · 반사광
+    const m = tech ? steel : stone;
+    F(0, 0, 4, 28, shade(m, .55)); F(1, 0, 2, 28, m); F(1, 0, 1, 28, shade(m, 1.7));
+    F(22, 0, 4, 28, shade(m, .55)); F(23, 0, 2, 28, m); F(24, 0, 1, 28, shade(m, .45));
+    if (tech) for (let y = 4; y < 22; y += 6) { F(1, y, 1, 3, cyan); F(24, y, 1, 3, cyan); }
+    else for (const y of [6, 14, 20]) { F(0, y, 4, 1, gold, .8); F(22, y, 4, 1, gold, .8); }
+    F(0, 24, 26, 4, shade(m, .5)); F(1, 25, 24, 2, m); F(1, 25, 24, 1, shade(m, 1.8));
+    F(6, 3, 1, 18, 0xffffff, .3); F(8, 5, 1, 12, 0xffffff, .18);
+  });
+  canvasTex(scene, k + '-cap', 30, 9, F => {   // 뚜껑 (해독하면 들려 열린다)
+    if (tech) {
+      F(0, 3, 30, 6, shade(steel, .5)); F(1, 4, 28, 4, steel); F(1, 4, 28, 1, shade(steel, 1.8)); F(1, 7, 28, 1, gold);
+      F(8, 0, 14, 4, shade(steel, .6)); F(9, 1, 12, 2, shade(steel, 1.25)); F(13, 1, 4, 1, cyan);
+      F(3, 5, 2, 2, 0xff5a8a); F(25, 5, 2, 2, 0xff5a8a);   // 붉은 경고등
+    } else {
+      F(0, 4, 30, 5, shade(stone, .5)); F(1, 5, 28, 3, stone); F(1, 5, 28, 1, shade(stone, 1.6)); F(1, 7, 28, 1, gold, .8);
+      F(5, 2, 4, 3, shade(stone, .7)); F(21, 2, 4, 3, shade(stone, .7)); F(11, 0, 8, 5, shade(stone, .65)); F(12, 1, 6, 3, shade(stone, 1.2));   // 돌 왕관
+      F(14, 1, 2, 2, cyan); F(14, 1, 1, 1, 0xffffff);   // 박힌 청록 보석
+    }
+  });
+  canvasTex(scene, 'prop:tmholo-ring', 64, 64, (F, c) => {   // 홀로그램 고리 (눕혀서 쓰고 노랑 · 청록으로 물들인다)
+    c.strokeStyle = '#ffffff'; c.lineWidth = 3; c.beginPath(); c.arc(32, 32, 28, 0, Math.PI * 2); c.stroke();
+    c.lineWidth = 1; c.globalAlpha = .6; c.beginPath(); c.arc(32, 32, 23, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1;
+    for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; F(32 + Math.cos(a) * 28 - 1.5, 32 + Math.sin(a) * 28 - 1.5, 3, 3, 0xffffff); }
+  });
+  return { base: k + '-base', glass: 'prop:tmpod-glass', frame: k + '-frame', cap: k + '-cap', ring: 'prop:tmholo-ring', disc: 'prop:tm2-disc', sigil: 'prop:tm2-sigil' };
+}
+// 🔒 정화 봉인(B): 캡슐을 휘감아 오른 침식 덩굴 (검붉은 줄기 · 가시 · 봉오리 · 받침대를 덮은 뿌리)
+function tmVineArt(scene) {
+  return canvasTex(scene, 'prop:tm-vines', 40, 46, F => {
+    const dark = 0x4a0a22, mid = 0x8a1a3a, hi = 0xc83a5a, thorn = 0xe8c8d0;
+    for (let k = 0; k < 3; k++) for (let y = 2; y < 46; y++) {
+      const x = 20 + Math.sin(y * .32 + k * 2.1) * (8 + k * 3);
+      F(x, y, 2, 1, k === 1 ? mid : dark); if (y % 3 === 0) F(x + .5, y, 1, 1, hi);
+      if (y % 7 === k * 2) { F(x - 2, y, 2, 1, thorn); F(x + 2, y + 1, 2, 1, thorn); }   // 가시
+    }
+    for (const [x, y] of [[8, 40], [30, 38], [14, 12], [27, 20]]) { F(x, y, 4, 3, mid); F(x + 1, y + 1, 2, 1, hi); }   // 잎 · 봉오리
+    F(0, 42, 40, 4, dark, .8); F(2, 41, 36, 1, mid, .7);
+  });
+}
+// 🌵 도전 금고의 가시 함정 한 칸 (바닥 · 구덩이 바닥에 깐다)
+function thornArt(scene) {
+  return canvasTex(scene, 'prop:thorns', 16, 9, F => {
+    F(0, 7, 16, 2, 0x3a0a1a); F(0, 6, 16, 1, 0x5a1a2a);
+    for (const x of [1, 5, 9, 13]) { F(x, 4, 3, 3, 0x6a6470); F(x + 1, 1, 1, 3, 0xb8b0c0); F(x + 1, 0, 1, 1, 0xffffff); F(x, 5, 1, 1, 0x8a1a3a); }
+  });
+}
+// 샛길 갱도 옆 표지: TM 디스크 무늬 + 아래 화살표
 function sideSignArt(scene) {
   const m = 0x4a4a66;
   return canvasTex(scene, 'prop:sidesign', 20, 30, F => {
@@ -1493,6 +1566,7 @@ export class Props {
   build() {
     const s = this.s, p = this.stage.palette, metal = this.stage.plat === 'metal';
     this.wards = [];   // 기술머신 성역: 둘레에 일반 몹이 들어오지 못한다 (updateWards)
+    this.buildAdventure();   // 🟡 비밀 벽감의 빛 새는 벽 · 도전 금고 가시 함정
     for (const pr of [...this.level.props, ...(this.level.tmx || [])]) {   // tmx: 길목 기술머신 캡슐 (game/World.js 끝 — 샛길 제단과 같은 캡슐)
       if (pr.hide) continue;   // 방울탑 정문 앞 성역 마당에서 치운 장식 (game/World.js)
       const X = pr.x * TILE, Y = pr.g * TILE, room = roomAt(this.level, X + 8, Y - 4), village = room && room.type === 'village', area = this.areaOf(room);
@@ -1644,33 +1718,40 @@ export class Props {
           break;
         }
         case 'signpost': { const fl = Math.random() < .5, key = signpostArt(s), sy = this.standY(key, X + 8, .5, pr.g, { flip: fl }); if (sy !== null) this.lit(s.add.image(X + 8, sy, key).setOrigin(.5, 1).setDepth(7).setFlipX(fl)); break; }
-        case 'tm': {   // 샛길 끝의 거대 기술머신 캡슐 (다가가면 공명해 에너지 기둥이 솟고, F / ↑ 로 작동 → 캡슐이 열리며 카드 3장)
-          const a = tmArt(s), x = X + 8, fit = this.standY(a.base, x, .5, pr.g, { sink: 0, up: 6, down: 6 }), mid = fit === null ? this.surfaceRow(Math.floor(x / TILE), pr.g, 6, 6) : null;
-          const Y = fit !== null ? this.groundY : mid !== null ? mid * TILE : pr.g * TILE;   // 땅 밀착: 제단 윗면
-          if (fit === null && mid !== null) this.plinth(a.base, x, Y, mid);   // 받침이 자리보다 넓다 → 허공에 걸친 쪽을 돌 기단으로
-          const sigil = this.add(s.add.image(x, Y - 1, a.sigil).setBlendMode(ADD).setScale(1, .26).setAlpha(.55).setDepth(5.9));
-          this.lit(s.add.image(x, Y, a.base).setOrigin(.5, 1).setDepth(6));
-          const glass = this.add(s.add.image(x, Y - 16, a.glass).setOrigin(.5, 1).setDepth(6.05).setAlpha(.9));
-          const beam = this.add(s.add.image(x, Y - 70, 'glow').setBlendMode(ADD).setTint(0xb08aff).setScale(.5, 3).setAlpha(.14).setDepth(6.1));
-          const halo = this.glow(x, Y - 42, 1.1, 0x9a5aff, .55, 6.2);
-          const coreG = this.glow(x, Y - 42, .55, 0xffd25a, .7, 6.25);
-          const disc = this.add(s.add.image(x, Y - 42, a.disc).setDepth(6.3));
-          this.lit(s.add.image(x, Y - 14, a.frame).setOrigin(.5, 1).setDepth(6.5));
-          const cap = this.lit(s.add.image(x, Y - 73, a.cap).setOrigin(.5, 1).setDepth(6.6));
-          const l = this.light(x, Y - 42, 190, 0xb08aff, 2.1);
-          s.tweens.add({ targets: [disc, halo, coreG], y: '-=6', duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });   // 둥둥
-          s.tweens.add({ targets: disc, scaleX: { from: 1, to: .15 }, duration: 950, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });   // 천천히 돈다
-          s.tweens.add({ targets: coreG, scale: { from: .45, to: .7 }, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });   // 맥동
-          this.pulses.push({ o: halo, base: .5, amp: .2, sp: 3 }, { o: sigil, base: .45, amp: .2, sp: 1.6 });
-          // 🛡️ 기술머신 성역: 바닥에 은은한 금빛 고리 · 일반 몹은 좌우 WARD_R 안으로 들어오지 못하고 밀려난다 (보스 · 엘리트 수문장은 그대로)
-          const floor = this.add(s.add.image(x, Y - 1, 'glow').setBlendMode(ADD).setTint(0xffe8a0).setScale(WARD_R / 22, .32).setAlpha(.32).setDepth(5.85));
-          this.pulses.push({ o: floor, base: .28, amp: .1, sp: 1.2 });
+        case 'tm': {   // 🟡 모험 보상 기술머신 캡슐: 테마 받침대 + 작은 유리 캡슐 + 노랑 · 청록 홀로그램 고리 + 빛기둥 (다가가면 공명 · F / ↑ 로 해독 → 캡슐이 열리며 카드)
+          //  받침 칸은 World 의 모험 보상 지형이 깎아 두었다 (도전 금고 선반 · 정화 봉인 받침 단 · 비밀 벽감 바닥 · 둥지 받침 단) — 그 윗면에 딱 붙인다
+          //  흙 덮개 굴(수문장 둥지)은 어두운 흙벽(깊이 9.5) 앞 · 타일(10) 뒤에 그린다
+          const tech = metal || TECH_BG.has(area && area.bg), a = tmPodArt(s, tech), x = X + 8, Y = pr.g * TILE, d0 = room && room.type === 'pocket' ? 9.55 : 5.85;
+          const sigil = this.add(s.add.image(x, Y - 1, a.sigil).setBlendMode(ADD).setScale(.55, .15).setAlpha(.5).setDepth(d0));
+          const floor = this.add(s.add.image(x, Y - 1, 'glow').setBlendMode(ADD).setTint(0xffe8a0).setScale(WARD_R / 22, .32).setAlpha(.3).setDepth(d0 + .01));
+          const beamO = this.add(s.add.image(x, Y - 70, 'glow').setBlendMode(ADD).setTint(0x6ae8ff).setScale(.55, 2.6).setAlpha(.12).setDepth(d0 + .02));   // 청록 빛기둥 (바깥)
+          const beam = this.add(s.add.image(x, Y - 70, 'glow').setBlendMode(ADD).setTint(0xffe08a).setScale(.28, 2.6).setAlpha(.22).setDepth(d0 + .03));    // 노란 빛기둥 (속)
+          this.lit(s.add.image(x, Y, a.base).setOrigin(.5, 1).setDepth(d0 + .1));
+          const glass = this.add(s.add.image(x, Y - 12, a.glass).setOrigin(.5, 1).setDepth(d0 + .12).setAlpha(.9));
+          const halo = this.glow(x, Y - 25, .7, 0x6ae8ff, .5, d0 + .14);
+          const coreG = this.glow(x, Y - 25, .4, 0xffd25a, .7, d0 + .15);
+          const disc = this.add(s.add.image(x, Y - 25, a.disc).setScale(.8).setDepth(d0 + .16));
+          this.lit(s.add.image(x, Y - 11, a.frame).setOrigin(.5, 1).setDepth(d0 + .18));
+          const cap = this.lit(s.add.image(x, Y - 37, a.cap).setOrigin(.5, 1).setDepth(d0 + .2));
+          //  노랑 · 청록 홀로그램 고리: 받침대에서 번갈아 피어올라 캡슐을 감싸며 위로 흩어진다
+          const rings = [0xffd25a, 0x6ae8ff].map(c => this.add(s.add.image(x, Y - 14, a.ring).setBlendMode(ADD).setTint(c).setScale(.5, .14).setAlpha(0).setDepth(d0 + .22)));
+          rings.forEach((rg, i) => s.tweens.add({ targets: rg, y: Y - 46, alpha: { from: .95, to: 0 }, scaleX: { from: .55, to: .32 }, scaleY: { from: .16, to: .08 }, duration: 1500, delay: i * 750, repeat: -1, ease: 'Sine.easeOut' }));
+          const l = this.light(x, Y - 25, 150, 0xffe08a, 1.9);
+          s.tweens.add({ targets: [disc, halo, coreG], y: '-=4', duration: 1300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });   // 둥둥
+          s.tweens.add({ targets: disc, scaleX: { from: .8, to: .12 }, duration: 950, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });   // 천천히 돈다
+          s.tweens.add({ targets: coreG, scale: { from: .35, to: .55 }, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });   // 맥동
+          this.pulses.push({ o: halo, base: .45, amp: .15, sp: 3 }, { o: sigil, base: .45, amp: .2, sp: 1.6 }, { o: floor, base: .26, amp: .08, sp: 1.2 });
+          // 🛡️ 기술머신 성역: 일반 몹은 좌우 WARD_R 안으로 들어오지 못하고 밀려난다 (보스 · 엘리트 수문장은 그대로)
           this.wards.push({ x, y: Y, pr, floor, t: 0 });
-          const it = { kind: 'tm', pr, x, y: Y, range: 30, used: false, prompt: '[F 또는 ↑ : 기술머신 가동]', promptY: Y - 92, disc, halo, beam, core: coreG, cap, glass, sigil, lightObj: l, near: false };
+          const it = { kind: 'tm', pr, x, y: Y, range: 30, used: false, prompt: '[F 또는 ↑ : 기술머신 해독]', promptY: Y - 60, tipY: Y - 50, d0,
+            disc, discY: Y - 25, halo, beam, beamO, beamY: Y - 70, core: coreG, cap, capY: Y - 37, glass, sigil, rings, lightObj: l, near: false };
           this.interacts.push(it);
+          if (pr.secret && !pr.secret.broken) it.hidden = true;   // 🟡 비밀 벽감: 벽이 무너지기 전엔 바위 속 (조사 · 공명 · 불씨 없음 — revealSecret)
+          if (pr.seal && !pr.used && s.tmSealed && s.tmSealed(pr)) { it.sealed = true; this.sealArt(it); }   // 🔒 정화 봉인 · 수문장 결계 (updateSeals 가 풀어 준다)
           if (pr.used) this.markUsed(it);
           break;
-        }        case 'sidesign': {   // 마을 끝 샛길 갱도 옆 표지
+        }
+        case 'sidesign': {   // 마을 끝 샛길 갱도 옆 표지
           this.lit(s.add.image(X + 8, Y + 1, sideSignArt(s)).setOrigin(.5, 1).setDepth(7));
           const mark = this.glow(X + 8, Y - 22, pr.tutorial ? .6 : .35, pr.tutorial ? 0xffd27a : 0x9ad8ff, .5, 7.3);
           this.pulses.push({ o: mark, base: .35, amp: .25, sp: 2.5 });
@@ -2620,6 +2701,7 @@ export class Props {
     // 맥동 (나무 균열 · 결계 · 로어 표지)
     for (const p of this.pulses) if (p.o.x > L - 200 && p.o.x < R + 200 && p.o.y > U - 200 && p.o.y < D + 200) p.o.setAlpha(Math.max(0, p.base + Math.sin(t * p.sp) * p.amp));
     for (const it of this.interacts) if (it.kind === 'tm' && !it.used) this.tmResonance(it, dt); else if (it.kind === 'terminal') this.terminalNear(it);
+    this.updateAdventure(dt, L, R, U, D);   // 🟡 봉인 · 비밀 벽 틈 불티
     // 지지직 깜빡임: 가끔 잠깐 꺼졌다 켜진다
     for (const f of this.flickers) {
       if (f.off > 0) { f.off -= dt; if (f.off <= 0) f.objs.forEach((o, i) => o.setAlpha(f.base[i])); if (f.light && f.off <= 0) f.light.setIntensity(f.lightK); continue; }
@@ -2659,16 +2741,109 @@ export class Props {
 
   // 기술머신 공명: 플레이어가 다가가면 에너지 기둥이 솟고 빛 알갱이가 늘어난다 (멀어지면 가라앉는다)
   tmResonance(it, dt) {
+    if (it.hidden) return;   // 비밀 벽감: 아직 바위 속
     const s = this.s, p = s.player, near = !!p && Math.abs(p.x - it.x) < 90 && Math.abs(p.bottom - it.y) < 70;
     if (near !== it.near) {
       it.near = near;
       s.tweens.killTweensOf(it.beam);
-      s.tweens.add({ targets: it.beam, alpha: near ? .6 : .14, scaleX: near ? .8 : .5, scaleY: near ? 6 : 3, y: near ? it.y - 110 : it.y - 70, duration: near ? 500 : 700, ease: 'Cubic.easeOut' });
-      if (near) { Sfx.play('resonate'); s.fx.ring(it.x, it.y - 4, 40, 0x8ae8ff, 420); }
-      if (it.lightObj) it.lightObj.setIntensity(near ? 3 : 2.1);
+      const k = it.sealed ? .5 : 1;
+      s.tweens.add({ targets: it.beam, alpha: (near ? .5 : .22) * k, scaleX: near ? .42 : .28, scaleY: near ? 3.6 : 2.6, y: near ? it.beamY - 26 : it.beamY, duration: near ? 500 : 700, ease: 'Cubic.easeOut' });
+      if (near && !it.sealed) { Sfx.play('resonate'); s.fx.ring(it.x, it.y - 4, 34, 0x8ae8ff, 420); }
+      if (it.lightObj) it.lightObj.setIntensity(near ? 2.6 : 1.9);
     }
     const v = s.cameras.main.worldView, seen = it.x > v.x - 60 && it.x < v.right + 60 && it.y > v.y - 60 && it.y < v.bottom + 140;   // 화면 밖 기술머신은 불씨를 뿜지 않는다
-    if (seen && Math.random() < (near ? .7 : .16)) s.fx.embers(it.x + (Math.random() - .5) * 30, it.y - 10 - Math.random() * (near ? 90 : 50), near ? [0xffd25a, 0xb08aff, 0xffffff] : [0x9ad8ff, 0xffffff], 1, { speed: near ? 40 : 12 });
+    if (seen && Math.random() < (near ? .5 : .12)) s.fx.embers(it.x + (Math.random() - .5) * 24, it.y - 8 - Math.random() * (near ? 60 : 36), it.sealed ? [0xc83a6a, 0x6a0a2a, 0xff8aa8] : near ? [0xffd25a, 0x8ae8ff, 0xffffff] : [0x9ad8ff, 0xffe08a]);
+  }
+
+  // 🔒 봉인 그림: 정화 봉인(B) = 침식 덩굴이 캡슐을 휘감고 검붉은 안개 · 수문장 결계(D) = 붉은 결계 돔이 천천히 돈다
+  //  봉인 중엔 홀로그램 고리가 꺼지고 빛기둥이 붉게 식는다
+  sealArt(it) {
+    const s = this.s, x = it.x, Y = it.y, d0 = it.d0, guard = it.pr.seal === 'guard';
+    const veil = this.add(s.add.image(x, Y - 22, 'glow').setBlendMode(ADD).setTint(guard ? 0xff3a2a : 0xb01a4a).setScale(guard ? 1.1 : .9, guard ? 1.25 : 1).setAlpha(.45).setDepth(d0 + .24));
+    const parts = [veil];
+    if (guard) {
+      const dome = this.add(s.add.image(x, Y - 22, 'ring').setBlendMode(ADD).setTint(0xff5a3a).setScale(.62, .7).setAlpha(.55).setDepth(d0 + .26));
+      s.tweens.add({ targets: dome, angle: 360, duration: 6000, repeat: -1 });
+      parts.push(dome);
+    } else parts.push(this.lit(s.add.image(x, Y + 1, tmVineArt(s)).setOrigin(.5, 1).setDepth(d0 + .26)));
+    this.pulses.push({ o: veil, base: .4, amp: .15, sp: 2.2 });
+    it.seal = { parts, veil };
+    for (const r of it.rings) r.setVisible(false);
+    it.beam.setTint(guard ? 0xff6a4a : 0xc83a6a); it.beamO.setVisible(false);
+    if (it.lightObj) it.lightObj.setColor(guard ? 0xff6a4a : 0xc83a6a);
+  }
+  // 봉인이 풀린다: 덩굴 · 결계가 빛 속에 타 사라지고 고리 · 빛기둥이 다시 금빛으로
+  unseal(it) {
+    const s = this.s, sl = it.seal;
+    it.sealed = false;
+    if (!sl) return;
+    it.seal = null;
+    this.pulses = this.pulses.filter(q => q.o !== sl.veil);
+    for (const o of sl.parts) { s.tweens.killTweensOf(o); s.tweens.add({ targets: o, alpha: 0, scaleY: o.scaleY * .2, duration: 700, ease: 'Cubic.easeIn', onComplete: () => o.setVisible(false) }); }
+    for (const r of it.rings) r.setVisible(true);
+    it.beam.setTint(0xffe08a); it.beamO.setVisible(true);
+    if (it.lightObj) it.lightObj.setColor(0xffe08a);
+    const v = s.cameras.main.worldView;
+    if (it.x < v.x - 40 || it.x > v.right + 40 || it.y < v.y - 60 || it.y > v.bottom + 60) return;   // 화면 밖이면 조용히
+    s.fx.burst(it.x, it.y - 24, [0xffe08a, 0xffffff, 0x8affd0], 28, 150, { glow: true, up: 90 });
+    s.fx.ring(it.x, it.y - 24, 46, 0xffe08a, 480); s.fx.glow(it.x, it.y - 24, 60, 0xfff0c0, 600, 1);
+    s.fx.floatText(it.x, it.y - 58, '🔓 봉인 해제!', '#ffe08a', 11);
+    Sfx.play('unlock');
+  }
+  // 봉인된 받침대에 F: 덩굴 · 결계가 번쩍이며 밀어낸다 (안내는 가끔)
+  sealNudge(it) {
+    const s = this.s, now = s.time.now, guard = it.pr.seal === 'guard';
+    if (now - (it.nudgeAt || 0) < 600) return;
+    it.nudgeAt = now;
+    s.fx.ring(it.x, it.y - 22, 30, guard ? 0xff5a3a : 0xc83a6a, 300);
+    s.fx.burst(it.x, it.y - 22, guard ? [0xff5a3a, 0xffa080] : [0x8a1a3a, 0xc83a6a, 0x3a0a1a], 10, 90, { up: 40 });
+    if (it.seal) for (const o of it.seal.parts) s.tweens.add({ targets: o, x: { from: it.x - 2, to: it.x }, duration: 60, repeat: 2 });
+    Sfx.play('crack');
+    if (now - (this.sealTip || 0) > 2500) { this.sealTip = now; s.events.emit('toast', guard ? '🔒 수문장의 결계에 막혔다 — 둥지의 붉은 오라 수문장을 먼저 쓰러뜨리자' : '🔒 침식 덩굴에 봉인되어 해독할 수 없다 — 이 구역의 침식된 포켓몬을 모두 정화하자'); }
+  }
+  // 🟡 비밀 벽감이 무너졌다: 받침대가 드러난다 · 새던 빛은 꺼진다
+  revealSecret(b) {
+    const s = this.s;
+    for (const it of this.interacts) if (it.kind === 'tm' && it.pr && it.pr.secret === b) {
+      it.hidden = false;
+      s.fx.burst(it.x, it.y - 20, [0xffe08a, 0x8ae8ff, 0xffffff], 20, 120, { glow: true, up: 70 });
+      s.fx.ring(it.x, it.y - 20, 40, 0xffe08a, 500);
+    }
+    for (const lk of this.leaks || []) if (lk.b === b) { lk.done = true; s.tweens.add({ targets: lk.glow, alpha: 0, duration: 400 }); this.pulses = this.pulses.filter(q => q.o !== lk.glow); if (lk.light) lk.light.setIntensity(0); }
+  }
+  // 🟡 모험 보상 지형 그림: 비밀 벽감의 빛 새는 금 간 벽(금빛 맥동 · 틈 사이 불티) · 도전 금고의 가시 함정
+  buildAdventure() {
+    const s = this.s;
+    this.leaks = [];
+    for (const b of this.level.breakables || []) {
+      if (!b.secret || b.broken) continue;
+      const fx = b.side > 0 ? b.rect.x : b.rect.x + b.rect.w, cy = b.rect.y + b.rect.h / 2;   // 벽감 앞면 (방 안쪽)
+      const glow = this.add(s.add.image(fx, cy, 'glow').setBlendMode(ADD).setTint(0xffe08a).setScale(.45, 1.3).setAlpha(.35).setDepth(10.45));
+      this.pulses.push({ o: glow, base: .32, amp: .14, sp: 2.4 });
+      this.leaks.push({ b, glow, light: this.light(fx - b.side * 10, cy, 70, 0xffd890, 1.1), x: fx, y: cy, dir: -b.side });
+    }
+    for (const h of this.level.hazards || []) {
+      const y = (h.y + 1) * TILE;
+      for (let tx = h.x0; tx <= h.x1; tx++) this.lit(s.add.image(tx * TILE, y, thornArt(s)).setOrigin(0, 1).setDepth(6.4));
+      const w = (h.x1 - h.x0 + 1) * TILE, g = this.add(s.add.image(h.x0 * TILE + w / 2, y - 3, 'glow').setBlendMode(ADD).setTint(0xc8324a).setScale(w / 50, .25).setAlpha(.22).setDepth(6.35));
+      this.pulses.push({ o: g, base: .18, amp: .08, sp: 1.8 });
+    }
+  }
+  // 매 프레임: 봉인 상태(정화 · 수문장) · 비밀 벽 틈 불티 · 처음 다가가면 한 줄 안내
+  updateAdventure(dt, L, R, U, D) {
+    const s = this.s, p = s.player;
+    for (const it of this.interacts) {
+      if (it.kind !== 'tm' || it.used || !it.pr.seal || (it.sealT = (it.sealT || 0) - dt) > 0) continue;
+      it.sealT = .2;
+      const sealed = !!(s.tmSealed && s.tmSealed(it.pr));
+      if (it.sealed && !sealed) this.unseal(it);
+      else if (!it.sealed && sealed) { it.sealed = true; this.sealArt(it); }
+    }
+    for (const lk of this.leaks || []) {
+      if (lk.done || lk.x < L - 40 || lk.x > R + 40 || lk.y < U - 60 || lk.y > D + 60) continue;
+      if (Math.random() < dt * 5) s.fx.embers(lk.x + lk.dir * 2, lk.y + (Math.random() - .5) * 56, [0xffe08a, 0xfff6d0]);
+      if (!lk.told && p && Math.abs(p.x - lk.x) < 110 && Math.abs(p.bottom - (lk.y + 32)) < 60) { lk.told = true; s.fx.floatText(lk.x + lk.dir * 18, lk.y - 40, '벽 틈으로 빛이 샌다… 부숴 볼까?', '#ffe08a', 10); }
+    }
   }
 
   // 간이 회복기 쉼터: 아치형 돌벽감(따뜻한 빛) · 표지판 반대편에 나무 벤치 · 그 너머 주황 가로등 · 떠다니는 평화로운 빛무리
@@ -2714,13 +2889,15 @@ export class Props {
     if (it.opened) { done(); return; }
     it.opened = true;
     Sfx.play('steam');
-    s.tweens.add({ targets: it.cap, y: it.y - 96, angle: -8, duration: 420, ease: 'Back.easeOut' });
+    const cy = it.capY ?? it.y - 73, dy = it.discY ?? it.y - 42;
+    s.tweens.add({ targets: it.cap, y: cy - 22, angle: -8, duration: 420, ease: 'Back.easeOut' });
     s.tweens.add({ targets: it.glass, alpha: .35, duration: 300 });
-    for (const side of [-1, 1]) s.fx.burst(it.x + side * 18, it.y - 70, [0xe8e8f0, 0xffffff, 0xc8c8d8], 14, 90, { angle: -Math.PI / 2 + side * .7, spread: .5, up: 70, grav: -30, bounce: false, life: .9, size: 2 });
-    s.fx.burst(it.x, it.y - 74, [0xffd25a, 0xb08aff, 0xffffff], 26, 160, { up: 120, glow: true, life: .8 });
-    s.fx.glow(it.x, it.y - 50, 60, 0xffe8b0, 500, 1); s.fx.ring(it.x, it.y - 50, 50, 0xffd25a, 420);
+    for (const side of [-1, 1]) s.fx.burst(it.x + side * 11, cy + 2, [0xe8e8f0, 0xffffff, 0xc8c8d8], 12, 80, { angle: -Math.PI / 2 + side * .7, spread: .5, up: 60, grav: -30, bounce: false, life: .9, size: 2 });
+    s.fx.burst(it.x, cy, [0xffd25a, 0x8ae8ff, 0xffffff], 26, 150, { up: 110, glow: true, life: .8 });
+    s.fx.glow(it.x, dy, 50, 0xffe8b0, 500, 1); s.fx.ring(it.x, dy, 40, 0xffd25a, 420);
     s.cameras.main.flash(260, 255, 236, 200, true); s.fx.shake(.008, 260);
-    s.tweens.add({ targets: it.disc, y: it.y - 64, scale: 1.6, duration: 500, ease: 'Cubic.easeOut' });
+    s.tweens.add({ targets: it.disc, y: dy - 14, scale: 1.3, duration: 500, ease: 'Cubic.easeOut' });
+    for (const r of it.rings || []) { s.tweens.killTweensOf(r); s.tweens.add({ targets: r, y: dy, scaleX: .9, scaleY: .25, alpha: .9, duration: 400, ease: 'Cubic.easeOut' }); }   // 고리가 캡슐 둘레로 모여 펼쳐진다
     s.time.delayedCall(650, done);
   }
 
@@ -2836,7 +3013,7 @@ export class Props {
   }
 
   nearest(x, y) {
-    for (const it of this.interacts) if (!it.used && Math.abs(x - it.x) < it.range && Math.abs(y - it.y) < 40) return it;
+    for (const it of this.interacts) if (!it.used && !it.hidden && Math.abs(x - it.x) < it.range && Math.abs(y - it.y) < 40) return it;   // hidden: 무너지기 전의 비밀 벽감
     return null;
   }
 
@@ -2853,7 +3030,9 @@ export class Props {
       this.pulses = this.pulses.filter(q => q.o !== it.beam && q.o !== it.halo);
       this.s.tweens.killTweensOf([it.disc, it.halo, it.core, it.beam].filter(Boolean));
       if (it.core) this.s.tweens.add({ targets: it.core, alpha: 0, duration: 500 });
-      if (it.cap) this.s.tweens.add({ targets: it.cap, y: it.y - 73, angle: 0, duration: 400 });
+      if (it.cap) this.s.tweens.add({ targets: it.cap, y: it.capY ?? it.y - 73, angle: 0, duration: 400 });
+      if (it.rings) { this.s.tweens.killTweensOf(it.rings); this.s.tweens.add({ targets: it.rings, alpha: 0, duration: 500 }); }
+      if (it.beamO) this.s.tweens.add({ targets: it.beamO, alpha: .03, duration: 700 });
       this.s.tweens.add({ targets: it.disc, alpha: 0, scale: 1.8, duration: 500, onComplete: () => it.disc.setVisible(false) });
       this.s.tweens.add({ targets: [it.halo, it.beam], alpha: .06, duration: 700 });
       if (it.lightObj) it.lightObj.setIntensity(.4);
@@ -2867,7 +3046,7 @@ export class Props {
     if (this.webgl) for (const l of this.lights) this.s.lights.removeLight(l);
     this.objs = []; this.lights = []; this.grass = []; this.mush = []; this.flies = []; this.crates = []; this.interacts = [];
     this.vines = []; this.motes = []; this.flickers = []; this.eyes = []; this.fogs = []; this.pulses = []; this.ash = [];
-    this.revFalls = []; this.pads = []; this.phase = []; this.rift = null; this.lifts = []; this.fields = []; this.coils = [];
+    this.revFalls = []; this.pads = []; this.phase = []; this.rift = null; this.lifts = []; this.fields = []; this.coils = []; this.leaks = [];
     this.byRoom = null;
   }
 }

@@ -533,8 +533,8 @@ export default class GameScene extends Phaser.Scene {
       if (sd && !sd.revealed) { pk.img.setVisible(false); pk.glow.setVisible(false); }   // 흙이 걷히기 전엔 안 보인다
     }
 
-    // 플레이어
-    const pos = at || level.start;
+    // 플레이어 — 이어하기 자리가 바위 속이면(지형이 바뀐 예전 저장: 모험 보상 지형의 비밀 벽 · 둥지 천장 등) 같은 방의 가장 가까운 빈 땅으로
+    const pos = at ? this.freeStand(level, at) : level.start;
     if (!this.player) {
       this.player = new Player(this, this.partyKeys, pos.x, pos.y);
       if (this.webgl) this.playerLight = this.lights.addLight(pos.x, pos.y, 150, 0xffffff, 1.5);
@@ -892,6 +892,12 @@ export default class GameScene extends Phaser.Scene {
         const px = x * TILE, py = y * TILE, k = (x * 13 + y * 7) % 5;
         g.lineStyle(1, 0x0a0812, .55); g.lineBetween(px + 3 + k, py + 2, px + 8 + k, py + 9); g.lineBetween(px + 8 + k, py + 9, px + 6, py + 14);
         g.lineStyle(1, this.stage.palette.edge, .14 + (3 - b.hp) * .12); g.lineBetween(px + 4 + k, py + 2, px + 9 + k, py + 9);
+        if (b.secret) {   // 🟡 비밀 벽감: 금 간 틈으로 금빛이 샌다 (칠수록 틈이 벌어져 더 밝게)
+          const a = .5 + (3 - b.hp) * .15;
+          g.lineStyle(1, 0xffe08a, a); g.lineBetween(px + 3 + k, py + 2, px + 8 + k, py + 9); g.lineBetween(px + 8 + k, py + 9, px + 6, py + 14);
+          g.fillStyle(0xfff6d0, a * .8); g.fillRect(px + 7 + k, py + 8, 2, 2);
+          if (b.hp < 3) { g.lineStyle(1, 0xffe08a, a * .8); g.lineBetween(px + 2, py + 12 - k, px + 9, py + 5 + k); }
+        }
       }
     }
   }
@@ -909,12 +915,12 @@ export default class GameScene extends Phaser.Scene {
     }
   }
   breakWall(b) {
-    const lv = this.level;
+    const lv = this.level, cells = [...b.cells, ...(b.cover || [])];   // cover: 🟡 비밀 벽감 안쪽 (무너지기 전엔 바위 타일)
     b.broken = true;
-    for (const [x, y] of b.cells) { lv.grid[y][x] = '.'; lv.data[y][x] = -1; }
+    for (const [x, y] of cells) { lv.grid[y][x] = '.'; lv.data[y][x] = -1; }
     // 무너진 칸과 이웃 칸의 타일 모양을 다시 맞춘다
     const touched = new Set();
-    for (const [x, y] of b.cells) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) touched.add((x + dx) + ',' + (y + dy));
+    for (const [x, y] of cells) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) touched.add((x + dx) + ',' + (y + dy));
     for (const k of touched) {
       const [x, y] = k.split(',').map(Number);
       if (x < 0 || y < 0 || x >= lv.cols || y >= lv.rows) continue;
@@ -927,7 +933,13 @@ export default class GameScene extends Phaser.Scene {
     this.fx.shatter(cx, cy, b.rect.w, b.rect.h, { n: 18, speed: 160 });
     this.fx.burst(cx, cy, [0x8a7a62, 0x4a4036, 0x2a2420], 24, 160, { up: 80 });
     this.fx.shake(.012, 260); Sfx.play('boom');
-    this.events.emit('toast', '벽이 무너졌다! 숨겨진 길이 열렸다');
+    if (b.secret) {   // 🟡 비밀 벽감: 금빛이 쏟아지며 받침대가 드러난다
+      this.fx.burst(cx, cy, [0xffe08a, 0xfff6d0, 0x8ae8ff], 30, 170, { glow: true, up: 60 });
+      this.fx.glow(cx, cy, 70, 0xffe08a, 600, 1);
+      if (this.props) this.props.revealSecret(b);
+      Sfx.play('unlock');
+      this.events.emit('toast', '🟡 빛이 새던 벽이 무너졌다! — 숨겨진 벽감에 기술머신 캡슐이 잠들어 있다', 'tm');
+    } else this.events.emit('toast', '벽이 무너졌다! 숨겨진 길이 열렸다');
     this.drawBreakables();
   }
 
@@ -1237,7 +1249,7 @@ export default class GameScene extends Phaser.Scene {
       this.promptText = this.add.text(0, 0, '', { fontFamily: 'Galmuri9', fontSize: '9px', color: '#fff2c0', stroke: '#1a1008', strokeThickness: 3, resolution: 1 }).setOrigin(.5, 1).setDepth(60);
       this.promptText.setInteractive({ useHandCursor: true }).on('pointerdown', () => { if (!this.paused) this.promptTap = true; });
     }
-    this.promptText.setVisible(!!it);
+    this.promptText.setVisible(!!it && it.kind !== 'tm');   // 🟡 기술머신은 작은 툴팁(updatePickups)이 안내를 맡는다
     if (!it) return;
     const touch = this.touchInput && this.touchInput.on;   // 터치패드를 쓰면 키 대신 버튼 이름으로
     this.promptText.setText(touch ? it.prompt.replace('F 또는 ↑', '조사 버튼').replace('↓ + Space', '아래로 당기고 점프') : it.prompt).setPosition(Math.round(it.x), Math.round(it.promptY + Math.sin(this.time.now / 250) * 1.5));
@@ -1250,7 +1262,10 @@ export default class GameScene extends Phaser.Scene {
     if (it.kind === 'guide') { this.talkGuide(it); return; }   // 🌀 지방 최종 보스 뒤 조력자: 브리핑 · 처음엔 파티 전원 회복 + 자동 저장
     if (it.kind === 'journal') { this.readJournal(it); return; }   // 가라르 지하 플랜트의 기밀 연구 일지
     if (it.kind === 'door') { this.useDoor(it); return; }   // 오박사 연구소 문 (안 ↔ 밖)
-    if (it.kind === 'tm') { this.openTM(it); return; }   // 카드를 확정해야 다 쓴 제단이 된다
+    if (it.kind === 'tm') {   // 카드를 확정해야 다 쓴 제단이 된다
+      if (it.sealed) { this.props.sealNudge(it); return; }   // 🔒 봉인된 받침대 (정화 봉인 · 수문장 결계): F 가 먹히지 않고 덩굴 · 결계가 번쩍인다
+      this.openTM(it); return;
+    }
     if (it.kind === 'altar') { it.altar.use(); return; }   // 🌈 삼색 방울의 제단: 구슬이 모자라면 비문 · 셋이면 봉헌 & 칠색조 강림
     if (it.kind === 'taxi') { this.toggleOverlay('taxi'); Sfx.play('select'); return; }   // 아머까오 공중날기 (몇 번이고)
     if (it.kind === 'mart') { this.openShop(it); return; }   // 포켓샵 (몇 번이고)
@@ -1527,6 +1542,7 @@ export default class GameScene extends Phaser.Scene {
     this.combat.updateZones(dt);
     this.updatePickups(dt);
     this.updateCovers();
+    this.updateHazards();
     this.updateRooms(dt);
     if (this.trainer) {
       this.trainer.update(dt);
@@ -2567,9 +2583,13 @@ export default class GameScene extends Phaser.Scene {
       if (room.type === 'treasure' && !room.entered) { room.entered = true; this.events.emit('toast', '보물방이다! 상자를 열어 보자'); }
       if (room.type === 'tm' && !room.entered) {
         room.entered = true;
-        if (room.tutorial) this.events.emit('banner', '기술머신 발견!', '막다른 길·샛길 끝을 탐험하면 새 기술과 카드를 얻는다 — F 또는 ↑ 로 가동');
-        else this.events.emit('toast', '고대 석판이 빛난다 — 기술머신 비밀방');
+        if (room.tutorial) this.events.emit('banner', '기술머신 발견!', '디딤돌을 밟고 높은 받침대에 올라 F 로 해독 — 막다른 샛길 · 금 간 벽 · 수문장 둥지에도 잠들어 있다');
+        else this.events.emit('toast', '🧗 도전 금고 — 가시 함정을 피해 디딤돌을 건너 높은 받침대의 기술머신으로! (2단 점프 · 공중 대시 Shift)');
       }
+      //  🟡 모험 보상: 수문장 둥지 · 침식 덩굴에 봉인된 받침대 (처음 들어설 때 한 번)
+      const sealedHere = k => !this.test && (this.level.tmx || []).some(t => t.room === room && t.seal === k && !t.used && this.tmSealed(t));
+      if (room.nest && !room.nestTold && sealedHere('guard')) { room.nestTold = true; this.time.delayedCall(900, () => this.events.emit('toast', '🔥 수문장의 둥지 — 붉은 오라의 수문장을 쓰러뜨려야 안쪽 기술머신 캡슐의 결계가 풀린다')); }
+      if (!room.sealTold && sealedHere('purify')) { room.sealTold = true; this.time.delayedCall(2600, () => this.events.emit('toast', '🔒 침식 덩굴에 봉인된 기술머신 캡슐 — 이 구역을 정화하면 봉인이 풀린다')); }
       if (room.type === 'sanctuary' && !room.entered && !room.cleared) this.events.emit('toast', '공기가 무겁다… 전설의 기척');
     }
     // 아레나: 안쪽으로 조금 들어서면 문이 닫히고 보스전
@@ -2631,7 +2651,7 @@ export default class GameScene extends Phaser.Scene {
     s.enemy = e;
     this.fx.ring(s.x, e.y, 34, 0xff3a2a, 460); this.fx.glow(s.x, e.y, 40, 0xff3a2a, 520, 1);
     this.fx.burst(s.x, e.y, [0xff3a2a, 0xffa040, 0xffffff], 20, 130, { glow: true, up: 80 });
-    this.events.emit('toast', s.trial ? `🔥 시련의 수호자 ${def.name}이(가) 나타났다! 쓰러뜨리고 시련 캡틴에게 돌아가자` : `🔥 엘리트 ${def.name}이(가) 길을 막아섰다! 쓰러뜨리면 이상한사탕 · 금구슬 · 빛나는 TM 코어`);
+    this.events.emit('toast', s.trial ? `🔥 시련의 수호자 ${def.name}이(가) 나타났다! 쓰러뜨리고 시련 캡틴에게 돌아가자` : `🔥 엘리트 ${def.name}이(가) 길을 막아섰다! 쓰러뜨리면 이상한사탕 · 금구슬${s.room && s.room.nest ? ' · 둥지 안쪽 기술머신 결계 해제' : ''}`);
     if (s.trial) e.trialGuard = true;
     Sfx.play('boss');
   }
@@ -2657,6 +2677,7 @@ export default class GameScene extends Phaser.Scene {
     // 계열은 지방 pool 에서, 진화 단계는 지금 출전 중인 포켓몬 단계 ±1 안에서 (두 단계 차이는 안 남)
     let pk = pickWildStage(this.stage.pool, this.player.tierIdx);
     if (WILD[pk.line].flying && Math.random() < .5) pk = pickWildStage(this.stage.pool, this.player.tierIdx);   // 날짐승·고스트는 잡기 번거로워 등장 빈도 절반쯤으로
+    if (s.ranged) { const line = Math.random() < .65 ? 'pichu' : 'gastly'; pk = { line, stage: Math.min(WILD[line].forms.length - 1, pk.stage) }; }   // 🟡 도전 금고 디딤돌: 원거리 몹 (피츄 계열 앞질러 쏘기 · 고오스 계열 유도탄)
     const { line, stage } = pk, { key, def } = wildForm(line, stage), gy = s.y;
     let x = s.x, y = def.flying ? gy - rand(30, 52) : gy - 14;
     for (let k = 0; k < 6 && def.flying && (this.isSolidAt(x, y) || this.isSolidAt(x, y - 12)); k++) y = gy - rand(20, 44);   // 날짐승: 바위·종유석 속 피하기
@@ -2872,7 +2893,7 @@ export default class GameScene extends Phaser.Scene {
     const lvK = this.level;
     if (e.boss && coreOfBoss(e.bossKey)) this.time.delayedCall(1300, () => { if (this.level === lvK) this.spawnPickup('item', e.x, e.y - 14, coreOfBoss(e.bossKey)); });   // 💎 지방 최종 보스만 그 지방의 코어 (data/cores.js FINAL_CORE)
     if (e.boss && BEAST_ORBS[e.bossKey]) this.time.delayedCall(1300, () => { if (this.level === lvK) this.spawnPickup('orb', e.x, e.y - 14, e.bossKey); });   // 성도 3성수: 코어 대신 성수의 구슬 (칠색조의 제단 열쇠)   // 보스의 코어 100% (짝 보스 · 이어 싸우기도 한 마리마다)
-    if (e.boss) this.time.delayedCall(1700, () => { if (this.level === lvK && !this.over) this.spawnPickup('tmcore', e.x, e.y - 16); });   // 빛나는 TM 코어 100% (보스 · 엘리트만 새 카드를 떨어뜨린다)
+    //  🟡 기술머신 캡슐은 더 이상 보스 · 엘리트가 떨어뜨리지 않는다 — 모험 보상 지형(game/World.js: 도전 금고 · 정화 봉인 · 비밀 벽감 · 수문장 둥지)으로 옮겼다 (수는 그대로)
     if (e.boss) { this.bossDefeated(e); return; }
     if (e.elite && this.stageIdx === 2 && this.player.quests && this.player.quests.zTrial === 1) {   // 호연의 시련: 엘리트 수호자를 넘었다 → 루네시티 시련 캡틴에게
       this.player.quests.zTrial = 2;
@@ -2882,7 +2903,7 @@ export default class GameScene extends Phaser.Scene {
       this.spawnPickup('candy', e.x, e.y - 4);
       eliteNuggets(this.stageIdx).forEach((id, k) => this.spawnPickup('nugget', e.x - 8 + k * 8, e.y - 6, id));
       if (Math.random() < .25) this.spawnPickup('item', e.x + 6, e.y - 4, pick(ELITE_TOOLS));
-      this.spawnPickup('tmcore', e.x, e.y - 12);   // 빛나는 TM 코어 100%: 주우면 그 자리에서 기술머신 카드 3장
+      if (e.room && e.room.nest && (this.level.tmx || []).some(t => t.room === e.room && t.seal === 'guard' && !t.used)) this.time.delayedCall(700, () => this.events.emit('toast', '🔓 수문장이 쓰러졌다! — 둥지 안쪽 기술머신 캡슐의 결계가 풀린다', 'tm'));   // 🟡 수문장 둥지 (World D)
       this.fx.ring(e.x, e.y, 40, 0xffd27a, 420);
     }
     else if (Math.random() < ITEM_DROP.wild * (e.respawned ? XP_UNITS.respawn : 1)) this.spawnPickup('item', e.x, e.y, pick(RANDOM_ITEM_KEYS));   // 야생은 아이템 대신 가끔 오렌열매 (다시 나타난 본길 몬스터는 전리품도 25%)
@@ -3529,7 +3550,7 @@ export default class GameScene extends Phaser.Scene {
     this.fx.burst(p.x, p.y, [0xffd25a, 0xffffff, 0xffb040], 24, 150, { glow: true, up: 90 });
     Sfx.play('unlock');
   }
-  // ---------------- 빛나는 TM 코어 (엘리트 · 보스 100%) → 카드 3장 중 1장 ----------------
+  // ---------------- 빛나는 TM 코어 → 카드 3장 중 1장 (이제 보스 · 엘리트는 떨어뜨리지 않는다 — 예전 저장에 남은 코어 · 현장 전송만) ----------------
   //  보스전 · 연출 · 다른 창이 열려 있으면 기다렸다가 연다 (bonusQueue — 숙련도 강화 { up } 도 같은 줄) · 고르지 않고 닫으면 같은 카드로 잠시 뒤 다시
   queueBonusCards(kind, wait = 0) { (this.bonusQueue = this.bonusQueue || []).push(kind); this.bonusT = Math.max(this.bonusT || 0, wait); }
   tryBonusCards() {
@@ -3613,8 +3634,10 @@ export default class GameScene extends Phaser.Scene {
     this.pickRing.setVisible(!!f);
     if (f) this.pickRing.setPosition(f.img.x, f.img.y).setScale(.38 + Math.sin(t * 7) * .04).setAlpha(.75 + Math.sin(t * 7) * .2);
     const pn = !f && this.portal && this.portalNear && !this.overlay && !this.cinema && !this.transitioning;
+    const tm = !f && !pn && !this.overlay && !this.cinema && !this.transitioning && this.props ? this.props.nearest(pl.x, pl.bottom) : null;   // 🟡 기술머신 받침대
     if (f) this.showTip(f, this.pickupInfo(f), f.img.x, f.img.y - 10);
     else if (pn) this.showTip(this.portal, this.portalInfo(), this.portal.x, this.portal.y - 26);
+    else if (tm && tm.kind === 'tm') this.showTip(tm, this.tmInfo(tm), tm.x, tm.tipY);
     else this.hideTip();
     for (const c of this.chests) {
       if (c.opened) continue;
@@ -3647,7 +3670,7 @@ export default class GameScene extends Phaser.Scene {
       const it = ITEMS[p.id] || {}, core = it.core;
       return core ? { tag: '🟣 유니크', tagCol: '#d88aff', name: it.name, desc: cut(core.desc.replace(/^\S+\s/, ''), 44) } : { tag: '🔵 도구', tagCol: '#8ac8ff', name: it.name || p.id, desc: cut(it.desc) };
     }
-    if (p.kind === 'tmcore') return { tag: '🟡 TM 캡슐', tagCol: '#ffd25a', name: '기술머신 데이터 (빛나는 TM 코어)', desc: '새로운 기술머신 카드를 1장 선택합니다' };
+    if (p.kind === 'tmcore') return { head: '🟡 [모험 보상: 기술머신 캡슐]', tagCol: '#ffd25a', desc: '— 고대의 기술 데이터를 해독하여 새로운 카드를 획득합니다.', act: '해독' };   // 예전 저장에 남은 빛나는 TM 코어
     if (p.kind === 'orb') { const o = BEAST_ORBS[p.id]; return { tag: `${o.icon} 열쇠`, tagCol: '#' + o.color.toString(16).padStart(6, '0'), name: o.name, desc: '방울탑 최상층 칠색조의 제단에 바치는 성수의 구슬' }; }
     if (p.kind === 'bondflame') return { tag: '🔥 유대', tagCol: '#ffc040', name: '유대의 불꽃', desc: '레드가 남긴 불꽃 — 정화 단계 +1 · 영구 권능 해금' };
     if (p.kind === 'candy') return { tag: '🟢 성장', tagCol: '#7dff9a', name: '이상한사탕', desc: '이 지방 몬스터 8마리분 경험치 (가방에서 먹인다)' };
@@ -3662,6 +3685,54 @@ export default class GameScene extends Phaser.Scene {
     return last ? { tag: '🌀 여정의 끝', tagCol: '#ffd890', name: '진 엔딩 게이트', desc: '모두의 유대가 세상을 구했다 — 여정을 마친다', act: '입장' }
       : { tag: `🌀 ${STAGES[n].region}(Ch.${n + 1}) 이동 게이트`, tagCol: '#8ad8ff', name: '', desc: `${PORTAL_DEST[n] || STAGES[n].areas[0].name}으로 이동합니다.`, act: '입장' };
   }
+  // 저장해 둔 자리(몸 가운데)가 바위 · 부서지는 벽 속이면 같은 방에서 가장 가까운 설 자리 (발밑 단단한 땅 · 위로 두 칸 빈칸)
+  freeStand(level, at) {
+    const G = level.grid, tx = Math.floor(at.x / TILE), cy = Math.floor(at.y / TILE);
+    const solid = (x, y) => !G[y] || G[y][x] === undefined || G[y][x] === 'S' || G[y][x] === 'B';
+    if (!solid(tx, cy) && !solid(tx, cy - 1)) return at;
+    const r = roomAt(level, at.x, at.y), x0 = r ? r.tx0 : tx - 30, x1 = r ? r.tx1 : tx + 30, y0 = r ? r.ty0 : cy - 20, y1 = r ? r.F : cy + 20;
+    let best = null, bd = Infinity;
+    for (let x = x0; x < x1; x++) for (let g = y0 + 2; g <= y1; g++) {
+      if (!G[g] || !'SBP'.includes(G[g][x]) || solid(x, g - 1) || solid(x, g - 2)) continue;
+      const d = Math.abs(x - tx) + Math.abs(g - cy) * 1.5;
+      if (d < bd) { bd = d; best = { x: x * TILE + 8, y: g * TILE - 12 }; }
+    }
+    return best || level.start;
+  }
+  // 🟡 모험 보상 기술머신 받침대 툴팁 (game/Props.js 'tm') — 봉인된 받침대는 무엇을 하면 풀리는지
+  tmInfo(it) {
+    if (it.sealed) return it.pr && it.pr.seal === 'guard'
+      ? { head: '🔒 [수문장의 결계: 기술머신 캡슐]', tagCol: '#ff8a6a', desc: '붉은 오라의 수문장이 받침대를 지키고 있다 — 수문장을 쓰러뜨리면 결계가 풀린다.', foot: '[ 결계에 막혀 해독할 수 없다 ]' }
+      : { head: '🔒 [정화 봉인: 기술머신 캡슐]', tagCol: '#ff7a9a', desc: '침식 덩굴이 받침대를 휘감았다 — 이 구역의 침식된 포켓몬을 모두 쓰러뜨려 정화하면 풀린다.', foot: '[ 봉인되어 해독할 수 없다 ]' };
+    return { head: '🟡 [모험 보상: 기술머신 캡슐]', tagCol: '#ffd25a', desc: '— 고대의 기술 데이터를 해독하여 새로운 카드를 획득합니다.', act: '해독' };
+  }
+  // 🟡 모험 보상 기술머신의 봉인: B 정화 봉인(그 샛길 구역을 정화할 때까지) · D 수문장 결계(둥지의 붉은 오라 수문장이 살아 있는 동안)
+  //  지방 전체를 정화했거나 테스트룸이면 풀려 있다
+  tmSealed(pr) {
+    const lv = this.level, r = pr && pr.room;
+    if (!pr || !pr.seal || pr.used || this.test || !lv || lv.purified || !r || r.isPurified) return false;
+    if (pr.seal === 'purify') return true;
+    if (pr.seal === 'guard') return lv.spawns.some(sp => sp.room === r && sp.elite && (!sp.spawned || (sp.enemy && sp.enemy.alive)));
+    return false;
+  }
+  // 🟡 도전 금고 가시 함정 (World hazards): 발이 가시에 닿으면 최대 체력 8% 피해 + 위로 튕겨 오른다 (무적 중에도 튕긴다 — 가시 위엔 서 있을 수 없다)
+  updateHazards() {
+    const lv = this.level, p = this.player;
+    if (!lv || !lv.hazards || !lv.hazards.length || !p || !p.b || p.dead || this.over) return;
+    const fx = p.x, fy = p.bottom;
+    for (const h of lv.hazards) {
+      if (fx < h.x0 * TILE - 3 || fx > (h.x1 + 1) * TILE + 3) continue;
+      const floor = (h.y + 1) * TILE;
+      if (fy < floor - 7 || fy > floor + 3) continue;
+      const hit = p.takeHit(Math.max(3, Math.round(p.m.maxhp * .08)), 'none', fx + (p.face || 1) * 4, { noParry: true });
+      p.b.setVelocityY(-330);
+      if (hit) {
+        this.fx.burst(fx, floor - 4, [0xc8324a, 0x7a1a32, 0xe8e0d8], 10, 120, { up: 90 });
+        if (!this.thornTold) { this.thornTold = true; this.events.emit('toast', '🌵 가시 함정! — 디딤돌을 건너 높은 받침대로 (2단 점프 · 공중 대시 Shift)'); }
+      }
+      break;
+    }
+  }
   // 작은 반투명 다크 박스 (아이템 바로 위 · 부드럽게 튀어나온다)
   showTip(target, info, x, y) {
     if (!this.tip) {
@@ -3670,12 +3741,12 @@ export default class GameScene extends Phaser.Scene {
       this.tip = { box: this.add.container(0, 0, [bg, t1, t2, t3]).setDepth(62), bg, t1, t2, t3, target: null };
       this.worldObjs.push(this.tip.box);
     }
-    const T = this.tip, touch = this.touchInput && this.touchInput.on;
-    if (T.target !== target) {
-      T.target = target;
-      T.t1.setText(info.name ? `[${info.tag}] ${info.name}` : `[${info.tag}]`).setColor(info.tagCol);
+    const T = this.tip, touch = this.touchInput && this.touchInput.on, head = info.head || (info.name ? `[${info.tag}] ${info.name}` : `[${info.tag}]`);
+    if (T.target !== target || T.head !== head) {   // head 가 바뀌면(봉인이 풀렸다) 다시 그린다
+      T.target = target; T.head = head;
+      T.t1.setText(head).setColor(info.tagCol);
       T.t2.setText(info.desc);
-      T.t3.setText(touch ? `[ 🖐️ 조사 버튼 · 터치로 ${info.act || '습득'} ]` : `[ F 키를 눌러 ${info.act || '습득'} ]`);
+      T.t3.setText(info.foot || (touch ? `[ 🖐️ 조사 버튼 · 터치로 ${info.act || '습득'} ]` : `[ F 키를 눌러 ${info.act || '습득'} ]`));
       const w = Math.min(166, Math.max(T.t1.width, T.t2.width, T.t3.width) + 12), h = T.t1.height + T.t2.height + T.t3.height + 9;
       T.t1.setPosition(0, 3); T.t2.setPosition(0, 3 + T.t1.height + 1); T.t3.setPosition(0, 4 + T.t1.height + T.t2.height + 1);
       T.bg.clear(); T.bg.fillStyle(0x0c0a16, .86); T.bg.fillRoundedRect(-w / 2, 0, w, h, 4); T.bg.lineStyle(1, Phaser.Display.Color.HexStringToColor(info.tagCol).color, .7); T.bg.strokeRoundedRect(-w / 2, 0, w, h, 4);

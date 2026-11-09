@@ -239,9 +239,11 @@ export class MapView {
         const big = m.kind === 'boss', done = m.room.cleared;
         pin(x, y, done ? 0x8a8478 : big ? 0xff8a8a : 0xffc08a, done ? 0x1a1414 : 0x2a0a14, big ? 7.5 : 5.2);
         skull(x, y, big ? 1.15 : .8, done ? 0x1a1414 : 0x2a0a14);
-      } else if (m.kind === 'tm') {   // 기술머신 디스크 (카드를 고르고 나면 회색)
-        const used = lv.props.some(q => q.kind === 'tm' && q.x === m.x && q.used);
-        pin(x, y, used ? 0x8a8478 : 0x9ad8ff, 0x101828);
+      } else if (m.kind === 'tm') {   // 기술머신 디스크 (카드를 고르고 나면 회색 · 봉인된 받침대는 붉은 테)
+        if (m.pr && m.pr.secret && !m.pr.secret.broken) continue;   // 🟡 비밀 벽감: 벽이 무너지기 전엔 지도에도 없다
+        const used = m.pr ? m.pr.used : lv.props.some(q => q.kind === 'tm' && q.x === m.x && q.used);
+        const sealed = !used && m.pr && m.pr.seal && gs && gs.tmSealed && gs.tmSealed(m.pr);
+        pin(x, y, used ? 0x8a8478 : sealed ? 0xff6a8a : 0x9ad8ff, sealed ? 0x2a0a14 : 0x101828);
         pg.fillStyle(used ? 0x5a5a6a : 0x7ab8ff, 1); pg.fillCircle(x, y, 4.2);
         pg.fillStyle(used ? 0x8a8a9a : 0xc8e4ff, 1); pg.fillCircle(x, y, 2.8);
         pg.fillStyle(0x101828, 1); pg.fillCircle(x, y, 1.1);
