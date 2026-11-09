@@ -4,6 +4,7 @@
 import { TILE } from '../config.js';
 import { css, shade } from '../systems/Textures.js';
 import { NPCS } from '../data/npcs.js';
+import { Sfx } from '../systems/Audio.js';
 
 const NW = 20, NH = 36;
 const SKIN = 0xf0d0b0, SKIN_D = 0xd4ac8c, INK = 0x1a1622, COAT = 0xf2efe6, COAT_D = 0xc4c0b4;
@@ -153,6 +154,21 @@ function bubbleArt(scene) {
   return key;
 }
 
+// ❗ 이야기 NPC 머리 위 표식: 새로 들을 이야기(노랑) · 받을 보상 · 회복(금빛) — 말풍선 모양 + 느낌표
+function markArt(scene, gold) {
+  const key = gold ? 'npc:mark2' : 'npc:mark';
+  if (scene.textures.exists(key)) return key;
+  const t = scene.textures.createCanvas(key, 11, 16), c = t.getContext();
+  const F = (x, y, w, h, col) => { c.fillStyle = css(col); c.fillRect(x, y, w, h); };
+  const fill = gold ? 0xffb020 : 0xffe14a, hi = gold ? 0xfff0a0 : 0xfffbd0, ol = 0x1a1622;
+  F(2, 0, 7, 1, ol); F(1, 1, 9, 11, ol); F(2, 12, 7, 1, ol); F(4, 13, 3, 1, ol); F(5, 14, 1, 1, ol);   // 테두리 · 꼬리
+  F(2, 1, 7, 11, fill); F(2, 1, 7, 1, hi); F(5, 13, 1, 1, fill);
+  F(4, 3, 3, 5, ol); F(4, 9, 3, 2, ol);   // !
+  t.refresh();
+  return key;
+}
+const CALL_STYLE = { fontFamily: 'Galmuri9', fontSize: '8px', color: '#fff2b0', backgroundColor: 'rgba(40,24,8,0.92)', padding: { x: 4, y: 2 }, resolution: 2 };
+
 export class Npcs {
   constructor(scene, level, props) {
     this.s = scene; this.list = []; this.props = props;
@@ -175,7 +191,10 @@ export class Npcs {
         const spots = [40, 58, 76, 94, 112].map(d => X + d).filter(x => scene.isSolidAt(x, Y + 3) && !scene.isSolidAt(x, Y - 6) && !scene.isSolidAt(x, Y - 14));
         spots.slice(0, def.practice === 'dive' ? 2 : 3).forEach(x => props.practice(x, Y, def.practice));
       }
-      const o = { def, key, X, Y, spr, shadow, bubble, hint, it, face: n.face, blinkT: 1 + Math.random() * 3, blinkOn: 0, ph: Math.random() * 6, hop: 0 };
+      //  ❗ 이야기 NPC(힌트 말풍선이 있는 사람 · 지방 보스 뒤 조력자 · 오박사): 새 이야기 · 보상이 있으면 머리 위 '!' · 곁을 지나치면 먼저 부른다 (update)
+      const story = !!(def.hint || def.guide || n.id === 'oak');
+      const mark = story ? scene.add.image(X, Y - NH - 8, markArt(scene, false)).setOrigin(.5, 1).setDepth(7.95).setAlpha(0) : null;
+      const o = { def, key, X, Y, spr, shadow, bubble, hint, it, mark, story, pend: 0, pendT: 0, markY: Y - NH - 8, callT: 0, call: null, calledAt: -1e9, face: n.face, blinkT: 1 + Math.random() * 3, blinkOn: 0, ph: Math.random() * 6, hop: 0 };
       it.ref = o;
       props.interacts.push(it);
       this.list.push(o);
@@ -204,16 +223,50 @@ export class Npcs {
       const breathe = Math.sin(t * 2.1 + o.ph) > .55 ? -1 : 0, hop = o.hop > 0 ? -Math.round(Math.sin((1 - o.hop / .25) * Math.PI) * 3) : 0;
       o.spr.y = o.Y + 1 + breathe + hop;
       const close = Math.abs(dx) < 46 && Math.abs(p.bottom - o.Y) < 40;
-      if (o.hint) {   // 120px 안: 힌트 말풍선 (바로 앞에서는 점 세 개 말풍선 · 대화 안내에 자리를 내준다)
-        const want = Math.abs(dx) < 120 && Math.abs(p.bottom - o.Y) < 60 && !close ? (o.read ? .5 : 1) : 0;
+      if (o.story) this.storyMark(o, dx, p, close, dt, t);
+      if (o.hint) {   // 120px 안: 힌트 말풍선 (바로 앞에서는 점 세 개 말풍선 · 대화 안내에 자리를 내준다 · 부르는 말이 떠 있으면 비켜 준다)
+        const want = Math.abs(dx) < 120 && Math.abs(p.bottom - o.Y) < 60 && !close && !(o.callT > 0) ? (o.read ? .5 : 1) : 0;
         o.hint.setAlpha(o.hint.alpha + (want - o.hint.alpha) * Math.min(1, dt * 6)).setY(o.Y - NH - 6 + Math.sin(t * 2.4 + o.ph) * 1.5);
       }
       o.bubble.setAlpha(Math.max(0, Math.min(1, o.bubble.alpha + (close ? dt * 4 : -dt * 4)))).setY(o.Y - NH - 3 + Math.sin(t * 3 + o.ph) * 1.2).setX(o.spr.flipX ? o.X - 6 : o.X + 6);
     }
   }
 
+  // ❗ 이야기 NPC: 머리 위 '!' (멀리서도 보인다 · 보상 · 회복이면 금빛) · 150px 안으로 지나치면 깡총 뛰며 먼저 부른다
+  //  어떤 상태인지는 GameScene.npcPending (0 없음 · 1 새 이야기 · 2 보상 / 회복) — 말을 걸면 사라진다
+  //  부르는 말은 한 번 지나칠 때 한 번 (멀리 떠났다가 30초 뒤 다시 지나치면 또) · 처음 부를 땐 화면 아래 안내도
+  storyMark(o, dx, p, close, dt, t) {
+    const s = this.s;
+    if ((o.pendT -= dt) <= 0) {
+      o.pendT = .4;
+      const lv = s.npcPending ? s.npcPending(o.it) : 0;
+      if (lv !== o.pend) { o.pend = lv; o.calledAt = -1e9; o.told = false; if (lv) o.mark.setTexture(markArt(s, lv === 2)); }
+    }
+    const ady = Math.abs(p.bottom - o.Y), now = s.time.now;
+    const opening = s.stageIdx === 0 && !(p.quests && p.quests.oakIntro);   // 첫 장면(오박사가 먼저 말을 건다) 전엔 부르지 않는다
+    if (o.pend && !close && !opening && Math.abs(dx) < 150 && ady < 70 && now - o.calledAt > 30000 && !s.overlay && !s.cinema && !o.near150) {
+      o.calledAt = now; o.callT = 2.8; o.hop = .25;
+      const line = s.npcCall ? s.npcCall(o.it, o.pend) : '어이, 거기! 잠깐 이야기 좀 하세!';
+      if (!o.call) o.call = s.add.text(o.X, o.Y - NH - 6, '', CALL_STYLE).setOrigin(.5, 1).setDepth(7.92).setAlpha(0);
+      o.call.setText(`💬 ${line}`);
+      Sfx.play('select');
+      if (!o.told) { o.told = true; const nm = o.def.name, c = nm.charCodeAt(nm.length - 1), jo = c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 ? '이' : '가'; s.events.emit('toast', `💬 ${nm}${jo} 부른다 — 가까이 가서 ${s.touchInput && s.touchInput.on ? '조사 버튼' : 'F'} 로 대화`); }   // 받침에 맞춘 이 / 가
+    }
+    o.near150 = Math.abs(dx) < 150 && ady < 70;   // 150px 안에 머무는 동안은 다시 부르지 않는다
+    if (o.call) {
+      o.callT -= dt;
+      const want = o.callT > 0 && !close ? 1 : 0;
+      o.call.setAlpha(o.call.alpha + (want - o.call.alpha) * Math.min(1, dt * 8)).setY(o.Y - NH - 6 + Math.sin(t * 3 + o.ph) * 1.2);
+    }
+    //  '!' 는 머리 위 — 힌트 말풍선 · 부르는 말이 떠 있으면 그 위로 비켜 선다 · 바로 앞(대화 안내)에서는 숨는다
+    const up = (o.hint && o.hint.alpha > .3) || (o.call && o.call.alpha > .3);
+    o.markY += ((o.Y - NH - (up ? 22 : 8)) - o.markY) * Math.min(1, dt * 8);
+    const want = o.pend && !close ? 1 : 0, k = o.pend === 2 ? 1 + Math.sin(t * 6) * .12 : 1;
+    o.mark.setAlpha(o.mark.alpha + (want - o.mark.alpha) * Math.min(1, dt * 6)).setScale(k).setPosition(o.X, o.markY + Math.sin(t * 4 + o.ph) * 1.5);
+  }
+
   destroy() {
-    for (const o of this.list) { o.spr.destroy(); o.shadow.destroy(); o.bubble.destroy(); if (o.hint) o.hint.destroy(); }
+    for (const o of this.list) { o.spr.destroy(); o.shadow.destroy(); o.bubble.destroy(); if (o.hint) o.hint.destroy(); if (o.mark) o.mark.destroy(); if (o.call) o.call.destroy(); }
     this.list = [];
   }
 }

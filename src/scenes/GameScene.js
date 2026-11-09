@@ -1359,6 +1359,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.overlay || this.paused || this.time.now - (this.talkClosedAt || 0) < 300) return;
     const npc = it.npc, W = this.worlds[this.stageIdx], pure = !!(W && W.purified && npc.pure);
     const story = this.storyTalk(it.id);   // 이야기 NPC: 진행에 따라 대사가 바뀌고, 대화를 마치면 보상 (onEnd)
+    const q = this.player.quests || (this.player.quests = {}); q['met:' + it.id] = 1;   // ❗ 들은 이야기 (머리 위 '!' 가 사라진다 — npcPending)
     this.talk = { name: npc.name, look: npc.look, tint: npc.tint, lines: story ? story.lines : pure ? npc.pure : npc.lines, page: 0, id: it.id, onEnd: story && story.onEnd };
     if (this.npcs) this.npcs.greet(it, this.player.x);
     this.toggleOverlay('talk');
@@ -1384,6 +1385,33 @@ export default class GameScene extends Phaser.Scene {
       this.talkClosedAt = 0;
       this.talkTo(it);
     });
+  }
+
+  // ❗ 이야기 NPC 머리 위 표식 (game/Npc.js storyMark): 0 없음 · 1 새로 들을 이야기(노랑 '!') · 2 받을 보상 · 회복(금빛 '!')
+  //  힌트 말풍선이 있는 사람 · 오박사는 처음 말을 걸 때까지 1 · 지방 보스 뒤 조력자는 처음 대화(회복 · 저장) 전까지 2
+  //  노승려: 성도를 정화하면 2(키스톤 · 메가스톤) · 시련 캡틴: 시련 전 1 · 수호자를 넘으면 2 · 고대석 수집가: 사탕 2개로 바꿀 수 있으면 2
+  npcPending(it) {
+    const p = this.player, id = it.id, def = it.npc;
+    if (!p || this.test || !def) return 0;
+    const q = p.quests || (p.quests = {}), met = !!q['met:' + id];
+    if (def.guide) return q['guide' + this.stageIdx + ':' + id] ? 0 : 2;
+    if (id === 'elder_monk') return q.monk ? 0 : (this.purifiedSet.has(1) || !!(this.worlds[1] && this.worlds[1].purified)) ? 2 : met ? 0 : 1;
+    if (id === 'trial_captain') { const st = q.zTrial || 0; return st === 2 ? 2 : st === 0 ? 1 : 0; }
+    if (id === 'stone_collector') { const r = this.storyTalk(id); return r && r.onEnd ? 2 : met ? 0 : 1; }
+    return (def.hint || id === 'oak') && !met ? 1 : 0;
+  }
+  // 곁을 지나칠 때 먼저 부르는 말 (lv: npcPending)
+  npcCall(it, lv) {
+    const id = it.id, q = (this.player && this.player.quests) || {};
+    if (it.npc.guide) return '기다리고 있었다! 이리 오너라 — 떠나기 전에 회복시켜 주마.';
+    const C = {
+      oak: '오오, 어디 가는 게냐! 잠깐 이리 오거라!',
+      elder_monk: lv === 2 ? '종소리가 돌아왔구려! 이리 오시오, 줄 것이 있소!' : '여보시오, 젊은이! 방울탑 이야기를 들어 보시오.',
+      trial_captain: lv === 2 ? '오오, 그 기운! 시련을 넘었구먼. 이리 오게!' : (q.zTrial ? '시련은 아직이라네!' : '이봐, 트레이너! Z파워에 관심 없나?'),
+      stone_collector: lv === 2 ? '반짝이는 돌 있소! 사탕 2개면 바꿔 주지!' : '이보게, 고대석 구경하고 가게!'
+    };
+    const generic = ['어이, 거기! 잠깐 이야기 좀 하세!', '잠깐! 들려줄 이야기가 있어.', '이봐, 그냥 지나치지 말고 들어 보게!'];
+    return C[id] || generic[[...id].reduce((h, ch) => h + ch.charCodeAt(0), 0) % generic.length];
   }
 
   // ---------------- 이야기 NPC (data/npcs.js) ----------------
