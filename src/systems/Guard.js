@@ -7,17 +7,27 @@ import Phaser from 'phaser';
 const seen = new Map();
 let box = null, hideT = null;
 
-function show(msg) {
+function show(msg, head = '오류가 나서 그 동작을 건너뛰었어요 (게임은 계속됩니다)') {
   if (!box) {
     box = document.createElement('div');
     box.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:99999;max-width:70vw;padding:6px 10px;border-radius:6px;'
       + 'background:rgba(40,8,16,.88);color:#ffb0b8;font:12px/1.4 monospace;pointer-events:none;white-space:pre-wrap';
     document.body.appendChild(box);
   }
-  box.textContent = `오류가 나서 그 동작을 건너뛰었어요 (게임은 계속됩니다)\n${msg}`;
+  box.textContent = `${head}\n${msg}`;
   box.style.display = 'block';
   clearTimeout(hideT);
   hideT = setTimeout(() => { box.style.display = 'none'; }, 6000);
+}
+
+// 🛡️ 안전장치 보고 (보스가 쓰러지지 않는 고장 등을 고쳐 놓고 남긴다): 콘솔 · 화면 왼쪽 아래 상자 · window.__pokecellsErrors (같은 내용은 한 번)
+export function report(msg) {
+  const n = (seen.get(msg) || 0) + 1;
+  seen.set(msg, n);
+  (window.__pokecellsErrors = window.__pokecellsErrors || []).push(msg);
+  if (n > 1) return;
+  console.warn('[안전장치]', msg);
+  if (typeof document !== 'undefined') show(msg, '안전장치가 작동해 바로잡았어요 (게임은 계속됩니다) — 이 화면을 캡처해 알려 주세요');
 }
 
 export function installGuard() {

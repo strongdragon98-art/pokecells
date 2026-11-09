@@ -9,6 +9,7 @@ import { overlap, ENEMY_FAST, BOSS_MIN_SPEED, BOSS_SHOT_K } from './Combat.js';
 import { bolt } from './Perks.js';
 import { shockwave } from '../systems/PostFX.js';
 import { typeColor, typeName } from '../data/types.js';
+import { report } from '../systems/Guard.js';
 
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const STRIKE = new Set(['dash', 'dive', 'spin', 'spark', 'glide', 'jet', 'serpent', 'skydive', 'lunge', 'volt', 'boltRun', 'fbDive']);
@@ -91,8 +92,52 @@ export class Boss extends Enemy {
     sc.fx.glow(x, y, 30 * s, col, 280, .85);
     sc.fx.burst(x, y, [col, 0xffffff, col], Math.round(10 * s), 130 * s, { glow: true, grav: 0, bounce: false, life: .38, size: 2 });
   }
+  // 🛡️ 보스 안전장치 (테스터 리포트: 롱스톤 체력 바가 비고 그로기 바만 남은 채 아무리 때려도 쓰러지지 않았다)
+  //  ① 체력 · 최대 체력이 숫자가 아니면(NaN) 마지막으로 멀쩡했던 값으로 되돌린다 · 그로기 게이지도
+  //  ② 체력이 0 이하인데 살아 있으면 그 자리에서 쓰러뜨린다 (정화 연출 · 보상은 평소대로)
+  //  ③ 무적(땅속 · 순간이동 · 부활 …)이 10초 넘게 이어지면 풀고 모습을 되돌린다 — 정상 패턴은 길어야 2~3초
+  //  ④ 결전장 밖(바닥 밑 · 벽 너머)으로 2.5초 넘게 빠져 있으면 결전장 가운데 바닥으로
+  //  작동하면 화면 왼쪽 아래 상자 · 오류 기록(systems/Guard.js report)에 무엇이 · 왜 · 직전 피해 몇 건(hitLog)을 남긴다
+  watchdog(dt) {
+    const sc = this.scene;
+    if (!this.alive || this.gone || this.resting || this.leaving) return false;
+    if (!Number.isFinite(this.maxhp) || this.maxhp <= 0) { this.maxhp = Math.max(1, Math.round(this.def.hp || 1000)); this.guardLog('최대 체력 값 오류'); }
+    if (!Number.isFinite(this.hp)) { this.hp = Math.min(this.maxhp, this.goodHp ?? this.maxhp); this.guardLog('체력 값 오류(NaN) — 마지막 체력으로 복구'); }
+    else this.goodHp = this.hp;
+    if (!Number.isFinite(this.stagger)) this.stagger = 0;
+    if (this.state === 'intro' || sc.cinema || sc.altarRite) { this.intangT = 0; this.outT = 0; return false; }
+    if (this.hp <= 0 && !(this.cheatDeath && this.cheatDeath())) { this.guardLog('체력 0 인데 쓰러지지 않음 — 처치'); sc.killEnemy(this); return true; }
+    this.intangT = this.intangible ? (this.intangT || 0) + dt : 0;
+    if (this.intangT > 10) {
+      this.guardLog('무적이 10초 넘게 이어짐 — 해제');
+      this.intangT = 0; this.intangible = false; this.sprite.setAlpha(1);
+      if (this.glowImg) this.glowImg.setAlpha(.35);
+      if (this.b) { this.b.enable = true; this.b.setAllowGravity(!this.flying); }
+      this.state = 'idle'; this.cd = .8; this.telegraph(false);
+    }
+    const r = this.room;
+    if (r) {
+      const out = !Number.isFinite(this.x) || !Number.isFinite(this.y) || this.x < r.left - 120 || this.x > r.right + 120 || this.y > r.bottom + 80;
+      this.outT = out ? (this.outT || 0) + dt : 0;
+      if (this.outT > 2.5) {
+        this.guardLog('결전장 밖으로 빠짐 — 가운데로 되돌림');
+        this.outT = 0;
+        const x = r.cx ?? (r.left + r.right) / 2, gy = sc.floorAt ? sc.floorAt(x, r) : r.bottom - 100;
+        this.b.reset(x, this.flying ? gy - 70 : gy - this.b.height / 2 - 1); this.b.setVelocity(0, 0);
+        this.intangible = false; this.sprite.setAlpha(1); this.state = 'idle'; this.cd = .8;
+      }
+    }
+    return false;
+  }
+  guardLog(reason) {
+    const k = `${this.bossKey}:${reason}`;
+    if ((this.guardSeen || (this.guardSeen = new Set())).has(k)) return;
+    this.guardSeen.add(k);
+    report(`🛡️ ${this.name}: ${reason} (상태 ${this.state} · 체력 ${Math.round(this.hp)}/${Math.round(this.maxhp)})${this.hitLog && this.hitLog.length ? ' · 직전 피해 ' + this.hitLog.join(' / ') : ''}`);
+  }
   update(dt, p) {
     const sc = this.scene, st = this.status;
+    if (this.watchdog(dt)) return;   // 🛡️ 고장 난 보스는 바로잡는다 (처치했으면 이번 프레임은 끝)
     if (this.rageV) { this.rageV = false; this.b.velocity.x /= RAGE; this.b.velocity.y /= RAGE; }   // 광폭화: 지난 물리 단계 동안만 키운 몸놀림을 되돌린다 (끝에서 다시)
     if (this.danger && (this.dangerT -= dt) <= 0) this.dangerOff();   // 시전이 idle 로 돌아오지 않는 패턴이어도 붉은 안광은 DANGER_MAX_T 초면 꺼진다
     this.t += dt;

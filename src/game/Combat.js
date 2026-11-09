@@ -7,6 +7,7 @@ import { ProjectileRenderer } from '../systems/ProjectileRenderer.js';
 import { shockwave } from '../systems/PostFX.js';
 import { onHit as perkHit } from './Perks.js';
 import { txt } from '../config.js';
+import { report } from '../systems/Guard.js';
 const GROGGY_MUL = 1.35;   // game/Boss.js GROGGY_MUL 과 같은 값 (Boss → Combat 순환 import 를 피해 따로 둔다)
 // 보스 · 엘리트 탄 (fast — Boss.shot · Enemy 엘리트): 탄속 ×ENEMY_FAST (같은 궤적 · 같은 사거리로 더 빨리) · 쏘기 직전 SHOT_HOLD 초 예비 동작(입·손 앞의 날카로운 섬광 · 충전음)
 //  → 보고 피하기보다 예비 동작을 읽고 타이밍으로 쳐내야 한다 (패링 난이도 ↑)
@@ -49,7 +50,10 @@ export class Combat {
     if (!e.alive || e.intangible) return 0;
     const p = this.p, mods = p.mods;
     this.applyStatus(e, o);
-    if (base <= 0) return 0;
+    if (!(base > 0)) {   // 0 · 음수 · NaN(숫자가 아닌 값)은 피해가 없다 — NaN 이 체력에 섞이면 체력 바가 비고 영영 쓰러지지 않는다
+      if (Number.isNaN(base) && e.boss) report(`피해 값 오류(NaN) — ${e.name} · ${o.dot || this.hitSrc(p, o)} · ${type}`);
+      return 0;
+    }
     const m0 = typeMultiplier(type, e.types), m = o.parried || Cores.allPlate(p) ? Math.max(2, m0) : o.ignoreResist ? Math.max(1, m0) : m0;   // 깨물어부수기 · 레시라무의 푸른 불꽃: 반감 무시 · 패링 반사탄 · 아르세우스의 창조 코어: 무조건 약점
     const eff = effectiveness(m);
     let d = base * m * mods.all * (1 + (mods.typeBoost[type] || 0));
@@ -72,42 +76,58 @@ export class Combat {
     if (crit) d *= 1.6 * (mods.critMul || 1) * (1 + (mods.critDmg || 0)) * Cores.critMul(this, e);   // critDmg: 날카로운 타격 · 정밀 타격술 카드   // 피트렌즈: 급소 피해 +20% · 큐레무의 절대영도 코어: 빙결 · 둔화된 적 +60%
     d += o.flat || 0;
     d = Math.max(1, Math.round(d * (.92 + Math.random() * .16)));
+    if (!Number.isFinite(d)) {   // 배율 어딘가가 숫자가 아니다: 기본 위력만큼만 주고 남긴다
+      report(`피해 배율 오류 — ${e.name} · ${o.dot || this.hitSrc(p, o)} · ${type} · 위력 ${base}`);
+      d = Math.max(1, Math.round(base));
+    }
     e.hp -= d;
-    if (o.dot) this.fx.floatText(e.x, e.top, String(d), o.dot === 'burn' ? '#ffb070' : '#c8a0ff', 10);
-    else {
-      this.fx.damage(e.x, e.top - 2, d, eff, crit);
-      this.stackDamage(e, d);   // 다단히트: 0.45초 안에 이어 맞으면 머리 위에 합계를 쌓아 보여 준다
-      e.flash(e.boss ? 50 : 90);   // 큰 보스는 짧게 번쩍여 화면을 덮지 않게
-      const fin = p.action && p.action.finisher && p.action.comboStep;   // 평타 3타 피니시: 강한 넉백 · 묵직한 역경직
-      this.fx.hitStop(Math.max(o.hs ?? (eff === 'super' ? 70 : crit ? 60 : 50), fin ? 85 : 0));
-      if (eff === 'super') this.fx.shake(.009, 170, 'hit'); else if (eff === 'normal') this.fx.shake(.004, 90, 'hit'); else this.fx.shake(.002, 60, 'hit');
-      const hx = o.hx ?? e.x, hy = o.hy ?? e.y;
-      this.fx.burst(hx, hy, [typeColor(type), 0xffffff], eff === 'super' ? 18 : eff === 'weak' ? 4 : 10, eff === 'super' ? 170 : 110, { up: 60 });
-      if (eff === 'super') { this.fx.glow(hx, hy, 26, typeColor(type), 220, .9); this.fx.ring(hx, hy, 30, 0xffb050, 240); }
-      // 타격 파편: 굵은 속성색 조각이 튀어 바닥에 튕긴다 (반감은 적게 · 묵직한 타격은 많이)
-      this.fx.burst(hx, hy, [typeColor(type), 0xffffff, 0x2a2438], eff === 'weak' ? 2 : o.heavy ? 9 : 5, o.heavy ? 200 : 140, { up: 90, size: 2, life: .45 });
-      Sfx.play(o.heavy ? 'hit_heavy' : eff === 'super' ? 'hit_super' : eff === 'weak' ? 'hit_weak' : 'hit_normal');   // heavy: 차징 샷 · 내려찍기 (저음 폭발)
-      if (crit) Sfx.play('crit');
-      if (!e.boss && (o.kb || o.kby || fin)) e.knock((o.kb || 0) * (fin ? 2 : 1) || (fin ? Math.sign(e.x - p.x || 1) * 220 : 0), (o.kby || 0) * (fin ? 1.5 : 1) || (fin ? -160 : 0));
-      if (mods.psyCore && type === 'psychic' && !o.proc) this.psyField(e);   // 뮤츠의 코어: 사이코 중력장
-      Cores.hit(this, e, d, type, o);   // 보스의 코어 (game/Cores.js)
-      const steal = (mods.lifesteal || 0) + (o.lifesteal || 0);
-      if (steal > 0) p.heal(d * steal, true);
-      if (o.parried) this.parryCounter(e, hx, hy, type, o.parryN || 1, o.parryDmg ?? 1);
-      if (!o.proc && !o.parried && p.action && p.action.comboStep && !p.onGround) p.airHitHop();   // 공중 평타 적중: 반동으로 한 번 더 체공
+    if (e.boss) { const log = e.hitLog || (e.hitLog = []); log.push(`${o.dot || this.hitSrc(p, o)}:${type}:${Math.round(base)}→${d}`); if (log.length > 6) log.shift(); }   // 🛡️ 보스 안전장치가 원인을 남길 때 (Boss.guardLog)
+    try {   // ↓ 연출 · 그로기 · 카드 갈고리 — 여기서 오류가 나도 아래 처치 판정은 반드시 (예전엔 오류 한 번에 처치 판정을 건너뛰어 체력 0 아래로도 살아 있었다)
+      if (o.dot) this.fx.floatText(e.x, e.top, String(d), o.dot === 'burn' ? '#ffb070' : '#c8a0ff', 10);
+      else {
+        this.fx.damage(e.x, e.top - 2, d, eff, crit);
+        this.stackDamage(e, d);   // 다단히트: 0.45초 안에 이어 맞으면 머리 위에 합계를 쌓아 보여 준다
+        e.flash(e.boss ? 50 : 90);   // 큰 보스는 짧게 번쩍여 화면을 덮지 않게
+        const fin = p.action && p.action.finisher && p.action.comboStep;   // 평타 3타 피니시: 강한 넉백 · 묵직한 역경직
+        this.fx.hitStop(Math.max(o.hs ?? (eff === 'super' ? 70 : crit ? 60 : 50), fin ? 85 : 0));
+        if (eff === 'super') this.fx.shake(.009, 170, 'hit'); else if (eff === 'normal') this.fx.shake(.004, 90, 'hit'); else this.fx.shake(.002, 60, 'hit');
+        const hx = o.hx ?? e.x, hy = o.hy ?? e.y;
+        this.fx.burst(hx, hy, [typeColor(type), 0xffffff], eff === 'super' ? 18 : eff === 'weak' ? 4 : 10, eff === 'super' ? 170 : 110, { up: 60 });
+        if (eff === 'super') { this.fx.glow(hx, hy, 26, typeColor(type), 220, .9); this.fx.ring(hx, hy, 30, 0xffb050, 240); }
+        // 타격 파편: 굵은 속성색 조각이 튀어 바닥에 튕긴다 (반감은 적게 · 묵직한 타격은 많이)
+        this.fx.burst(hx, hy, [typeColor(type), 0xffffff, 0x2a2438], eff === 'weak' ? 2 : o.heavy ? 9 : 5, o.heavy ? 200 : 140, { up: 90, size: 2, life: .45 });
+        Sfx.play(o.heavy ? 'hit_heavy' : eff === 'super' ? 'hit_super' : eff === 'weak' ? 'hit_weak' : 'hit_normal');   // heavy: 차징 샷 · 내려찍기 (저음 폭발)
+        if (crit) Sfx.play('crit');
+        if (!e.boss && (o.kb || o.kby || fin)) e.knock((o.kb || 0) * (fin ? 2 : 1) || (fin ? Math.sign(e.x - p.x || 1) * 220 : 0), (o.kby || 0) * (fin ? 1.5 : 1) || (fin ? -160 : 0));
+        if (mods.psyCore && type === 'psychic' && !o.proc) this.psyField(e);   // 뮤츠의 코어: 사이코 중력장
+        Cores.hit(this, e, d, type, o);   // 보스의 코어 (game/Cores.js)
+        const steal = (mods.lifesteal || 0) + (o.lifesteal || 0);
+        if (steal > 0) p.heal(d * steal, true);
+        if (o.parried) this.parryCounter(e, hx, hy, type, o.parryN || 1, o.parryDmg ?? 1);
+        if (!o.proc && !o.parried && p.action && p.action.comboStep && !p.onGround) p.airHitHop();   // 공중 평타 적중: 반동으로 한 번 더 체공
+      }
+      const stagK = 1 + (mods.stagAdd || 0);   // 타격감 증폭 카드: 보스 그로기 누적 +7%
+      if (e.boss && o.parried) { if (e.addStaggerRaw && (o.parryStag ?? 1) > 0) e.addStaggerRaw(PARRY_STAGGER * (o.parryStag ?? 1) * stagK); }   // 패링 반사탄: 그로기 게이지가 뭉텅이로 (연속 패링은 60 → 35 → 15 → 0%)
+      else if (e.boss && e.addStagger && !o.dot) e.addStagger(m === 0 ? 'immune' : eff, d * (o.stagMul || 1) * stagK);   // 보스 그로기 게이지 (약점 속성 공격만 · 준 피해에 비례 — Boss.addStagger) · stagMul: 차징 임팩트 웨이브 2배
+      const pa = p.action;
+      if (mods.heavyStag && pa && pa.comboStep && !o.dot && !o.proc && !o.parried && e.hp > 0) {   // 초중량 일격(양날의 검): 평타 한 번에 적마다 한 번 — 보스 그로기 · 3타 피니시는 잡몹 경직
+        const hs = pa.heavySet || (pa.heavySet = new Set());
+        if (!hs.has(e)) { hs.add(e); if (e.boss && e.addStaggerRaw) e.addStaggerRaw((pa.finisher ? 7 : 2.5) * mods.heavyStag); else if (pa.finisher) e.status.stun = Math.max(e.status.stun, .35); }
+      }
+      if (e.hp > 0) perkHit(this, e, d, type, o);
+      if (p.castGrade && !o.proc && !o.dot && e.alive) this.gradeBurst(e, type, p.castGrade === '전설');   // 유니크·전설 기술 카드: 맞힌 자리마다 연쇄 폭발   // 특성 카드: 화상·빙결·마비·독·저주 부여 · 연쇄 번개 · 장판 · 블랙홀
+    } finally {
+      if (e.alive && e.hp <= 0 && !(e.cheatDeath && e.cheatDeath())) this.s.killEnemy(e);   // 칠색조 부활처럼 한 번 버티는 보스
     }
-    const stagK = 1 + (mods.stagAdd || 0);   // 타격감 증폭 카드: 보스 그로기 누적 +7%
-    if (e.boss && o.parried) { if (e.addStaggerRaw && (o.parryStag ?? 1) > 0) e.addStaggerRaw(PARRY_STAGGER * (o.parryStag ?? 1) * stagK); }   // 패링 반사탄: 그로기 게이지가 뭉텅이로 (연속 패링은 60 → 35 → 15 → 0%)
-    else if (e.boss && e.addStagger && !o.dot) e.addStagger(m === 0 ? 'immune' : eff, d * (o.stagMul || 1) * stagK);   // 보스 그로기 게이지 (약점 속성 공격만 · 준 피해에 비례 — Boss.addStagger) · stagMul: 차징 임팩트 웨이브 2배
-    const pa = p.action;
-    if (mods.heavyStag && pa && pa.comboStep && !o.dot && !o.proc && !o.parried && e.hp > 0) {   // 초중량 일격(양날의 검): 평타 한 번에 적마다 한 번 — 보스 그로기 · 3타 피니시는 잡몹 경직
-      const hs = pa.heavySet || (pa.heavySet = new Set());
-      if (!hs.has(e)) { hs.add(e); if (e.boss && e.addStaggerRaw) e.addStaggerRaw((pa.finisher ? 7 : 2.5) * mods.heavyStag); else if (pa.finisher) e.status.stun = Math.max(e.status.stun, .35); }
-    }
-    if (e.hp > 0) perkHit(this, e, d, type, o);
-    if (p.castGrade && !o.proc && !o.dot && e.alive) this.gradeBurst(e, type, p.castGrade === '전설');   // 유니크·전설 기술 카드: 맞힌 자리마다 연쇄 폭발   // 특성 카드: 화상·빙결·마비·독·저주 부여 · 연쇄 번개 · 장판 · 블랙홀
-    if (e.hp <= 0 && !(e.cheatDeath && e.cheatDeath())) this.s.killEnemy(e);   // 칠색조 부활처럼 한 번 버티는 보스
     return d;
+  }
+
+  // 무엇으로 쳤나 (안전장치 기록용): 기술 칸 · 기술 이름 / 투사체 · 장판
+  hitSrc(p, o) {
+    const a = p && p.action;
+    if (o.parried) return 'parry';
+    if (a) return `${a.slot || '?'}:${(p.skillId && a.slot && p.skillId(a.slot)) || (a.comboStep ? 'combo' : '?')}`;
+    return o.src || o.chg ? `${o.src || 'charge'}` : 'proj';
   }
 
   // 패링 반사탄이 꽂힌 자리: 첫 반격은 「💥 PARRY COUNTER! (약점 강타!)」 · 묵직한 황금빛 폭발 · 화면 왜곡 충격파

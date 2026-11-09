@@ -100,6 +100,9 @@ export class Enemy extends Actor {
   update(dt, p) {
     const sc = this.scene;
     this.t += dt;
+    //  🛡️ 안전장치: 체력이 숫자가 아니면 마지막 체력으로 · 0 이하인데 살아 있으면 쓰러뜨린다 (샌드백은 cheatDeath 로 다시 찬다)
+    if (!Number.isFinite(this.hp)) this.hp = Math.min(this.maxhp || 1, this.goodHp ?? this.maxhp ?? 1); else this.goodHp = this.hp;
+    if (this.state !== 'spawn' && this.alive && this.hp <= 0 && !(this.cheatDeath && this.cheatDeath())) { sc.killEnemy(this); return; }
     if (this.state === 'spawn') {
       this.timer -= dt;
       this.sprite.setAlpha(Math.min(1, 1 - this.timer / .45));
