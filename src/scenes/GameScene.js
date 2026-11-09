@@ -318,6 +318,7 @@ export default class GameScene extends Phaser.Scene {
       this.player.addItem('core_red_bond');
       this.events.emit('toast', '🔥 레드의 유대의 불꽃이 함께한다 — 진 엔딩의 유물 (장착 · 가방)', 'core_red_bond');
     });
+    if (!rs && !this.test && this.stageIdx === 0) this.time.delayedCall(1100, () => this.openingTalk());   // 🎬 새 여정: 오박사가 먼저 말을 건다
     this.scene.launch('UI');
     this.scene.bringToTop('UI');
     cam.fadeIn(350, 7, 6, 15);
@@ -1361,6 +1362,28 @@ export default class GameScene extends Phaser.Scene {
     this.talk = { name: npc.name, look: npc.look, tint: npc.tint, lines: story ? story.lines : pure ? npc.pure : npc.lines, page: 0, id: it.id, onEnd: story && story.onEnd };
     if (this.npcs) this.npcs.greet(it, this.player.x);
     this.toggleOverlay('talk');
+  }
+
+  // 🎬 새 여정의 첫 장면: 연구소에서 눈을 뜨자마자 오박사가 먼저 말을 건다 — 이야기를 잘 안 읽는 사람도 놓치지 않게 (강제 대화)
+  //  오박사가 돌아보며 머리 위에 '!' → 대화창 (마지막 쪽까지 넘겨야 닫힌다). 다른 창 · 연출이 열려 있으면 기다렸다가.
+  //  한 번만: p.quests.oakIntro (진행 저장 — 이어하기 · 공중날기로 돌아와도 다시 붙잡지 않는다)
+  openingTalk(tries = 0) {
+    const p = this.player, q = p && (p.quests || (p.quests = {}));
+    if (!p || this.over || this.test || q.oakIntro || this.stageIdx !== 0) return;
+    if (this.overlay || this.paused || this.transitioning || this.cinema) { if (tries < 40) this.time.delayedCall(400, () => this.openingTalk(tries + 1)); return; }
+    const it = this.props && this.props.interacts.find(o => o.kind === 'npc' && o.id === 'oak');
+    if (!it) return;
+    q.oakIntro = 1;
+    p.b.setVelocityX(0);
+    if (this.npcs) this.npcs.greet(it, p.x);
+    this.fx.floatText(it.x, it.y - 34, '!', '#ffe14a', 18);
+    Sfx.play('select');
+    this.time.delayedCall(450, () => {
+      if (this.over || !this.player) return;
+      if (this.overlay || this.paused) { q.oakIntro = 0; this.openingTalk(tries + 1); return; }
+      this.talkClosedAt = 0;
+      this.talkTo(it);
+    });
   }
 
   // ---------------- 이야기 NPC (data/npcs.js) ----------------
