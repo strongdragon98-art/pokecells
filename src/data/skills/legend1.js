@@ -20,7 +20,7 @@ export const SKILLS = {
   flare_stomp: { name: '발구름', type: 'fire', cd: 10, icon: 'fist', desc: '땅을 구르면 양옆으로 불기둥이 차례로 솟구치며 뻗어 나간다.', mega: '불기둥 수·높이 증가' },
   // ===== 라이코 =====
   thunder_fang: { name: '번개엄니', type: 'electric', cd: 0, icon: 'fang', desc: '전기 엄니 2연타 후 파고드는 물기. 마비 확률.', mega: '물기가 주변 적 2마리에게 튄다' },
-  thunder: { name: '번개', type: 'electric', cd: 9, icon: 'thunder', desc: '폭풍을 불러 1.2초간 화면 곳곳에 낙뢰를 떨어뜨린다. 마비.', mega: '1.6초 · 더 굵고 잦은 낙뢰' },
+  thunder: { name: '번개', type: 'electric', cd: 9, icon: 'thunder', desc: '폭풍을 불러 앞쪽에 낙뢰를 떨어뜨린다. 진화할수록 범위가 넓고 낙뢰가 잦아진다 (전설은 화면 곳곳에). 마비.', mega: '더 길고 굵고 잦은 낙뢰' },
   wild_charge: { name: '와일드볼트', type: 'electric', cd: 9, icon: 'dash', desc: '전기를 두르고 돌진. 부딪힌 적에게서 주변 적으로 번개가 연쇄된다. 약간의 반동.', mega: '연쇄 수 증가 + 반동 없음' },
   // ===== 레쿠쟈 =====
   dragon_claw: { name: '드래곤크루', type: 'dragon', cd: 0, icon: 'claw', desc: '세 줄 용의 발톱 3연타. 마지막은 적을 띄우는 올려베기.', mega: '마지막에 용의 충격파' },

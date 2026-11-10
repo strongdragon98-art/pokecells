@@ -8,6 +8,8 @@ import { SLASH_PAL } from '../systems/Fx.js';
 
 // 기술 크기 배율: 아이템 × 진화 단계 (1단 1 · 2단 1.2 · 3단 1.4 · 메가 1.65) → 판정·궤적·투사체가 같이 커진다
 const sizeMul = p => p.mods.sizeMul * p.fxMul * (p.sp.reach || 1);
+// 지진 반경 기본값 (1단 · 2단 · 3단 · 메가) × sizeMul — 기술 크기 배율(1단 .9 · 2단 1.2 · 3단 1.4 · 메가 1.65)을 곱하면 약 80 · 115 · 150 · 260px
+const EQ_R = [90, 96, 108, 158];
 // 기술의 화면 번쩍임은 진화 단계만큼만, 눈이 부시지 않게: 1단 18% · 2단 26% · 3단 · 전설 34% · 메가 40% (번쩍임 세기 = 처음 알파 — GameScene 이 cameras.main.flashA 를 읽는다)
 //  그 밖의 번쩍임(Z기술 · 진화 · 보스 연출)은 60% (GameScene.create)
 const FLASH_A = [.18, .26, .34];
@@ -609,10 +611,11 @@ export const SKILL_IMPL = {
     };
   },
   // 지진(땅): 크게 내려찍어 주변 땅 위의 적 모두를 흔든다 (떠 있는 적은 못 맞힘)
+  //  반경은 진화 단계별 (EQ_R × 기술 크기 배율): 1단 약 80px · 2단 115 · 3단 150 · 메가 260 — 예전엔 1단부터 220×배율(약 200px)이라 같은 단계 다른 기술의 10배를 맞혔다 · 전설은 예전대로 220
   earthquake(p) {
     return {
       dur: .55, mm: 0, anim: 'Strike', ev: [[.25, () => {
-        const sc = p.scene, s = sizeMul(p), R = 220 * s, gy = sc.groundBelow(p.x, p.y - 10);
+        const sc = p.scene, s = sizeMul(p), R = (p.sp.legend ? 220 : EQ_R[Math.min(3, p.tierIdx)]) * s, gy = sc.groundBelow(p.x, p.y - 10);
         sc.fx.shake(.02, 520, 'hit'); Sfx.play('boom'); Sfx.play('thunder');
         for (let k = 1; k <= 7; k++) for (const sd of [-1, 1]) sc.time.delayedCall(k * 45, () => {
           const x = p.x + sd * k * R / 7, g2 = sc.groundBelow(x, p.y - 30);

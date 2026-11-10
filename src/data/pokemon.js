@@ -96,7 +96,7 @@ export const SKILLS = {
   ice_beam: { name: '냉동빔', type: 'ice', cd: 6, icon: 'thunder', tm: true, desc: '얼음 결정이 흩날리는 빔. 둔화시키고 가끔 얼려 버린다.' },
   flash_cannon: { name: '러스터캐논', type: 'steel', cd: 5, icon: 'orb', tm: true, desc: '반동과 함께 쏘는 무거운 은빛 포탄. 적 3마리까지 꿰뚫는다.' },
   dark_pulse: { name: '악의파동', type: 'dark', cd: 6, icon: 'wave', tm: true, desc: '적을 꿰뚫는 검보라 파동 3겹. 맞은 적이 잠깐 움찔한다.' },
-  earthquake: { name: '지진', type: 'ground', cd: 10, icon: 'boom', tm: true, desc: '땅을 내리찍어 주변 땅 위의 적 모두에게 큰 피해. 떠 있는 적은 못 맞힌다.' },
+  earthquake: { name: '지진', type: 'ground', cd: 10, icon: 'boom', tm: true, desc: '땅을 내리찍어 주변 땅 위의 적 모두에게 큰 피해. 진화할수록 범위가 넓어진다. 떠 있는 적은 못 맞힌다.' },
   sludge_bomb: { name: '오물폭탄', type: 'poison', cd: 5, icon: 'bubble', tm: true, desc: '포물선으로 던진 독 덩어리가 터지며 중독 웅덩이를 남긴다.' },
   earth_power: { name: '대지의힘', type: 'ground', cd: 6, icon: 'boom', tm: true, desc: '가까운 적 3마리 발밑에서 암석 기둥이 솟아 띄운다.' },
   play_rough: { name: '치근거리기', type: 'fairy', cd: 5, icon: 'dash', tm: true, desc: '분홍 반짝이를 흩뿌리며 몰아치는 다단히트 돌진.' },

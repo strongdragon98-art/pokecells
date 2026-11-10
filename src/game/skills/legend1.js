@@ -12,6 +12,14 @@ const PSY = 0xff5a9a, PSY_L = 0xffb0e0;
 const megaX = p => p.mega.active && p.types.includes('fighting');   // 메가뮤츠X
 const megaY = p => p.mega.active && !p.types.includes('fighting');  // 메가뮤츠Y
 
+// 번개(피츄 계열 C) 폭풍 범위: 1단 · 2단 · 3단 · 메가 (전설 라이코는 쓰지 않는다 — 화면 곳곳)
+//  f: 앞 px · b: 뒤 px · gap: 낙뢰 간격(초) · T: 폭풍 시간(초) — 테스트룸 과녁 격자 실측으로 같은 단계 큰 기술(대문자 · 문포스 · 구르기) 수준에 맞췄다
+const THUNDER_STORM = [
+  { f: 96, b: 24, gap: .14, T: 1 },
+  { f: 120, b: 36, gap: .12, T: 1.1 },
+  { f: 150, b: 44, gap: .1, T: 1.2 },
+  { f: 170, b: 48, gap: .075, T: 1.4 }
+];
 // 카메라 시야 안의 살아 있는 적
 const viewEnemies = p => {
   const v = view(p);
@@ -479,17 +487,22 @@ export const SKILL_IMPL = {
       sc.fx.shake(.006, 90);
       if (Math.random() < .5) Sfx.play('zap');
     };
+    //  진화 단계별 폭풍 범위 (피츄 계열 C — 예전엔 1단 피츄도 전설 라이코처럼 화면 곳곳에 낙뢰를 떨어뜨려 같은 단계 다른 기술의 10배 넘게 맞혔다)
+    //   앞 f px · 뒤 b px 안에만 · gap 초마다 한 줄기 · T 초 동안 (진화할수록 넓고 잦고 길게) — 전설(라이코)은 예전처럼 화면 곳곳
+    const st = p.sp.legend ? null : THUNDER_STORM[Math.min(3, p.tierIdx)];
     return {
       dur: .5, mm: .2, anim: 'Shoot', inv: .3, ev: [[.14, () => {
-        const T = aw ? 1.6 : 1.2, cool = new Map();
+        const T = st ? st.T : aw ? 1.6 : 1.2, gap = st ? st.gap : aw ? .055 : .075, cool = new Map();
         let nt = 0;
         skillFlash(p, 200, 30, 30, 70); sc.fx.glow(p.x, p.y, 50 * s, 0xffe040, 300, 1);
         lineFx(sc, p.x, p.y - 6, p.x + (Math.random() - .5) * 30, view(p).y - 10, 0xffe040, { seg: 8, jag: 12, w: 3, ms: 240 });   // 하늘로 쏘아 올림
         Sfx.play('thunder');
         tickFor(sc, T, t => {
-          if (t < nt) return; nt = t + (aw ? .055 : .075);
-          const v = view(p), es = viewEnemies(p), e = es.length && Math.random() < .6 ? es[(Math.random() * es.length) | 0] : null;
-          const x = e ? e.x + (Math.random() - .5) * 8 : v.x + Math.random() * v.width;
+          if (t < nt) return; nt = t + gap;
+          const v = view(p), a0 = st ? p.x - p.face * st.b : v.x, a1 = st ? p.x + p.face * st.f : v.right;
+          const lo = Math.max(v.x, Math.min(a0, a1)), hi = Math.min(v.right, Math.max(a0, a1));   // 낙뢰가 떨어질 수 있는 가로 구간 (플레이어를 따라간다)
+          const es = viewEnemies(p).filter(q => q.x >= lo && q.x <= hi), e = es.length && Math.random() < .6 ? es[(Math.random() * es.length) | 0] : null;
+          const x = e ? e.x + (Math.random() - .5) * 8 : lo + Math.random() * Math.max(1, hi - lo);
           bolt(x, e ? sc.groundBelow(x, e.y - 10) : groundAt(p, x), cool, t);
           if (Math.random() < .12) Sfx.play('thunder');
         });
