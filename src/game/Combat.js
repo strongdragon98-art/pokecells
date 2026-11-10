@@ -391,6 +391,11 @@ export class Combat {
       if (q.lightObj) q.lightObj.setPosition(q.x, q.y);
 
       let dead = q.life <= 0 || !!q.kill, why = q.kill || (dead ? 'expire' : null);   // q.kill: update 갈고리가 정한 최후 ('wall' 이면 벽에 부딪힌 연출)
+      if (!dead && q.owner === 'enemy' && s.inShield && s.inShield(q.x, q.y)) {   // 🛡️ 적의 탄은 마을 · 사람 결계에 닿으면 흩어진다
+        dead = true; why = 'expire';
+        this.fx.ring(q.x, q.y, 10 + q.r, 0xffe0a0, 240); this.fx.burst(q.x, q.y, [0xffe0a0, 0xffffff], 6, 70, { glow: true, life: .35 });
+        if (q.boom) q.boom = null;   // 폭발탄도 결계 앞에선 터지지 않고 흩어진다
+      }
       if (!dead && !q.ghost && s.isSolidAt(q.x, q.y)) {
         dead = true; why = 'wall';
         if (q.owner === 'player' && s.hitBreakables) s.hitBreakables({ x: q.x - q.r - 2, y: q.y - q.r - 2, w: q.r * 2 + 4, h: q.r * 2 + 4 });   // 투사체로도 금 간 벽을 깬다
@@ -499,7 +504,7 @@ export class Combat {
   explode(q) {
     const b = q.boom;
     if (q.owner === 'player') this.hitCircle(q.x, q.y, b.r, b.mul, q.type, Object.assign({ kbx: b.kb ?? 200, kby: -200, src: q.charge ? 'charge' : undefined }, q.status));
-    else if (Phaser.Math.Distance.Between(q.x, q.y, this.p.x, this.p.y) < b.r) this.p.takeHit(q.dmg, q.type, q.x, { danger: !!q.danger });   // 붉은 안광 폭발탄은 패링 불가
+    else if (Phaser.Math.Distance.Between(q.x, q.y, this.p.x, this.p.y) < b.r && !(this.s.inShield && this.s.inShield(this.p.x, this.p.y))) this.p.takeHit(q.dmg, q.type, q.x, { danger: !!q.danger });   // 붉은 안광 폭발탄은 패링 불가 · 🛡️ 결계 안은 폭풍이 닿지 않는다
     this.fx.ring(q.x, q.y, b.r, q.color, 280); this.fx.glow(q.x, q.y, b.r, q.color, 260, .9);
     this.fx.burst(q.x, q.y, [q.color, 0xffffff], 22, b.r * 3, { up: 80, glow: true });
     this.fx.shake(b.r > 50 ? .012 : .006, 200, q.owner === 'player' ? 'hit' : 'world'); Sfx.play('boom');
@@ -549,7 +554,7 @@ export class Combat {
       const live = z.t >= z.delay;
       if (live && !z.popped && z.owner === 'enemy') { z.popped = true; this.zonePop(z); }   // 예고가 끝나 실제로 터지는 순간: 파편 · 고리 · 빛
       if (live && z.tt <= 0 && z.onTick) { z.tt = z.tick; z.onTick(z); }
-      if (live && z.owner === 'enemy' && z.dmg && !z.done && overlap(z, p.bounds())) { if (p.takeHit(z.dmg, z.type, z.x + z.w / 2, z.status || {})) z.done = !z.multi; }
+      if (live && z.owner === 'enemy' && z.dmg && !z.done && overlap(z, p.bounds()) && !(this.s.inShield && this.s.inShield(p.x, p.y))) { if (p.takeHit(z.dmg, z.type, z.x + z.w / 2, z.status || {})) z.done = !z.multi; }
       // 그리기
       const col = z.color ?? typeColor(z.type), k = Math.min(1, z.t * 6, (z.life - z.t) * 4);
       if (!live && z.round) {   // 둥근 경고: 테두리가 깜빡이고 안쪽이 차오른다 (미래예지)

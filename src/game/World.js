@@ -1088,7 +1088,7 @@ export function buildChapter(ch, ci, retry = 0) {
     const clearDeco = (xa, xb, ya, yb) => { for (const q of props) if (q.deco && q.g != null && q.x + (q.w || 1) - 1 >= xa && q.x <= xb && q.g >= ya && q.g <= yb) q.hide = true; };
     //  침식 몹 자리 (회복기 · 조작 힌트 NPC 둘레는 안전 구역 — GameScene.safeSpawn 과 같은 계산)
     const safeAt = sp => terminals.some(t => Math.abs(t.x * TILE - sp.x) < 150 && Math.abs(t.g * TILE - sp.y) < 90)
-      || npcs.some(n => n.guide && sp.x - n.x * TILE > -60 && sp.x - n.x * TILE < 220 && Math.abs(n.g * TILE - sp.y) < 90);
+      || npcs.some(n => (n.guide || !safeRoom(n.room)) && npcSpawnFree(sp, n));
     const liveMobs = r => spawns.filter(sp => sp.room === r && !sp.elite && !safeAt(sp));
     const dropSpawns = (r, near) => { for (let i = spawns.length - 1; i >= 0; i--) if (spawns[i].room === r && !spawns[i].elite && near(spawns[i])) spawns.splice(i, 1); };
     const addTM = (r, x, g, adv, extra = {}) => {
@@ -1327,6 +1327,14 @@ export function buildChapter(ch, ci, retry = 0) {
 }
 
 // 칸(x, y)이 들어 있는 방
+// 🛡️ 안전 구역: 마을(시내) · 오박사 연구소 · 성역(peaceful)은 방 전체 — 침식된 포켓몬이 나오지도 들어오지도 못한다 (GameScene.safeZones)
+export const safeRoom = r => !!r && (r.type === 'village' || !!r.lab || !!r.peaceful);
+// 마을 밖에 선 사람(조작 힌트 · 시련 캡틴 · 신화 연구가 · 지방 보스 뒤 조력자 …) 둘레엔 적 자리를 두지 않는다
+//  조작 힌트 NPC(guide)는 연습용 과녁이 서는 오른쪽 220px 까지 · 그 밖의 사람은 양옆 110px (결계 NPC_WARD 보다 넉넉히 — 나타나자마자 튕겨 나가지 않게)
+//  높이: 발밑 아래 90px ~ 머리 위 140px (결계 높이 8칸 = 128px 위의 발판 자리까지)
+export const NPC_WARD = 72;
+export const npcSpawnFree = (sp, n) => { const dx = sp.x - n.x * TILE, dy = sp.y - n.g * TILE; return dy < 90 && dy > -140 && dx > -110 && dx < (n.guide ? 220 : 110); };
+
 export const roomAtCell = (level, x, y) => level.cellRoom.get(Math.floor(x / CW) + ',' + Math.floor(y / CH)) || null;
 // 월드 픽셀 좌표가 들어 있는 방
 export const roomAt = (level, px, py) => roomAtCell(level, Math.floor(px / TILE), Math.floor(py / TILE));

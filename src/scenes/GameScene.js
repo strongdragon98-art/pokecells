@@ -11,7 +11,7 @@ import { NUGGETS, eliteNuggets, bossNuggets, martKey, POTION_CD } from '../data/
 import { BOND_POWERS, BOND_SUN_ATK, BOND_SUN_HP, HEROES_KEY, potionMaxAt } from '../data/bond.js';
 import { typeColor } from '../data/types.js';
 import { PLAT_SET, groundYAt, T as TILE_ID } from '../game/Level.js';
-import { buildChapter, roomAt, CW, CH } from '../game/World.js';
+import { buildChapter, roomAt, CW, CH, safeRoom, NPC_WARD, npcSpawnFree } from '../game/World.js';
 import { buildTestRoom, bossHome, TEST_LANDMARKS, landmarkCi } from '../game/TestRoom.js';
 import { solidRowAt } from '../game/Arenas.js';
 import { bakeArenaTiles } from '../systems/ArenaArt.js';
@@ -2544,29 +2544,42 @@ export default class GameScene extends Phaser.Scene {
   // ---------------- 안전 구역 결계 ----------------
   //  마을(시내 · 오박사 연구소)과 간이 회복기 쉼터에는 침식된 포켓몬이 들어오지 못한다: 경계를 넘으면 결계가 번쩍이며 바깥으로 튕겨 낸다
   //  (마을 안에선 처음부터 적이 나오지 않는다 — updateSpawns). 보스는 아레나에 갇혀 있어 상관없다
+  //  🛡️ 마을 밖에 선 사람(조작 힌트 · 시련 캡틴 · 신화 연구가 · 지방 보스 뒤 조력자 …) 둘레 ±NPC_WARD 도 결계 — 같은 방의 적이 사람 곁으로 오지 못한다
+  //  shield: 마을 · 사람 결계 안의 플레이어에겐 적의 몸통 · 근접 · 탄 · 장판이 닿지 않는다 (inShield — 바깥 적이 결계 너머로 쏘거나 내리찍어도)
   safeZones() {
-    if (this.safeZoneOf === this.level) return this.safeZoneList;
-    this.safeZoneOf = this.level;
-    const list = this.level.rooms.filter(r => r.type === 'village' || r.lab || r.peaceful).map(r => ({ x0: r.left, x1: r.right, y0: r.top, y1: r.bottom, town: true }));
-    for (const t of this.level.terminals || []) { const x = t.x * TILE + 16, y = t.g * TILE; list.push({ x0: x - 76, x1: x + 76, y0: y - 80, y1: y + 6 }); }
+    const lv = this.level, nN = (lv.npcs || []).length;
+    if (this.safeZoneOf === lv && this.safeZoneN === nN) return this.safeZoneList;   // 지방 보스 뒤 조력자가 나중에 서면 다시 만든다
+    this.safeZoneOf = lv; this.safeZoneN = nN;
+    const list = lv.rooms.filter(safeRoom).map(r => ({ x0: r.left, x1: r.right, y0: r.top, y1: r.bottom, town: true, shield: true }));
+    for (const t of lv.terminals || []) { const x = t.x * TILE + 16, y = t.g * TILE; list.push({ x0: x - 76, x1: x + 76, y0: y - 80, y1: y + 6 }); }
+    for (const n of lv.npcs || []) if (!safeRoom(n.room)) { const x = n.x * TILE + 8, y = n.g * TILE; list.push({ x0: x - NPC_WARD, x1: x + NPC_WARD, y0: y - 128, y1: y + 6, town: true, shield: true, npc: n.id }); }   // 높이 8칸: 머리 위에 맴도는 날짐승(주뱃 · 고우스트)도 밀어낸다
     return (this.safeZoneList = list);
+  }
+  inShield(x, y) {
+    if (!this.level || this.test) return false;
+    for (const z of this.safeZones()) if (z.shield && x >= z.x0 && x <= z.x1 && y >= z.y0 && y <= z.y1) return true;
+    return false;
   }
   guardSafeZones() {
     if (this.level.purified || this.test) return;
     const zones = this.safeZones(), now = this.time.now;
     for (const e of this.enemies) {
-      if (!e.alive || e.boss || e.asleep || e.dummy) continue;
-      for (const z of zones) {
-        if (e.x < z.x0 - 4 || e.x > z.x1 + 4 || e.y < z.y0 || e.y > z.y1) continue;
-        const dir = e.x - z.x0 < z.x1 - e.x ? -1 : 1, edge = dir < 0 ? z.x0 - 10 : z.x1 + 10;
-        e.b.reset(edge, e.y); e.b.setVelocity(dir * 220, -120);
-        if (now - (e.wardAt || 0) > 500) {   // 결계가 번쩍인다
-          e.wardAt = now;
-          this.fx.ring(edge - dir * 6, e.y, 22, z.town ? 0xffe0a0 : 0x4affd8, 320);
-          this.fx.burst(edge - dir * 6, e.y, [z.town ? 0xffe0a0 : 0x4affd8, 0xffffff], 8, 90, { glow: true, angle: dir > 0 ? 0 : Math.PI, spread: 1 });
-          Sfx.play('crack');
-        }
-        break;
+      if (!e.alive || e.boss || e.asleep || e.dummy || e.state === 'spawn') continue;
+      const hw = e.b ? e.b.width / 2 : 6, z = zones.find(q => e.x + hw > q.x0 && e.x - hw < q.x1 && e.y > q.y0 && e.y < q.y1);
+      if (!z) { e.wardX = e.x; e.wardY = e.y; continue; }   // 결계 밖 마지막 자리 (들어오면 여기로 되돌린다)
+      //  들어온 쪽으로 튕겨 낸다: 옆에서 왔으면 옆으로 · 위아래 문(철창 · 사다리 구멍)으로 왔으면 위아래로 — 벽 속으로 순간이동하지 않게
+      const cx = (z.x0 + z.x1) / 2, had = e.wardX != null && Math.abs(e.wardX - e.x) < 80 && Math.abs(e.wardY - e.y) < 80;
+      const vert = had && (e.wardY <= z.y0 || e.wardY >= z.y1);
+      const dir = had ? (Math.sign(e.wardX - cx) || -1) : (e.x < cx ? -1 : 1);
+      const x = had ? e.wardX : dir < 0 ? z.x0 - hw - 2 : z.x1 + hw + 2, y = had ? e.wardY : e.y;
+      e.b.reset(x, y);
+      if (vert) e.b.setVelocity(dir * 90, e.wardY <= z.y0 ? -200 : 140); else e.b.setVelocity(dir * 220, -120);
+      if (now - (e.wardAt || 0) > 500) {   // 결계가 번쩍인다
+        e.wardAt = now;
+        const fx = vert ? x : dir < 0 ? z.x0 : z.x1, fy = vert ? (e.wardY <= z.y0 ? z.y0 : z.y1) : y;
+        this.fx.ring(fx, fy, 22, z.town ? 0xffe0a0 : 0x4affd8, 320);
+        this.fx.burst(fx, fy, [z.town ? 0xffe0a0 : 0x4affd8, 0xffffff], 8, 90, { glow: true, angle: vert ? (e.wardY <= z.y0 ? -Math.PI / 2 : Math.PI / 2) : dir > 0 ? 0 : Math.PI, spread: 1 });
+        Sfx.play('crack');
       }
     }
   }
@@ -2673,7 +2686,7 @@ export default class GameScene extends Phaser.Scene {
       s.spawned = true; s.minGap = 0;
       if (s.room && s.room.isPurified) continue;   // ✨ 정화한 샛길 구역: 다시 와도 · 이어하기로 와도 몬스터가 절대 나오지 않는다
       if (s.room) this.time.delayedCall(0, () => this.checkRoomClear(s.room));   // 마지막 자리가 안전 구역이라 아무도 나오지 않은 채 끝난 샛길 구역
-      if (s.room && (s.room.type === 'village' || s.room.lab || s.room.peaceful)) continue;   // 마을 · 방울로드 성역엔 침식된 포켓몬이 하나도 나오지 않는다
+      if (safeRoom(s.room)) continue;   // 마을 · 연구소 · 성역엔 침식된 포켓몬이 하나도 나오지 않는다
       if (s.trial && !(this.player.quests && this.player.quests.zTrial === 1)) continue;   // 시련을 이미 넘었으면(다른 엘리트로) 시련의 수호자는 나오지 않는다
       if (this.level.purified && !s.trial) { if (!s.elite && Math.random() < .5) this.spawnWanderer(s); continue; }   // 정화한 지방: 세뇌된 적 대신 평화로운 야생 포켓몬 (시련의 수호자만은 나온다)
       if (s.elite && s.room && s.room.hidden && !(this.level.sides || []).some(sd => sd.room === s.room && sd.revealed)) { s.spawned = false; continue; }   // 숨은 굴의 수문장은 흙이 걷힌 뒤에
@@ -2684,7 +2697,7 @@ export default class GameScene extends Phaser.Scene {
   safeSpawn(s, lv = this.level) {
     if (s.elite) return false;
     return (lv.terminals || []).some(t => Math.abs(t.x * TILE - s.x) < 150 && Math.abs(t.g * TILE - s.y) < 90)   // 간이 회복기 둘레는 안전 구역
-      || (lv.npcs || []).some(n => n.guide && s.x - n.x * TILE > -60 && s.x - n.x * TILE < 220 && Math.abs(n.g * TILE - s.y) < 90);   // 조작 힌트 NPC 와 연습용 과녁 자리도
+      || (lv.npcs || []).some(n => (n.guide || !safeRoom(n.room)) && npcSpawnFree(s, n));   // 마을 밖에 선 사람 둘레 · 조작 힌트 NPC 와 연습용 과녁 자리도 (World.js 와 같은 계산)
   }
 
   // 🔥 엘리트 수문장 (기술머신이 없는 막다른 길 끝): 출전 포켓몬보다 한 단계 위 · 체력 3.4배 · 피해 1.5배 · 몸집 1.25배 · 붉은 오라

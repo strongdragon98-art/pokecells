@@ -129,7 +129,7 @@ export class Enemy extends Actor {
       if (st.root > 0) this.b.setVelocityX(0);
     }
     // 공격 중 몸통 접촉 피해
-    if (this.striking && !disabled && !this.intangible && overlap(this.bounds(), p.bounds())) {
+    if (this.striking && !disabled && !this.intangible && overlap(this.bounds(), p.bounds()) && !(sc.inShield && sc.inShield(p.x, p.y))) {   // 🛡️ 마을 · 사람 결계 안에선 닿지 않는다
       if (p.takeHit(this.dmg, this.def.atkType, this.x, {}) && this.def.ai === 'flyer') { this.state = 'recover'; this.timer = .6; }
     }
     if (this.b.y > sc.level.height + 60) { this.hp = 0; sc.killEnemy(this); return; }
@@ -241,7 +241,7 @@ function leadAngle(e, p, k) {
 }
 // 범위 판정 한 번 (맞으면 true)
 function zoneHit(e, p, box, mul = 1, type = e.def.atkType) {
-  return overlap(box, p.bounds()) && p.takeHit(e.dmg * mul, type, e.x, {});
+  return overlap(box, p.bounds()) && !(e.scene.inShield && e.scene.inShield(p.x, p.y)) && p.takeHit(e.dmg * mul, type, e.x, {});   // 🛡️ 결계 너머로 휘둘러도 닿지 않는다
 }
 // 예고 표식: 바닥에 붉은 고리가 맥동한다 (ms 뒤 사라짐)
 function warnMark(e, x, y, r, ms, color = 0xff3a3a) {
