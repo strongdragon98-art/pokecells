@@ -1620,7 +1620,8 @@ export class Props {
           this.pulses.push({ o: dome, base: .16, amp: .05, sp: 1.3 }, { o: domeLine, base: .8, amp: .2, sp: .9 });
           // 간판·전등은 간헐적으로 지지직 깜빡인다
           this.flickers.push({ objs: [sign, emis], base: [.75, 1], light: lightObj, lightK: 1.6, t: 0, off: 0 });
-          this.interacts.push({ kind: 'center', x: x + a.mid, y: Y, range: 26, used: false, repeat: true, room, prompt: '[F 또는 ↑ : 포켓몬 치료 · 여기서 다시 일어나기]', sign, emis, lightObj, promptY: Y - 58 });
+          // 🏥 반경 60px 안에 들어서면 머리 위에 [ 🏥 F : 포켓몬 센터 이용 ] 배지만 · F(조사 버튼)를 눌러야 센터 메뉴 (GameScene.openCenter) — 몸이 닿거나 ↑ 로는 열리지 않는다
+          this.interacts.push({ kind: 'center', x: x + a.mid, y: Y, range: 60, used: false, repeat: true, room, prompt: '[ 🏥 F : 포켓몬 센터 이용 ]', sign, emis, lightObj, promptY: Y - 58, machineY: sy + 22 });
           break;
         }
         case 'mart': {   // 포켓샵: 정문 앞에서 F / ↑ / 터치 → 상점 창 (GameScene.openShop)

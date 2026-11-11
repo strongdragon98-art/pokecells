@@ -1032,6 +1032,7 @@ export default class GameScene extends Phaser.Scene {
         if (!this.upActive.used) { (this.bonusQueue = this.bonusQueue || []).unshift(this.upActive); this.bonusT = 8; this.events.emit('toast', '🗺️ 고르지 않은 숙련도 강화 — 8초 뒤 다시 열린다', 'tm'); }
         this.upActive = null;
       }
+      if (kind === 'center' || kind === 'box') this.centerClosedAt = this.time.now;   // 🏥 센터 메뉴 · 교체 창을 닫은 F 가 바로 다시 열지 않게
       if (kind === 'shop') { this.shopClosedAt = this.time.now; if (this.shopDirty) { this.shopDirty = false; this.saveRun(true, 'shop'); } }
       if (kind === 'talk' && this.talk && this.talk.onEnd) { const f = this.talk.onEnd; this.talk.onEnd = null; this.time.delayedCall(150, f); }   // 이야기 NPC 보상
       return;
@@ -1266,9 +1267,12 @@ export default class GameScene extends Phaser.Scene {
     this.promptText.setVisible(!!it && it.kind !== 'tm');   // 🟡 기술머신은 작은 툴팁(updatePickups)이 안내를 맡는다
     if (!it) return;
     const touch = this.touchInput && this.touchInput.on;   // 터치패드를 쓰면 키 대신 버튼 이름으로
-    this.promptText.setText(touch ? it.prompt.replace('F 또는 ↑', '조사 버튼').replace('↓ + Space', '아래로 당기고 점프') : it.prompt).setPosition(Math.round(it.x), Math.round(it.promptY + Math.sin(this.time.now / 250) * 1.5));
+    if (it.kind === 'center') {   // 🏥 포켓몬센터: 플레이어 머리 위 작은 배지 [ 🏥 F : 포켓몬 센터 이용 ] (지금 설정한 조사 키 · 터치는 조사 버튼)
+      const key = touch ? '조사' : keyLabel(Settings.key('interact'));
+      this.promptText.setText(`[ 🏥 ${key} : 포켓몬 센터 이용 ]`).setBackgroundColor('#1a0e14dd').setPadding(4, 2, 4, 2).setPosition(Math.round(p.x), Math.round(p.b.y - 14 + Math.sin(this.time.now / 250) * 1));
+    } else this.promptText.setBackgroundColor(null).setPadding(0, 0, 0, 0).setText(touch ? it.prompt.replace('F 또는 ↑', '조사 버튼').replace('↓ + Space', '아래로 당기고 점프') : it.prompt).setPosition(Math.round(it.x), Math.round(it.promptY + Math.sin(this.time.now / 250) * 1.5));
     const tapped = this.promptTap; this.promptTap = false;   // 머리 위 안내 글자를 눌러도 조사 (터치)
-    if (!this.inp.useP && !this.inp.upP && !tapped) return;
+    if (!this.inp.useP && !(this.inp.upP && it.kind !== 'center') && !tapped) return;   // 🏥 센터는 F(조사 버튼)로만 — ↑ 로 걷다 잘못 열리지 않게
     if (it.kind === 'hint') return;   // 안내만 띄운다 (↓ + Space 는 평소대로 발판 내려가기)
     this.inp.jumpP = false;
     if (it.kind === 'lore') { if (this.time.now - (this.loreAt || 0) > 500) { this.loreAt = this.time.now; this.events.emit('lore', it.text); Sfx.play('select'); } return; }
@@ -1290,13 +1294,7 @@ export default class GameScene extends Phaser.Scene {
       this.healAtTerminal(it);
       return;
     }
-    if (it.kind === 'center') {   // 포켓몬센터는 몇 번이고 (HK 의자처럼) — 쉬면 여기가 다시 일어날 자리가 된다
-      if (this.time.now - (this.healAt || 0) < 1500) return;
-      this.healAt = this.time.now;
-      if (it.room) this.visitHub(it.room);
-      this.healAtCenter();
-      return;
-    }
+    if (it.kind === 'center') { this.openCenter(it); return; }   // 🏥 포켓몬센터: [💚 회복 · 🔄 교체] 메뉴 (UIScene.showCenter) — 몇 번이고
     this.props.markUsed(it);
     {   // 자판기 (마을마다 한 번): 가끔 강화 아이템, 아니면 오렌열매
       const lucky = Math.random() < ITEM_DROP.vending;
@@ -1538,25 +1536,73 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // 띠리리- 띠리- : 황금빛·초록빛 치유 파동이 퍼지며 파티 전원(쓰러진 포켓몬 포함) 체력 100%
-  healAtCenter() {
+  // 🏥 포켓몬센터 F: 서비스 메뉴 [💚 포켓몬 회복 · 🔄 포켓몬 교체 · 닫기] (UIScene.showCenter) — 다가가기만 해서는 아무 창도 뜨지 않는다
+  //  처음 온 시내면 정거장 해금 · 여기가 다시 일어날 자리 · 자동 저장 (visitHub)
+  openCenter(it) {
+    if (this.time.now - (this.centerClosedAt || 0) < 400 || this.overlay) return;   // 닫은 F 키가 바로 다시 열지 않게
+    this.centerAt = it;
+    if (it.room) this.visitHub(it.room);
+    Sfx.play('select');
+    this.toggleOverlay('center');
+  }
+  // 💚 포켓몬 회복 (센터 메뉴): 본가 5음 회복 징글(Sfx 'center_heal' — B5 B5 B5 G#5 E6) · 치료기 위 몬스터볼 3개가 노란빛으로 세 번 깜빡
+  //  출전 파티 전원 체력 100% · 쓰러진 포켓몬도 일어나고 · 상처약을 소지 한도(유대의 불꽃 단계 — Player.potionMax)까지 채운다
+  healAtCenter(it = this.centerAt) {
     const p = this.player;
     for (const m of p.members) { m.hp = m.maxhp; m.alive = true; }
-    Sfx.play('center');
-    const cx = p.x, cy = p.y;
-    [0, 200, 400, 600].forEach((d, i) => this.time.delayedCall(d, () => {
-      this.fx.ring(cx, cy, 50 + i * 28, i % 2 ? 0x8affb0 : 0xffe08a, 700);
-      this.fx.glow(cx, cy, 60 + i * 10, i % 2 ? 0x8affb0 : 0xfff2b0, 500, .6);
-    }));
-    this.fx.burst(cx, cy, [0xffe08a, 0x8affb0, 0xffffff], 34, 120, { glow: true, up: 70, grav: -30, bounce: false, life: 1.1 });
-    this.cameras.main.flash(380, 255, 244, 200);
-    this.events.emit('banner', '모든 포켓몬이 건강해졌다!', '포켓몬센터 · 파티 전원 회복 · 쓰러지면 여기서 다시 일어난다');
-    // 이어서 포켓몬 보관함 (엔트리 교체) — 파티 밖에 데려올 포켓몬이 있을 때만
-    if (DEX_ORDER.some(k => Save.isUnlocked(k) && !p.members.some(m => m.key === k))) this.time.delayedCall(1100, () => { if (!this.over && !this.overlay) this.toggleOverlay('box'); });
+    p.uses = p.uses || {};
+    const cap = p.potionMax, had = p.uses.potion || 0;
+    if (had < cap) p.uses.potion = cap;
+    Sfx.play('center_heal');
+    const mx = it ? it.x : p.x, my = it && it.machineY ? it.machineY : p.y - 46;
+    const g = this.add.graphics().setDepth(61), glow = this.add.graphics().setDepth(60.9).setBlendMode(Phaser.BlendModes.ADD);
+    const balls = (lit, k) => {   // 몬스터볼 3개 (치료기 받침 위) — lit: 노란빛으로 번쩍
+      g.clear(); glow.clear();
+      g.fillStyle(0x1a1018, .85); g.fillRoundedRect(mx - 21, my - 8, 42, 16, 5);
+      g.lineStyle(1, 0xd8c8b0, .8); g.strokeRoundedRect(mx - 21, my - 8, 42, 16, 5);
+      for (const dx of [-12, 0, 12]) {
+        const x = mx + dx, y = my;
+        g.fillStyle(lit ? 0xffe14a : 0xe8484a, 1); g.slice(x, y, 4.6, Math.PI, 0, false); g.fillPath();
+        g.fillStyle(lit ? 0xfff6c0 : 0xf4f0e8, 1); g.slice(x, y, 4.6, 0, Math.PI, false); g.fillPath();
+        g.fillStyle(0x1a1028, 1); g.fillRect(x - 4.6, y - .6, 9.2, 1.2); g.fillCircle(x, y, 1.6);
+        g.fillStyle(0xffffff, 1); g.fillCircle(x, y, .8);
+        if (lit) { glow.fillStyle(0xffe14a, .55 * k); glow.fillCircle(x, y, 9); }
+      }
+    };
+    balls(false, 0);
+    [0, .24, .48].forEach(t => {   // 띵 · 띵 · 띠 에 맞춰 세 번
+      this.time.delayedCall(t * 1000, () => { if (g.scene) balls(true, 1); });
+      this.time.delayedCall(t * 1000 + 150, () => { if (g.scene) balls(false, 0); });
+    });
+    this.time.delayedCall(800, () => {   // 링~ : 마지막으로 크게 번쩍이며 회복
+      if (!g.scene) return;
+      balls(true, 1);
+      const cx = p.x, cy = p.y;
+      [0, 160, 320].forEach((d, i) => this.time.delayedCall(d, () => this.fx.ring(cx, cy, 40 + i * 22, i % 2 ? 0x8affb0 : 0xffe08a, 600)));
+      this.fx.burst(cx, cy, [0xffe08a, 0x8affb0, 0xffffff], 26, 110, { glow: true, up: 70, grav: -30, bounce: false, life: 1 });
+      this.fx.glow(mx, my, 30, 0xffe14a, 600, .9);
+      this.events.emit('toast', `✨ 모든 포켓몬이 기력을 완전히 회복했습니다!${had < cap ? `  ·  상처약 ${cap}개로 충전` : ''}`);
+    });
+    this.time.delayedCall(1700, () => { if (g.scene) this.tweens.add({ targets: [g, glow], alpha: 0, duration: 300, onComplete: () => { g.destroy(); glow.destroy(); } }); });
+  }
+  // ⚡ 경험치 전수로 넘어선 진화 단계를 차례로 (UIScene 확인 창 → 창을 닫은 뒤): 출전 포켓몬이면 진화 연출 · 대기 포켓몬이면 알림 띠까지
+  inheritEvolve(m, n) {
+    const p = this.player;
+    for (let k = 0; k < n; k++) this.time.delayedCall(350 + k * 1900, () => {
+      if (!this.player || this.player !== p || !p.members.includes(m)) return;
+      const before = p.form(m).name;
+      p.evolve(m);
+      if (m !== p.m) this.events.emit('banner', `${before}은(는) ${p.form(m).name}(으)로 진화했다!`, '⚡ 경험치 전수 · 진화 단계를 다시 셌다');
+    });
   }
 
   togglePause() {
     if (this.over || this.transitioning) return;
-    if (this.overlay) { this.toggleOverlay(this.overlay); return; }   // 지도·가방이 열려 있으면 Esc 는 닫기
+    if (this.overlay) {   // 지도·가방이 열려 있으면 Esc 는 닫기 (포켓몬 교체의 경험치 전수 확인 창 · 체크 표시는 한 단계씩 뒤로)
+      const ui = this.scene.get('UI');
+      if (ui && ui.overlayBack && ui.overlayBack()) return;
+      this.toggleOverlay(this.overlay); return;
+    }
     this.setFrozen(!this.paused);
     this.events.emit('pause', this.paused);
   }

@@ -2,6 +2,7 @@
 //  위: 탭 [🌱 세대별 포켓몬 | 👑 정화한 전설/보스] + 세대 필터 (전체 · 1~9세대 — 스타팅·특수 구분 없이 세대로만 묶는다)
 //  왼쪽: 초상화 카드 격자 (아직 못 잡은 포켓몬은 검은 실루엣)   오른쪽: 진화 트리 · 메가 배지 · 타입 · 스킬 · 특성 · 해금 조건
 //  카드를 누르면 정보창, 같은 카드를 한 번 더 누르면 onToggle (편성/교체). 키보드: ←→↑↓ 이동 · Q/E 탭 · 0~9 세대 · Enter
+//  onSelect 가 있으면(포켓몬센터 교체 — scenes/CenterMenu.js) 한 번 누르면 바로 onSelect · checked() 카드엔 ✔ 체크 배지 + 초록 · 금빛 하이라이트 테두리
 import Phaser from 'phaser';
 import { SPECIES, SKILLS } from '../data/pokemon.js';
 import { LINES, CATS, unlockHint } from '../data/roster.js';
@@ -35,7 +36,7 @@ const tabOf = cat => CATS.find(c => c.cats.includes(cat)).id;
 const tabCats = tab => CATS.find(c => c.id === tab).cats;
 
 export class RosterPanel {
-  // o: { layer, x, y, w, h, infoX, infoW, picked(key) → 파티 순번|-1, onToggle(key), onFocus(key), tab, focus }
+  // o: { layer, x, y, w, h, infoX, infoW, picked(key) → 파티 순번|-1, onToggle(key), onSelect(key), checked() → 체크한 key, onFocus(key), tab, focus }
   constructor(scene, o) {
     this.s = scene; this.o = o;
     this.focus = o.focus && SPECIES[o.focus] ? o.focus : 'charmander';
@@ -89,14 +90,25 @@ export class RosterPanel {
     this.cells = keys.map((key, i) => {
       const cx = o.x + 22 + (i % COLS) * CELL, cy = gy + cell / 2 + Math.floor(i / COLS) * cell;
       const unlocked = Save.isUnlocked(key), pi = o.picked ? o.picked(key) : -1, focused = key === this.focus, sc = (focused ? .9 : .8) * k;
-      if (focused) L.add(s.add.image(cx, cy, 'glow').setBlendMode(ADD).setTint(0xefeae0).setScale(.9 * k).setAlpha(.28));
+      const checked = !!(o.checked && o.checked() === key);
+      if (checked) L.add(s.add.image(cx, cy, 'glow').setBlendMode(ADD).setTint(0x7dff9a).setScale(1.25 * k).setAlpha(.55));   // ✔ 교체 대기: 초록 빛무리
+      else if (focused) L.add(s.add.image(cx, cy, 'glow').setBlendMode(ADD).setTint(0xefeae0).setScale(.9 * k).setAlpha(.28));
       face(s, L, SPECIES[key].evo[0].key, cx, cy, sc, !unlocked);
       L.add(hiImage(s, cx, cy, 'gloss').setScale(sc / RES));
       L.add(hiImage(s, cx, cy, pi >= 0 ? 'slot3d-gold' : 'slot3d').setScale(sc / RES).setAlpha(focused || pi >= 0 ? 1 : .55));
       if (pi >= 0) L.add(hkText(s, cx + 13 * k, cy - 14 * k, String(pi + 1), 9, HK.gold, { bold: true, origin: .5 }));
+      if (checked) {   // ✔ 체크 배지 (오른쪽 위) + 금빛 하이라이트 테두리
+        g.lineStyle(2, 0xffd860, 1); g.strokeCircle(cx, cy, 18 * k);
+        g.lineStyle(1, 0x7dff9a, .9); g.strokeCircle(cx, cy, 20.5 * k);
+        g.fillStyle(0x1a8a4a, 1); g.fillCircle(cx + 13 * k, cy - 13 * k, 6.5); g.lineStyle(1.2, 0xffffff, .95); g.strokeCircle(cx + 13 * k, cy - 13 * k, 6.5);
+        L.add(hkText(s, cx + 13 * k, cy - 13 * k, '✔', 8, '#ffffff', { bold: true, origin: .5 }));
+      }
       if (SPECIES[key].megas.length && unlocked) L.add(hkText(s, cx - 13 * k, cy + 12 * k, 'M', 7, '#ff9ad8', { bold: true, title: true, origin: .5 }));
       const z = s.add.zone(cx, cy, CELL - 2, cell - 2).setInteractive({ useHandCursor: true });
-      z.on('pointerdown', () => { if (key === this.focus) { if (o.onToggle) o.onToggle(key); } else this.setFocus(key); });
+      z.on('pointerdown', () => {
+        if (o.onSelect) { this.focus = key; o.onSelect(key); this.changed(); return; }   // 포켓몬센터 교체: 한 번에 ✔ 체크
+        if (key === this.focus) { if (o.onToggle) o.onToggle(key); } else this.setFocus(key);
+      });
       L.add(z);
       return key;
     });
@@ -193,7 +205,7 @@ export class RosterPanel {
     else if (e.code === 'KeyQ') this.setTab(CATS[(ti + CATS.length - 1) % CATS.length].id);
     else if (e.code === 'KeyE' || e.code === 'Tab') this.setTab(CATS[(ti + 1) % CATS.length].id);
     else if (this.tab === 'pokemon' && /^Digit\d$/.test(e.code)) this.setGen(+e.code.slice(5));
-    else if (e.code === 'Enter') { if (this.o.onToggle) this.o.onToggle(this.focus); }
+    else if (e.code === 'Enter' || e.code === 'NumpadEnter') { if (this.o.onSelect) { this.o.onSelect(this.focus); this.changed(); } else if (this.o.onToggle) this.o.onToggle(this.focus); }
     else return false;
     return true;
   }

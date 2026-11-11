@@ -73,6 +73,9 @@ const COMBO_TEMPO = 1.5, COMBO_DMG = 1.35, COMBO_STEP = [1, 1.2, 1.6], COMBO_REC
 //  🗡️ 그 밖의 근접 평타는 피해 그대로 · 사거리 +40% (game/skills.js 의 Z_REACH) — 1 · 2타 근접 + 3타 탄(파이리 · 꼬부기 · 물짱이 · 뮤츠 …)도 근접형
 export const RANGED_Z = new Set(['thundershock', 'mystical_fire', 'water_shuriken', 'leafage', 'bubble_note', 'confusion_orb', 'flame_feather', 'incinerate', 'pound_water', 'mist_ball', 'luster_purge', 'aurora_beam']);
 export const RANGED_Z_DMG = .78;
+// ⚡ 포켓몬센터 교체의 경험치 전수: 떠나는 포켓몬 누적 경험치의 70% 만 (30% 는 소멸) — UIScene.showBox 의 확인 창 · inheritSwap
+export const INHERIT_RATE = .7;
+export const inheritGain = total => Math.floor(total * INHERIT_RATE + 1e-9);   // 180 × 0.7 = 125.999… 를 126 으로 (부동소수점)
 // 공중 평타 체공 (Air Stall): 공중에서 평타(Z 콤보)를 칠 때마다 떨어지던 속도를 끊고 살짝 떠오른 뒤(AIR_HOP) AIR_STALL_T 초 동안 중력이 AIR_STALL_G 배로 준다
 //  적에게 맞히면 반동으로 한 번 더 떠오른다(AIR_HIT_HOP) · 한 번 뜬 동안 AIR_STALLS 번(3타 콤보 한 바퀴)까지 온전히, 그 뒤로는 번마다 약해져 자연스럽게 내려앉는다
 //  (땅에 닿거나 대시 · 2단 점프를 하면 다시 채워진다 — 허공에서 Z 만 눌러 천장까지 떠오르지 못하게)
@@ -811,6 +814,32 @@ export class Player extends Actor {
     if (i === this.idx) { if (this.action) this.endAction(true); this.combo = 0; this.buffs = []; this.applyVisual(); }
     this.scene.events.emit('swap', this);
     return true;
+  }
+
+  // ⚡ 포켓몬센터 교체 + 경험치 전수 (UIScene.showBox · 확인 창): i번째 자리에 key 를 들이고, inherit 이면
+  //  떠나는 포켓몬의 누적 경험치(진화에 쓴 몫까지 — m.exp 는 처음부터 쌓인 총량)의 INHERIT_RATE(70%)를 들어오는 포켓몬에게 주고,
+  //  떠나는 포켓몬은 경험치 0 · 1단 기본 모습으로 보관함에 들어간다 (나머지 30% 는 사라진다)
+  //  반환: { old, m, total(떠난 쪽 누적), gain(받은 양), evolve(이제 넘어선 진화 단계 수 — 부르는 쪽이 연출과 함께 evolve 를 그만큼) } · 실패하면 null
+  inheritSwap(i, key, inherit) {
+    const old = this.members[i], total = old ? Math.floor(old.exp || 0) : 0, gain = inherit && old ? inheritGain(total) : 0;
+    if (!this.replaceMember(i, key)) return null;
+    const m = this.members[i];
+    let evolve = 0;
+    if (inherit && old) {
+      this.resetGrowth(old);
+      m.exp = (m.exp || 0) + gain;
+      for (let t = m.tier; t < EVO_EXP.length && m.exp >= EVO_EXP[t]; t++) evolve++;
+    }
+    return { old, m, total, gain, evolve };
+  }
+  // 경험치 전수로 떠나는 포켓몬: 경험치 0 · 1단 · 메가 해제 (퇴화 방지 기억 peakTier 도 0 — guardForms 가 되돌리지 않게)
+  //  모습마다 기본 기술이 다른 라인(잉어킹 → 갸라도스)은 진화로 바뀐 기본 기술 자리를 1단 기본 기술로 (기술머신으로 바꿔 단 자리 · 배운 기술 목록은 그대로)
+  resetGrowth(m) {
+    if (!m) return;
+    const cur = this.form(m).skills || m.sp.skills, base = m.sp.evo[0].skills || m.sp.skills;
+    if (cur !== base) for (const sl of ['z', 'x', 'c']) { if (m.skills[sl] === cur[sl]) m.skills[sl] = base[sl]; if (!m.learned.includes(base[sl])) m.learned.push(base[sl]); }
+    m.tier = 0; m.exp = 0; m.peakTier = 0; m.mega = false; m.megaPick = 0; m.evoCi = null;
+    m.maxhp = this.maxHpOf(m); m.hp = Math.min(m.hp || m.maxhp, m.maxhp);
   }
 
   // 디버그 (F3 메뉴): 출전 포켓몬을 다음 진화 단계로, 3단이면 메가진화

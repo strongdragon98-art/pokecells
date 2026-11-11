@@ -92,6 +92,19 @@ class AudioSys {
   }
 
   arp(notes, step = .07, type = 'square', vol = .06) { notes.forEach((n, i) => this.tone(n, step * 1.7, type, vol, 0, i * step)); }
+  // 맑은 벨 · 차임벨 한 음: 기음 + 배음(2 · 3 · 4.16배 — 금속 종의 비정수 배음)이 4ms 만에 울리고 길게 사그라든다
+  bell(f, dur = .9, vol = .07, delay = 0) {
+    for (const [k, a, d] of [[1, 1, 1], [2, .4, .7], [3, .16, .45], [4.16, .1, .3]]) this.chime(f * k, dur * d, vol * a, delay);
+  }
+  chime(f, dur, vol, delay = 0) {
+    if (!this.ac || !this.on) return;
+    const t = this.ac.currentTime + delay, o = this.ac.createOscillator(), g = this.ac.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .004); g.gain.exponentialRampToValueAtTime(.0006, t + dur);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + dur + .03);
+    o.onended = () => { o.disconnect(); g.disconnect(); };
+    this.track(o, g, t + dur);
+  }
 
   play(name) {
     if (!this.ac || !this.on) return;
@@ -186,6 +199,13 @@ class AudioSys {
       case 'rift': this.drop(160, 40, .9, 'sawtooth', .14); this.nz(.9, .3, 'lowpass', 600, 1, 0, 120); this.tone(1200, .5, 'sine', .03, -900, .1); break;   // 공간이 찢어지는 낮은 굉음
       case 'roar': this.drop(240, 70, 1.3, 'sawtooth', .2); this.drop(180, 50, 1.4, 'square', .1, .05); this.nz(1.2, .45, 'bandpass', 500, 1.5, 0, 180); this.nz(1, .25, 'lowpass', 300, .8, .1); this.tone(90, 1.4, 'sawtooth', .14, -30); break;   // 기라티나의 포효
       // 포켓몬센터 회복음: 띠리리- 띠리- (밝은 사각파 아르페지오 두 소절)
+      // 💚 포켓몬센터 회복 징글 (본가 시그니처 5음): 띵- 띵- 띠- 리- 링~♪ = B5 · B5 · B5 · G#5 · E6 — 벨 · 차임벨 톤 (GameScene.healAtCenter)
+      case 'center_heal': {
+        const B5 = 987.77, Gs5 = 830.61, E6 = 1318.51;
+        for (const [f, at, dur, v] of [[B5, 0, .55, .075], [B5, .24, .55, .075], [B5, .48, .32, .07], [Gs5, .64, .32, .07], [E6, .8, 1.25, .085]]) this.bell(f, dur, v, at);
+        this.tone(E6 / 2, 1.1, 'triangle', .02, 0, .8);   // 마지막 음 아래 은은한 받침
+        break;
+      }
       case 'center': this.arp([784, 988, 1175, 1568], .09, 'square', .05); this.arp([1175, 1568], .16, 'square', .05); this.tone(1568, .5, 'triangle', .04, 0, .72); this.tone(784, .9, 'sine', .05, 0, .1); break;
       // 진화: 오르내리는 떨림음 → 밝은 팡파르
       case 'evolve': for (let k = 0; k < 6; k++) this.tone(k % 2 ? 660 : 523, .1, 'square', .04, 0, k * .08); this.arp([784, 988, 1175, 1568, 2093], .09, 'square', .06); this.tone(1568, .7, 'triangle', .05, 0, .55); break;

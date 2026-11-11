@@ -31,6 +31,7 @@ import { megaUltOf, megaSymbol, MEGA_ULT_CD, MEGA_ULT } from '../game/Spectacle.
 import { CHARGE_SIG } from '../game/Signature.js';
 import { installGameMenu } from './GameMenu.js';
 import { installShopMenu } from './ShopMenu.js';
+import { installCenterMenu } from './CenterMenu.js';
 import { npcArt } from '../game/Npc.js';
 import { bossHome, TEST_LANDMARKS, landmarkCi } from '../game/TestRoom.js';
 // 🃏 카드 샌드박스 적용 단계 (0 명함 · 1~3 강화 — data/tm.js applyCard 를 그 단계까지 거듭한다)
@@ -346,8 +347,10 @@ export default class UIScene extends Phaser.Scene {
       overlay: kind => kind === 'map' ? this.showMap() : kind === 'inv' ? (this.invMember = null, this.showInv()) :   // 가방은 열 때마다 출전 중인 포켓몬부터
          kind === 'tm' ? (this.tmModal = this.gs.tmActive && this.gs.tmActive.sandbox ? { step: 'who', target: null, tip: null } : null, this.showTM())
         : kind === 'upgrade' ? this.showUpgrade()   // ✨ 오염 구역 정화 보상: 보유 카드 강화 (3장 앞면 · 누르면 바로 +1)   // 🃏 카드 샌드박스: 카드를 누른 순간 실전과 같은 포켓몬 지정 창
+        : kind === 'center' ? this.showCenter(0)   // 🏥 포켓몬센터 서비스 메뉴 (scenes/CenterMenu.js)
+        : kind === 'box' ? (this.boxPick = null, this.boxModal = null, this.showBox())   // 🔄 포켓몬 교체
         : kind === 'shop' ? (this.shopMoneyShown = null, this.shopQty = 1, this.shopConfirm = null, this.showShop())   // 포켓샵 (scenes/ShopMenu.js)
-        : kind === 'taxi' ? this.showTaxi() : kind === 'talk' ? this.showTalk() : kind === 'debug' ? this.showDebug() : kind === 'test' ? this.showTest() : kind === 'settings' ? this.showSettings(0) : kind === 'box' ? this.showBox() : kind === 'join' ? this.showJoin() : this.clearOverlay(),
+        : kind === 'taxi' ? this.showTaxi() : kind === 'talk' ? this.showTalk() : kind === 'debug' ? this.showDebug() : kind === 'test' ? this.showTest() : kind === 'settings' ? this.showSettings(0) : kind === 'join' ? this.showJoin() : this.clearOverlay(),
       lore: s => this.showLore(s),
       hurt: k => { this.hurtK = Math.max(this.hurtK, k); },
       say: (who, s) => this.showLore(s, who),   // 트레이너 대사 (난천 · 레드)
@@ -882,7 +885,7 @@ export default class UIScene extends Phaser.Scene {
     this.hideTypeTip();
     this.tweens.killTweensOf(this.overlay.list); this.tweens.killTweensOf(this.overlay); this.overlay.setAlpha(1);   // 쇼케이스 창의 등장 트윈이 남지 않게
     this.overlay.removeAll(true); this.gOver.clear(); this.overlay.setVisible(false); this.menu = null;
-    this.overlayMode = null; this.tmBusy = false; this.boxPanel = null; this.testPanel = null;
+    this.overlayMode = null; this.tmBusy = false; this.boxPanel = null; this.testPanel = null; this.inheritL = null; this.boxBar = null;
     if (this.talkMask) { this.talkMask.destroy(); this.talkMask = null; }
     this.talkText = null; this.talkArrow = null; this.talkFace = null;
     for (const ev of this.tmEvents || []) ev.remove();
@@ -1854,7 +1857,7 @@ export default class UIScene extends Phaser.Scene {
     glassButton(this, 50, by, 120, 20, '성장 한 단계  F4', () => { gs.toggleOverlay('debug'); gs.debugGrow(); }, { size: 9, layer: L });
     glassButton(this, 180, by, 120, 20, '공중날기 전부 해금', () => { gs.debugUnlockHubs(); Sfx.play('unlock'); }, { size: 9, layer: L });
     glassButton(this, 310, by, 120, 20, '파티 회복', () => { for (const m of gs.player.members) { m.hp = m.maxhp; m.alive = true; } Sfx.play('heal'); this.toast('[디버그] 파티 전원 회복'); }, { size: 9, layer: L });
-    glassButton(this, 440, by, 150, 20, '📦 포켓몬 보관함 (교체)', () => { gs.overlay = 'box'; this.showBox(); }, { size: 9, ls: 0, layer: L });
+    glassButton(this, 440, by, 150, 20, '📦 포켓몬 보관함 (교체)', () => { gs.overlay = 'box'; this.boxPick = null; this.boxModal = null; this.showBox(); }, { size: 9, ls: 0, layer: L });
     glassButton(this, 50, by2, 270, 20, '🔓 모든 스타팅 & 보스 캐릭터 전체 즉시 해금', () => { Save.debugUnlockAll(); Sfx.play('unlock'); this.toast('[디버그] 모든 포켓몬 해금 · 포켓몬센터 보관함·도감에서 고를 수 있다'); }, { size: 9, ls: 0, layer: L, primary: true });
     glassButton(this, 330, by2, 260, 20, '⚡ 현재 포켓몬 즉시 진화 / 메가진화 발동', () => { gs.toggleOverlay('debug'); gs.player.debugEvolve(); }, { size: 9, ls: 0, layer: L, primary: true });
     // 성능: FPS · 깨어 있는/잠든 적 · 풀에서 쉬는 이미지 수
@@ -2563,52 +2566,7 @@ export default class UIScene extends Phaser.Scene {
     Sfx.play(r.won ? 'unlock' : 'hurt');
   }
 
-  // ---------------- 포켓몬 보관함 (포켓몬센터 · 엔트리 교체) ----------------
-  //  아래 엔트리 칸을 눌러 바꿀 자리를 고르고, 위 보관함에서 카드를 두 번 누르면 그 자리에 들어간다 (새로 온 포켓몬은 1단부터)
-  showBox() {
-    this.clearOverlay();
-    const gs = this.gs, p = gs.player, g = this.gOver, L = this.overlay.setVisible(true);
-    g.fillStyle(0x05040a, .95); g.fillRect(0, 0, GAME_W, GAME_H);
-    L.add(hkText(this, 320, 12, '포켓몬 보관함', 14, HK.ivory, { ls: 4, bold: true, origin: [.5, 0], glow: true }));
-    L.add(hkText(this, 320, 32, '떠나는 포켓몬은 보관함에서 쉰다 — 진화 · 아이템 · 기술 그대로, 다시 데려오면 이어서  ·  처음 데려오는 포켓몬만 1단부터', 8.5, HK.dim, { origin: [.5, 0] }));
-    if (this.boxSlot === undefined || this.boxSlot > p.members.length) this.boxSlot = p.members.length < 3 ? p.members.length : p.idx;   // 빈 자리가 있으면 거기부터
-    const bar = this.add.container(0, 0); L.add(bar);
-    const drawBar = () => {
-      bar.removeAll(true);
-      bar.add(fadeLine(this, 320, 304, 600, .35));
-      bar.add(hkText(this, 40, 326, '엔트리', 10, HK.dim, { bold: true, ls: 2, origin: .5 }));
-      [0, 1, 2].forEach(i => {
-        const m = p.members[i], sx = 92 + i * 46, sy = 326, sel = i === this.boxSlot;
-        if (sel) bar.add(this.add.image(sx, sy, 'glow').setBlendMode(ADD).setTint(0xffd890).setScale(.8).setAlpha(.45));
-        if (m) bar.add(this.add.image(sx, sy, roundPortrait(this, p.portraitKey(m))).setScale(.7).setAlpha(m.alive ? 1 : .4));
-        bar.add(hiImage(this, sx, sy, 'gloss').setScale(.7 / RES));
-        bar.add(hiImage(this, sx, sy, sel ? 'slot3d-gold' : 'slot3d').setScale(.7 / RES).setAlpha(m || sel ? 1 : .4));
-        bar.add(hkText(this, sx - 12, sy - 14, String(i + 1), 8, sel ? HK.gold : HK.faint, { bold: true, origin: .5 }));
-        const z = this.add.zone(sx, sy, 36, 36).setInteractive({ useHandCursor: true });
-        z.on('pointerdown', () => { this.boxSlot = Math.min(i, p.members.length); Sfx.play('select'); drawBar(); });
-        bar.add(z);
-      });
-      const cur = p.members[this.boxSlot];
-      bar.add(hkText(this, 400, 326, `${this.boxSlot + 1}번 자리${cur ? ` (${p.formName(cur)})` : ' (빈 자리)'}에 넣을 포켓몬을 고르세요\n카드 두 번 누르기 · Enter  ·  ←→↑↓ · Q/E 탭  ·  Esc 닫기`, 8.5, HK.dim, { origin: .5, style: { align: 'center', lineSpacing: 3 } }));
-    };
-    this.boxPanel = new RosterPanel(this, {
-      layer: L, x: 16, y: 52, h: 244, infoX: 392, infoW: 234, focus: p.m.key,
-      picked: k => p.members.findIndex(m => m.key === k),
-      onToggle: k => {
-        if (!Save.isUnlocked(k)) { Sfx.play('deny'); this.toast('아직 합류하지 않은 포켓몬이다'); return; }
-        if (p.members.some(m => m.key === k)) { Sfx.play('deny'); this.toast('이미 파티에 있다'); return; }
-        const old = p.members[this.boxSlot], back = !!p.stored[k];
-        p.replaceMember(this.boxSlot, k); Save.setParty(p.members.map(m => m.key));
-        const nm = p.formName(p.members[this.boxSlot]);
-        Sfx.play('swap'); this.toast(`${nm}이(가) ${back ? '보관함에서 돌아와 ' : ''}${this.boxSlot + 1}번 자리에 들어왔다!${old ? `  ·  ${p.formName(old)}은(는) 보관함에서 쉰다 (진화·아이템 그대로)` : ''}`);
-        this.boxPanel.build(); drawBar();
-      }
-    });
-    drawBar();
-    glassButton(this, 566, 8, 64, 20, '✕  닫기', () => gs.toggleOverlay('box'), { size: 9, layer: L });
-    this.input.keyboard.on('keydown', this.onOverlayKey, this);
-    this.overlayMode = 'box';
-  }
+  // ---------------- 🏥 포켓몬센터 메뉴 · 🔄 포켓몬 교체 (✔ 체크 → 🔄 자리 → ⚡ 경험치 전수 확인) — scenes/CenterMenu.js ----------------
 
   // ================= ✨ 정화 완료 쇼케이스: 새로 합류한 동료 (GameScene.queueJoin) =================
   //  게임은 멈춘 채(물리 · AI · 타이머) 흐려진 화면 위에 금빛·청록빛 정화 입자가 흩날리는 창을 띄운다
@@ -2732,7 +2690,8 @@ export default class UIScene extends Phaser.Scene {
       if (['Enter', 'NumpadEnter', 'Space', 'KeyZ'].includes(e.code) && this.time.now - this.joinOpenedAt >= 600) { Sfx.play('select'); this.gs.closeJoin(); }
       return;
     }
-    if (this.overlayMode === 'box' && this.boxPanel) { this.boxPanel.key(e); return; }
+    if (this.overlayMode === 'center') { this.centerKey(e); return; }   // 🏥 포켓몬센터 메뉴 (Esc 는 GameScene 이 닫는다)
+    if (this.overlayMode === 'box') { this.boxKey(e); return; }         // 🔄 포켓몬 교체 · ⚡ 경험치 전수 확인 창 (Esc 는 overlayBack 이 한 단계씩)
     if (this.overlayMode === 'shop') { this.shopKey(e); return; }   // 포켓샵 (scenes/ShopMenu.js · Esc 는 GameScene 이 닫는다)
     if (this.overlayMode === 'test') {   // 테스트룸 패널 (닫기 T · F3 · Esc 는 GameScene 이 받는다)
       if (e.code === 'Tab') { const ids = TEST_TABS.map(t => t[0]); this.testSetTab(ids[(ids.indexOf(this.testTab) + (e.shiftKey ? ids.length - 1 : 1)) % ids.length]); return; }
@@ -2832,3 +2791,5 @@ export default class UIScene extends Phaser.Scene {
 installGameMenu(UIScene);
 // 포켓샵 창 — scenes/ShopMenu.js
 installShopMenu(UIScene);
+// 포켓몬센터 메뉴 · 포켓몬 교체 · 경험치 전수 — scenes/CenterMenu.js
+installCenterMenu(UIScene);
