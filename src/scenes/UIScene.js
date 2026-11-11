@@ -40,6 +40,7 @@ const SB_PER = 18;   // 카드 샌드박스 한 쪽 (3열 × 6줄 — 위에 ⚡
 const TEST_TABS = [['mon', '🧪 포켓몬 · 진화'], ['boss', '👑 보스방 워프'], ['land', '🗺️ 랜드마크 입구 & 길목'], ['cards', '🃏 카드 샌드박스']];
 import { Save } from '../systems/Save.js';
 import { roomState } from '../systems/RoomState.js';
+import { DIFFICULTY, DIFF_ORDER, diff, diffId, diffBadge, stepDifficulty } from '../data/difficulty.js';
 import { TutorialHud } from '../systems/TutorialHud.js';
 import { RosterPanel } from '../systems/RosterPanel.js';
 import { Sfx } from '../systems/Audio.js';
@@ -220,6 +221,10 @@ export default class UIScene extends Phaser.Scene {
     this.tTip = this.add.text(MASK_X - 8, 104, '', txt(10, HK.ivory, { backgroundColor: '#0d0c16ee', padding: { x: 7, y: 5 }, lineSpacing: 3 })).setDepth(30);
     // ── ✨ 샛길 정화 미니 게이지 (화면 위쪽 가운데 · 유대의 불꽃 아래): 정화한 샛길 구역 n / 첫 기준(3) → n / 두 번째 기준(6) (GameScene.purifySideRoom)
     this.gMastery = this.add.graphics().setDepth(3); this.masteryPulse = 0;
+    // 🎚️ 난이도 배지 (왼쪽 위 HUD — 가방 · 지도 · 설정 줄 아래: ⚔️ NORMAL · 🔥 HARD · 💀 VERY HARD) · 누르면(터치) 일시정지 메뉴 (난이도 ◀ ▶)
+    this.gDiff = this.add.graphics().setDepth(3);
+    this.tDiff = hkText(this, 19, 134, '', 7.5, '#ffb070', { bold: true }).setDepth(3.1).setInteractive({ useHandCursor: true });
+    this.tDiff.on('pointerdown', () => { const gs = this.gs; if (gs && gs.player && !gs.overlay && !gs.over) { Sfx.play('select'); gs.togglePause(); } });
     this.tMastery = hkText(this, B.x, B.y + 4, '', 8, '#ffe8a8', { origin: [.5, 0] }).setDepth(3);
     this.tSideRoom = hkText(this, B.x, B.y + 21, '', 7, '#ff9ab8', { origin: [.5, 0] }).setDepth(3).setVisible(false);   // 지금 선 샛길 구역: 남은 침식 포켓몬 · 정화 완료
     this.tOrbs = hkText(this, B.x, B.y + 21, '', 8, '#ffe8c0', { origin: [.5, 0] }).setDepth(3).setVisible(false);   // 성도: 성수의 구슬 현황 (drawOrbs)
@@ -359,6 +364,7 @@ export default class UIScene extends Phaser.Scene {
       bondPower: n => this.showBondPower(n),   // 유대의 불꽃 Lv.n 권능 해금 배너 (GameScene.bondPowerUnlock)
       mastery: () => { this.masteryPulse = 1; },   // ✨ 샛길 정화 +1 (GameScene.purifySideRoom)
       room: r => this.roomFlash(r),   // 방에 들어섰다 (GameScene.updateRooms): 상태 카드
+      difficulty: d => { this.toast(`🎚️ 난이도 ${d.icon} ${d.name} (${d.en}) — 보스 · 엘리트 체력 · 받는 피해 · 탄속 · 패턴 템포 · 그로기에 바로 적용`); this.diffPulse = 1; if (this.overlayMode === 'pause') this.drawPauseDiff(); },
       boss: b => { if (b) this.bossTitle(b); },
       clearTitles: () => { this.tweens.killTweensOf([this.loreBox, this.captionBox, this.bondBox]); this.loreBox.setAlpha(0); this.captionBox.setAlpha(0); this.bondBox.setAlpha(0); this.bossTitleT = 0; },   // 테스트룸에서 보스를 바로 바꿀 때 앞 보스의 이름 · 트레이너 대사를 지운다
       unlock: (k, kind) => this.onUnlock(k, kind),
@@ -544,6 +550,33 @@ export default class UIScene extends Phaser.Scene {
     this.roomCard.setAlpha(0).setY(84).setScale(.96);
     this.tweens.add({ targets: this.roomCard, alpha: 1, y: 90, scale: 1, duration: 220, ease: 'Back.easeOut' });
     this.tweens.add({ targets: this.roomCard, alpha: 0, delay: 2400, duration: 420 });
+  }
+  // 🎚️ 난이도 배지 (화면 위 · 바꾼 순간 크게 반짝)
+  drawDiffBadge(delta) {
+    const d = diff(), t = this.tDiff, g = this.gDiff, show = !!(this.gs && this.gs.player);
+    this.diffPulse = Math.max(0, (this.diffPulse || 0) - delta / 900);
+    g.clear(); t.setVisible(show);
+    if (!show) return;
+    t.setText(diffBadge(d)).setColor(d.hex);
+    const w = t.width + 10, x = t.x - 5, y = t.y - 2, k = this.diffPulse;
+    g.fillStyle(0x07050c, .62); g.fillRoundedRect(x, y, w, 13, 5);
+    g.lineStyle(1, d.color, .45 + .5 * k); g.strokeRoundedRect(x, y, w, 13, 5);
+    if (k > 0) { g.fillStyle(d.color, .25 * k); g.fillRoundedRect(x - 2, y - 2, w + 4, 17, 6); }
+  }
+  // 일시정지 메뉴의 난이도 줄: [◀] 🔥 어려움 (HARD) · 기준 [▶] + 한 줄 요약
+  drawPauseDiff() {
+    const L = this.pauseDiffL;
+    if (!L || !L.scene) return;
+    L.removeAll(true);
+    const d = diff(), y = 184;
+    L.add(hkText(this, 214, y, '난이도', 9, HK.dim, { bold: true, origin: [1, .5] }));
+    for (const [dir, x] of [[-1, 222], [1, 400]]) {
+      const b = glassButton(this, x, y - 8, 18, 16, dir < 0 ? '◀' : '▶', () => stepDifficulty(dir, this.gs), { size: 8, ls: 0 });
+      for (const o of b.objs) L.add(o);
+    }
+    L.add(hkText(this, 311, y, `${d.icon} ${d.name} (${d.en})${d.recommend ? ' · 권장' : ''}`, 10, d.hex, { bold: true, origin: .5 }));
+    L.add(hkText(this, 426, y, d.lines.slice(0, 3).join(' · '), 7, HK.dim, { origin: [0, .5] }));
+    L.add(hkText(this, 320, y + 12, '← → 로 바꾸면 그 자리에서 바로 적용 (보스 · 엘리트 체력 · 받는 피해 · 탄속 · 패턴 템포 · 그로기)', 6.5, HK.faint, { origin: .5 }));
   }
   // 🌈 성도: 성수의 구슬 현황 [ 성수의 구슬: 🔴 / ⚫ / 🔵 (2/3) ] — 칠색조를 정화해 지방이 맑아질 때까지 (숙련 게이지 · 샛길 줄 아래)
   drawOrbs() {
@@ -809,6 +842,7 @@ export default class UIScene extends Phaser.Scene {
       g.fillStyle(col, 1); g.fillCircle(x, 28, rad + (cur ? .6 : 0));
       g.fillStyle(0xffffff, .5); g.fillCircle(x - .7, 27.2, rad * .33);
     });
+    this.drawDiffBadge(delta);
     const dexY = this.drawRoomBadge(time) + (this.tutHud ? this.tutHud.update(time, delta) : 0);   // 방 상태 배지 · 튜토리얼 건너뛰기 버튼 높이만큼 정화 진행도를 내린다
     this.tDexTitle.setY(54 + dexY);
     let row = 0;
@@ -1543,8 +1577,11 @@ export default class UIScene extends Phaser.Scene {
       { label: '설정', onPick: () => { this.gs.togglePause(); this.gs.toggleOverlay('settings'); } },
       { label: '포기하고 도감으로', onPick: () => { this.gs.paused = false; this.gs.gameOver(false, true); } }
     ], { layer: L, gap: 21, pickKeys: ['Enter'], onMove: () => Sfx.play('select') });
-    L.add(fadeLine(this, 320, 190, 220, .5));
-    L.add(hkText(this, 320, 202, '조 작 법', 9, HK.dim, { ls: 2, origin: .5 }));
+    // 🎚️ 난이도 변경: [◀] 🔥 어려움 (HARD) [▶] — ← → 키 · 클릭 · 바꾸는 즉시 적용 (data/difficulty.js)
+    this.pauseDiffL = this.add.container(0, 0); L.add(this.pauseDiffL);
+    this.drawPauseDiff();
+    L.add(fadeLine(this, 320, 206, 220, .5));
+    L.add(hkText(this, 320, 214, '조 작 법', 9, HK.dim, { ls: 2, origin: .5 }));
     const kl = a => keyLabel(Settings.key(a));
     const lines = [
       [`${kl('left')} ${kl('right')}`, '이동'], [`${kl('jump')} / ${kl('up')}`, '점프 (공중 점프)'], [`${kl('down')} + ${kl('jump')}`, '발판 아래로'], [`${kl('z')} · ${kl('x')} · ${kl('c')}`, '스킬 (Z칸은 콤보)'],
@@ -1552,11 +1589,11 @@ export default class UIScene extends Phaser.Scene {
       [`${kl('map')} · ${kl('bag')} · ${kl('settings')}`, '지도 · 가방 · 설정 (키 변경)'], [`${kl('interact')} / ${kl('up')}`, '센터 · 자판기 · 아머까오 · 기술머신'], ['N', '소리 켜기/끄기'], ['Esc · P', '일시정지']
     ];
     lines.forEach(([k, d], i) => {
-      const cx = i % 2 ? 400 : 172, y = 214 + (i >> 1) * 15;
+      const cx = i % 2 ? 400 : 172, y = 224 + (i >> 1) * 14;
       L.add(hkText(this, cx - 6, y, k, 10, HK.gold, { origin: [1, 0] }));
       L.add(hkText(this, cx + 6, y, d, 10, HK.ivory));
     });
-    this.pauseNote = hkText(this, 320, 314, this.gs.test ? 'Esc · P 로 돌아가기   ·   L 도감으로   ·   테스트룸은 저장하지 않는다' : 'Esc · P 로 돌아가기   ·   L 포기   ·   포켓몬센터에 가면 자동 저장', 9, HK.faint, { origin: .5 });
+    this.pauseNote = hkText(this, 320, 328, this.gs.test ? 'Esc · P 로 돌아가기   ·   L 도감으로   ·   테스트룸은 저장하지 않는다' : 'Esc · P 로 돌아가기   ·   L 포기   ·   포켓몬센터에 가면 자동 저장', 9, HK.faint, { origin: .5 });
     L.add(this.pauseNote);
     this.input.keyboard.on('keydown', this.onOverlayKey, this);
     this.overlayMode = 'pause';
@@ -2155,7 +2192,11 @@ export default class UIScene extends Phaser.Scene {
   //  🏠 허브 · 🗺️ 다른 보스방(드롭다운) · 🃏 카드 / 🐾 포켓몬 · ❤️ 완충 · 🛡️ 무적 — 창이 열려 있거나 이야기 연출 중엔 숨는다
   buildDebugBar() {
     const gs = this.gs, c = this.add.container(0, 0).setDepth(26), X = 446, Y = 52, BW = 60, BH = 16, GAP = 2;
-    const bg = this.add.graphics(); glassPanel(bg, X - 4, Y - 4, BW * 3 + GAP * 2 + 8, BH * 2 + GAP + 8, { r: 6, alpha: .42, borderAlpha: .16 }); c.add(bg);
+    const bg = this.add.graphics(); glassPanel(bg, X - 4, Y - 4, BW * 3 + GAP * 2 + 8, BH * 3 + GAP * 2 + 8, { r: 6, alpha: .42, borderAlpha: .16 }); c.add(bg);
+    // 🎚️ 셋째 줄: 난이도 [◀] 🔥 HARD [▶] — 바꾸는 즉시 지금 보스 · 엘리트에 적용
+    const dy = Y + 2 * (BH + GAP);
+    for (const [dir, x] of [[-1, X], [1, X + BW * 3 + GAP * 2 - 22]]) glassButton(this, x, dy, 22, BH, dir < 0 ? '◀' : '▶', () => { if (gs.overlay || gs.transitioning || gs.over) return; Sfx.play('select'); stepDifficulty(dir, gs); }, { size: 7.5, ls: 0, layer: c });
+    this.dbgDiffT = hkText(this, X + (BW * 3 + GAP * 2) / 2, dy + BH / 2, '', 7.5, '#ffb070', { origin: .5, bold: true }); c.add(this.dbgDiffT);
     const defs = [
       ['🏠 허브', () => { this.closeBossDrop(); gs.testHub(); }],
       ['🗺️ 보스방 ▾', () => this.toggleBossDrop()],
@@ -2171,6 +2212,7 @@ export default class UIScene extends Phaser.Scene {
   updateDebugBar() {
     const gs = this.gs, show = !gs.overlay && !gs.cinema && !gs.over;
     this.dbgBar.setVisible(show);
+    if (this.dbgDiffT) { const d = diff(); this.dbgDiffT.setText(`난이도 ${d.icon} ${d.en}`).setColor(d.hex); }
     if (!show) this.closeBossDrop();
     if (this.dbgGod !== gs.testGod) { this.dbgGod = gs.testGod; const b = this.dbgBtns[5]; b.setLabel(gs.testGod ? '🛡️ 무적 ON' : '🛡️ 무적 OFF'); this.dbgGodOpt.primary = gs.testGod; b.draw(); }
   }
@@ -2776,6 +2818,7 @@ export default class UIScene extends Phaser.Scene {
       return;
     }
     if (this.overlayMode === 'pause' && e.code === 'KeyL') { this.gs.paused = false; this.gs.gameOver(false, true); return; }
+    if (this.overlayMode === 'pause' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) { Sfx.play('select'); stepDifficulty(e.code === 'ArrowRight' ? 1 : -1, this.gs); return; }   // 🎚️ 난이도 ◀ ▶
     if (this.menu) this.menu.key(e);
   }
 

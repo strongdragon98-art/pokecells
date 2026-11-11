@@ -74,6 +74,7 @@ import { Settings, keyLabel } from '../systems/Settings.js';
 import { Save } from '../systems/Save.js';
 import { RunSave, seeded, newSeed, snapshotWorld, applyWorld, snapshotPlayer, restorePlayer } from '../systems/RunSave.js';
 import { ActionTutorial, TUT_DONE } from '../game/Tutorial.js';
+import { diff } from '../data/difficulty.js';
 import { itemArt, shade, TILE_MARGIN, TILE_SPACING } from '../systems/Textures.js';
 import { rollCards, applyCard, TM_CARDS, heldLv, dressCard, CARD_MAX_LV, BONUS_CARDS, cardScore, ownedUpgrades, upgradeInfo, sideSteps, MASTERY_HEAL, MASTERY_CARDS } from '../data/tm.js';
 import { PERKS, onKill as perkKill } from '../game/Perks.js';
@@ -2768,8 +2769,8 @@ export default class GameScene extends Phaser.Scene {
     const top = WILD[pk.line].forms.length - 1, stage = Math.min(top, Math.max(pk.stage, Math.min(2, tier) + 1));
     const { key, def } = wildForm(pk.line, stage), gy = s.y, lv = Math.min(4, this.corruptLevel(s.room) + 1);   // 엘리트는 침식이 한 단계 더 짙다
     const S = specOf(this.stageIdx);   // 📊 챕터별 고정 스펙 (data/balance.js) — 플레이어 카드 수와 상관없이 그 지방 기대 빌드에 맞춘 체력 · 공격력
-    const e = new Enemy(this, key, s.x, def.flying ? gy - 40 : gy - 14, { def, cLv: lv, scale: 1.25, hpMul: (1 + this.stageIdx * .4) * 3.4 * (1 + .25 * (lv - 1)) * S.hp, dmgMul: (1 + this.stageIdx * .25) * 1.5 * (1 + .15 * (lv - 1)) * S.atk });
-    e.line = pk.line; e.stage = stage; e.elite = true;
+    const e = new Enemy(this, key, s.x, def.flying ? gy - 40 : gy - 14, { def, cLv: lv, scale: 1.25, hpMul: (1 + this.stageIdx * .4) * 3.4 * (1 + .25 * (lv - 1)) * S.hp * diff().hp, dmgMul: (1 + this.stageIdx * .25) * 1.5 * (1 + .15 * (lv - 1)) * S.atk });
+    e.line = pk.line; e.stage = stage; e.elite = true;   // 체력에 🎚️ 난이도 배율 (diff().hp)
     if (!def.flying) e.b.reset(s.x, gy - e.b.height / 2 - 1);
     this.addEnemy(e, s.room || this.room);
     s.enemy = e;
@@ -2956,7 +2957,7 @@ export default class GameScene extends Phaser.Scene {
   spawnBoss(key, room, x) {
     const def = BOSSES[key], gy = this.floorAt(x, room);   // 아레나 바닥 (공중 발판 위가 아니라)
     const S = bossSpec(key);   // 📊 챕터별 고정 스펙 (data/balance.js): 그 보스가 사는 지방의 체력 · 공격력 · 탄속 배율 — 테스트룸 · 이어 싸우기 · 짝 보스도 같다
-    const boss = new Boss(this, key, x, def.fly ? Math.max(room.top + 40, gy - 70) : gy - 40, { room, hpMul: S.hp, dmgMul: S.atk, shotMul: S.shot });
+    const boss = new Boss(this, key, x, def.fly ? Math.max(room.top + 40, gy - 70) : gy - 40, { room, hpMul: S.hp * diff().hp, dmgMul: S.atk, shotMul: S.shot });   // 🎚️ 난이도 보스 체력 (피해 · 탄속 · 템포 · 그로기는 매 프레임 diff())
     if (!def.fly) boss.b.reset(x, gy - boss.b.height / 2 - 1);
     boss.state = 'intro'; boss.intangible = true;
     this.addEnemy(boss, room);

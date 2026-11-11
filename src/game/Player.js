@@ -14,6 +14,7 @@ import { onHurt, onDash, onParry } from './Perks.js';
 import { potionMaxAt, potionHealAt, bondParry, BOND_STRIKE_MUL, BOND_STRIKE_CD } from '../data/bond.js';
 import { DANGER_MUL } from './Combat.js';
 import { parryStagK } from './ParryRules.js';
+import { diff } from '../data/difficulty.js';
 import { typeMultiplier, effectiveness, typeColor } from '../data/types.js';
 import * as base from './skills.js';
 import * as gen23 from './skills/gen23.js';
@@ -1571,6 +1572,7 @@ export class Player extends Actor {
     const sc = this.scene, a = this.action;
     if (!o.force && (this.inv > 0 || this.intangible || this.dash)) { if (this.evadeReady && (this.dash || this.dashEvadeT > 0)) this.dashReload(); return false; }
     if (sc.testGod) return false;   // 테스트룸: 무적 (보스 패턴 구경)
+    dmg *= diff().dmg;   // 🎚️ 난이도: 적에게 받는 모든 피해 (보통 ×0.8 · 매우 어려움 ×1.35)
     // 패링 자세(지상 ↓ + Z): 몸 둘레 70px 안에서 들어온 근접 공격을 받아친다 (투사체는 Combat 이 먼저 반사)
     const pz = !o.noParry && srcX != null && this.parryZone();
     if (pz && Math.abs(srcX - pz.x) <= pz.r + 24) {

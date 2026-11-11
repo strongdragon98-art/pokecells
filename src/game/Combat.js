@@ -10,6 +10,7 @@ import { txt } from '../config.js';
 import { report } from '../systems/Guard.js';
 import { parryStagK, parryDmgK } from './ParryRules.js';
 import { SIZE_CAP } from '../data/items.js';
+import { diff } from '../data/difficulty.js';
 const GROGGY_MUL = 1.35;   // game/Boss.js GROGGY_MUL 과 같은 값 (Boss → Combat 순환 import 를 피해 따로 둔다)
 // 보스 · 엘리트 탄 (fast — Boss.shot · Enemy 엘리트): 탄속 ×ENEMY_FAST (같은 궤적 · 같은 사거리로 더 빨리) · 쏘기 직전 SHOT_HOLD 초 예비 동작(입·손 앞의 날카로운 섬광 · 충전음)
 //  → 보고 피하기보다 예비 동작을 읽고 타이밍으로 쳐내야 한다 (패링 난이도 ↑)
@@ -286,7 +287,7 @@ export class Combat {
     const q = Object.assign({ owner: 'player', vx: 0, vy: 0, r: 4, life: 1, pierce: 1, grav: 0, t: 0, hit: new Set(), status: {} }, c);
     q.color = color;
     if (q.owner === 'enemy' && q.fast) {
-      const sp = Math.hypot(q.vx, q.vy), k = (q.update ? ENEMY_FAST : Math.max(ENEMY_FAST * (q.spdMul || 1), q.boss && sp >= 20 ? BOSS_MIN_SPEED / sp : 0)) * (q.boss ? BOSS_SHOT_K : 1);   // 보스 탄: 보스별 배율(다크라이 2배) · 최소 속도 · 전체 5% 하향
+      const sp = Math.hypot(q.vx, q.vy), k = (q.update ? ENEMY_FAST : Math.max(ENEMY_FAST * (q.spdMul || 1), q.boss && sp >= 20 ? BOSS_MIN_SPEED / sp : 0)) * (q.boss ? BOSS_SHOT_K * diff().shot : 1);   // 🎚️ 난이도 보스 탄속 (보통 ×0.82 · 매우 어려움 ×1.25)   // 보스 탄: 보스별 배율(다크라이 2배) · 최소 속도 · 전체 5% 하향
       q.vx *= k; q.vy *= k;
       if (!q.update) { q.grav *= k * k; q.life /= k; q.hold = SHOT_HOLD; if (q.grow) q.grow *= k; if (q.homing) q.homing /= k; }   // 같은 궤적 · 같은 사거리로 더 빨리 + 예비 동작
       // 스스로 움직이는 탄(떨어지는 바위 · 떠올라 기다리다 날아오는 파편 · 조여 오는 손톱 · 도는 구슬)은 제 예비 동작이 따로 있다 — 날아가는 속도만 (Boss 의 update 가 ENEMY_FAST 를 곱한다)

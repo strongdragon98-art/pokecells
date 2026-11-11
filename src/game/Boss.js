@@ -10,6 +10,7 @@ import { bolt } from './Perks.js';
 import { shockwave } from '../systems/PostFX.js';
 import { typeColor, typeName } from '../data/types.js';
 import { report } from '../systems/Guard.js';
+import { diff } from '../data/difficulty.js';
 
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const STRIKE = new Set(['dash', 'dive', 'spin', 'spark', 'glide', 'jet', 'serpent', 'skydive', 'lunge', 'volt', 'boltRun', 'fbDive']);
@@ -37,7 +38,7 @@ const DANGER_P = .5, DANGER_RAGE_P = .7, DANGER_HOLD = .42, DANGER_BOOM_R = 40, 
 // 🔥 광폭화: 체력 RAGE_HP 이하 — 패턴 시계(예비 동작 · 후딜레이 · 쿨타임)와 몸놀림이 RAGE 배 빨라지고, 패턴이 끝난 뒤 쉬는 시간이 RAGE_CD 배로 한 번 더 준다
 export const RAGE_HP = .4, RAGE = 1.25;
 const RAGE_CD = .8;
-const bossSpeed = (sp, e) => Math.max(sp * ENEMY_FAST * ((e && (e.shotK || e.def.shotMul)) || 1), BOSS_MIN_SPEED) * BOSS_SHOT_K;   // 전체 5% 하향 (Combat 과 같은 비율)
+const bossSpeed = (sp, e) => Math.max(sp * ENEMY_FAST * ((e && (e.shotK || e.def.shotMul)) || 1), BOSS_MIN_SPEED) * BOSS_SHOT_K * diff().shot;   // 전체 5% 하향 (Combat 과 같은 비율) · 🎚️ 난이도 탄속
 
 export class Boss extends Enemy {
   constructor(scene, key, x, y, o = {}) {
@@ -138,7 +139,7 @@ export class Boss extends Enemy {
   update(dt, p) {
     const sc = this.scene, st = this.status;
     if (this.watchdog(dt)) return;   // 🛡️ 고장 난 보스는 바로잡는다 (처치했으면 이번 프레임은 끝)
-    if (this.rageV) { this.rageV = false; this.b.velocity.x /= RAGE; this.b.velocity.y /= RAGE; }   // 광폭화: 지난 물리 단계 동안만 키운 몸놀림을 되돌린다 (끝에서 다시)
+    if (this.tempoV) { this.b.velocity.x /= this.tempoV; this.b.velocity.y /= this.tempoV; this.tempoV = 0; }   // 광폭화 · 🎚️ 난이도: 지난 물리 단계 동안만 키운 몸놀림을 되돌린다 (끝에서 다시)
     if (this.danger && (this.dangerT -= dt) <= 0) this.dangerOff();   // 시전이 idle 로 돌아오지 않는 패턴이어도 붉은 안광은 DANGER_MAX_T 초면 꺼진다
     this.t += dt;
     for (const k in st) st[k] -= dt;
@@ -176,7 +177,9 @@ export class Boss extends Enemy {
       if (!this.rage && this.hp <= this.maxhp * RAGE_HP) this.enterRage();
       const prev = this.state, s0 = this.castShots || 0;
       if (!this.flying && this.room && this.room.arenaStyle) sc.arenaStep(this, 2, false, this.room);   // 결전장 단상 · 계단 턱을 걸어 오른다 (game/Arenas.js)
-      (BOSS_AI[this.def.ai] || BOSS_AI.legend)(this, this.rage ? dt * RAGE : dt, p);   // 광폭화: 패턴 시계가 RAGE 배 빠르다 (예비 동작 · 후딜레이 · 쿨타임)
+      // 패턴 시계: 광폭화 RAGE 배 × 🎚️ 난이도 — 쉬는 상태(idle 쿨타임 · recover 후딜레이)는 1/cd 배 (대기 시간 cd 배) · 그 밖(예비 동작 · 공격 모션)은 act 배
+      const D = diff(), rest = this.state === 'idle' || this.state === 'recover';
+      (BOSS_AI[this.def.ai] || BOSS_AI.legend)(this, dt * (this.rage ? RAGE : 1) * (rest ? 1 / D.cd : D.act), p);
       this.lastVx = this.b.velocity.x;
       if (prev === 'idle' && this.state !== 'idle') this.castShots = (this.castShots || 0) - s0;   // 새 시전: 이번 프레임에 쏜 탄부터 다시 센다
       if (prev === 'wind' && this.state !== 'wind') { this.bigN = (this.bigN || 0) + 1; if (this.state !== 'idle' && this.state !== 'recover') this.castFlare(); }   // 큰 기술 하나를 썼다 · 내지르는 순간 연출
@@ -217,11 +220,12 @@ export class Boss extends Enemy {
     }
     if (this.dangerFx && this.dangerFx.active) { const ep = this.eyePos(); this.dangerFx.setPosition(ep.x, ep.y); }   // 붉은 십자 안광 · DANGER 글자가 보스를 따라간다
     if (this.dangerTxt && this.dangerTxt.active) this.dangerTxt.setPosition(Math.round(this.x + (this.dangerHold > 0 ? (Math.random() - .5) * 3 : 0)), Math.round(this.top - 10));
-    // 광폭화 몸놀림 RAGE 배: 다음 물리 단계 동안만 속도를 키운다 — 중력 보정까지 더해 같은 궤적을 RAGE 배 빨리 (맨 앞에서 되돌린다)
-    if (this.rage && this.alive && !(this.groggyT > 0) && !(this.dangerHold > 0) && this.state !== 'rest' && this.state !== 'intro') {
+    // 몸놀림 배율 = 광폭화 RAGE × 🎚️ 난이도 move: 다음 물리 단계 동안만 속도를 키운다 — 중력 보정까지 더해 같은 궤적을 그 배율로 빨리 (맨 앞에서 되돌린다)
+    const tempo = (this.rage ? RAGE : 1) * diff().move;
+    if (tempo !== 1 && this.alive && !(this.groggyT > 0) && !(this.dangerHold > 0) && this.state !== 'rest' && this.state !== 'intro') {
       const b = this.b;
-      if (b.allowGravity && !b.blocked.down) b.velocity.y += (sc.physics.world.gravity.y + b.gravity.y) * dt * (RAGE - 1 / RAGE);
-      b.velocity.x *= RAGE; b.velocity.y *= RAGE; this.rageV = true;
+      if (b.allowGravity && !b.blocked.down) b.velocity.y += (sc.physics.world.gravity.y + b.gravity.y) * dt * (tempo - 1 / tempo);
+      b.velocity.x *= tempo; b.velocity.y *= tempo; this.tempoV = tempo;
     }
   }
 
@@ -339,7 +343,7 @@ export class Boss extends Enemy {
     const sc = this.scene, base = STAGGER_GAIN[eff] ?? STAGGER_GAIN.normal;
     if (!base) return;
     const k = Math.min(STAGGER_MAX, Math.max(STAGGER_MIN, base * (d / (this.maxhp * STAGGER_REF))));
-    const gain = k / (1 + STAGGER_TOUGH * (this.groggyN || 0));
+    const gain = k / (1 + STAGGER_TOUGH * (this.groggyN || 0)) * diff().stag;   // 🎚️ 난이도: 보통 ×1.3 · 매우 어려움 ×0.7
     this.stagger = Math.min(100, (this.stagger || 0) + gain);
     this.staggerAt = sc.time.now;
     if (eff === 'super') {
@@ -351,7 +355,7 @@ export class Boss extends Enemy {
   // 평타 패링 카운터: 상성과 상관없이 그로기 게이지를 바로 n 만큼
   addStaggerRaw(n) {
     if (this.groggyT > 0 || this.state === 'intro' || !this.alive || this.gone) return;
-    this.stagger = Math.min(100, (this.stagger || 0) + n);
+    this.stagger = Math.min(100, (this.stagger || 0) + n * diff().stag);   // 🎚️ 난이도 그로기 배율 (패링 · 초중량 일격 · 카드)
     this.staggerAt = this.scene.time.now; this.staggerFlash = .35;
     if (this.stagger >= 100) this.startGroggy();
   }
