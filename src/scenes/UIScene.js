@@ -574,7 +574,7 @@ export default class UIScene extends Phaser.Scene {
       const b = glassButton(this, x, y - 8, 18, 16, dir < 0 ? '◀' : '▶', () => stepDifficulty(dir, this.gs), { size: 8, ls: 0 });
       for (const o of b.objs) L.add(o);
     }
-    L.add(hkText(this, 311, y, `${d.icon} ${d.name} (${d.en})${d.recommend ? ' · 권장' : ''}`, 10, d.hex, { bold: true, origin: .5 }));
+    L.add(hkText(this, 311, y, `${d.icon} ${d.name} (${d.en})${d.recommend ? ' · ★ 추천' : ''}`, 10, d.hex, { bold: true, origin: .5 }));
     L.add(hkText(this, 426, y, d.lines.slice(0, 3).join(' · '), 7, HK.dim, { origin: [0, .5] }));
     L.add(hkText(this, 320, y + 12, '← → 로 바꾸면 그 자리에서 바로 적용 (보스 · 엘리트 체력 · 받는 피해 · 탄속 · 패턴 템포 · 그로기)', 6.5, HK.faint, { origin: .5 }));
   }
