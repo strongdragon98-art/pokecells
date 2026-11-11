@@ -9,7 +9,7 @@ import Phaser from 'phaser';
 import { typeColor } from '../data/types.js';
 import { Sfx } from '../systems/Audio.js';
 import { shockwave } from '../systems/PostFX.js';
-import { lineFx } from './skills.js';
+import { lineFx, zReach } from './skills.js';
 
 const ADD = Phaser.BlendModes.ADD;
 const sz = p => p.mods.sizeMul * p.fxMul;
@@ -252,21 +252,21 @@ export function megaUltAction(p) {
 export function tierComboFx(p, step) {
   const sc = p.scene, t = p.tierIdx, type = p.chargeType ? p.chargeType() : p.types[0], col = typeColor(type), s = sz(p), f = p.face;
   if (t < 1) return;
-  const cx = p.x + f * 20 * s, cy = p.y - 2;
+  const zr = zReach(p), cx = p.x + f * 20 * s * zr, cy = p.y - 2;   // 근접 평타: 단계 검기도 사거리만큼 앞으로 (+40%)
   if (t === 1) {
-    sc.fx.slash(cx, cy, 18 * s * 1.4, f, col, { thick: 6, flipV: step % 2 === 0 });
+    sc.fx.slash(cx, cy, 18 * s * 1.4 * zr, f, col, { thick: 6, flipV: step % 2 === 0 });
     sc.fx.burst(cx, cy, [col, 0xffffff], 8, 120, { glow: true, life: .3, angle: f > 0 ? 0 : Math.PI, spread: 1.2, up: 20 });
-    sc.combat.hitRect({ x: cx - 18 * s, y: cy - 14 * s, w: 36 * s, h: 28 * s }, .25, type, { kbx: 60, kby: -40, hs: 0, proc: true });
+    sc.combat.hitRect({ x: cx - 18 * s * zr, y: cy - 14 * s, w: 36 * s * zr, h: 28 * s }, .25, type, { kbx: 60, kby: -40, hs: 0, proc: true });
     return;
   }
-  const R = 34 * s;
-  sc.fx.slash(cx + f * 6, cy, R, f, col, { thick: 11, flipV: step % 2 === 0 });
-  sc.fx.slash(cx + f * 14, cy, R * .7, f, 0xffffff, { thick: 5, flipV: step % 2 === 1, delay: .03 });
+  const R = 34 * s, Rx = R * zr;
+  sc.fx.slash(cx + f * 6, cy, Rx, f, col, { thick: 11, flipV: step % 2 === 0 });
+  sc.fx.slash(cx + f * 14, cy, Rx * .7, f, 0xffffff, { thick: 5, flipV: step % 2 === 1, delay: .03 });
   const gy = sc.groundBelow(cx, p.y - 20);
-  if (gy - p.bottom < 24) lineFx(sc, p.x + f * 8, gy - 1, p.x + f * 60 * s, gy - 1, col, { seg: 6, jag: 3, w: 2, ms: 260 });   // 지면 균열
+  if (gy - p.bottom < 24) lineFx(sc, p.x + f * 8, gy - 1, p.x + f * 60 * s * zr, gy - 1, col, { seg: 6, jag: 3, w: 2, ms: 260 });   // 지면 균열
   sc.fx.ghost(p.sprite, col, .55, 220);
   sc.fx.burst(cx, cy, [col, 0xffffff], 14, 190, { glow: true, life: .35, angle: f > 0 ? 0 : Math.PI, spread: 1.4, up: 40 });
-  sc.combat.hitRect({ x: cx - R, y: cy - R * .8, w: R * 2, h: R * 1.6 }, .4, type, { kbx: 140, kby: -90, hs: 20, proc: true });
+  sc.combat.hitRect({ x: cx - Rx, y: cy - R * .8, w: Rx * 2, h: R * 1.6 }, .4, type, { kbx: 140, kby: -90, hs: 20, proc: true });
   sc.fx.shake(.006, 90, 'hit');
   if (step === 2) {   // 마지막 타: 전방 속성 웨이브
     sc.combat.spawnProjectile({ owner: 'player', x: p.x + f * 16, y: p.y - 4, vx: f * 360, vy: 0, r: 9 * s, mul: .9, type, kind: 'wave', color: col, life: .55, pierce: 99, tier: 3, pow: s, light: true, status: { proc: true } });

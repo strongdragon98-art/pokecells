@@ -5,6 +5,7 @@ import Phaser from 'phaser';
 import { typeColor } from '../data/types.js';
 import { Sfx } from '../systems/Audio.js';
 import { SLASH_PAL } from '../systems/Fx.js';
+import { sizeCapK } from '../data/items.js';
 
 // 기술 크기 배율: 아이템 × 진화 단계 (1단 1 · 2단 1.2 · 3단 1.4 · 메가 1.65) → 판정·궤적·투사체가 같이 커진다
 const sizeMul = p => p.mods.sizeMul * p.fxMul * (p.sp.reach || 1);
@@ -19,24 +20,47 @@ export function skillFlash(p, ms, r, g, b) {
   cam.flash(ms, r, g, b, true);
 }   // reach: 거대 몸집 포켓몬(롱스톤 계열)의 공격 범위 배율
 const up = (p, id) => p.hasUp(id);   // 기술머신 강화 카드를 받았나 (data/tm.js 의 UPGRADES)
+// 개조 카드의 크기 · 범위 증가: 다른 크기 증가(p.mods.sizeMul)에 더해서 최종 1.45배 상한까지만 (data/items.js SIZE_CAP) — 예전 ×1.3 ~ ×2 → +12 ~ 15%
+const UP_SIZE = .15;
+const upSize = (p, id, add = UP_SIZE) => up(p, id) ? sizeCapK(p.mods.sizeMul, add) : 1;
+
+// 🗡️ 근접 평타(Z 연타) 사거리: 연타 중의 근접 판정(slashHit · strikeHit · 계열 고유 근접 타격 zReach)이 앞으로 Z_REACH 배 뻗는다 (+40%)
+//  판정 높이는 조금만(Z_REACH_H — 위아래로 넓히지 않고 앞으로 길게) · 초승달 검기 · 발톱 궤적도 그만큼 커지고, 판정 끝에 검기 파동이 한 겹 더 뻗는다
+//  원거리 평타(Player 의 RANGED_Z — 연타의 1 · 2타가 탄을 쏘는 계열)는 a.zRanged 라 해당 없음 · X · C 기술도 그대로
+export const Z_REACH = 1.4, Z_REACH_H = 1.12;
+export const zReach = p => { const a = p.action; return a && a.comboStep && !a.zRanged ? Z_REACH : 1; };
+// 근접 평타의 원형 판정 (꼬리 휘두르기 · 용암 분출 · 내려찍기): 앞끝(fwd + r)은 Z_REACH 배로 뻗고, 반지름은 그 절반만 커지며 중심이 앞으로 옮겨 간다
+//  fwd · r: 크기 배율을 곱한 px → { dx: 몸에서 중심까지 앞쪽 거리, r }
+export const zCirc = (p, fwd, r) => { const zr = zReach(p); if (zr === 1) return { dx: fwd, r }; const rr = r * (1 + (zr - 1) * .5); return { dx: (fwd + r) * zr - rr, r: rr }; };
 
 // 전방 근접 판정 + 3겹 도트 검기 (가장자리 오라 → 중간 → 순백 코어) + 맞은 자리 톱니 섬광
 //  pal: 검기 색 (기본은 타입 색, palType 으로 다른 타입 색을 빌린다) · rot: X자 교차 베기 · reach: 사거리 배율
 function slashHit(p, o) {
-  const s = sizeMul(p) * (o.reach ?? 1), fwd = (o.fwd ?? 14) * s, w = (o.w ?? 26) * s, h = (o.h ?? 20) * s, fx = p.scene.fx;
+  const zr = zReach(p), zh = zr > 1 ? Z_REACH_H : 1;
+  const s = sizeMul(p) * (o.reach ?? 1), fwd = (o.fwd ?? 14) * s * zr, w = (o.w ?? 26) * s * zr, h = (o.h ?? 20) * s * zh, fx = p.scene.fx;
   const cx = p.x + p.face * fwd, cy = p.y + (o.oy ?? -2), pal = o.pal || SLASH_PAL[o.palType || o.type] || null;
   const spark = pal ? pal[1] : (o.color ?? typeColor(o.type));
   const n = p.scene.combat.hitRect({ x: cx - w / 2, y: cy - h / 2, w, h }, o.mul ?? 1, o.type, Object.assign({ kbx: o.kbx ?? 120, kby: o.kby ?? -80, crit: o.crit || 0, onHit: e => fx.starburst(e.x, e.y - 2, spark, o.burst ?? .55, { debris: !!o.debris }) }, o.status || {}));
-  if (!o.noArc) fx.slash(cx - p.face * w * .25, cy, (o.arc ?? 15) * s, p.face, o.color ?? typeColor(o.type), { pal, flipV: !!o.flipV, thick: o.thick ? o.thick * s : undefined, rot: o.rot, delay: o.delay, a0: o.a0, a1: o.a1, ms: o.ms });
+  if (!o.noArc) {
+    const R = (o.arc ?? 15) * s * zr, col = o.color ?? typeColor(o.type);
+    fx.slash(cx - p.face * w * .25, cy, R, p.face, col, { pal, flipV: !!o.flipV, thick: o.thick ? o.thick * s * zh : undefined, rot: o.rot, delay: o.delay, a0: o.a0, a1: o.a1, ms: o.ms });
+    if (zr > 1) slashWave(p, cx + p.face * w * .22, cy, R, col, pal, !!o.flipV, o.delay);
+  }
   Sfx.play('swing');
   p.squash(1.15, .9);
   return n;
 }
+// 근접 평타의 검기 파동: 판정 앞끝으로 얇은 초승달이 한 겹 더 뻗어 나가며 사라진다 — 늘어난 사거리가 눈에 보이게
+function slashWave(p, x, y, R, col, pal, flipV, delay = 0) {
+  p.scene.fx.slash(x, y, R * .82, p.face, col, { pal, flipV, thick: Math.max(3, R * .22), delay: (delay || 0) + .035, ms: 210, embers: 4 });
+}
 
 // 몸통박치기·주먹 같은 타격: 검기 대신 맞은 자리에 큰 톱니 섬광 + 바닥 파편이 세게 튄다
 function strikeHit(p, o) {
-  const s = sizeMul(p), fwd = (o.fwd ?? 12) * s, w = (o.w ?? 24) * s, h = (o.h ?? 22) * s, fx = p.scene.fx;
+  const zr = zReach(p), zh = zr > 1 ? Z_REACH_H : 1;
+  const s = sizeMul(p), fwd = (o.fwd ?? 12) * s * zr, w = (o.w ?? 24) * s * zr, h = (o.h ?? 22) * s * zh, fx = p.scene.fx;
   const cx = p.x + p.face * fwd, cy = p.y + (o.oy ?? -2), col = o.color ?? (SLASH_PAL[o.type] || [0, 0xffffff])[1];
+  if (zr > 1) slashWave(p, cx + p.face * w * .2, cy, 13 * s * zr, col, null, false);   // 주먹 · 몸통박치기도 앞으로 뻗는 충격 궤적
   const n = p.scene.combat.hitRect({ x: cx - w / 2, y: cy - h / 2, w, h }, o.mul ?? 1, o.type, Object.assign({
     kbx: o.kbx ?? 180, kby: o.kby ?? -90, crit: o.crit || 0,
     onHit: e => { fx.starburst(e.x - p.face * 3, e.y - 2, col, o.burst ?? 1, { debris: true }); if (o.onHit) o.onHit(e); }
@@ -183,13 +207,13 @@ export const SKILL_IMPL = {
     return {
       dur: .34, mm: .3, anim: 'Attack', ev: [
         [.05, () => {   // 거대한 X자 교차 발톱: 납작하고 긴 검기 두 줄이 엇갈려 지나간다 (검기 한가운데 = 교차점)
-          const s = sizeMul(p) * reach, R = 30 * s, cx = p.x + p.face * 22 * s, fx = p.scene.fx;
+          const zr = zReach(p), s = sizeMul(p) * reach, R = 30 * s * zr, cx = p.x + p.face * 22 * s * zr, fx = p.scene.fx;   // 근접 평타: 발톱 궤적도 사거리만큼
           slashHit(p, { fwd: 20, w: 40, h: 36, mul: 1.3, type: 'normal', pal, reach, burst: .9, debris: true, noArc: true });
           fx.slash(cx - p.face * R, p.y - 3, R, p.face, 0, { pal, a0: -.6, a1: .6, rot: -.8, thick: 11 * s, ms: 230, embers: 12 });
           fx.slash(cx - p.face * R, p.y - 3, R, p.face, 0, { pal, a0: -.6, a1: .6, rot: .8, flipV: true, thick: 11 * s, ms: 230, delay: 55, embers: 12 });
           fx.glow(cx, p.y - 3, 26 * s, pal[0], 200, .8);
           if (up(p, 'blast_cross')) {   // 전방 화염 기둥 폭발
-            const sc = p.scene, x = p.x + p.face * 46 * sizeMul(p), gy = sc.groundBelow(x, p.y - 20);
+            const sc = p.scene, x = p.x + p.face * 46 * sizeMul(p) * zr, gy = sc.groundBelow(x, p.y - 20);
             sc.time.delayedCall(90, () => {
               sc.combat.hitRect({ x: x - 14, y: gy - 64, w: 28, h: 64 }, 1.8, 'fire', { burn: 3, kbx: 60, kby: -300, fromX: p.x, onHit: e => sc.fx.starburst(e.x, e.y, 0xffd84a, 1) });
               for (let k = 0; k < 7; k++) sc.combat.pr.flamePuff(x + (Math.random() - .5) * 10, gy - 4, (Math.random() - .5) * 30, -170 - k * 25, .45, .6, 1.6, blue);
@@ -265,7 +289,7 @@ export const SKILL_IMPL = {
     };
   },
   rapid_spin(p) {
-    const m = p.mega.active || up(p, 'tidal_spin'), big = up(p, 'tidal_spin') ? 1.5 : 1;   // 강화 카드 소용돌이 스핀: 범위·위력 ×1.5 + 반사
+    const m = p.mega.active || up(p, 'tidal_spin'), big = up(p, 'tidal_spin') ? 1.5 : 1, bigR = upSize(p, 'tidal_spin');   // 강화 카드 소용돌이 스핀: 범위 +15% · 위력 ×1.5 + 반사
     return {
       dur: .7, mm: .75, anim: 'Attack', guard: m ? 'reflect' : 'spin', tk: 0, ft: 0,
       update(p, a, dt) {
@@ -273,7 +297,7 @@ export const SKILL_IMPL = {
         if (a.ft <= 0) { a.ft = .07; p.face *= -1; p.refacing(); p.scene.fx.ghost(p.sprite, 0x9ad8ff, .4, 160); }
         if (a.tk <= 0) {
           a.tk = .14;
-          const r = 30 * sizeMul(p) * (p.mega.active ? 1.6 : 1) * big;
+          const r = 30 * sizeMul(p) * (p.mega.active ? 1.6 : 1) * bigR;
           p.scene.combat.hitCircle(p.x, p.y, r, .6 * big, 'normal', { kbx: 170, kby: -100, hs: 30 });
           p.scene.fx.ring(p.x, p.y, r, 0x9ad8ff, 160);
           if (!m) p.scene.combat.clearEnemyProjectiles({ x: p.x - r, y: p.y - r, w: r * 2, h: r * 2 });
@@ -297,8 +321,8 @@ export const SKILL_IMPL = {
     };
   },
   razor_leaf(p) {
-    const m = p.mega.active, hf = up(p, 'hundred_flowers');   // 강화 카드 백화요란: 잎날 2배 · 피해 +40% · 한 장 더
-    return { dur: .3, mm: .4, anim: 'Shoot', ev: [[.08, () => { shoot(p, { speed: 240, r: hf ? 8 : 4, mul: hf ? 1.7 : 1.2, type: 'grass', kind: 'leaf', life: 1.8, pierce: 99, boomerang: .38, count: (m ? 4 : 2) + (hf ? 1 : 0), spread: .28 }); Sfx.play('leaf'); }]] };
+    const m = p.mega.active, hf = up(p, 'hundred_flowers');   // 강화 카드 백화요란: 잎날 크기 +15% · 피해 +40% · 한 장 더
+    return { dur: .3, mm: .4, anim: 'Shoot', ev: [[.08, () => { shoot(p, { speed: 240, r: 4 * upSize(p, 'hundred_flowers'), mul: hf ? 1.7 : 1.2, type: 'grass', kind: 'leaf', life: 1.8, pierce: 99, boomerang: .38, count: (m ? 4 : 2) + (hf ? 1 : 0), spread: .28 }); Sfx.play('leaf'); }]] };
   },
   seed_field(p) {
     const m = p.mega.active;
@@ -359,8 +383,8 @@ export const SKILL_IMPL = {
 
   // ===== 피카츄 =====
   thundershock(p, i) {
-    const m = p.mega.active, rail = up(p, 'rail_storm'), big = i === 2 || rail;   // 강화 카드 레일 쇼크: 매 발 큰 탄 + 3관통
-    return { dur: .2, mm: .45, anim: 'Shoot', ev: [[.05, () => { shoot(p, { speed: rail ? 420 : 340, r: big ? 5 : 3, stream: true, mul: big ? 1.25 : .7, type: 'electric', kind: 'bolt', life: .55, status: { paralyze: big ? .35 : .1 }, count: m ? 2 : 1, spread: .16, light: big, pierce: rail ? 3 : 1 }); Sfx.play('zap'); }]] };
+    const m = p.mega.active, rail = up(p, 'rail_storm'), big = i === 2 || rail;   // 강화 카드 레일 쇼크: 매 발 강한 탄(크기 +15%) + 3관통
+    return { dur: .2, mm: .45, anim: 'Shoot', ev: [[.05, () => { shoot(p, { speed: rail ? 420 : 340, r: i === 2 ? 5 : 3 * upSize(p, 'rail_storm'), stream: true, mul: big ? 1.25 : .7, type: 'electric', kind: 'bolt', life: .55, status: { paralyze: big ? .35 : .1 }, count: m ? 2 : 1, spread: .16, light: big, pierce: rail ? 3 : 1 }); Sfx.play('zap'); }]] };
   },
   thunderbolt(p) {
     const m = p.mega.active;
@@ -415,10 +439,10 @@ export const SKILL_IMPL = {
     }]] };
   },
   supersonic(p) {
-    const st = up(p, 'sonic_storm'), m = p.mega.active || st;   // 강화 카드 음파 폭풍: 사방 · 범위 ×1.6 · 위력 ×1.5
+    const st = up(p, 'sonic_storm'), m = p.mega.active || st;   // 강화 카드 음파 폭풍: 사방 · 범위 +15% · 위력 ×1.5
     return {
       dur: .4, mm: .3, anim: 'Shoot', ev: [[.1, () => {
-        const s = sizeMul(p) * (st ? 1.6 : 1), sc = p.scene;
+        const s = sizeMul(p) * upSize(p, 'sonic_storm'), sc = p.scene;
         if (m) sc.combat.hitCircle(p.x, p.y, 90 * s, st ? 2.1 : 1.4, 'normal', { confuse: 1.6, kbx: 60, kby: -40 });
         else sc.combat.hitRect({ x: p.face > 0 ? p.x : p.x - 92 * s, y: p.y - 22 * s, w: 92 * s, h: 44 * s }, 1.4, 'normal', { confuse: 1.6, kbx: 60, kby: -40 });
         for (let k = 1; k <= 4; k++) sc.time.delayedCall(k * 45, () => sc.fx.ring(m ? p.x : p.x + p.face * k * 20 * s, p.y, (m ? 22 * k : 10 + k * 5) * s, 0xc8b0ff, 220));
@@ -461,12 +485,12 @@ export const SKILL_IMPL = {
     };
   },
   dynamic_punch(p) {
-    const m = p.mega.active, mf = up(p, 'meteor_fist');   // 강화 카드 메테오 너클: 폭발 반경 ×1.6 · 위력 ×1.4
+    const m = p.mega.active, mf = up(p, 'meteor_fist');   // 강화 카드 메테오 너클: 폭발 반경 +15% · 위력 ×1.4
     return {
       dur: .72, mm: 0, anim: 'Strike', charge: .36,
       update(p, a) { if (a.t < .36 && Math.random() < .7) p.scene.fx.burst(p.x + (Math.random() - .5) * 40, p.y + (Math.random() - .5) * 30, 0xff8a6a, 1, 10, { grav: 0, bounce: false, glow: true, life: .3 }); },
       ev: [[.38, () => {
-        const r = 32 * sizeMul(p) * (m ? 2 : 1) * (mf ? 1.6 : 1), x = p.x + p.face * 18;
+        const r = 32 * sizeMul(p) * (m ? 2 : 1) * upSize(p, 'meteor_fist'), x = p.x + p.face * 18;
         p.scene.combat.hitCircle(x, p.y, r, 4.2 * (mf ? 1.4 : 1), 'fighting', { confuse: 1.2, kbx: 320, kby: -240, hs: 110, onHit: e => p.scene.fx.starburst(e.x, e.y, 0xffb070, 1.3) });
         p.scene.fx.ring(x, p.y, r, 0xffb070, 300); p.scene.fx.glow(x, p.y, r, 0xff8a3a, 300, 1);
         p.scene.fx.burst(x, p.y, [0xff8a3a, 0xffe0a0, 0xffffff], 26, 220, { glow: true });
@@ -489,12 +513,12 @@ export const SKILL_IMPL = {
   // ===== 고오스 =====
   lick_shadow(p, i) {
     if (i < 2) return { dur: .22, mm: .4, anim: 'Attack', ev: [[.07, () => slashHit(p, { fwd: 12, w: 22, h: 18, mul: 1, type: 'ghost', status: { paralyze: .15 }, color: 0xc89aff, flipV: i === 1 })]] };
-    const pt = up(p, 'phantom_tongue');   // 강화 카드 망령의 혀: 섀도볼이 크고 유도 + 저주
-    return { dur: .26, mm: .4, anim: 'Shoot', ev: [[.07, () => { shoot(p, { speed: 220, r: pt ? 6 : 4, mul: pt ? 1.7 : 1.3, type: 'ghost', kind: 'shadow', life: .9, ghost: true, homing: p.mega.active || pt ? .7 : 0, color: 0x9a5aff, status: pt ? { curse: 4 } : {} }); Sfx.play('ghost'); }]] };
+    const pt = up(p, 'phantom_tongue');   // 강화 카드 망령의 혀: 섀도볼 크기 +15% · 유도 + 저주
+    return { dur: .26, mm: .4, anim: 'Shoot', ev: [[.07, () => { shoot(p, { speed: 220, r: 4 * upSize(p, 'phantom_tongue'), mul: pt ? 1.7 : 1.3, type: 'ghost', kind: 'shadow', life: .9, ghost: true, homing: p.mega.active || pt ? .7 : 0, color: 0x9a5aff, status: pt ? { curse: 4 } : {} }); Sfx.play('ghost'); }]] };
   },
   shadow_ball(p) {
-    const m = p.mega.active, no = up(p, 'nightmare_orb');   // 강화 카드 악몽의 구슬: 2개 더 · 폭발 ×1.3
-    return { dur: .35, mm: .3, anim: 'Shoot', ev: [[.12, () => { shoot(p, { speed: 150, r: 7, mul: 0, type: 'ghost', kind: 'shadow', life: 1.4, ghost: true, pierce: 1, color: 0x9a5aff, light: true, count: (m ? 3 : 1) + (no ? 2 : 0), spread: .25, boom: { r: 36 * (no ? 1.3 : 1), mul: 3.4, kb: 220 } }); Sfx.play('ghost'); }]] };   // 적에 닿거나 사거리 끝에서 폭발
+    const m = p.mega.active, no = up(p, 'nightmare_orb');   // 강화 카드 악몽의 구슬: 2개 더 · 폭발 반경 +12%
+    return { dur: .35, mm: .3, anim: 'Shoot', ev: [[.12, () => { shoot(p, { speed: 150, r: 7, mul: 0, type: 'ghost', kind: 'shadow', life: 1.4, ghost: true, pierce: 1, color: 0x9a5aff, light: true, count: (m ? 3 : 1) + (no ? 2 : 0), spread: .25, boom: { r: 36 * upSize(p, 'nightmare_orb', .12), mul: 3.4, kb: 220 } }); Sfx.play('ghost'); }]] };   // 적에 닿거나 사거리 끝에서 폭발
   },
   phantom_dash(p) {
     const m = p.mega.active;
@@ -918,7 +942,7 @@ function zAction(p, def, o) {
 }
 
 // 라인별 전용 스킬 파일(game/skills/*.js)도 같은 도구를 쓴다 (game/skillKit.js 가 다시 내보낸다)
-export { sizeMul, slashHit, strikeHit, shoot, lineFx, beamAction, rockPillar, iceShards, dashAction, zCharge, zStrike, zAction };
+export { sizeMul, slashHit, strikeHit, shoot, lineFx, beamAction, rockPillar, iceShards, dashAction, zCharge, zStrike, zAction };   // zReach · zCirc · Z_REACH 는 위에서 바로 내보낸다
 
 const zView = p => p.scene.cameras.main.worldView;
 const zGround = (p, x) => p.scene.groundBelow(x, p.y - 30);

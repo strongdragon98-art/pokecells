@@ -4,7 +4,7 @@
 import Phaser from 'phaser';
 import { typeColor } from '../../data/types.js';
 import { Sfx } from '../../systems/Audio.js';
-import { sizeMul, slashHit, shoot, lineFx, dashAction, groundAt } from '../skillKit.js';
+import { sizeMul, zReach, zCirc, slashHit, shoot, lineFx, dashAction, groundAt } from '../skillKit.js';
 
 // 몸 주변 판정 사각형 (pad 만큼 넓힘, 진화 크기 반영)
 const bodyRect = (p, pad) => { const s = sizeMul(p); return { x: p.b.x - pad * s, y: p.b.y - pad * s, w: p.b.width + pad * 2 * s, h: p.b.height + pad * 2 * s }; };
@@ -104,7 +104,7 @@ export const SKILL_IMPL = {
     return {
       dur: last ? .34 : .24, mm: .3, anim: last ? 'Strike' : 'Attack', ev: [[last ? .12 : .07, () => {
         const n = slashHit(p, { fwd: 15, w: last ? 34 : 26, h: last ? 28 : 20, mul: last ? 1.7 : 1, type: 'grass', crit: last ? .1 : 0, kbx: last ? 230 : 110, status: last ? { stun: .5 } : {}, color: 0x9ae05a, flipV: i === 1, arc: last ? 17 : 13, thick: last ? 7 : undefined });
-        const s = sizeMul(p), tx = p.x + p.face * 22 * s;
+        const s = sizeMul(p), tx = p.x + p.face * 22 * s * zReach(p);
         p.scene.fx.burst(tx, p.y - 2, [0x9ae05a, 0xf0ffd0], last ? 12 : 5, last ? 160 : 90, { angle: p.face > 0 ? 0 : Math.PI, spread: 1.4, up: 10 });   // 튀는 가시
         if (last) {
           Sfx.play('punch'); if (n) p.scene.fx.shake(.006, 120);
@@ -391,13 +391,13 @@ export const SKILL_IMPL = {
       dur: last ? .32 : .22, mm: .35, ctrl: last, anim: last ? 'Strike' : 'Attack',
       update: last ? (p, a) => p.b.setVelocityX(a.t < .12 ? p.face * 230 : p.b.velocity.x * .8) : undefined,   // 3타째는 달려들며 문다
       ev: [[last ? .1 : .06, () => {
-        const sc = p.scene, s = sizeMul(p), fx = p.x + p.face * 14 * s, col = 0xff8a3a;
+        const sc = p.scene, s = sizeMul(p), zr = zReach(p), fx = p.x + p.face * 14 * s * zr, col = 0xff8a3a;
         slashHit(p, { fwd: 13, w: last ? 28 : 22, h: last ? 24 : 18, mul: last ? 1.7 : 1, type: 'fire', crit: last ? .15 : 0, kbx: last ? 200 : 90, status: last ? { burn: 3, stun: .45 } : {}, color: col, arc: last ? 15 : 11 });
-        sc.fx.slash(fx, p.y - 2, (last ? 13 : 10) * s, p.face, 0xffe0a0, { flipV: true, thick: 3 });   // 아래 송곳니가 맞물린다
+        sc.fx.slash(fx, p.y - 2, (last ? 13 : 10) * s * zr, p.face, 0xffe0a0, { flipV: true, thick: 3 });   // 아래 송곳니가 맞물린다
         sc.fx.embers(fx, p.y - 2, [col, 0xffd04a], last ? 8 : 3, { speed: 50 });
         if (last) {
           Sfx.play('punch'); Sfx.play('fire');
-          if (m) { const bx = p.x + p.face * 24 * s; sc.combat.hitCircle(bx, p.y - 2, 28 * s, .8, 'fire', { burn: 3, kbx: 160 }); sc.fx.glow(bx, p.y - 2, 28 * s, 0xff5a1a, 240, 1); sc.fx.ring(bx, p.y - 2, 28 * s, 0xffd04a, 220); }
+          if (m) { const c = zCirc(p, 24 * s, 28 * s), bx = p.x + p.face * c.dx; sc.combat.hitCircle(bx, p.y - 2, c.r, .8, 'fire', { burn: 3, kbx: 160 }); sc.fx.glow(bx, p.y - 2, c.r, 0xff5a1a, 240, 1); sc.fx.ring(bx, p.y - 2, c.r, 0xffd04a, 220); }
         }
       }]]
     };

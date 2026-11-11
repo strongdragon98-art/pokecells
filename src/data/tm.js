@@ -32,17 +32,17 @@ export const UPGRADES = {
   blue_inferno: { skill: 'scratch_ember', name: '불꽃세례 개조: 푸른 연옥', grade: '전설', desc: '불꽃세례 피해 +50%. 불꽃이 푸른 창염으로 바뀌고 발사 수 +2.' },
   blast_cross: { skill: 'scratch_ember', name: '할퀴기 진화: 폭열 크로스', grade: '유니크', desc: '할퀴기 사거리 +40%. 마지막 X자 타격 때 전방에 화염 기둥이 폭발한다.' },
   hydro_pump: { skill: 'tackle_watergun', name: '물대포 진화: 하이드로펌프', grade: '전설', desc: '3타 물대포가 적을 끝까지 밀어내는 넉백 물줄기 광선으로 바뀐다.' },
-  tidal_spin: { skill: 'rapid_spin', name: '고속스핀 개조: 소용돌이 스핀', grade: '유니크', desc: '고속스핀 범위·위력 ×1.5, 메가가 아니어도 적 투사체를 되받아친다.' },
-  hundred_flowers: { skill: 'razor_leaf', name: '잎날가르기 개조: 백화요란', grade: '전설', desc: '잎날 크기 2배 · 피해 +40% · 잎날 1장 추가. 꿰뚫고 돌아오며 2번 벤다.' },
+  tidal_spin: { skill: 'rapid_spin', name: '고속스핀 개조: 소용돌이 스핀', grade: '유니크', desc: '고속스핀 범위 +15% · 위력 ×1.5, 메가가 아니어도 적 투사체를 되받아친다.' },
+  hundred_flowers: { skill: 'razor_leaf', name: '잎날가르기 개조: 백화요란', grade: '전설', desc: '잎날 크기 +15% · 피해 +40% · 잎날 1장 추가. 꿰뚫고 돌아오며 2번 벤다.' },
   thorn_lash: { skill: 'vine_whip', name: '덩굴채찍 진화: 가시채찍', grade: '유니크', desc: '덩굴채찍 사거리 +35%. 채찍 끝이 꺾이는 자리에서 가시가 폭발한다.' },
-  rail_storm: { skill: 'thundershock', name: '전기쇼크 개조: 레일 쇼크', grade: '유니크', desc: '모든 전기탄이 크고 빨라지며 적 3마리까지 꿰뚫는다.' },
+  rail_storm: { skill: 'thundershock', name: '전기쇼크 개조: 레일 쇼크', grade: '유니크', desc: '모든 전기탄이 강해지고(크기 +15%) 빨라지며 적 3마리까지 꿰뚫는다.' },
   storm_lord: { skill: 'thunderbolt', name: '10만볼트 진화: 뇌신', grade: '전설', desc: '번개를 맞는 적 +3마리, 맞은 적끼리 번개가 연쇄로 이어진다.' },
   vampire_fang: { skill: 'leech_life', name: '흡혈 진화: 흡혈귀의 송곳니', grade: '유니크', desc: '흡혈 회복 +20%, 물기 사거리 +30%.' },
-  sonic_storm: { skill: 'supersonic', name: '초음파 개조: 음파 폭풍', grade: '유니크', desc: '초음파가 사방으로 퍼지고 범위 ×1.6 · 위력 ×1.5.' },
+  sonic_storm: { skill: 'supersonic', name: '초음파 개조: 음파 폭풍', grade: '유니크', desc: '초음파가 사방으로 퍼지고 범위 +15% · 위력 ×1.5.' },
   iron_chop: { skill: 'karate_chop', name: '태권당수 진화: 강철 당수', grade: '유니크', desc: '3타 위력 ×1.3, 마지막 타격마다 관통 충격파가 날아간다.' },
-  meteor_fist: { skill: 'dynamic_punch', name: '폭발펀치 개조: 메테오 너클', grade: '전설', desc: '폭발 반경 ×1.6 · 위력 ×1.4.' },
-  phantom_tongue: { skill: 'lick_shadow', name: '핥기 진화: 망령의 혀', grade: '유니크', desc: '3타 섀도볼이 커지고 적을 쫓아가며, 맞은 적을 저주한다.' },
-  nightmare_orb: { skill: 'shadow_ball', name: '섀도볼 개조: 악몽의 구슬', grade: '전설', desc: '섀도볼 2개 추가, 폭발 반경 ×1.3.' }
+  meteor_fist: { skill: 'dynamic_punch', name: '폭발펀치 개조: 메테오 너클', grade: '전설', desc: '폭발 반경 +15% · 위력 ×1.4.' },
+  phantom_tongue: { skill: 'lick_shadow', name: '핥기 진화: 망령의 혀', grade: '유니크', desc: '3타 섀도볼이 커지고(+15%) 적을 쫓아가며, 맞은 적을 저주한다.' },
+  nightmare_orb: { skill: 'shadow_ball', name: '섀도볼 개조: 악몽의 구슬', grade: '전설', desc: '섀도볼 2개 추가, 폭발 반경 +12%.' }
 };
 
 // 지금 장착한 기술을 직접 키우는 스킬 강화 카드 (어떤 기술이든 · 같은 기술의 같은 갈래는 BOOST_MAX 장까지 겹친다)
@@ -52,7 +52,8 @@ export const BOOSTS = {
   // 📉 스탯 인플레이션 억제: 커먼 3 ~ 5% · 언커먼 6 ~ 10% · 레어 12 ~ 18% (유니크 · 전설은 그대로 — 초반 지방엔 거의 나오지 않는다)
   power: { name: '위력 증폭', icon: '⚔', amt: { 커먼: .05, 언커먼: .08, 레어: .15, 유니크: .4, 전설: .6 }, desc: (sk, a) => `${sk}의 피해 +${Math.round(a * 100)}%` },
   haste: { name: '가속 회로', icon: '⏱', cdOnly: true, amt: { 커먼: .04, 언커먼: .07, 레어: .12, 유니크: .22, 전설: .3 }, desc: (sk, a) => `${sk}의 쿨타임 -${Math.round(a * 100)}% (누적 최대 -60%)` },
-  wide: { name: '광역 확장', icon: '◎', amt: { 커먼: .05, 언커먼: .08, 레어: .15, 유니크: .4, 전설: .6 }, desc: (sk, a) => `${sk}의 범위 · 투사체 크기 +${Math.round(a * 100)}%` },
+  // 📏 광역 확장: 크기 증가는 예전의 3분의 1 남짓 (커먼 5 → 2% · 레어 15 → 5% · 유니크 40 → 12% · 전설 60 → 15%) — 다른 크기 증가와 더해 최종 최대 1.45배 (data/items.js SIZE_CAP)
+  wide: { name: '광역 확장', icon: '◎', amt: { 커먼: .02, 언커먼: .03, 레어: .05, 유니크: .12, 전설: .15 }, desc: (sk, a) => `${sk}의 범위 · 투사체 크기 +${Math.round(a * 100)}% (크기는 합쳐 최대 1.45배)` },
   split: { name: '분열탄', icon: '✺', amt: { 커먼: 1, 언커먼: 1, 레어: 2, 유니크: 3, 전설: 4 }, desc: (sk, a, ty) => `${sk}를 쓸 때마다 ${typeName(ty)} 유도탄 ${a}갈래가 함께 뻗어 나간다 (피해 45%)` }
 };
 // ---- 중복 카드 합성: 같은 카드를 또 뽑으면 장수를 늘리지 않고 한 장의 강화 단계(+1 · +2 · +3)를 올린다 ----
@@ -114,7 +115,8 @@ export function dressCard(p, card) {
 }
 
 // 받은 스킬 강화 카드 목록 → 기술마다 누적 효과 { power, haste, wide, split, n: { 갈래: 장수 } }
-//  cardLv: 기술 카드 강화 단계 { 'move:기술': 단계 } — 단계마다 위력 +60% · 범위 +25% · 쿨타임 -6% (★초월: 유도탄 2갈래 · 쿨타임 -15%)
+//  cardLv: 기술 카드 강화 단계 { 'move:기술': 단계 } — 단계마다 위력 +60% · 범위 +8% · 쿨타임 -6% (★초월: 유도탄 2갈래 · 쿨타임 -15%)
+const CARD_LV_WIDE = .08;   // 기술 카드 강화 단계마다 범위 · 크기 +8% (예전 +25%)
 export function boostTotals(list, cardLv) {
   const out = {}, at = id => out[id] || (out[id] = { power: 0, haste: 0, wide: 0, split: 0, n: {} });
   for (const e of list || []) {
@@ -126,7 +128,7 @@ export function boostTotals(list, cardLv) {
   for (const [k, lv] of Object.entries(cardLv || {})) {
     if (!k.startsWith('move:') || !lv) continue;
     const b = at(k.slice(5));
-    b.power += LV_GAIN * lv; b.wide += .25 * lv; b.haste += .06 * lv;
+    b.power += LV_GAIN * lv; b.wide += CARD_LV_WIDE * lv; b.haste += .06 * lv;
     if (lv >= CARD_MAX_LV) { b.split += 2; b.haste += .15; }
   }
   return out;

@@ -72,7 +72,7 @@ export function toImpl(id) {
       }
       case 'sky_fall': return { dur: .34, mm: .2, anim: 'Shoot', ev: fin(() => skyStrike(p, { n: 2 + extra, mul: total / 2, type, falling: true, status: st(p) })) };
       case 'projectile': return { dur: .3, mm: .3, anim: 'Shoot', ev: fin(() => { shoot(p, { mul: total, type, kind: kindOf(type), speed: 300, r: 5, life: .9, count: 1 + extra, status: st(p), light: true }); Sfx.play('eshot'); }) };
-      case 'boomerang': return { dur: .3, mm: .35, anim: 'Shoot', ev: fin(() => { shoot(p, { mul: total * .6, type, kind: 'leaf', speed: 300, r: 6, life: 1.4, pierce: 99, boomerang: .38, count: 1 + extra, status: st(p), color: col }); Sfx.play('swing'); }) };
+      case 'boomerang': return { dur: .3, mm: .35, anim: 'Shoot', ev: fin(() => { shoot(p, { mul: total * .6, type, kind: kindOf(type), speed: 300, r: 6, life: 1.4, pierce: 99, boomerang: .38, count: 1 + extra, status: st(p), color: col }); Sfx.play('swing'); }) };   // 부메랑도 제 속성 그림 (예전엔 어느 속성이든 잎날)
       case 'homing': return { dur: .34, mm: .3, anim: 'Shoot', ev: fin(() => bezierMissiles(p, { n: 2, mul: total / 2, type, status: st(p), lifesteal: m.drain ? m.drain / 100 * .5 : 0 })) };
       case 'beam': {
         const a = beamAction(p, { hold: .22, dur: .5, len: 170, hh: 6, mul: total / 5, tick: .1, type, pal: [col, 0xffffff], status: st(p) });

@@ -8,6 +8,8 @@ import { shockwave } from '../systems/PostFX.js';
 import { onHit as perkHit } from './Perks.js';
 import { txt } from '../config.js';
 import { report } from '../systems/Guard.js';
+import { parryStagK, parryDmgK } from './ParryRules.js';
+import { SIZE_CAP } from '../data/items.js';
 const GROGGY_MUL = 1.35;   // game/Boss.js GROGGY_MUL 과 같은 값 (Boss → Combat 순환 import 를 피해 따로 둔다)
 // 보스 · 엘리트 탄 (fast — Boss.shot · Enemy 엘리트): 탄속 ×ENEMY_FAST (같은 궤적 · 같은 사거리로 더 빨리) · 쏘기 직전 SHOT_HOLD 초 예비 동작(입·손 앞의 날카로운 섬광 · 충전음)
 //  → 보고 피하기보다 예비 동작을 읽고 타이밍으로 쳐내야 한다 (패링 난이도 ↑)
@@ -21,6 +23,7 @@ export const BOSS_SHOT_K = .95;
 const PARRY_STAGGER = 32, PARRY_SIZE = [1, .85, .72, .62, .55], PARRY_COL = [0xffe36a, 0xffd88a, 0xf0d0a0, 0xd8c8b0, 0xc0b8b0];
 // 반사탄 조준: 쳐내는 순간 그 탄을 쏜 적(없으면 가장 가까운 적)의 중심으로 · 날아가는 동안 초당 최대 REFLECT_TURN 만큼만 꺾어 따라간다 (약한 유도)
 const REFLECT_TURN = 40 * Math.PI / 180, REFLECT_RANGE = 640;
+const REFLECT_SIZE = .1;   // 증폭 반사경 카드 1장(합성 단계)마다 반사탄 크기 +10% — 합쳐 최대 1.45배 (data/items.js SIZE_CAP)
 // ⚠️ 붉은 안광(패링 불가 — Boss.dangerOn) 공격을 패링하면 가드 브레이크 · 받는 피해 ×DANGER_MUL (Player.takeHit · guardBreak)
 export const DANGER_MUL = 1.4;
 // 영거리 사격술(양날의 검 카드): 적과 NEAR_R 안에서 맞히면 +75% · FAR_R 밖에서 맞히면 -30%
@@ -63,6 +66,7 @@ export class Combat {
     if (e.status.curse > 0) d *= 1.3;
     d *= Cores.amp(this, e, d);   // 다크라이의 나이트메어 코어: 상태이상 걸린 적 +45% · 흡혈 · 무한다이노의 다이맥스 코어: 보스 +50%
     if (this.s.overdrive) d *= 2;   // 유대의 불꽃 오버드라이브 (가라르 진 최종전): 평타 · 차징 샷 · 기술 · 패링 반사탄 모두 2배
+    if (o.parried || o.parryHit) d *= parryDmgK(e);   // ⚔️ 챕터 메인 대보스: 패링 반사탄 · 카운터 피해 -33% (game/ParryRules.js)
     d *= this.s.bondMul || 1;   // 유대의 불꽃 정화 단계마다 모든 공격 소폭 상승 (GameScene.bondMul)
     if (mods.execute && e.hp <= e.maxhp * .25) d *= 1 + mods.execute;   // 특성 카드: 마무리 일격
     if (!o.dot && p.counterBuffT > this.s.time.now) d *= 1 + .15 * (mods.parryCounter || 1);   // 반격의 일격 카드: 패링 뒤 2초 안에 쓴 기술 +15% (Player.useSkill)
@@ -110,8 +114,8 @@ export class Combat {
         if (!o.proc && !o.parried && p.action && p.action.comboStep && !p.onGround) p.airHitHop();   // 공중 평타 적중: 반동으로 한 번 더 체공
       }
       const stagK = 1 + (mods.stagAdd || 0);   // 타격감 증폭 카드: 보스 그로기 누적 +7%
-      if (e.boss && o.parried) { if (e.addStaggerRaw && (o.parryStag ?? 1) > 0) e.addStaggerRaw(PARRY_STAGGER * (o.parryStag ?? 1) * stagK); }   // 패링 반사탄: 그로기 게이지가 뭉텅이로 (연속 패링은 60 → 35 → 15 → 0%)
-      else if (e.boss && e.addStagger && !o.dot) e.addStagger(m === 0 ? 'immune' : eff, d * (o.stagMul || 1) * stagK);   // 보스 그로기 게이지 (약점 속성 공격만 · 준 피해에 비례 — Boss.addStagger) · stagMul: 차징 임팩트 웨이브 2배
+      if (e.boss && o.parried) { if (e.addStaggerRaw && (o.parryStag ?? 1) > 0) e.addStaggerRaw(PARRY_STAGGER * (o.parryStag ?? 1) * stagK * parryStagK(e)); }   // 챕터 메인 대보스: ×0.55   // 패링 반사탄: 그로기 게이지가 뭉텅이로 (연속 패링은 60 → 35 → 15 → 0%)
+      else if (e.boss && e.addStagger && !o.dot) e.addStagger(m === 0 ? 'immune' : eff, d * (o.stagMul || 1) * stagK * (o.parryHit ? parryStagK(e) / parryDmgK(e) : 1));   // 패링 카운터 타격: 챕터 메인 대보스 그로기 ×0.55 (피해 ×0.67 을 되돌려 정확히)   // 보스 그로기 게이지 (약점 속성 공격만 · 준 피해에 비례 — Boss.addStagger) · stagMul: 차징 임팩트 웨이브 2배
       const pa = p.action;
       if (mods.heavyStag && pa && pa.comboStep && !o.dot && !o.proc && !o.parried && e.hp > 0) {   // 초중량 일격(양날의 검): 평타 한 번에 적마다 한 번 — 보스 그로기 · 3타 피니시는 잡몹 경직
         const hs = pa.heavySet || (pa.heavySet = new Set());
@@ -308,7 +312,7 @@ export class Combat {
     q.seed = Math.random() * 3;
     this.pr.attach(q);                                   // 속성별 도트 투사체
     if (q.hold > 0) {   // 예비 동작: 탄은 숨겨 두고 그 자리에 섬광이 모인다 (updateProjectiles 에서 놓는다)
-      for (const o of [q.spr, q.glow, q.aura]) if (o) o.setVisible(false);
+      for (const o of [q.spr, q.glow, q.aura, q.ring]) if (o) o.setVisible(false);
       this.pr.charge(q, q.hold);
       const now = s.time.now;
       if (now - (this.chargeSfxAt || -999) > 180) { this.chargeSfxAt = now; Sfx.play('echarge'); }
@@ -356,7 +360,7 @@ export class Combat {
       const q = this.projs[i];
       if (q.hold > 0) {   // 보스 · 엘리트 탄 예비 동작 중: 움직이지도 맞지도 않는다 → 다 되면 발사 섬광과 함께 날아간다
         q.hold -= dt;
-        if (q.hold <= 0) { for (const o of [q.spr, q.glow, q.aura]) if (o) o.setVisible(true); if (q.muzzle !== false) this.pr.muzzle(q); }
+        if (q.hold <= 0) { for (const o of [q.spr, q.glow, q.aura, q.ring]) if (o) o.setVisible(true); if (q.muzzle !== false) this.pr.muzzle(q); }
         continue;
       }
       q.t += dt; q.life -= dt;
@@ -420,13 +424,13 @@ export class Combat {
         } else {
         // 패링 자세(지상 ↓ + Z) → 반사: 아군 황금빛 탄이 되어 되돌아간다 (속도 2배 · 최대 900) · 250% 피해 × 연속 패링 점감
         //  쏜 적(없으면 가장 가까운 적)의 중심을 겨눠 날아가고, 그 적이 움직이면 초당 40° 까지 꺾어 따라간다 (q.seek)
-        const amp = p.mods.reflectAmp || 0;   // 증폭 반사경 카드: 반사탄 크기 · 비행 속도 +30% · 반사 피해 +15% (합성하면 더)
+        const amp = p.mods.reflectAmp || 0;   // 증폭 반사경 카드: 반사탄 크기 +10% · 비행 속도 +30% · 반사 피해 +15% (합성하면 더 · 크기는 최대 1.45배)
         const ch = p.doParry(q.x, q.y, 'proj'), i = Math.min(ch.n, PARRY_SIZE.length) - 1, sp = Math.hypot(q.vx, q.vy) || 1, v = Math.min(900 * (1 + .3 * amp), sp * 2 * (1 + .3 * amp)) / sp;
         const tgt = this.reflectTarget(q);
         if (tgt) { const a = Math.atan2(tgt.y - q.y, tgt.x - q.x); q.vx = Math.cos(a) * sp * v; q.vy = Math.sin(a) * sp * v; } else { q.vx = -q.vx * v; q.vy = -q.vy * v; }
         q.seek = tgt; q.update = null;   // 스스로 움직이던 탄(떨어지는 바위 · 도는 구슬)도 이제 곧게 날아간다
         q.owner = 'player'; q.grav = 0; q.dmg = Math.max(q.dmg * 2.5, p.atk * 2.5) * ch.dmg * (1 + .15 * amp) * (ch.pow || 1); q.hit = new Set(); q.life = 1.5; q.homing = 0; q.tier = 3; q.ghost = false;   // ch.pow: 천공의 반격 · 찰나의 카운터
-        q.r = Math.max(3, q.r * PARRY_SIZE[i] * (1 + .3 * amp));   // 연속으로 쳐낼수록 반사탄이 작아진다
+        q.r = Math.max(3, q.r * PARRY_SIZE[i] * (1 + Math.min(SIZE_CAP - 1, REFLECT_SIZE * amp)));   // 연속으로 쳐낼수록 반사탄이 작아진다 · 증폭 반사경 크기 +10% (예전 +30%)
         q.color = PARRY_COL[i]; q.status = { kb: 0, parried: true, parryN: ch.n, parryDmg: ch.dmg, parryStag: ch.stag }; q.parried = true;   // 맞히면 무조건 약점 · 그로기 (damageEnemy)
         continue;
         }

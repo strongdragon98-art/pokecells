@@ -6,13 +6,14 @@ import Phaser from 'phaser';
 import { Actor } from './Actor.js';
 import { SPECIES, SKILLS, TAGS, TIERS, EVO_EXP, ZMOVES, Z_CD, XP_RULE, XP_UNITS } from '../data/pokemon.js';
 import { FORM_ITEMS } from '../data/roster.js';
-import { computeMods, ITEMS, MAX_EQUIP } from '../data/items.js';
+import { computeMods, ITEMS, MAX_EQUIP, SIZE_CAP } from '../data/items.js';
 import { START_MONEY, USES, VIT_MAX } from '../data/shop.js';
 import { ashStarTexture } from '../systems/MegaRig.js';
 const HP_SCALE = .85;
 import { onHurt, onDash, onParry } from './Perks.js';
 import { potionMaxAt, potionHealAt, bondParry, BOND_STRIKE_MUL, BOND_STRIKE_CD } from '../data/bond.js';
 import { DANGER_MUL } from './Combat.js';
+import { parryStagK } from './ParryRules.js';
 import { typeMultiplier, effectiveness, typeColor } from '../data/types.js';
 import * as base from './skills.js';
 import * as gen23 from './skills/gen23.js';
@@ -54,7 +55,7 @@ const CHG_SHOW = .22, CHG_AT = [.72, 1.45, 2.25];
 const DASH_INV_CAP = .6;   // 대시 무적 상한 (도박사의 외줄타기 스텝 2배 · 합성)
 export { CHG_SHOW, CHG_AT };   // UIScene 스킬 바: Z 칸의 차징 게이지
 // 속성 → 차징 탄 그림 (systems/ProjectileRenderer.js 의 kind)
-const CHARGE_KIND = { fire: 'fire', water: 'water', ice: 'bubble', grass: 'leaf', bug: 'leaf', electric: 'bolt', ghost: 'shadow', dark: 'shadow', poison: 'bubble', psychic: 'wave',
+const CHARGE_KIND = { fire: 'fire', water: 'water', ice: 'bubble', grass: 'leaf', bug: 'leaf', electric: 'bolt', ghost: 'shadow', dark: 'shadow', poison: 'bubble', psychic: 'psyorb',
   rock: 'rock', ground: 'rock', steel: 'steel', fighting: 'wave', normal: 'wave', flying: 'wave', dragon: 'wave', fairy: 'wave' };
 // 단계별 차징 탄 (평타 공격력 배율): mul 직격 + boom.mul 대폭발 = 총합 — 1단 350+150 = 500% · 2단 400+250 = 650% · 3단 650+450 = 1,100%
 //  모두 잡몹은 무한 관통 · 보스/엘리트는 파고들어 hits 연타 뒤 대폭발 · 투사체 크기 2단 1.8배 · 3단 약 3배
@@ -62,10 +63,16 @@ const CHARGE_SHOT = [null,
   { r: 7, mul: 3.5, speed: 360, life: .9, hits: 3, boom: { r: 36, mul: 1.5 }, sfx: 'cshot1', shake: .008 },
   { r: 12.6, mul: 4, speed: 460, life: 1, hits: 4, boom: { r: 58, mul: 2.5 }, sfx: 'cshot2', shake: .013 },
   { r: 21, mul: 6.5, speed: 560, life: 1.25, hits: 5, ghost: true, boom: { r: 104, mul: 4.5 }, sfx: 'cshot3', shake: .024 }];
+const PSY_CORE_SIZE = .12;          // 뮤츠의 코어: 차징 샷 크기 +12% (예전 +30% · data/cores.js)
+const GRADE_SIZE = .15;             // 유니크 · 전설 기술 카드 시전: 투사체 · 판정 크기 +15% (예전 ×2)
 const CHG_FAST = [1, .85, .75, .65];   // 고속 축전 코일(레어) 장 수 → 차징 시간 배율 (-15% · -25% · -35%)
 // 평타(Z 연타) 3타 콤보 리듬: 템포를 늦추고(동작 시간 ×COMBO_TEMPO · 공격 속도 약 -33%) 한 방을 키운다 (기본 ×1.35 · 1타 1 → 2타 1.2 → 3타 1.6)
 //  3타 피니시 뒤 COMBO_RECOVER 초 숨 고르기 (대시 · 점프 · X · C · 메가 · Z기술 입력으로 즉시 캔슬)
 const COMBO_TEMPO = 1.5, COMBO_DMG = 1.35, COMBO_STEP = [1, 1.2, 1.6], COMBO_RECOVER = .42;
+// 🏹 원거리 평타 (연타의 1 · 2타가 탄 · 광선을 쏘는 계열): 안전한 거리에서 견제하는 만큼 평타(Z 연타) 피해 ×RANGED_Z_DMG (-22%) — 차징 샷 · X · C 기술에 기대도록
+//  🗡️ 그 밖의 근접 평타는 피해 그대로 · 사거리 +40% (game/skills.js 의 Z_REACH) — 1 · 2타 근접 + 3타 탄(파이리 · 꼬부기 · 물짱이 · 뮤츠 …)도 근접형
+export const RANGED_Z = new Set(['thundershock', 'mystical_fire', 'water_shuriken', 'leafage', 'bubble_note', 'confusion_orb', 'flame_feather', 'incinerate', 'pound_water', 'mist_ball', 'luster_purge', 'aurora_beam']);
+export const RANGED_Z_DMG = .78;
 // 공중 평타 체공 (Air Stall): 공중에서 평타(Z 콤보)를 칠 때마다 떨어지던 속도를 끊고 살짝 떠오른 뒤(AIR_HOP) AIR_STALL_T 초 동안 중력이 AIR_STALL_G 배로 준다
 //  적에게 맞히면 반동으로 한 번 더 떠오른다(AIR_HIT_HOP) · 한 번 뜬 동안 AIR_STALLS 번(3타 콤보 한 바퀴)까지 온전히, 그 뒤로는 번마다 약해져 자연스럽게 내려앉는다
 //  (땅에 닿거나 대시 · 2단 점프를 하면 다시 채워진다 — 허공에서 Z 만 눌러 천장까지 떠오르지 못하게)
@@ -873,6 +880,7 @@ export class Player extends Actor {
       action.dur *= COMBO_TEMPO;
       for (const e of action.ev || []) e[0] *= COMBO_TEMPO;
       action.boostDmg = (action.boostDmg || 1) * COMBO_DMG * COMBO_STEP[step];
+      if (RANGED_Z.has(id)) { action.zRanged = true; action.boostDmg *= RANGED_Z_DMG; }   // 원거리 평타 -22% · 근접 평타는 사거리 +40% (skills.js zReach)
       if (this.mods.heavyHit) action.boostDmg *= 1 + this.mods.heavyHit;   // 초중량 일격(양날의 검): 평타 1타당 +90% · 보스 경직 (Combat.damageEnemy)
       action.finisher = step === 2;
       if (action.finisher) {
@@ -933,7 +941,7 @@ export class Player extends Actor {
     if (b.power) action.boostDmg = 1 + b.power;
     if (b.wide) {
       const s0 = m.mods.sizeMul, end0 = action.end;
-      m.mods.sizeMul = s0 * (1 + b.wide);   // 기술이 끝나면(끊겨도) 되돌린다
+      m.mods.sizeMul = Math.min(SIZE_CAP, s0 + b.wide);   // 합연산 · 최종 1.45배 상한 (data/items.js) — 기술이 끝나면(끊겨도) 되돌린다
       action.end = (p, a) => { m.mods.sizeMul = s0; if (end0) end0(p, a); };
     }
     if (b.split && volley) {
@@ -950,7 +958,7 @@ export class Player extends Actor {
   }
 
   // 기술 카드로 배운 유니크·전설 기술: 시전 연출을 덧씌운다
-  //  유니크: 마법진 + 충격파 고리 · 이 기술 동안 투사체·판정 크기 ×2 · 맞힐 때마다 연쇄 폭발(Combat) · 보랏빛 번짐 · 묵직한 흔들림
+  //  유니크: 마법진 + 충격파 고리 · 이 기술 동안 투사체·판정 크기 +GRADE_SIZE (예전 ×2 · 다른 크기 증가와 더해 최대 1.45배) · 맞힐 때마다 연쇄 폭발(Combat) · 보랏빛 번짐 · 묵직한 흔들림
   //  전설: 시네마틱 컷인(0.15초 정지 · 화면 어둡게 · 스포트라이트) + 기술 형태·속성에 맞는 초대형 마무리(레이저 · 운석 · 번개 기둥 · 마그마 분출 …)
   gradeCast(action, id, grade) {
     if (grade !== '유니크' && grade !== '전설') return;
@@ -958,7 +966,7 @@ export class Player extends Actor {
     const arch = sk.arch || (MOVE_DB[id] && archetypeOf(MOVE_DB[id], id)) || 'projectile';
     if (legend) cinematic(this, col, sk.name); else magicCircle(this, col);
     const s0 = m.mods.sizeMul;
-    m.mods.sizeMul = s0 * 2;   // 기술이 끝나면(끊겨도) 되돌린다
+    m.mods.sizeMul = Math.min(SIZE_CAP, s0 + GRADE_SIZE);   // 합연산 · 상한 — 기술이 끝나면(끊겨도) 되돌린다
     this.castGrade = grade;
     const end0 = action.end;
     action.end = (p, a) => { m.mods.sizeMul = s0; this.castGrade = null; if (end0) end0(p, a); };
@@ -1039,8 +1047,8 @@ export class Player extends Actor {
   finisherFx(a) {
     const sc = this.scene, f = this.face, col = typeColor(SKILLS[this.skillId('z')].type);
     if (a.pulseAt != null) { this.b.setVelocityX(-f * 120); sc.fx.shake(.006, 140, 'hit'); return; }
-    const x = this.x + f * 22 * this.mods.sizeMul, by = this.bottom;
-    sc.fx.ring(x, this.y, 22 * this.mods.sizeMul, col, 220);
+    const zr = base.zReach(this), x = this.x + f * 22 * this.mods.sizeMul * zr, by = this.bottom;   // 근접 평타 사거리 +40% 만큼 앞에서
+    sc.fx.ring(x, this.y, 22 * this.mods.sizeMul * zr, col, 220);
     if (this.onGround) for (let k = 0; k < 2; k++) sc.fx.burst(x + f * k * 8, by - 2, [0x6a5a48, col, 0xffffff], 6, 120, { angle: -Math.PI / 2 + f * .35, spread: .8, up: 90, life: .45, size: 2 });
     sc.fx.shake(.008, 160, 'hit');
     Sfx.play('punch');
@@ -1115,7 +1123,7 @@ export class Player extends Actor {
     sc.fx.floatText(this.x, this.b.y - 24, first ? '⚡ PERFECT PARRY!' : `PARRY x${ch.n} (${Math.round(ch.dmg * 100)}%)`, first ? '#ffe36a' : ch.dmg >= .4 ? '#f0d090' : '#c8c0b0', first ? 13 : 11);
     Cores.parry(this);   // 보스의 코어: 제크로무 — 화면 안 모든 적에게 낙뢰 · 공격 속도 +40% (연속 패링이면 그만큼 약하게)
     onParry(this, x, y, kind, ch);   // 패링 카드 (game/Perks.js): 철벽의 호흡 회복 · 충격파 카운터 · 반격의 일격
-    this.bondStrike(x, y);   // 유대의 불꽃 Lv.6: 유대의 추가 타격
+    this.bondStrike(x, y, true);   // 유대의 불꽃 Lv.6: 유대의 추가 타격 (패링에서 나온 타격 — 챕터 메인 대보스에겐 -33%)
     sc.fx.hitStop(100);
     const cam = sc.cameras.main;
     if (!cam.zoomEffect.isRunning) { const z0 = cam.zoom; cam.zoomTo(z0 * 1.05, 60, 'Quad.easeOut', true); sc.time.delayedCall(100, () => cam.zoomTo(z0, 220, 'Sine.easeOut', true)); }
@@ -1123,10 +1131,10 @@ export class Player extends Actor {
     if (kind !== 'melee') return ch;
     // 근접 카운터: 전방 충격파 · 상대 큰 경직 (보스 그로기 +30) · X · C · 메가 필살기 쿨타임 -2초 · 다음 평타/차징 한 방 확정 치명타
     const type = this.types[0], cx = this.x + f * 26;
-    sc.combat.hitCircle(cx, this.y, 40 * this.mods.sizeMul, 1.5 * ch.dmg * ch.pow, type, { kbx: 280, kby: -180, hs: 40, stun: 1.2 * Math.max(.4, ch.dmg) });
+    sc.combat.hitCircle(cx, this.y, 40 * this.mods.sizeMul, 1.5 * ch.dmg * ch.pow, type, { kbx: 280, kby: -180, hs: 40, stun: 1.2 * Math.max(.4, ch.dmg), parryHit: true });   // parryHit: 챕터 메인 대보스 -33% (ParryRules)
     sc.fx.ring(cx, this.y, 40 * this.mods.sizeMul, 0xffe36a, 300);
     const e = sc.enemies.filter(q => q.alive && !q.intangible && Math.abs(q.x - x) < 120 && Math.abs(q.y - this.y) < 100).sort((p1, p2) => Math.abs(p1.x - x) - Math.abs(p2.x - x))[0];
-    if (e && e.boss && e.addStaggerRaw && ch.stag > 0) e.addStaggerRaw(30 * ch.stag);
+    if (e && e.boss && e.addStaggerRaw && ch.stag > 0) e.addStaggerRaw(30 * ch.stag * parryStagK(e));   // 챕터 메인 대보스: 그로기 ×0.55
     for (const k of ['x', 'c', 'r']) if (m.cd[k] > 0) m.cd[k] = Math.max(0, m.cd[k] - 2 * ch.dmg);
     this.critNext = sc.time.now + 4000;   // 4초 안의 다음 한 방 (Combat.damageEnemy)
     return ch;
@@ -1297,9 +1305,9 @@ export class Player extends Actor {
 
   fireCharge(lvl, crit = false) {
     const sig = chargeSigOf(this);   // 계열 고유 차징 (game/Signature.js): 개굴닌자 거대 수리검 · 울머기 저격탄 …
-    const sc = this.scene, type = sig ? sig.type : this.chargeType(), col = typeColor(type), spec = CHARGE_SHOT[lvl], evo = this.tierIdx, s = this.mods.sizeMul * this.T.proj * (evo >= 2 ? 1.2 : 1) * (this.mods.psyCore ? 1.3 : 1);   // 3단·메가는 탄이 더 크다 · 뮤츠의 코어 +30%
+    const sc = this.scene, type = sig ? sig.type : this.chargeType(), col = typeColor(type), spec = CHARGE_SHOT[lvl], evo = this.tierIdx, sizeK = Math.min(SIZE_CAP, this.mods.sizeMul + (this.mods.psyCore ? PSY_CORE_SIZE : 0)), s = sizeK * this.T.proj * (evo >= 2 ? 1.2 : 1);   // 3단·메가는 탄이 더 크다 · 뮤츠의 코어 +12% (합연산 · 상한)
     const perks = this.m.perks || {}, full = lvl === this.chargeMax(), shockN = full ? perks.u_shock || 0 : 0, rapid = (perks.u_rapid || 0) > 0;
-    const critMul = crit ? CHARGE_CRIT : 1, overR = 1 + Math.min(1.5, this.mods.overBoom || 0);   // 과부하 차징 캐논(양날의 검): 폭발 반경 1.8배 (피해 +120% 는 Combat.damageEnemy)
+    const critMul = crit ? CHARGE_CRIT : 1, overR = 1 + Math.min(SIZE_CAP - 1, this.mods.overBoom || 0), boomK = Math.min(SIZE_CAP, sizeK + overR - 1) / sizeK;   // 과부하 차징 캐논(양날의 검): 폭발 반경 +25% (예전 1.8배 · 장신구 크기와 더해 최대 1.45배) · 피해 +120% 는 Combat.damageEnemy
     if (this.action) this.endAction(true);
     this.chgAura.setVisible(false);
     if (full) this.bondStrike(this.x + this.face * 140, this.y);   // 유대의 불꽃 Lv.6: 풀차징 샷 → 유대의 추가 타격 (앞쪽 가까운 적)
@@ -1315,11 +1323,11 @@ export class Player extends Actor {
         sc.combat.chargeSpawn = true;   // 이 순간 만든 탄은 차징 탄 (연습용 나무 상자 · Combat.spawnProjectile)
         sc.combat.chargeCtx = { crit, shock: shockN ? (hx, hy) => this.chargeShockField(hx, hy, lvl, type, shockN) : null };
         if (sig) {
-          sig.fire(this, lvl, s * Math.sqrt(overR), f);
+          sig.fire(this, lvl, s * Math.min(SIZE_CAP, sizeK + (overR - 1) * .5) / sizeK, f);   // 계열 고유 차징: 과부하 폭발 확대의 절반만큼 크게 (상한)
           if (lvl >= 2) sc.fx.floatText(this.x, this.b.y - 16, (sig.nameOf ? sig.nameOf(this, lvl) : sig.name[lvl - 1]) + '!', lvl >= 3 ? '#ffe36a' : '#ffffff', lvl >= 3 ? 12 : 10);
           if (lvl >= 3) sc.fx.hitStop(60);
         } else {
-          const boom = { r: spec.boom.r * (1 + (s - 1) * .6) * overR, mul: spec.boom.mul * critMul };
+          const boom = { r: spec.boom.r * (1 + (s - 1) * .6) * boomK, mul: spec.boom.mul * critMul };
           const status = Object.assign({ heavy: true, chg: 1, hs: 30 + lvl * 15 }, lvl >= 2 ? { stun: .4 } : {}, crit ? { crit: 1 } : {}, shockN ? { stagMul: 2 } : {});
           // 대폭발: 속성 충격파 고리 + 역경직 (보스 · 엘리트를 파고든 뒤 · 벽에 부딪히거나 사거리 끝)
           const blast = (q, heavy) => {
@@ -1600,7 +1608,7 @@ export class Player extends Actor {
     Sfx.play('shatter'); Sfx.play('crack');
   }
   // 유대의 추가 타격 (유대의 불꽃 Lv.6 완전체 유대의 태양 — data/bond.js): 풀차징 샷 · 패링 성공 → (x, y) 둘레 가까운 적(보스 먼저)에게 황금빛 낙뢰 일격
-  bondStrike(x, y) {
+  bondStrike(x, y, fromParry = false) {
     const sc = this.scene, now = sc.time.now;
     if ((sc.bondStage || 0) < 6 || now - (this.bondStrikeAt ?? -1e9) < BOND_STRIKE_CD * 1000) return;
     const near = sc.enemies.filter(e => e.alive && !e.intangible && Math.hypot(e.x - x, e.y - y) < 340).sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y));
@@ -1616,7 +1624,7 @@ export class Player extends Actor {
       sc.fx.ring(ex, ey, 34, 0xffffff, 260); sc.fx.ring(ex, ey, 58, col, 400); sc.fx.glow(ex, ey, 48, col, 320, 1);
       sc.fx.burst(ex, ey, [col, 0xffffff, 0xff8a2a], 24, 210, { glow: true, up: 90, life: .5 });
       sc.fx.floatText(ex, e.top - 24, '🔥 유대의 추가 타격!', '#ffd25a', 11);
-      sc.combat.damageEnemy(e, this.atk * BOND_STRIKE_MUL, this.types[0], { proc: true, ignoreResist: true, hx: ex, hy: ey, hs: 50 });
+      sc.combat.damageEnemy(e, this.atk * BOND_STRIKE_MUL, this.types[0], { proc: true, ignoreResist: true, hx: ex, hy: ey, hs: 50, parryHit: fromParry });
       Sfx.play('thunder');
     });
   }
@@ -1624,7 +1632,7 @@ export class Player extends Actor {
   manaDrive(action) {
     const m = this.m, md = this.mods, s1 = md.sizeMul, end0 = action.end;
     action.boostDmg = (action.boostDmg || 1) * (1 + md.skillPow);
-    md.sizeMul = s1 * Math.min(2, 1 + (md.skillSize || 0));
+    md.sizeMul = Math.min(SIZE_CAP, s1 + (md.skillSize || 0));   // 마력 폭주 기관: 기술 크기 +15% (합연산 · 최종 1.45배 상한)
     action.end = (p, a) => { md.sizeMul = s1; if (end0) end0(p, a); };   // 기술이 끝나면(끊겨도) 되돌린다
     if (md.castCost && m.hp > m.maxhp * .05) {
       const cost = Math.max(1, Math.round(m.hp * md.castCost));

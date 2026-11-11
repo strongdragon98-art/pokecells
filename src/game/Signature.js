@@ -5,7 +5,7 @@
 //   울머기 물탄 → 저격탄 (화면 끝까지 관통)                  · 염버니 연속킥 → 불꽃 축구공 슛 (바닥에 튕긴다)
 //   누리공 거품 → 벌룬 거품 (적을 가두고 터진다)              · 푸호꼬 매지컬플레임 → 유도 마법 불꽃구슬 일제 발사
 //   흥나숭 가지찌르기 → 드럼 비트 (지면 충격파)               · 피카츄 전기쇼크 → 낙뢰
-//   고오스 핥기 → 벽을 뚫는 거대 섀도볼                     · 뮤츠 사이코커터 → 사이코 블레이드 폭풍
+//   고오스 핥기 → 벽을 뚫는 거대 섀도볼                     · 뮤츠 사이코커터 → 사이코 구체 폭풍 (검붉은 · 보랏빛 구체 + 육각 사이코 링)
 import { Sfx } from '../systems/Audio.js';
 import { lineFx } from './skills.js';
 import { bezierMissiles, groundShockwave, skyStrike } from './Mechanics.js';
@@ -205,14 +205,16 @@ export const CHARGE_SIG = {
     }
   },
 
-  // ===== 뮤츠: 염동력 칼날이 몸 둘레를 돌다가 사방으로 흩어진다 =====
+  // ===== 뮤츠: 검붉고 보랏빛이 소용돌이치는 사이코 구체가 몸 둘레를 돌다가, 육각 사이코 링을 두른 채 앞으로 쏟아져 터진다 =====
+  //  (예전엔 풀 타입의 잎날 그림 kind: 'leaf' 이 나갔다 — 에스퍼 전용 사이코 구체 kind: 'psyorb' 로 · ProjectileRenderer 의 psyOrb · psyRing)
   psycho_cut: {
-    name: ['사이코 블레이드', '사이코 블레이드 폭풍', '사이코 블레이드 · 무한'], type: 'psychic',
+    name: ['사이코 구체', '사이코 구체 폭풍', '사이코 구체 · 무한'], type: 'psychic',
     fire(p, lvl, s, f) {
-      const sc = p.scene, n = [0, 4, 6, 10][lvl] + (p.mods.psyCore ? 1 : 0);   // 뮤츠의 코어: 칼날 +1
+      const sc = p.scene, n = [0, 4, 6, 10][lvl] + (p.mods.psyCore ? 1 : 0);   // 뮤츠의 코어: 구체 +1
+      sc.combat.pr.psyRing(p.x, p.y - 4, (1.2 + lvl * .5) * s, lvl);   // 모으던 염동력이 육각 사이코 링으로 터져 나온다
       for (let k = 0; k < n; k++) {
         const a = (k / n) * Math.PI * 2;
-        sc.combat.spawnProjectile({ owner: 'player', x: p.x + Math.cos(a) * 20 * s, y: p.y + Math.sin(a) * 20 * s, vx: 0, vy: 0, r: 5 * s, mul: 1.8, type: 'psychic', kind: 'leaf', color: 0xff6ad8,
+        sc.combat.spawnProjectile({ owner: 'player', x: p.x + Math.cos(a) * 20 * s, y: p.y + Math.sin(a) * 20 * s, vx: 0, vy: 0, r: 5 * s, mul: 1.8, type: 'psychic', kind: 'psyorb', color: 0xc040ff,
           life: 1.3, pierce: 3, ghost: true, light: k % 3 === 0, tier: Math.max(p.tierIdx, lvl), pow: s, kb: 140, muzzle: false,
           update: (q, dt) => {   // 0.35초 동안 몸 둘레를 돌다가, 바라보는 쪽 좁은 부채꼴로 날아가며 가까운 적을 쫓는다
             if (q.t < .35) { const b = a + q.t * 14; q.x = p.x + Math.cos(b) * 22 * s; q.y = p.y - 4 + Math.sin(b) * 18 * s; }

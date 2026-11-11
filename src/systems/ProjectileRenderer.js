@@ -117,6 +117,29 @@ function soul(f) {
   };
 }
 
+// 🔮 사이코 구체 (뮤츠 · 에스퍼): 흰 코어 → 분홍 → 보랏빛 핵 둘레를 검붉은 · 보라 소용돌이 팔 3개가 휘감는다 (프레임마다 팔이 돈다)
+function psyOrb(f) {
+  return (x, y) => {
+    const dx = x - 9, dy = y - 9, d = Math.hypot(dx, dy), a = Math.atan2(dy, dx);
+    if (d < 1.8) return 0xffffff;
+    if (d < 3) return 0xffc8f4;
+    if (d < 4.2) return 0xd04aff;
+    const sw = Math.sin(3 * (a - d * .55) + f * 2.1);   // 반지름에 따라 휘어지는 소용돌이 팔
+    if (d < 6.2) return sw > .2 ? 0x9a1a4a : 0x5a1a8a;
+    if (d < 8.6 && sw > .45) return [0x4a0828, .92];
+    if (d < 8.6 && sw > -.1) return [0x7a2ac0, .5];
+    return null;
+  };
+}
+// 사이코 링: 기하학적인 육각 테두리 + 안쪽 점선 원 (흰색, 틴트로 물들인다) — 사이코 구체를 감싸 돌고, 터질 때 겹겹이 번진다
+function psyRingTex(x, y) {
+  const dx = x - 12, dy = y - 12, d = Math.hypot(dx, dy), a = Math.atan2(dy, dx), seg = Math.PI / 3;
+  const t = ((a % seg) + seg) % seg - seg / 2, hex = 10.6 * Math.cos(seg / 2) / Math.cos(t);
+  if (Math.abs(d - hex) < .65) return 0xffffff;
+  if (Math.abs(d - 6.8) < .5 && Math.floor((a + Math.PI) / (Math.PI / 12)) % 2 === 0) return [0xffffff, .75];
+  return null;
+}
+
 // 격투 충격파: 오른쪽으로 볼록한 초승달
 function shockWave(x, y) {
   const d = Math.hypot(x - 1, y - 10), a = Math.atan2(y - 10, x - 1);
@@ -210,6 +233,8 @@ export function makeProjectileTextures(scene) {
   pixTex(scene, 'pj-bubble', 12, 12, bubble);
   for (let f = 0; f < 3; f++) pixTex(scene, `pj-bolt${f}`, 20, 12, spark(f));
   for (let f = 0; f < 2; f++) pixTex(scene, `pj-soul${f}`, 16, 16, soul(f));
+  for (let f = 0; f < 3; f++) pixTex(scene, `pj-psy${f}`, 18, 18, psyOrb(f));
+  pixTex(scene, 'pj-psyring', 24, 24, psyRingTex);
   pixTex(scene, 'pj-wave', 13, 20, shockWave);
   pixTex(scene, 'pj-shard', 12, 12, shard);
   pixTex(scene, 'pj-rock', 12, 12, rock(ROCK_PAL.rock));
@@ -231,6 +256,7 @@ const KINDS = {
   bubble: { frames: ['pj-bubble'], wobble: true, glow: .18, scale: 1, tint: true, col: [0x8ad8ff, 0xffffff] },
   bolt: { frames: ['pj-bolt0', 'pj-bolt1', 'pj-bolt2'], fps: 22, blend: ADD, orient: true, glow: .3, scale: .9, col: [0xffee66, 0x6ad8ff] },
   shadow: { frames: ['pj-soul0', 'pj-soul1'], fps: 7, glow: .5, scale: 1, col: [0x9a5aff, 0x12061c] },
+  psyorb: { frames: ['pj-psy0', 'pj-psy1', 'pj-psy2'], fps: 12, spin: 260, glow: .55, scale: .95, col: [0xb04aff, 0xff3a6a], ring: 'pj-psyring' },   // 🔮 뮤츠 사이코 구체 (+ 둘레를 도는 육각 사이코 링)
   wave: { frames: ['pj-wave'], blend: ADD, orient: true, glow: .35, scale: 1, col: [0xffd0a0, 0xffffff] },
   other: { frames: ['pj-shard'], blend: ADD, spin: 400, glow: .45, scale: 1, tint: true, col: [0xffffff, 0xffffff] },
   rock: { frames: ['pj-rock'], spin: 260, glow: .06, scale: 1, col: [0x8a7a62, 0xd8c8a8] },            // 롱스톤 낙석·바위 던지기
@@ -267,6 +293,7 @@ export class ProjectileRenderer {
     // 같은 모양의 큰 기운이 투사체를 감싼다 — 내 투사체는 1단부터(속성 오라 레이어), 적 투사체는 2단부터 (단계가 오를수록 진하게)
     if (q.tier >= 1 || q.owner === 'player') q.aura = this.pool.get(q.x, q.y, q.frames[0]).setDepth(30).setBlendMode(ADD).setTintFill(c.tint && q.color != null ? q.color : c.col[0]);
     q.spr = this.pool.get(q.x, q.y, q.frames[0]).setDepth(31);
+    if (c.ring) q.ring = this.pool.get(q.x, q.y, c.ring).setDepth(31.5).setBlendMode(ADD).setTint(0xff6ad8);   // 사이코 링: 구체 둘레를 거꾸로 돈다
     if (c.blend) q.spr.setBlendMode(c.blend);
     if (c.tint && q.color != null) q.spr.setTint(q.color);
     q.spin = (Math.random() < .5 ? -1 : 1) * (c.spin || 0);
@@ -279,8 +306,8 @@ export class ProjectileRenderer {
   restyle(q) { this.detach(q); this.attach(q); }
 
   detach(q) {
-    this.pool.release(q.spr); this.pool.release(q.glow); this.pool.release(q.aura);   // 투사체 그림은 풀로 돌려놓는다 (systems/Pool.js)
-    q.spr = q.glow = q.aura = null;
+    this.pool.release(q.spr); this.pool.release(q.glow); this.pool.release(q.aura); this.pool.release(q.ring);   // 투사체 그림은 풀로 돌려놓는다 (systems/Pool.js)
+    q.spr = q.glow = q.aura = q.ring = null;
   }
 
   place(q, dt) {
@@ -294,6 +321,7 @@ export class ProjectileRenderer {
     if (q.aura) q.aura.setTexture(q.spr.texture.key).setPosition(q.spr.x, q.spr.y).setRotation(q.spr.rotation)
       .setScale(q.spr.scaleX * 1.3, q.spr.scaleY * 1.3).setAlpha((.18 + q.tier * .07) * (.8 + .2 * Math.sin(q.t * 24 + q.seed)));
     q.glow.setPosition(q.x, q.y).setScale(Math.max(.3, q.r / 8) * (1 + q.tier * .15));
+    if (q.ring) q.ring.setPosition(q.spr.x, q.spr.y).setAngle(-q.t * 200).setScale(sc * (1.02 + .12 * Math.sin(q.t * 14 + q.seed))).setAlpha(.7 + .25 * Math.sin(q.t * 20));
   }
 
   // 매 프레임: 위치·회전·애니메이션 + 꼬리 파티클 (진화할수록 더 많이·굵게: 1단 ×1 · 2·3단 ×2 · 메가 ×3)
@@ -348,6 +376,9 @@ export class ProjectileRenderer {
         break;
       case 'wave':
         if (Math.random() < .35) fx.burst(x, y, [0xffffff, 0xffd0a0], 1, 30, { up: 0, grav: 0, bounce: false, glow: true, life: .2, size: sz });
+        break;
+      case 'psyorb':   // 검붉은 · 보랏빛 아지랑이가 소용돌이치며 뒤로 흩어진다
+        if (Math.random() < .55) fx.burst(x + bx * 3 + (Math.random() - .5) * 6, y + by * 3 + (Math.random() - .5) * 6, [0x8a1a4a, 0x6a2aaa, 0xff6ad8], 1, 16, { angle: Math.atan2(by, bx), spread: 1.4, up: 0, grav: -12, bounce: false, glow: true, life: .45, size: sz, drag: .95 });
         break;
       case 'rock': case 'steel': case 'debris':   // 부스러기가 떨어진다 (염동력 파편은 보랏빛 알갱이도)
         if (Math.random() < .25) fx.burst(x, y + 2, q.kind === 'steel' ? [0x6a7088, 0xa0a8c0] : [0x5a4a38, 0x8a7a62], 1, 20, { up: -10, grav: 420, bounce: false, life: .5, size: sz });
@@ -449,13 +480,30 @@ export class ProjectileRenderer {
     }
   }
 
+  // 사이코 링 파동: 육각 링 2 ~ 3겹이 서로 반대로 돌며 번지다 사라진다 (보랏빛 · 검붉은 빛 번갈아)
+  psyRing(x, y, big = 1, T = 0) {
+    const s = this.s;
+    for (let k = 0, m = T >= 2 ? 3 : 2; k < m; k++) {
+      const im = this.pool.get(x, y, 'pj-psyring').setBlendMode(ADD).setDepth(34).setTint(k % 2 ? 0xff3a6a : 0xd06aff).setScale(.3 * big).setAngle(k * 30);
+      s.tweens.add({ targets: im, delay: k * 60, scale: (1.1 + k * .45) * big, angle: k * 30 + (k % 2 ? -90 : 90), alpha: { from: 1, to: 0 }, duration: 320 + k * 60, ease: 'Cubic.easeOut', onComplete: () => this.pool.release(im) });
+    }
+  }
+
   // 적중·벽 충돌 연출. reason: 'hit'(적) · 'wall'(벽·바닥) · 'expire'(수명 끝)
   //  진화 단계(q.tier)가 오를수록 크기(big)·파편 수(n)·파편 굵기(sz)가 늘고, 2단부터 충격파 고리·메가는 섬광이 더해진다
   impact(q, reason) {
     const fx = this.fx, x = q.x, y = q.y, big = Phaser.Math.Clamp(q.r / 4, .7, 4.4), blue = q.frames && q.frames[0].includes('blue');
     const T = q.tier || 0, n = c => Math.round(c * (1 + T * .5)), sz = T >= 2 ? 2 : 1;
+    if (reason === 'expire' && q.kind === 'psyorb') { this.psyRing(x, y, big * .7, T); fx.glow(x, y, 8 + q.r, 0xb04aff, 180, .7); return; }   // 사이코 구체는 사라질 때도 사이코 링이 번진다
     if (reason === 'expire') { fx.glow(x, y, 6 + q.r, q.kind === 'shadow' ? 0x9a5aff : q.color, 160, .5); fx.burst(x, y, [q.color, 0xffffff], n(3), 40, { glow: true, life: .3, size: sz }); return; }
     switch (q.kind) {
+      case 'psyorb': {   // 🔮 사이코 파동: 육각 사이코 링이 겹겹이 돌며 번지고, 검붉은 · 보랏빛 파편이 소용돌이치며 흩어진다
+        this.psyRing(x, y, big, T);
+        fx.glow(x, y, 16 * big, 0xb04aff, 220, 1);
+        fx.ring(x, y, 10 * big, 0xff3a6a, 200);
+        fx.burst(x, y, [0x8a1a4a, 0xb04aff, 0xff6ad8, 0xffffff], n(14), 130 * big, { up: 20, grav: 0, bounce: false, glow: true, life: .5, size: sz, drag: .93 });
+        break;
+      }
       case 'fire': case 'ball': {   // 작은 화염 폭발 + 바닥에 통통 튀며 구르는 불똥
         for (let i = 0, m = 4 + T * 2; i < m; i++) { const a = -Math.PI / 2 + (i - (m - 1) / 2) * (2.8 / m); this.flamePuff(x, y, Math.cos(a) * 40 * big, Math.sin(a) * 40 * big, .3 + T * .04, .5 * big, 1.1 * big, blue); }
         fx.glow(x, y, 16 * big, blue ? 0x5ab0ff : 0xff7a2a, 200, 1);

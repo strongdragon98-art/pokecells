@@ -5,7 +5,7 @@
 import Phaser from 'phaser';
 import { typeColor } from '../../data/types.js';
 import { Sfx } from '../../systems/Audio.js';
-import { sizeMul, slashHit, shoot, lineFx, dashAction, view, groundAt, skillFlash } from '../skillKit.js';
+import { sizeMul, zReach, zCirc, slashHit, shoot, lineFx, dashAction, view, groundAt, skillFlash } from '../skillKit.js';
 
 const ADD = Phaser.BlendModes.ADD;
 const PSY = typeColor('psychic'), FAIRY = typeColor('fairy'), DRAGON = typeColor('dragon');
@@ -168,9 +168,9 @@ export const SKILL_IMPL = {
     const m = p.mega.active;
     return {
       dur: .44, mm: 0, anim: 'Strike', ev: [[.18, () => {
-        const sc = p.scene, s = sizeMul(p), x = p.x + p.face * 20 * s, gy = groundAt(p, x), y = Math.min(p.y, gy - 10 * s);
-        sc.combat.hitCircle(x, y, 28 * s, 1.75, 'rock', { kbx: 260, kby: -260, hs: 90 });
-        sc.fx.ring(x, y, 30 * s, ROCK[0], 280); sc.fx.glow(x, y, 26 * s, 0xffb070, 220, .8);
+        const sc = p.scene, s = sizeMul(p), c = zCirc(p, 20 * s, 28 * s), k = c.r / (28 * s), x = p.x + p.face * c.dx, gy = groundAt(p, x), y = Math.min(p.y, gy - 10 * s);   // 근접 평타 사거리 +40%
+        sc.combat.hitCircle(x, y, c.r, 1.75, 'rock', { kbx: 260, kby: -260, hs: 90 });
+        sc.fx.ring(x, y, 30 * s * k, ROCK[0], 280); sc.fx.glow(x, y, 26 * s * k, 0xffb070, 220, .8);
         sc.fx.burst(x, gy - 2, ROCK, 26, 200, { up: 170 });
         if (m) shoot(p, { speed: 230, vy: -170, grav: 650, r: 4, mul: .8, type: 'rock', kind: 'rock', life: .9, count: 3, spread: .3, color: ROCK[0], kb: 160 });
         sc.fx.shake(.012, 200); Sfx.play('boom'); Sfx.play('crack'); p.squash(1.3, .78);
@@ -225,11 +225,11 @@ export const SKILL_IMPL = {
     const m = p.mega.active;
     return {
       dur: .42, mm: .2, anim: 'Strike', ev: [[.14, () => {
-        const sc = p.scene, r = 36 * sizeMul(p) * (m ? 1.4 : 1);
-        sc.combat.hitCircle(p.x, p.y, r, 1.7, 'dragon', Object.assign({ kbx: 460, kby: -280, hs: 90 }, m ? { stun: .5 } : {}));
-        sc.fx.slash(p.x + p.face * r * .4, p.y + 2, r * .8, p.face, 0x9a8aff, { thick: 8, ms: 180 });
-        sc.fx.slash(p.x - p.face * r * .4, p.y + 2, r * .8, -p.face, 0x6a4aff, { thick: 8, flipV: true, ms: 200 });
-        sc.fx.ring(p.x, p.y, r, DRAGON, 280); sc.fx.burst(p.x, p.y, [DRAGON, 0xc8b8ff, 0xffffff], 16, 180);
+        const sc = p.scene, c = zCirc(p, 0, 36 * sizeMul(p) * (m ? 1.4 : 1)), r = c.r, cx = p.x + p.face * c.dx;   // 근접 평타: 꼬리 회전이 앞으로 40% 더 닿는다
+        sc.combat.hitCircle(cx, p.y, r, 1.7, 'dragon', Object.assign({ kbx: 460, kby: -280, hs: 90 }, m ? { stun: .5 } : {}));
+        sc.fx.slash(cx + p.face * r * .4, p.y + 2, r * .8, p.face, 0x9a8aff, { thick: 8, ms: 180 });
+        sc.fx.slash(cx - p.face * r * .4, p.y + 2, r * .8, -p.face, 0x6a4aff, { thick: 8, flipV: true, ms: 200 });
+        sc.fx.ring(cx, p.y, r, DRAGON, 280); sc.fx.burst(cx, p.y, [DRAGON, 0xc8b8ff, 0xffffff], 16, 180);
         sc.fx.ghost(p.sprite, 0x9a8aff, .6, 240);
         sc.fx.shake(.01, 160); Sfx.play('swing'); Sfx.play('punch'); p.squash(1.3, .8);
       }]]
@@ -386,17 +386,17 @@ export const SKILL_IMPL = {
     if (i < 2) return {
       dur: .3, mm: .3, anim: 'Attack', ev: [[.1, () => {
         slashHit(p, { fwd: 18, w: 44, h: 30, mul: 1.05, type: 'water', kbx: 220, color: 0x4ac0ff, flipV: i === 1, arc: 22, thick: 8 });
-        p.scene.fx.burst(p.x + p.face * 26 * sizeMul(p), p.y, [0x4ac0ff, 0xbfe6ff, 0xffffff], 10, 140, { up: 60 });
+        p.scene.fx.burst(p.x + p.face * 26 * sizeMul(p) * zReach(p), p.y, [0x4ac0ff, 0xbfe6ff, 0xffffff], 10, 140, { up: 60 });
         Sfx.play('water');
       }]]
     };
     return {
       dur: .48, mm: .1, anim: 'Strike', ev: [[.18, () => {
-        const sc = p.scene, s = sizeMul(p), r = 52 * s;
-        sc.combat.hitCircle(p.x, p.y, r, 1.75, 'water', { kbx: 380, kby: -260, hs: 90 });
-        sc.fx.slash(p.x + p.face * r * .3, p.y, r * .9, p.face, 0x4ac0ff, { thick: 10, ms: 200 });
-        sc.fx.slash(p.x - p.face * r * .3, p.y, r * .9, -p.face, 0x2a7aff, { thick: 10, flipV: true, ms: 220 });
-        sc.fx.ring(p.x, p.y, r, 0x4ac0ff, 300); sc.fx.burst(p.x, p.bottom - 2, [0x4ac0ff, 0xbfe6ff, 0xffffff], 30, 220, { up: 140 });
+        const sc = p.scene, s = sizeMul(p), c = zCirc(p, 0, 52 * s), r = c.r, cx = p.x + p.face * c.dx;   // 근접 평타: 꼬리 회전이 앞으로 40% 더 닿는다
+        sc.combat.hitCircle(cx, p.y, r, 1.75, 'water', { kbx: 380, kby: -260, hs: 90 });
+        sc.fx.slash(cx + p.face * r * .3, p.y, r * .9, p.face, 0x4ac0ff, { thick: 10, ms: 200 });
+        sc.fx.slash(cx - p.face * r * .3, p.y, r * .9, -p.face, 0x2a7aff, { thick: 10, flipV: true, ms: 220 });
+        sc.fx.ring(cx, p.y, r, 0x4ac0ff, 300); sc.fx.burst(cx, p.bottom - 2, [0x4ac0ff, 0xbfe6ff, 0xffffff], 30, 220, { up: 140 });
         sc.fx.shake(.012, 200); Sfx.play('water'); Sfx.play('boom'); p.squash(1.3, .8);
         // 용의춤: 8초짜리 강화를 최대 3중첩(메가 5)
         const now = sc.time.now, max = m ? 5 : 3;

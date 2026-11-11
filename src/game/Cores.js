@@ -9,6 +9,10 @@ import { SKILLS } from '../data/pokemon.js';
 import { bolt } from './Perks.js';
 import { magmaEruption } from './Spectacle.js';
 import { makeTrainerArt } from './Trainer.js';
+import { sizeCapK } from '../data/items.js';
+import { parryStagK } from './ParryRules.js';
+// 📏 보스 코어의 투사체 확대 (예전 펄기아 ×1.5 · 델타스트림 ×1.5 · 다이맥스 ×1.8 · 폭발 ×2 를 곱했다): 모두 더한 뒤 장신구 · 카드 크기와 합쳐 최종 1.45배 상한 (data/items.js SIZE_CAP)
+const CORE_SIZE = { palkia: .12, delta: .1, dynamax: .15 }, CORE_BOOM = { palkia: .12, dynamax: .25 };
 
 const RAINBOW = [0xff4a4a, 0xff9a2a, 0xffe04a, 0x6aff6a, 0x4ac8ff, 0x8a6aff, 0xff6ad8];
 const has = (p, f) => !!(p && p.mods && p.mods.core && p.mods.core[f]);
@@ -119,13 +123,16 @@ export const Cores = {
     const p = combat.p;
     if (!p || q.owner !== 'player') return;
     if (has(p, 'hooh') && (q.type === 'fire' || q.type === 'flying')) { q.color = RAINBOW[(Math.random() * RAINBOW.length) | 0]; q.rainbow = true; }   // 무지갯빛 성스러운 불꽃
-    if (has(p, 'palkia') && (q.type === 'water' || q.type === 'dragon')) { q.life *= 1.5; q.r *= 1.5; q.pierce = 99; if (q.boom) q.boom = Object.assign({}, q.boom, { r: q.boom.r * 1.5 }); }
-    if (p.deltaT > 0) { q.vx *= 1.5; q.vy *= 1.5; q.r *= 1.5; }   // 레쿠쟈: 델타스트림
-    if (has(p, 'dynamax') && (combat.chargeSpawn || skillNow(p)) && !q.bonus) {   // 무한다이노: 차징 샷 · 기술이 거대한 다이맥스포로 — 굵게 · 멀리 · 관통 · 폭발 범위 2배 (폭발탄이 아니면 사라지는 자리에서 터진다)
-      q.color = DMAX; q.r *= 1.8; q.life *= 1.3; q.pierce = Math.max(q.pierce, 6); q.dmax = true;
-      if (q.boom) q.boom = Object.assign({}, q.boom, { r: q.boom.r * 2 });
-      else { const end = q.onExpire; q.onExpire = qq => { if (end) end(qq); this.dmaxBlast(combat.s, qq.x, qq.y, qq.type); }; }
+    let grow = 0, boomGrow = 0;   // 크기 · 폭발 반경 증가분 (합연산 → 아래에서 상한을 건다)
+    if (has(p, 'palkia') && (q.type === 'water' || q.type === 'dragon')) { q.life *= 1.5; grow += CORE_SIZE.palkia; boomGrow += CORE_BOOM.palkia; q.pierce = 99; }   // 펄기아: 사거리 +50% · 크기 · 폭발 +12%
+    if (p.deltaT > 0) { q.vx *= 1.5; q.vy *= 1.5; grow += CORE_SIZE.delta; }   // 레쿠쟈: 델타스트림 — 탄속 ×1.5 · 크기 +10%
+    if (has(p, 'dynamax') && (combat.chargeSpawn || skillNow(p)) && !q.bonus) {   // 무한다이노: 차징 샷 · 기술이 거대한 다이맥스포로 — 굵게(+15%) · 멀리 · 관통 · 폭발 범위 +25% (폭발탄이 아니면 사라지는 자리에서 터진다)
+      q.color = DMAX; grow += CORE_SIZE.dynamax; boomGrow += CORE_BOOM.dynamax; q.life *= 1.3; q.pierce = Math.max(q.pierce, 6); q.dmax = true;
+      if (!q.boom) { const end = q.onExpire; q.onExpire = qq => { if (end) end(qq); this.dmaxBlast(combat.s, qq.x, qq.y, qq.type); }; }
     }
+    const sm = p.mods.sizeMul || 1;
+    if (grow) q.r *= sizeCapK(sm, grow);
+    if (boomGrow && q.boom) q.boom = Object.assign({}, q.boom, { r: q.boom.r * sizeCapK(sm, boomGrow) });
     if (combat.s.overdrive && !q.blueFlare && !q.dmax) q.color = Math.random() < .5 ? GOLD : CRIMSON;   // 유대의 불꽃 오버드라이브: 황금빛 · 진홍빛 탄
     if (has(p, 'reshiram') && (q.type === 'fire' || q.type === 'dragon' || combat.chargeSpawn)) {   // 레시라무: 초고온의 푸른 불꽃 — 반감 · 무효 · 방어 자세 무시 · 떨어진 자리에 푸른 화염 장판
       q.color = BLUE_FLARE; q.blueFlare = true;
@@ -145,7 +152,7 @@ export const Cores = {
       onTick: z => sc.combat.hitRect({ x: z.x, y: z.y - 6, w: z.w, h: z.h + 6 }, .25, 'fire', { proc: true, burn: 2, ignoreResist: true, pierceGuard: true, kbx: 0, kby: 0, hs: 0 }) });
     sc.fx.burst(x, gy - 4, [BLUE_FLARE, 0xd8f0ff, 0xffffff], 8, 80, { angle: -Math.PI / 2, spread: .8, up: 50, glow: true, life: .5 });
   },
-  // 무한다이노: 다이맥스포가 사라지는 자리의 폭발 (반지름 2배 · 0.12초에 한 번)
+  // 무한다이노: 다이맥스포가 사라지는 자리의 폭발 (반지름 40 · 0.12초에 한 번)
   dmaxBlast(sc, x, y, type) {
     const p = sc.player, now = sc.time.now;
     if (!p || !sc.combat || now - (p.dmaxBoomAt || -999) < 120) return;
@@ -215,7 +222,7 @@ export const Cores = {
     for (const e of sc.enemies) {
       if (!e.alive || e.intangible || e.x < v.x || e.x > v.right || e.y < v.y || e.y > v.bottom) continue;
       bolt(sc, e.x + (Math.random() - .5) * 20, v.y - 4, e.x, e.y, 0x8ab0ff, 3, 260);
-      sc.combat.damageEnemy(e, p.atk * 1.2 * k, 'electric', { proc: true, paralyze: .5, kb: 0, kby: -60, hs: 0 });
+      sc.combat.damageEnemy(e, p.atk * 1.2 * k, 'electric', { proc: true, paralyze: .5, kb: 0, kby: -60, hs: 0, parryHit: true });   // 패링 낙뢰: 챕터 메인 대보스 -33% (ParryRules)
     }
     sc.cameras.main.flash(120, 120, 170, 255, true); Sfx.play('thunder');
     sc.fx.floatText(p.x, p.b.y - 34, '⚡ 크로스썬더 · 공격 속도 +40%', '#8ac8ff', 10);
@@ -240,8 +247,8 @@ export const Cores = {
       for (const [w, col, a] of [[14, CRIMSON, .35], [7, GOLD, .85], [2, 0xffffff, 1]]) { g.lineStyle(w, col, a); g.lineBetween(hx, hy, tgt.x, tgt.y); }
       sc.tweens.add({ targets: g, alpha: 0, duration: 380, onComplete: () => g.destroy() });
       const ch = p.parryChain || { dmg: 1, stag: 1 };   // 연속 패링 점감
-      sc.combat.damageEnemy(tgt, p.atk * 3 * ch.dmg, 'fire', { proc: true, hs: 70, heavy: true, kb: 0, kby: 0, hx: tgt.x, hy: tgt.y });
-      if (tgt.boss && tgt.addStaggerRaw && ch.stag > 0) tgt.addStaggerRaw(12 * ch.stag);
+      sc.combat.damageEnemy(tgt, p.atk * 3 * ch.dmg, 'fire', { proc: true, hs: 70, heavy: true, kb: 0, kby: 0, hx: tgt.x, hy: tgt.y, parryHit: true });   // 합동 카운터: 챕터 메인 대보스 피해 -33% · 그로기 ×0.55
+      if (tgt.boss && tgt.addStaggerRaw && ch.stag > 0) tgt.addStaggerRaw(12 * ch.stag * parryStagK(tgt));
       sc.fx.ring(tgt.x, tgt.y, 50, GOLD, 380); sc.fx.ring(tgt.x, tgt.y, 30, CRIMSON, 300);
       sc.fx.burst(tgt.x, tgt.y, [GOLD, CRIMSON, 0xffffff], 30, 240, { glow: true, up: 80, life: .6 });
       Sfx.play('fire'); Sfx.play('boom');

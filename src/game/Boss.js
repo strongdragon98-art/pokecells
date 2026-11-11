@@ -1108,7 +1108,7 @@ BOSS_AI.mewtwo = function (e, dt, p) {
       if (e.shotT <= 0 && e.left > 0) {
         e.shotT = ph2 ? .11 : .14; e.left--;
         const a = Math.atan2(p.y - e.y, p.x - e.x) + (Math.random() - .5) * .24;
-        e.shot({ x: e.x + Math.cos(a) * 12, y: e.y + Math.sin(a) * 12, vx: Math.cos(a) * 210, vy: Math.sin(a) * 210, r: 5, kind: 'shadow', type: 'ghost', color: 0x9a5aff, life: 2.4, homing: .3, ghost: true });
+        e.shot({ x: e.x + Math.cos(a) * 12, y: e.y + Math.sin(a) * 12, vx: Math.cos(a) * 210, vy: Math.sin(a) * 210, r: 5, kind: 'psyorb', type: 'ghost', color: 0xb04aff, life: 2.4, homing: .3, ghost: true });   // 검붉은 · 보랏빛 사이코 구체 (플레이어 뮤츠의 차징과 같은 그림)
         Sfx.play('ghost');
       }
       if (e.left <= 0) {
@@ -1461,7 +1461,7 @@ BOSS_AI.hooh = function (e, dt, p) {
           for (let k = 0; k < 2; k++) sc.fx.burst(dir > 0 ? v.x + Math.random() * 40 : v.right - Math.random() * 40, v.y + Math.random() * v.height, [0xffffff, 0xffd8b0], 1, 420, { angle: dir > 0 ? 0 : Math.PI, spread: .08, up: 0, grav: 0, bounce: false, life: .5, drag: 1 });
         } });
         const n = ph2 ? 5 : 3, base = Math.atan2(p.y - e.y, p.x - e.x);
-        for (let k = 0; k < n; k++) { const a = base + (k - (n - 1) / 2) * .2; e.shot({ x: e.x, y: e.y, vx: Math.cos(a) * 260, vy: Math.sin(a) * 260, r: 4, kind: 'leaf', type: 'flying', color: 0xffb04a, life: 1.8 }); }
+        for (let k = 0; k < n; k++) { const a = base + (k - (n - 1) / 2) * .2; e.shot({ x: e.x, y: e.y, vx: Math.cos(a) * 260, vy: Math.sin(a) * 260, r: 4, kind: 'bolt', type: 'flying', color: 0xffb04a, life: 1.8 }); }   // 불꽃 깃털 칼날 (예전엔 잎날 그림)
         sc.fx.shake(.01, 500); Sfx.play('swing'); e.state = 'fire'; e.timer = 1.4;
         if (!e.gustTold) { e.gustTold = true; sc.events.emit('toast', '폭풍 날개짓 — 바람을 거슬러 버티자'); }
       } else {   // 불꽃 깃털 연사 (조금 따라온다) — 3 · 2발 (폭주하면 1 · 2 · 2발) · 모두 5발

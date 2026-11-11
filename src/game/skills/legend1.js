@@ -4,7 +4,7 @@
 import Phaser from 'phaser';
 import { typeColor } from '../../data/types.js';
 import { Sfx } from '../../systems/Audio.js';
-import { sizeMul, slashHit, shoot, lineFx, dashAction, view, groundAt, skillFlash } from '../skillKit.js';
+import { sizeMul, zReach, zCirc, slashHit, shoot, lineFx, dashAction, view, groundAt, skillFlash } from '../skillKit.js';
 
 const ADD = Phaser.BlendModes.ADD;
 const RAINBOW = [0xff5a4a, 0xffa03a, 0xffe04a, 0x7aff6a, 0x5ac8ff, 0xb07aff];
@@ -364,7 +364,7 @@ export const SKILL_IMPL = {
     const aw = p.mega.active, big = i === 2;
     return {
       dur: big ? .34 : .24, mm: .3, anim: big ? 'Strike' : 'Attack', ev: [[big ? .12 : .07, () => {
-        const sc = p.scene, s = sizeMul(p), r = (big ? 46 : 26) * s, cx = p.x + p.face * (big ? 6 : 14) * s, cy = p.y;
+        const sc = p.scene, s = sizeMul(p), c = zCirc(p, (big ? 6 : 14) * s, (big ? 46 : 26) * s), r = c.r, cx = p.x + p.face * c.dx, cy = p.y;   // 근접 평타 사거리 +40%
         sc.combat.hitCircle(cx, cy, r, big ? 1.7 : 1, 'fire', { burn: big ? 3.5 : 2, kbx: big ? 220 : 110, kby: big ? -240 : -80, hs: big ? 70 : 40 });
         for (let k = 0; k < (big ? 9 : 4); k++) {
           const an = Math.random() * Math.PI * 2, d = Math.random() * r;
@@ -457,16 +457,16 @@ export const SKILL_IMPL = {
     if (i < 2) return {
       dur: .22, mm: .4, anim: 'Attack', ev: [[.07, () => {
         const n = slashHit(p, { fwd: 14, w: 24, h: 20, mul: 1.05, type: 'electric', status: { paralyze: .2 }, color: 0xffe040, flipV: i === 1 });
-        sparks(p.scene, p.x + p.face * 14 * sizeMul(p), p.y - 2, 2); if (n) Sfx.play('zap');
+        sparks(p.scene, p.x + p.face * 14 * sizeMul(p) * zReach(p), p.y - 2, 2); if (n) Sfx.play('zap');
       }]]
     };
     return {
       dur: .32, ctrl: true, anim: 'Strike',
       update(p, a) { p.b.setVelocityX(a.t < .12 ? p.face * 280 : p.b.velocity.x * .75); },
       ev: [[.1, () => {
-        const sc = p.scene, s = sizeMul(p), x = p.x + p.face * 16 * s, y = p.y - 2;
+        const sc = p.scene, s = sizeMul(p), zr = zReach(p), x = p.x + p.face * 16 * s * zr, y = p.y - 2;
         slashHit(p, { fwd: 16, w: 32, h: 26, mul: 1.7, type: 'electric', status: { paralyze: .55 }, kbx: 220, color: 0xfff6a0, arc: 17, thick: 7 });
-        sc.fx.slash(x, y + 4 * s, 12 * s, p.face, 0xffe040, { flipV: true, thick: 4 });   // 아래 엄니
+        sc.fx.slash(x, y + 4 * s, 12 * s * zr, p.face, 0xffe040, { flipV: true, thick: 4 });   // 아래 엄니
         sparks(sc, x, y, 4); sc.fx.glow(x, y, 26 * s, 0xffe040, 200, 1);
         if (aw) { let prev = { x, y }; for (const e of sc.combat.nearest(x, y, 2, 110)) { lineFx(sc, prev.x, prev.y, e.x, e.y, 0xfff6a0, { seg: 6, jag: 10, w: 2, ms: 200 }); sc.combat.damageEnemy(e, p.atk * .8, 'electric', { paralyze: .5, hx: e.x, hy: e.y }); prev = e; } }
         Sfx.play('zap'); Sfx.play('punch');

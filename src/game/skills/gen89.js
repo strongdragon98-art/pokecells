@@ -4,7 +4,7 @@
 import Phaser from 'phaser';
 import { typeColor } from '../../data/types.js';
 import { Sfx } from '../../systems/Audio.js';
-import { sizeMul, slashHit, shoot, lineFx, dashAction, view, groundAt } from '../skillKit.js';
+import { sizeMul, zReach, zCirc, slashHit, shoot, lineFx, dashAction, view, groundAt } from '../skillKit.js';
 
 const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
@@ -30,7 +30,7 @@ export const SKILL_IMPL = {
       dur: .22, ctrl: true, anim: 'Attack',
       update(p, a) { p.b.setVelocityX(a.t < .08 ? p.face * 120 : p.b.velocity.x * .75); },
       ev: [[.07, () => {
-        const s = sizeMul(p), reach = (m ? 48 : 34) * s, y = p.y - 2 + (i ? 3 : -3);
+        const s = sizeMul(p), reach = (m ? 48 : 34) * s * zReach(p), y = p.y - 2 + (i ? 3 : -3);   // 근접 평타 사거리 +40%
         p.scene.combat.hitRect({ x: p.face > 0 ? p.x : p.x - reach, y: y - 5 * s, w: reach, h: 10 * s }, 1, 'grass', { kbx: 110, kby: -50 });
         lineFx(p.scene, p.x + p.face * 4, y, p.x + p.face * reach, y, 0xc89a5a, { seg: 3, jag: 1, w: 3, ms: 110 });
         p.scene.fx.burst(p.x + p.face * reach, y, [0x8aff6a, 0xc89a5a], 4, 60, { angle: p.face > 0 ? 0 : Math.PI, spread: .8 });
@@ -41,9 +41,9 @@ export const SKILL_IMPL = {
       dur: .36, mm: .15, anim: 'Strike', ev: [
         [.05, () => p.squash(.85, 1.2)],
         [.15, () => {
-          const s = sizeMul(p), sc = p.scene, x = p.x + p.face * 18 * s, gy = groundAt(p, x);
-          sc.combat.hitRect({ x: x - 16 * s, y: p.y - 22 * s, w: 32 * s, h: 22 * s + Math.max(0, gy - p.y) }, 1.7, 'grass', { stun: .35, kbx: 90, kby: -220, hs: 80 });
-          sc.fx.slash(x, p.y - 4, 16 * s, p.face, 0xc89a5a, { flipV: true, thick: 7 });
+          const s = sizeMul(p), zr = zReach(p), sc = p.scene, x = p.x + p.face * 18 * s * zr, gy = groundAt(p, x);
+          sc.combat.hitRect({ x: x - 16 * s * zr, y: p.y - 22 * s, w: 32 * s * zr, h: 22 * s + Math.max(0, gy - p.y) }, 1.7, 'grass', { stun: .35, kbx: 90, kby: -220, hs: 80 });
+          sc.fx.slash(x, p.y - 4, 16 * s * zr, p.face, 0xc89a5a, { flipV: true, thick: 7 });
           sc.fx.burst(x, gy - 2, [0xc0a070, 0x8aff6a], 12, 120, { up: 90 });
           sc.fx.ring(x, gy - 4, 20 * s, 0x5ed04a, 220); sc.fx.shake(.008, 140);
           // 메가: 내려찍은 충격이 양옆 땅을 타고 뿌리로 솟는다

@@ -4,7 +4,7 @@
 import Phaser from 'phaser';
 import { typeColor } from '../../data/types.js';
 import { Sfx } from '../../systems/Audio.js';
-import { sizeMul, slashHit, shoot, lineFx, view, groundAt } from '../skillKit.js';
+import { sizeMul, zReach, zCirc, slashHit, shoot, lineFx, view, groundAt } from '../skillKit.js';
 
 const PETAL = [0xff8ad0, 0xffd0f0, 0xffffff, 0x8aff6a];
 const MUD = [0x8a6a3a, 0xb08a50, 0x6a5030];
@@ -63,10 +63,10 @@ export const SKILL_IMPL = {
       ev: [[last ? .1 : .06, () => {
         const sc = p.scene, s = sizeMul(p);
         slashHit(p, { fwd: 13, w: last ? 30 : 22, h: last ? 26 : 18, mul: last ? 1.7 : .9, type: 'fire', status: { burn: last ? 2.5 : 1.2 }, crit: last ? .15 : 0, kbx: last ? 240 : 100, kby: last ? -160 : -60, color: 0xffb04a, arc: last ? 16 : 11, thick: last ? 6 : undefined, flipV: i === 1 });
-        sc.fx.embers(p.x + p.face * 16 * s, p.y - 2, [0xff7a2a, 0xffd04a], last ? 8 : 3, { speed: 50 });
+        sc.fx.embers(p.x + p.face * 16 * s * zReach(p), p.y - 2, [0xff7a2a, 0xffd04a], last ? 8 : 3, { speed: 50 });
         Sfx.play('punch');
         if (last && m) {
-          const x = p.x + p.face * 24 * s, r = 30 * s;
+          const c = zCirc(p, 24 * s, 30 * s), x = p.x + p.face * c.dx, r = c.r;   // 근접 평타 사거리 +40%
           sc.combat.hitCircle(x, p.y, r, .9, 'fire', { burn: 3, kbx: 220, kby: -180, hs: 0 });
           sc.fx.ring(x, p.y, r, 0xffd04a, 260); sc.fx.glow(x, p.y, r, 0xff5a1a, 260, 1);
           sc.fx.burst(x, p.y, [0xff7a2a, 0xffd04a, 0xffffff], 18, 160, { glow: true });

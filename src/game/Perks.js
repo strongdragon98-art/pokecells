@@ -8,6 +8,7 @@
 import Phaser from 'phaser';
 import { Sfx } from '../systems/Audio.js';
 import { typeColor } from '../data/types.js';
+import { parryStagK } from './ParryRules.js';
 
 export const PERKS = {
   // ================= ⚪ 커먼 =================
@@ -21,7 +22,7 @@ export const PERKS = {
   c_guard: { grade: '커먼', cat: '유틸', name: '단단한 비늘', desc: '받는 피해 -4%.', max: 3, mods: { guard: .96 } },
   c_swap: { grade: '커먼', cat: '유틸', name: '재빠른 교대', desc: '교대 쿨타임 -5%.', max: 2, mods: { swapCdMul: .95 } },
   c_leech: { grade: '커먼', cat: '유틸', name: '흡혈 이빨', desc: '준 피해의 3%만큼 회복.', max: 3, mods: { lifesteal: .03 } },
-  c_reach: { grade: '커먼', cat: '능력치', name: '넓은 시야', desc: '공격 판정·이펙트 크기 +5%.', max: 3, mods: { sizeAdd: .05 } },
+  c_reach: { grade: '커먼', cat: '능력치', name: '넓은 시야', desc: '공격 판정·이펙트 크기 +2%.', max: 3, mods: { sizeAdd: .02 } },
   c_iframe: { grade: '커먼', cat: '기동', name: '회피 본능', desc: '대시 무적 시간 +0.04초 (약 +15%).', max: 2, mods: { dashInvAdd: .04 } },
   // ⚪ 기초 단련 (단순 소폭 수치 · 합성할 때마다 +2 ~ 3%p)
   c_basic_atk: { grade: '커먼', cat: '능력치', name: '기초 근력 단련', desc: '모든 공격력 +4%.', max: 4, mods: { atkMul: 1.04 } },
@@ -65,7 +66,7 @@ export const PERKS = {
   // ================= 🟣 유니크 =================
   u_curse: { grade: '유니크', cat: '속성 부여', name: '저주 부여', desc: '적중 시 30% 확률로 저주 (5초간 받는 피해 +30%).', max: 1, mods: { pCurse: .3 } },
   u_split: { grade: '유니크', cat: '스킬 변이', name: '분열 코어', desc: '투사체 +2갈래.', max: 1, mods: { extraProj: 2 } },
-  u_giant: { grade: '유니크', cat: '스킬 변이', name: '거대화 코어', desc: '스킬 크기 1.5배.', max: 1, mods: { sizeMul: 1.5 } },
+  u_giant: { grade: '유니크', cat: '스킬 변이', name: '거대화 코어', desc: '스킬 · 투사체 크기 +15% (모든 크기 증가는 합쳐 최대 1.45배).', max: 1, mods: { sizeAdd: .15 } },
   u_chain: { grade: '유니크', cat: '스킬 변이', name: '연쇄 번개', desc: '적중 시 20% 확률로 가까운 적 3마리에게 번개가 연쇄로 튄다.', max: 1, mods: { chain: .2, chainN: 3 } },
   u_flame: { grade: '유니크', cat: '스킬 변이', name: '화염 장판', desc: '적중 시 20% 확률로 그 자리에 2초간 불타는 장판이 생긴다.', max: 1, mods: { flameZone: .2 } },
   u_toxic: { grade: '유니크', cat: '스킬 변이', name: '독 늪', desc: '적중 시 20% 확률로 그 자리에 2.5초간 독 늪이 생긴다.', max: 1, mods: { toxicZone: .2 } },
@@ -99,7 +100,7 @@ export const PERKS = {
   c_steady: { grade: '커먼', cat: '패링', name: '🛡️ 굳건한 방어 태세', desc: '↓ + Z 패링 헛방 뒤 재사용 쿨타임(1.8초) -5% · 무방비 후딜레이도 그만큼 짧아진다.', max: 4, mods: { parryCdMul: .95 } },
   c_reflex: { grade: '커먼', cat: '패링', name: '🛡️ 예리한 반사 신경', desc: '↓ + Z 패링 성공 판정 시간 +5%.', max: 4, mods: { parryWinMul: 1.05 } },
   c_breath: { grade: '커먼', cat: '패링', name: '🛡️ 철벽의 호흡', desc: '패링에 성공하면 체력을 최대 HP의 3% 즉시 회복 (합성하면 회복량 증가).', max: 4, mods: { parryHeal: .03 } },
-  r_amplify: { grade: '레어', cat: '패링', name: '🛡️ 증폭 반사경', desc: '패링으로 튕겨 낸 적 투사체의 크기 · 비행 속도 +30% · 반사 피해 +15%.', max: 4, mods: { reflectAmp: 1 } },
+  r_amplify: { grade: '레어', cat: '패링', name: '🛡️ 증폭 반사경', desc: '패링으로 튕겨 낸 적 투사체의 크기 +10% · 비행 속도 +30% · 반사 피해 +15%.', max: 4, mods: { reflectAmp: 1 } },
   r_wave: { grade: '레어', cat: '패링', name: '🛡️ 충격파 카운터', desc: '근접 공격이나 투사체를 패링하는 순간 둘레 120px 에 충격파가 터져 주변 적을 밀쳐 내고 보스 그로기를 더 쌓는다.', max: 4, mods: { parryWave: 1 } },
   r_counter: { grade: '레어', cat: '패링', name: '🛡️ 반격의 일격', desc: '패링 성공 뒤 2초 안에 Z 를 누르고 있으면 차징 샷이 즉시 완충 · 또는 그 안에 쓴 다음 기술 피해 +15%.', max: 4, mods: { parryCounter: 1 } },
 
@@ -112,8 +113,8 @@ export const PERKS = {
     up: '↓ + Z 패링 성공 시 반사 투사체 · 카운터 피해 +160% 폭증 · 보스 그로기 누적 2배!', down: '패링 성공 판정 시간 -35% (0.22 → 0.14초) · 헛방 재사용 쿨타임 +1.0초',
     mods: { razorPow: 1.6, razorStag: 1 }, cost: { parryWinMul: .65, whiffCdAdd: 1 } },
   u_overload: { grade: '유니크', cat: '양날의 검', curse: true, name: '⚖️ 과부하 차징 캐논', en: 'Overloaded Charge Core', max: 4, ease: .1,
-    up: 'Z 홀드 차징 샷 최종 피해 +120% · 폭발 반경 1.8배 확대!', down: '차징을 모으는 동안 이동 속도 -60% (거의 제자리) · 모으는 중 받는 피해 +30%',
-    mods: { overCharge: 1.2, overBoom: .8 }, cost: { chargeSlow: .6, chargeHurt: .3 } },
+    up: 'Z 홀드 차징 샷 최종 피해 +120% · 폭발 반경 +25% 확대!', down: '차징을 모으는 동안 이동 속도 -60% (거의 제자리) · 모으는 중 받는 피해 +30%',
+    mods: { overCharge: 1.2, overBoom: .25 }, cost: { chargeSlow: .6, chargeHurt: .3 } },
   r_glass: { grade: '유니크', cat: '양날의 검', curse: true, name: '⚖️ 유리대포의 각오', en: 'Glass Cannon Protocol', max: 4, ease: .1,
     up: '모든 평타 · 차징 샷 · 기술 최종 공격력 +65% 영구 증가 · 급소율 +20%!', down: '이 포켓몬의 최대 체력 -30% · 피격 뒤 무적 시간 -25%',
     mods: { allMul: 1.65, crit: .2 }, cost: { hpMul: .7, invMul: .75 } },
@@ -127,8 +128,8 @@ export const PERKS = {
     up: '평타(Z) 3타 콤보 1타당 피해 +90% · 평타만으로도 보스 그로기 · 3타 피니시는 잡몹 경직!', down: '평타 공격 속도 -25% · 3타 피니시 후딜레이 +0.3초 (대시 · 기술로 끊자)',
     mods: { heavyHit: .9, heavyStag: 1 }, cost: { comboSlow: .25, finishLag: .3 } },
   u_manadrive: { grade: '유니크', cat: '양날의 검', curse: true, name: '⚖️ 마력 폭주 기관', en: 'Mana Overdrive', max: 4, ease: .1,
-    up: '액티브 기술(X · C) 피해 +85% · 기술 크기 · 범위 1.5배 확대!', down: '기술을 쓸 때마다 지금 체력의 4% 를 코스트로 소모 (체력 5% 이하면 소모 없음)',
-    mods: { skillPow: .85, skillSize: .5 }, cost: { castCost: .04 } },
+    up: '액티브 기술(X · C) 피해 +85% · 기술 크기 · 범위 +15% 확대!', down: '기술을 쓸 때마다 지금 체력의 4% 를 코스트로 소모 (체력 5% 이하면 소모 없음)',
+    mods: { skillPow: .85, skillSize: .15 }, cost: { castCost: .04 } },
   r_pointblank: { grade: '유니크', cat: '양날의 검', curse: true, name: '⚖️ 영거리 사격술', en: 'Point-Blank Sniper', max: 4, ease: .1,
     up: '적과 140px 안 근접 거리에서 맞힌 모든 공격 · 차징 샷 피해 +75% 증폭!', down: '300px 밖 먼 거리에서 맞힌 원거리 공격 피해 -30%',
     mods: { nearPow: .75 }, cost: { farCut: .3 } },
@@ -387,10 +388,10 @@ export function onParry(p, x, y, kind, ch) {
   }
   if (md.parryWave && sc.combat) {
     const R = 120;
-    sc.combat.hitCircle(p.x, p.y, R, .6 * md.parryWave * Math.max(.4, ch.dmg), p.types[0], { proc: true, kbx: 380, kby: -220, hs: 20 });
+    sc.combat.hitCircle(p.x, p.y, R, .6 * md.parryWave * Math.max(.4, ch.dmg), p.types[0], { proc: true, kbx: 380, kby: -220, hs: 20, parryHit: true });   // 챕터 메인 대보스 -33% (ParryRules)
     sc.fx.ring(p.x, p.y, R, 0xffe36a, 360); sc.fx.ring(p.x, p.y, R * .6, 0xffffff, 260); sc.fx.shake(.008, 160, 'hit');
     const boss = sc.enemies.find(e => e.alive && e.boss && Math.hypot(e.x - p.x, e.y - p.y) < R + 60);
-    if (boss && boss.addStaggerRaw && ch.stag > 0) boss.addStaggerRaw(14 * md.parryWave * ch.stag);
+    if (boss && boss.addStaggerRaw && ch.stag > 0) boss.addStaggerRaw(14 * md.parryWave * ch.stag * parryStagK(boss));   // 챕터 메인 대보스: ×0.55
   }
   if (md.parryCounter) {
     p.counterT = sc.time.now + 2000;

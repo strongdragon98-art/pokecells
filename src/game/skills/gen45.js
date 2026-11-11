@@ -5,7 +5,7 @@
 import Phaser from 'phaser';
 import { typeColor } from '../../data/types.js';
 import { Sfx } from '../../systems/Audio.js';
-import { sizeMul, slashHit, shoot, lineFx, dashAction, view, groundAt, skillFlash } from '../skillKit.js';
+import { sizeMul, zReach, zCirc, slashHit, shoot, lineFx, dashAction, view, groundAt, skillFlash } from '../skillKit.js';
 
 // 일시 강화/약화 (atk·speed 배율, guard = 받는 피해 배율). addBuff 가 없으면 속도 버프로 대신한다
 const buff = (p, o) => { if (p.addBuff) p.addBuff(o); else if ((o.speed || 1) > 1) p.speedBuff = Math.max(p.speedBuff, o.t); };
@@ -170,9 +170,9 @@ export const SKILL_IMPL = {
         a.tk -= dt;
         if (a.tk <= 0 && a.t < .3) {
           a.tk = .1;
-          const s = sizeMul(p), x = p.x + p.face * 16 * s;
-          p.scene.combat.hitRect({ x: x - 13 * s, y: p.y - 9 * s, w: 26 * s, h: 18 * s }, .55, 'flying', { kbx: 70, kby: -30, hs: 30 });
-          p.scene.fx.ring(x, p.y - 1, 10 * s, 0xbfe6ff, 120); Sfx.play('swing');
+          const s = sizeMul(p), zr = zReach(p), x = p.x + p.face * 16 * s * zr;   // 근접 평타 사거리 +40%
+          p.scene.combat.hitRect({ x: x - 13 * s * zr, y: p.y - 9 * s, w: 26 * s * zr, h: 18 * s }, .55, 'flying', { kbx: 70, kby: -30, hs: 30 });
+          p.scene.fx.ring(x, p.y - 1, 10 * s * zr, 0xbfe6ff, 120); Sfx.play('swing');
         }
         a.gt = (a.gt || 0) - dt; if (a.gt <= 0) { a.gt = .04; p.scene.fx.ghost(p.sprite, 0x9ad8ff, .45, 180); }
       },

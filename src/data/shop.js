@@ -40,6 +40,10 @@ export const USES = {
 // 판매 품목: cat — grow 소비/성장 · tool 전술 장착 도구 · core 특수 핵심 (고액)
 //  stock: 포켓샵마다 살 수 있는 개수 (없으면 무제한) · carry: 지닐 수 있는 최대 개수 (상처약)
 //  고급상처약 · 풀회복약은 팔지 않는다 (상처약 2 ~ 4개 한도가 전투의 긴장을 만든다 — 예전에 산 것은 가방에서 그대로 쓴다)
+// 💰 전술 도구(장착 장신구) 물가 +30% (TOOL_MARKUP): 맵을 샅샅이 돌면 중반(호연)부터 돈이 남아 고급 도구를 싹쓸이하던 것을 막는다
+//  → 빌드에 꼭 필요한 핵심 도구 1 ~ 2개만 골라 사게. 되팔기도 판매가의 25% 라 함께 오른다 · 소비 · 성장 품목 · 메가스톤 · Z크리스탈은 그대로
+export const TOOL_MARKUP = 1.3;
+const toolPrice = base => Math.round(base * TOOL_MARKUP);
 export const SHOP_STOCK = [
   { id: 'potion', kind: 'use', cat: 'grow', price: 600, carry: POTION_MAX },
   { id: 'rare_candy', kind: 'candy', cat: 'grow', price: 4500, stock: 3 },
@@ -49,15 +53,15 @@ export const SHOP_STOCK = [
   { id: 'saponin', kind: 'use', cat: 'grow', price: 5000 },
   { id: 'zinc', kind: 'use', cat: 'grow', price: 5000 },
   { id: 'carbos', kind: 'use', cat: 'grow', price: 5000 },
-  // 일반 전술 도구 6,000 ~ 9,000 ₽
-  { id: 'scope_lens', kind: 'tool', cat: 'tool', price: 6000, stock: 1 },
-  { id: 'quick_claw', kind: 'tool', cat: 'tool', price: 6500, stock: 1 },
-  { id: 'shell_bell', kind: 'tool', cat: 'tool', price: 7500, stock: 1 },
-  { id: 'leftovers', kind: 'tool', cat: 'tool', price: 9000, stock: 1 },
-  // 고급 핵심 도구 15,000 ~ 22,000 ₽
-  { id: 'focus_sash', kind: 'tool', cat: 'tool', price: 15000, stock: 1 },
-  { id: 'life_orb', kind: 'tool', cat: 'tool', price: 18000, stock: 1 },
-  { id: 'choice_band', kind: 'tool', cat: 'tool', price: 22000, stock: 1 }
+  // 일반 전술 도구 7,800 ~ 11,700 ₽ (기준가 6,000 ~ 9,000 × 1.3)
+  { id: 'scope_lens', kind: 'tool', cat: 'tool', price: toolPrice(6000), stock: 1 },
+  { id: 'quick_claw', kind: 'tool', cat: 'tool', price: toolPrice(6500), stock: 1 },
+  { id: 'shell_bell', kind: 'tool', cat: 'tool', price: toolPrice(7500), stock: 1 },
+  { id: 'leftovers', kind: 'tool', cat: 'tool', price: toolPrice(9000), stock: 1 },
+  // 고급 핵심 도구 19,500 ~ 28,600 ₽ (기준가 15,000 ~ 22,000 × 1.3)
+  { id: 'focus_sash', kind: 'tool', cat: 'tool', price: toolPrice(15000), stock: 1 },
+  { id: 'life_orb', kind: 'tool', cat: 'tool', price: toolPrice(18000), stock: 1 },
+  { id: 'choice_band', kind: 'tool', cat: 'tool', price: toolPrice(22000), stock: 1 }
 ];
 export const STONE_PRICE = 38000, CRYSTAL_PRICE = 32000;   // 특수 각성석: 초고가 로망 아이템
 export const SHOP_CATS = [['grow', '💊 소비 · 성장'], ['tool', '🎽 전술 도구'], ['core', '💎 특수 핵심']];

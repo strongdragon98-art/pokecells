@@ -17,7 +17,7 @@ const ADD = Phaser.BlendModes.ADD;
 const sizeOf = p => p.mods.sizeMul * p.fxMul * (p.sp.reach || 1);
 
 // 타입 → 투사체 모양 (systems/ProjectileRenderer.js 의 kind)
-export const KIND = { fire: 'fire', water: 'water', grass: 'leaf', electric: 'bolt', ghost: 'shadow', dark: 'shadow', rock: 'rock', ground: 'rock', steel: 'steel', poison: 'bubble', bug: 'leaf' };
+export const KIND = { fire: 'fire', water: 'water', grass: 'leaf', electric: 'bolt', ghost: 'shadow', dark: 'shadow', rock: 'rock', ground: 'rock', steel: 'steel', poison: 'bubble', bug: 'leaf', psychic: 'psyorb' };   // 에스퍼: 사이코 구체 (예전엔 빛 파편 'other')
 export const kindOf = type => KIND[type] || 'other';
 
 // ---------------- 유도탄 (2차 베지어) ----------------

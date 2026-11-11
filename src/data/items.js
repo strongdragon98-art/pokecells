@@ -1,6 +1,13 @@
 import { perkMods } from '../game/Perks.js';
 import { BOSS_CORES } from './cores.js';
 
+// 📏 투사체 · 판정 크기 증가 (장신구 · 카드 · 보스 코어 · 기술 카드 등급 · 마력 폭주 · 과부하 차징 …): 곱하지 않고 모두 더한 뒤, 최종 크기는 기본의 SIZE_CAP 배를 넘지 못한다
+//  p.mods.sizeMul = min(SIZE_CAP, 1 + 모든 증가분) — 기술이 잠깐 키우는 것(Player.applyBoost · gradeCast · manaDrive)도 더해서 다시 상한을 건다
+//  보스 코어의 투사체 확대(game/Cores.js) · 차징 샷(Player.fireCharge) · 반사탄(Combat)도 같은 상한 — 그림(ProjectileRenderer 는 q.r 로 크기를 정한다)과 판정이 함께 따른다
+//  기본 = 진화 단계(1단 · 2단 · 3단 · 메가)의 크기까지 — 진화로 커지는 몫은 상한 밖
+export const SIZE_CAP = 1.45, GIANT_SIZE = .12;
+export const sizeCapK = (sizeMul, add) => Math.min(SIZE_CAP, sizeMul + add) / sizeMul;   // 이미 sizeMul 만큼 커진 탄에 add 를 더할 때 곱할 배율 (상한까지만)
+
 // 런(한 판) 동안 유지되는 강화 아이템. 같은 아이템은 중첩된다.
 // icon: 그림을 못 받았을 때 쓰는 도트 아이콘(Textures.js) · art: 가방·HUD·땅에 떨어진 아이템에 보이는 본가(소드실드·스칼렛바이올렛) 가방 아이콘 이름
 //  (npm run fetch-items 가 public/assets/items/<id>.png 로 받는다). 게임 오리지널인 기술강화 코어는 뜻이 가까운 본가 도구 그림을 쓴다:
@@ -17,7 +24,7 @@ export const ITEMS = {
   life_orb: { name: '생명의구슬', desc: '모든 피해 +30%. 기술(X·C) 사용 시 HP 3% 소모', icon: 'orb', art: 'lifeorb' },
   core_multi: { name: '기술강화 코어·확산', desc: '투사체 +1개', icon: 'core1', art: 'loadeddice' },
   core_haste: { name: '기술강화 코어·가속', desc: '스킬 쿨타임 -20%', icon: 'core2', art: 'powerherb' },
-  core_giant: { name: '기술강화 코어·거대화', desc: '공격 판정·궤적 크기 +30%', icon: 'core3', art: 'widelens' },
+  core_giant: { name: '기술강화 코어·거대화', desc: '공격 판정·궤적 크기 +12%', icon: 'core3', art: 'widelens' },
   leftovers: { name: '먹다남은음식', desc: '출전 중인 포켓몬 매초 HP 0.6% 회복', icon: 'food', art: 'leftovers' },
   shell_bell: { name: '조개껍질방울', desc: '준 피해의 6%만큼 회복', icon: 'bell', art: 'shellbell' },
   razor_claw: { name: '예리한손톱', desc: '급소율 +15%', icon: 'claw', art: 'razorclaw' },
@@ -77,7 +84,7 @@ export function computeMods(items, perks, vit = {}) {
     orbCost: n('life_orb') > 0 || !!pm.orbCost,
     extraProj: n('core_multi') + (pm.extraProj || 0),
     cdMul: Math.pow(.8, n('core_haste')) * (pm.cdMul || 1) * (n('core_suicune') ? .85 : 1) * (1 - VIT_STEP.cd * (vit.cd || 0)),   // 스이쿤의 북풍 코어: 재사용 -15%
-    sizeMul: (1 + .3 * n('core_giant') + (pm.sizeAdd || 0)) * (pm.sizeMul || 1),
+    sizeMul: Math.min(SIZE_CAP, 1 + GIANT_SIZE * n('core_giant') + (pm.sizeAdd || 0) + ((pm.sizeMul || 1) - 1)),   // 합연산 · 상한 SIZE_CAP
     regen: .006 * n('leftovers') + (pm.regen || 0),
     lifesteal: .06 * n('shell_bell') + (pm.lifesteal || 0),
     crit: .15 * n('razor_claw') + .12 * n('scope_lens') + (pm.crit || 0), critMul: 1 + .2 * n('scope_lens'),

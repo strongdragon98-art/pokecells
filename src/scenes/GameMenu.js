@@ -403,7 +403,7 @@ export const GameMenu = {
     else {
       const power = MOVE_DB[card.id] && MOVE_DB[card.id].power, slot = ['z', 'x', 'c'].find(s => c.m.skills[s] === card.id);
       lines.push(`${card.grade} 기술 카드로 배운 기술`, `${power ? `위력 ${power} · ` : ''}재사용 ${card.cd ? `${Math.round(p.cdOf(card.id, c.m) * 10) / 10}초` : '없음(연타)'}`, slot ? `지금 ${slot.toUpperCase()} 자리에 장착 중` : '배운 기술 목록에 있다 (스킬트리에서 장착)');
-      if (card.grade === '유니크' || card.grade === '전설') lines.push(card.grade === '전설' ? '전설 시전 연출: 컷인 + 초대형 마무리' : '유니크 시전 연출: 마법진 · 크기 ×2');
+      if (card.grade === '유니크' || card.grade === '전설') lines.push(card.grade === '전설' ? '전설 시전 연출: 컷인 + 초대형 마무리' : '유니크 시전 연출: 마법진 · 크기 +15%');
     }
     return lines;
   },
