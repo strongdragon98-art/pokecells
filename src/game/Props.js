@@ -2921,6 +2921,7 @@ export class Props {
   hitRect(rect, src) {
     const a = this.s.player && this.s.player.action;
     src = src || (a && a.dive ? 'dive' : a && a.slot === 'charge' ? 'charge' : null);
+    if (this.s.tutorial) this.s.tutorial.hit(rect, src);   // 🎓 연구소 강제 실습: 공중 표적 · 균열 벽 (game/Tutorial.js)
     let n = 0;
     for (const c of this.crates) {
       if (!c.alive || c.x + 7 < rect.x || c.x - 7 > rect.x + rect.w || c.y + 7 < rect.y || c.y - 7 > rect.y + rect.h) continue;

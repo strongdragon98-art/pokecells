@@ -73,6 +73,7 @@ import { Music } from '../systems/Music.js';
 import { Settings, keyLabel } from '../systems/Settings.js';
 import { Save } from '../systems/Save.js';
 import { RunSave, seeded, newSeed, snapshotWorld, applyWorld, snapshotPlayer, restorePlayer } from '../systems/RunSave.js';
+import { ActionTutorial, TUT_DONE } from '../game/Tutorial.js';
 import { itemArt, shade, TILE_MARGIN, TILE_SPACING } from '../systems/Textures.js';
 import { rollCards, applyCard, TM_CARDS, heldLv, dressCard, CARD_MAX_LV, BONUS_CARDS, cardScore, ownedUpgrades, upgradeInfo, sideSteps, MASTERY_HEAL, MASTERY_CARDS } from '../data/tm.js';
 import { PERKS, onKill as perkKill } from '../game/Perks.js';
@@ -311,6 +312,7 @@ export default class GameScene extends Phaser.Scene {
     this.buildWorld(rs ? rs.pos : null);
     if (rs) {
       restorePlayer(this.player, rs.player); this.resume = null;
+      if (rs.player && rs.player.quests && rs.player.quests.tut == null) this.player.quests.tut = TUT_DONE;   // 예전 진행 저장: 강제 실습 튜토리얼은 이미 지난 것으로
       if (rs.drops && rs.drops.ci === this.stageIdx) for (const d of rs.drops.list || []) this.spawnPickup(d.kind, d.x, d.y - 4, d.id, true);   // 줍지 않고 저장했던 드랍을 그 자리에
     }
     else if (!this.test && Save.data.bondFlame) this.time.delayedCall(1500, () => {   // 진 엔딩을 본 뒤의 새 여정: 레드의 유대의 불꽃을 처음부터 지닌다
@@ -319,6 +321,8 @@ export default class GameScene extends Phaser.Scene {
       this.events.emit('toast', '🔥 레드의 유대의 불꽃이 함께한다 — 진 엔딩의 유물 (장착 · 가방)', 'core_red_bond');
     });
     if (!rs && !this.test && this.stageIdx === 0) this.time.delayedCall(1100, () => this.openingTalk());   // 🎬 새 여정: 오박사가 먼저 말을 건다
+    if (!rs && !this.test && this.stageIdx === 0 && this.player.quests.tut == null) this.player.quests.tut = 0;   // 🎓 새 여정: 연구소의 강제 실습 튜토리얼부터 (game/Tutorial.js)
+    this.setupTutorial();
     this.scene.launch('UI');
     this.scene.bringToTop('UI');
     cam.fadeIn(350, 7, 6, 15);
@@ -562,6 +566,12 @@ export default class GameScene extends Phaser.Scene {
     Music.play(st.bgm);
     this.buildBossProps();
     this.time.delayedCall(450, () => { if (this.level === level) { this.enterArea(this.room, true); if (this.room.type === 'village') this.visitHub(this.room); } });
+    if (this.tutorial !== undefined) this.setupTutorial();   // 지방을 옮겨 다시 지을 때 (처음 지을 땐 create 가 진행 저장을 되살린 뒤에 부른다)
+  }
+  // 🎓 실전 체험형 강제 조작 튜토리얼 (game/Tutorial.js): 관동 연구소 · 아직 다 마치지 않은 새 모험에서만
+  setupTutorial() {
+    if (this.tutorial) this.tutorial.destroy();
+    this.tutorial = ActionTutorial.wanted(this) ? new ActionTutorial(this) : null;
   }
 
   // ---------------- 침식 (Room.depth 0 입구 ~ 1 보스방 앞) · 지방 정화 ----------------
@@ -715,6 +725,7 @@ export default class GameScene extends Phaser.Scene {
     this.cranes = [];
     this.torches = [];
     if (this.playerColliders) { this.playerColliders.forEach(dropCollider); this.playerColliders = null; }
+    if (this.tutorial) { this.tutorial.destroy(); this.tutorial = null; }   // 훈련 결계 몸체는 아래 gateGroup 과 함께
     if (this.gateGroup) { this.gateGroup.destroy(true); this.gateGroup = null; }
     this.gates = [];
     if (this.level) for (const r of this.level.rooms) { if (r.map) r.map.destroy(); r.map = r.layer = r.ts = null; }
@@ -990,7 +1001,9 @@ export default class GameScene extends Phaser.Scene {
     // 공중 내려찍기 방향: 키보드 ↓ (+ ← · → 를 같이 누르면 45° 대각선) · 조이스틱이 수평보다 아래를 가리키면 그 방향 (Player.startDive)
     i.diveAim = b.down.isDown ? { x: (b.right.isDown ? 1 : 0) - (b.left.isDown ? 1 : 0), y: 1 } : t && t.on !== false && t.diveAim ? t.diveAim : null;
     if (i.potionP) { i.potionP = false; this.quickPotion(); }   // 키보드 · 모바일 🧪 퀵버튼 · HUD 퀵슬롯 클릭
-    if (JD(k.ESC) || JD(k.P)) this.togglePause();
+    const esc = JD(k.ESC);
+    if (esc && this.tutorial && this.tutorial.escape()) { /* 🎓 훈련 중 ESC: 한 번 = 건너뛰기 확인 · 두 번 = 건너뛰기 */ }
+    else if (esc || JD(k.P)) this.togglePause();
     if (JD(b.map) || i.mapP) this.toggleOverlay('map');
     if (JD(b.bag) || i.invP) this.toggleOverlay('inv');
     if (JD(b.settings)) this.toggleOverlay('settings');
@@ -1595,6 +1608,7 @@ export default class GameScene extends Phaser.Scene {
     this.updateCovers();
     this.updateHazards();
     this.updateRooms(dt);
+    if (this.tutorial) { this.tutorial.update(dt); if (this.tutorial.done && !this.tutorial.flash) { this.tutorial.destroy(); this.tutorial = null; } }   // 🎓 강제 실습 튜토리얼
     if (this.trainer) {
       this.trainer.update(dt);
       if (!this.arenaRoom && this.room !== this.trainer.room) { this.trainer.destroy(); this.trainer = null; }   // 정화를 마치고 아레나를 떠나면

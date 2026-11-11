@@ -38,6 +38,8 @@ const SANDBOX_LV = ['명함', '+1강', '+2강', '+3강 ★초월'];
 const SB_PER = 18;   // 카드 샌드박스 한 쪽 (3열 × 6줄 — 위에 ⚡ 권장 스펙 자동 장착 줄)
 const TEST_TABS = [['mon', '🧪 포켓몬 · 진화'], ['boss', '👑 보스방 워프'], ['land', '🗺️ 랜드마크 입구 & 길목'], ['cards', '🃏 카드 샌드박스']];
 import { Save } from '../systems/Save.js';
+import { roomState } from '../systems/RoomState.js';
+import { TutorialHud } from '../systems/TutorialHud.js';
 import { RosterPanel } from '../systems/RosterPanel.js';
 import { Sfx } from '../systems/Audio.js';
 import { Perf } from '../systems/Perf.js';
@@ -247,7 +249,22 @@ export default class UIScene extends Phaser.Scene {
 
     // ── 오른쪽 위: 스테이지·방 · 정화 진행도
     this.tStage = hkText(this, 630, 6, '', 12, HK.ivory, { ls: 1, bold: true, origin: [1, 0] });
-    this.tRoom = hkText(this, 630, 34, '', 9, HK.dim, { origin: [1, 0] });
+    this.tRoom = hkText(this, 630, 35, '', 9, HK.dim, { origin: [1, 0], bold: true });
+    // 🗺️ 현재 방 상태 배지 (systems/RoomState.js): [ ⚠️ 침식 구역 : 정화 필요 ] · [ ✨ 정화 완료 : 안전 구역 ] · [ ♾️ 심연 침식로 : 정화 불가 ] + 설명 · 남은 침식 개체 수
+    //  배지 · 지방 이름을 누르면(터치) 전술 지도가 열린다 (이 게임엔 따로 미니맵이 없다 — 오른쪽 위 방 정보가 그 자리)
+    this.tRoomSub = hkText(this, 630, 47, '', 7.5, HK.dim, { origin: [1, 0] });
+    this.tRoomCount = hkText(this, 630, 57, '', 8, '#ffd08a', { origin: [1, 0], bold: true });
+    this.gRoomBadge = this.add.graphics().setDepth(-.5);
+    this.roomZone = this.add.zone(440, 0, 200, 70).setOrigin(0).setInteractive({ useHandCursor: true });
+    this.roomZone.on('pointerdown', () => { const gs = this.gs; if (gs && gs.player && !gs.overlay && !gs.test) { Sfx.play('select'); gs.toggleOverlay('map'); } });
+    // 방에 들어설 때 가운데 위에 잠깐 뜨는 상태 카드 (침식 구역 · 정화 완료 · 심연 침식로)
+    this.roomCard = this.add.container(320, 90).setDepth(19).setAlpha(0);
+    this.roomCardG = this.add.graphics();
+    this.roomCardT = hkText(this, 0, -7, '', 11, HK.ivory, { origin: .5, bold: true, glow: true, glowColor: 'rgba(0,0,0,.9)' });   // 이모지가 있어 글자 간격(ls) 없이
+    this.roomCardS = hkText(this, 0, 8, '', 8, HK.dim, { origin: .5 });
+    this.roomCard.add([this.roomCardG, this.roomCardT, this.roomCardS]);
+    // 🎓 강제 실습 튜토리얼 안내 패널 · 건너뛰기 버튼 (systems/TutorialHud.js · game/Tutorial.js)
+    this.tutHud = new TutorialHud(this);
     this.tDexTitle = hkText(this, 630, 54, '정화 진행도', 9, HK.dim, { ls: 2, origin: [1, 0] });
     this.tDex = UNLOCKABLE.map(() => hkText(this, 594, 0, '', 9, HK.ivory, { origin: [1, 0] }));
 
@@ -338,6 +355,7 @@ export default class UIScene extends Phaser.Scene {
       bond: (s, n) => this.showBondNote(s, n),   // 유대의 불꽃 공명 (GameScene.bondPurify · bondStageGain)
       bondPower: n => this.showBondPower(n),   // 유대의 불꽃 Lv.n 권능 해금 배너 (GameScene.bondPowerUnlock)
       mastery: () => { this.masteryPulse = 1; },   // ✨ 샛길 정화 +1 (GameScene.purifySideRoom)
+      room: r => this.roomFlash(r),   // 방에 들어섰다 (GameScene.updateRooms): 상태 카드
       boss: b => { if (b) this.bossTitle(b); },
       clearTitles: () => { this.tweens.killTweensOf([this.loreBox, this.captionBox, this.bondBox]); this.loreBox.setAlpha(0); this.captionBox.setAlpha(0); this.bondBox.setAlpha(0); this.bossTitleT = 0; },   // 테스트룸에서 보스를 바로 바꿀 때 앞 보스의 이름 · 트레이너 대사를 지운다
       unlock: (k, kind) => this.onUnlock(k, kind),
@@ -462,7 +480,7 @@ export default class UIScene extends Phaser.Scene {
     const show = !!(gs.player && lv && !this.overlayMode && !gs.test && !lv.purified);
     this.tMastery.setVisible(show);
     const R = gs.room, inSide = show && gs.isSideRoom(R);
-    this.tSideRoom.setVisible(inSide);
+    this.tSideRoom.setVisible(false);   // 지금 선 방의 상태 · 남은 침식 개체는 오른쪽 위 방 상태 배지로 옮겼다 (drawRoomBadge)
     if (!show) return;
     this.masteryPulse = Math.max(0, this.masteryPulse - dt * 1.6);
     const S = gs.sideSteps(), got = lv.masteryGot || 0, done = got >= S.length, step = S[Math.min(got, S.length - 1)], n = done ? step : Math.min(step, gs.sideCount());
@@ -476,6 +494,53 @@ export default class UIScene extends Phaser.Scene {
     g.fillStyle(done ? 0x6aff9a : 0xffc24a, .95); g.fillRect(x, y, w * k, 3);
     if (!done && got > 0) { g.fillStyle(0xffffff, .6); g.fillRect(Math.round(x + w * S[got - 1] / step), y - 1, 1, 5); }   // 지난 강화 지점 눈금
     if (this.masteryPulse > 0) { g.fillStyle(0xffffff, this.masteryPulse * .7); g.fillRect(x, y - 1, w * k, 5); }
+  }
+  // 🗺️ 오른쪽 위 현재 방 상태 배지 (systems/RoomState.js) — 돌려주는 값: 그 아래 정화 진행도를 내릴 높이(px)
+  //  ⚠️ 침식 구역(샛길 · 정화 전): 보랏빛 · 주황 테두리가 맥동 + 남은 침식 개체 실시간 수 / ✨ 정화 완료: 에메랄드 · 금테 + 반짝임 / ♾️ 심연 침식로(본길): 진홍 테두리가 빠르게 맥동
+  drawRoomBadge(time) {
+    const gs = this.gs, g = this.gRoomBadge;
+    g.clear();
+    this.tRoomCount.setText('');
+    if (gs.test) { this.tRoom.setText(gs.testInfo()).setColor(HK.dim); this.tRoomSub.setText(''); return 0; }
+    const rs = gs.room && gs.level ? roomState(gs, gs.room) : null;
+    if (this.overlayMode && this.roomCard.alpha > 0) { this.tweens.killTweensOf(this.roomCard); this.roomCard.setAlpha(0); }   // 지도 · 가방 창이 열리면 상태 카드는 걷는다
+    if (!rs || this.overlayMode) { this.tRoom.setText(''); this.tRoomSub.setText(''); return 0; }
+    this.tRoom.setText(`[ ${rs.icon} ${rs.title} ]`).setColor(rs.col);
+    this.tRoomSub.setText(`(${rs.sub})`).setColor(rs.sub2);
+    let lines = 2;
+    if (rs.key === 'corrupt') { this.tRoomCount.setText(`남은 침식 개체: ${gs.sideRemain(gs.room)}마리`); lines = 3; }
+    const w = Math.max(this.tRoom.width, this.tRoomSub.width, this.tRoomCount.width) + 14, x1 = 636, x0 = x1 - w, y0 = 32, h = lines === 3 ? 39 : 26;
+    const k = rs.key, beat = .5 + .5 * Math.sin(time / (k === 'abyss' ? 210 : 360));
+    g.fillStyle(k === 'corrupt' ? 0x1a0614 : k === 'abyss' ? 0x1c0408 : k === 'pure' ? 0x05160f : 0x07050c, .78); g.fillRoundedRect(x0, y0, w, h, 5);
+    if (k === 'corrupt' || k === 'abyss' || k === 'pure') {
+      const col = k === 'pure' ? 0xffd860 : k === 'abyss' ? 0xff2a4a : beat > .5 ? 0xffa04a : 0xc04aff;
+      g.lineStyle(1.4, col, k === 'pure' ? .9 : .45 + .55 * beat); g.strokeRoundedRect(x0, y0, w, h, 5);
+      g.fillStyle(col, k === 'pure' ? .25 : .12 + .18 * beat); g.fillRect(x0 + 3, y0 + 1, 2, h - 2);   // 왼쪽 상태 색 띠
+      if (k === 'pure') for (let i = 0; i < 3; i++) { const a = (time / 500 + i * 2.1) % (Math.PI * 2), sx = x0 + 8 + ((i * 53 + time / 40) % (w - 16)), sy = y0 + 4 + (i * 7) % (h - 8); g.fillStyle(0xfff4c0, .35 + .4 * Math.abs(Math.sin(a))); g.fillRect(sx, sy, 1, 1); g.fillRect(sx - 1, sy, 3, .5); }   // 반짝이는 별 알갱이
+    } else { g.lineStyle(1, 0xefeae0, .22); g.strokeRoundedRect(x0, y0, w, h, 5); }
+    return h - 18;
+  }
+  // 방에 들어설 때 가운데 위에 2.4초 뜨는 상태 카드 — 침식 구역 · 정화 완료 · 심연 침식로만 (마을 · 연구소 · 아레나는 원래 안내가 있다)
+  roomFlash(r) {
+    const gs = this.gs;
+    if (!r || gs.test || !gs.level || this.overlayMode) return;
+    const rs = roomState(gs, r);
+    if (!rs || !['corrupt', 'pure', 'abyss'].includes(rs.key)) return;
+    const now = this.time.now;
+    if (this.roomCardRoom === r && now - (this.roomCardAt || -1e9) < 6000) return;   // 문턱을 오가며 같은 방 카드를 거듭 띄우지 않는다
+    this.roomCardRoom = r; this.roomCardAt = now;
+    const left = rs.key === 'corrupt' ? gs.sideRemain(r) : 0;
+    this.roomCardT.setText(`[ ${rs.icon} ${rs.title} ]`).setColor(rs.col);
+    this.roomCardS.setText(rs.key === 'corrupt' ? `${rs.sub} · 남은 침식 개체: ${left}마리` : rs.key === 'abyss' ? `${rs.sub} — 샛길이 아니라 보스로 이어지는 본길이다` : `${rs.sub} — 다시 와도 몬스터가 나오지 않는다`).setColor(rs.sub2);
+    const w = Math.max(this.roomCardT.width, this.roomCardS.width) + 28, g = this.roomCardG, col = rs.line;
+    g.clear();
+    g.fillStyle(rs.key === 'pure' ? 0x05160f : rs.key === 'abyss' ? 0x1c0408 : 0x1a0614, .88); g.fillRoundedRect(-w / 2, -17, w, 34, 7);
+    g.lineStyle(1.5, col, .95); g.strokeRoundedRect(-w / 2, -17, w, 34, 7);
+    g.lineStyle(1, col, .35); g.strokeRoundedRect(-w / 2 - 3, -20, w + 6, 40, 9);
+    this.tweens.killTweensOf(this.roomCard);
+    this.roomCard.setAlpha(0).setY(84).setScale(.96);
+    this.tweens.add({ targets: this.roomCard, alpha: 1, y: 90, scale: 1, duration: 220, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: this.roomCard, alpha: 0, delay: 2400, duration: 420 });
   }
   // 🌈 성도: 성수의 구슬 현황 [ 성수의 구슬: 🔴 / ⚫ / 🔵 (2/3) ] — 칠색조를 정화해 지방이 맑아질 때까지 (숙련 게이지 · 샛길 줄 아래)
   drawOrbs() {
@@ -741,12 +806,13 @@ export default class UIScene extends Phaser.Scene {
       g.fillStyle(col, 1); g.fillCircle(x, 28, rad + (cur ? .6 : 0));
       g.fillStyle(0xffffff, .5); g.fillCircle(x - .7, 27.2, rad * .33);
     });
-    this.tRoom.setText(gs.test ? gs.testInfo() : gs.room ? (gs.isSideRoom(gs.room) && !gs.level.purified ? (gs.room.isPurified ? '샛길 · ✨ 정화 완료' : '샛길 · 오염 구역') : gs.room.under && gs.room.type === 'combat' ? '지하 · 전투 구역' : ROOM_NAME[gs.room.type] || '') : '');
+    const dexY = this.drawRoomBadge(time) + (this.tutHud ? this.tutHud.update(time, delta) : 0);   // 방 상태 배지 · 튜토리얼 건너뛰기 버튼 높이만큼 정화 진행도를 내린다
+    this.tDexTitle.setY(54 + dexY);
     let row = 0;
     UNLOCKABLE.forEach((k, i) => {
       const t = this.tDex[i];
       if (gs.test || Save.isUnlocked(k)) { t.setText(''); return; }   // 테스트룸엔 정화 진행도가 없다
-      const n = Save.kills(k), hot = this.time.now - (this.recent[k] || -9999) < 1500, y = 70 + row * 13;
+      const n = Save.kills(k), hot = this.time.now - (this.recent[k] || -9999) < 1500, y = 70 + dexY + row * 13;
       t.setText(`${SPECIES[k].name}  ${n}/${UNLOCK_KILLS}`).setY(y).setColor(hot ? HK.gold : HK.ivory);
       bar3d(g, 600, y + 5, 29, 3, n / UNLOCK_KILLS, hot ? HK.goldN : 0xb490ff);
       row++;
@@ -1523,19 +1589,21 @@ export default class UIScene extends Phaser.Scene {
     L.add(hkText(this, x + 2, 42, ']', 10, HK.faint, { origin: [0, .5] }));
     this.mapView = new MapView(this, L, ci);
     this.overlayChrome(L, 'map');
-    // 휴대폰에는 휠·Z 키가 없으니 지도 창 오른쪽 위에 확대·축소 버튼 (지도는 끌어서 이동)
+    // 확대 · 축소 버튼 (휴대폰은 두 손가락 핀치도 — systems/MapView.js) · 지도는 끌어서 이동
     glassButton(this, VP.x + VP.w - 54, VP.y + 6, 24, 18, '–', () => this.mapView && this.mapView.zoom(-1), { size: 10, layer: L });
     glassButton(this, VP.x + VP.w - 26, VP.y + 6, 24, 18, '+', () => this.mapView && this.mapView.zoom(1), { size: 10, layer: L });
     this.input.keyboard.on('keydown', this.onOverlayKey, this);
-    // 범례 (핀 모양을 글로 풀어서) · 탐험률 · 조작
-    L.add(hkText(this, 34, 316, '◉ 포켓몬센터  ◉ 아머까오  ☠ 보스·중간 보스  ? 숨겨진 전설  ◉ 기술머신  ◉ 보물  ◉ 상처약  ◉ 현재 위치  ┆ 안 가 본 길', 8.5, HK.dim));
-    // ✨ 샛길 정화 구역 색 (systems/MapView.js): 정화 전 핏빛 · 정화한 곳 에메랄드 + 금테 — 그 지방에서 정화한 수 / 전체
+    // 범례: 방 상태 3단계 (systems/RoomState.js — 화면 위 방 배지와 같은 색) · 핀 · 탐험률 · 조작
     const mw = this.gs.worlds[ci], side = mw && mw.level && !mw.level.purified ? this.gs.sideRoomsOf(mw.level) : [];
-    if (side.length) {
-      const a = hkText(this, 34, 327, '▮ 침식된 샛길 (포켓몬을 모두 쓰러뜨려 정화)', 8.5, '#d8708a');
-      L.add([a, hkText(this, a.x + a.width + 12, 327, `▮ ✦ 정화한 샛길 ${side.filter(r => r.isPurified).length} / ${side.length}`, 8.5, '#6ae8b8')]);
-    }
-    L.add(hkText(this, 320, 340, `${st.short} 탐험 ${Math.round(this.mapView.progress * 100)}%   ·   1~${STAGES.length} 지방   ·   ${keyLabel(Settings.key('map'))} · Esc 닫기   ·   끌어서 이동 · 휠 · Z · +– 확대`, 9, HK.faint, { origin: .5 }));
+    const legend = [
+      ['▮ ⚠️ 침식 구역 (샛길 · 정화 가능)', '#ff7ab8'],
+      [`▮ ✨ 정화 완료 (리젠 없음)${side.length ? ` ${side.filter(r => r.isPurified).length}/${side.length}` : ''}`, '#6ae8b8'],
+      ['▮ ♾️ 심연 침식로 (본길 · 정화 불가 · 재진입 시 리젠)', '#ff5a6a']
+    ];
+    let lx = 34;
+    for (const [t, c] of legend) { const tx = hkText(this, lx, 316, t, 8.5, c); L.add(tx); lx += tx.width + 12; }
+    L.add(hkText(this, 34, 327, '🔥 회복(센터 · 회복 성소) · 🛒 포켓샵 · 아머까오 · 💀 보스 · ? 숨겨진 전설 · 미탐사 통로 · 🟡 기술머신 · 보물 · 상처약 · 현재 위치(초상화)', 7.5, HK.dim));
+    L.add(hkText(this, 320, 346, `${st.short} 탐험 ${Math.round(this.mapView.progress * 100)}%   ·   1~${STAGES.length} 지방   ·   ${keyLabel(Settings.key('map'))} · Esc 닫기`, 8.5, HK.faint, { origin: .5 }));
     this.overlayMode = 'map';
   }
 

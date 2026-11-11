@@ -294,6 +294,7 @@ export class Combat {
     Cores.projectile(this, q);   // 보스의 코어: 무지갯빛 불꽃 · 백옥 사거리 · 델타스트림 (game/Cores.js)
     if (q.owner === 'player') {
       const pa = this.p.action;
+      if (!this.p.onGround) q.airShot = true;   // 공중에서 쏜 탄 (연구소 훈련: 공중 표적 — game/Tutorial.js)
       if (pa && pa.comboStep && !this.chargeSpawn && !q.bonus) {   // 평타가 쏜 탄: 원거리형 표시 · 3타 피니시는 1.5배 강화 관통탄
         this.p.comboPulse();
         if (pa.finisher) { q.r *= 1.5; q.pierce = Math.max(q.pierce, 3); q.pow = (q.pow || 1) * 1.3; }
@@ -395,7 +396,7 @@ export class Combat {
       if (q.lightObj) q.lightObj.setPosition(q.x, q.y);
 
       let dead = q.life <= 0 || !!q.kill, why = q.kill || (dead ? 'expire' : null);   // q.kill: update 갈고리가 정한 최후 ('wall' 이면 벽에 부딪힌 연출)
-      if (!dead && q.owner === 'enemy' && s.inShield && s.inShield(q.x, q.y)) {   // 🛡️ 적의 탄은 마을 · 사람 결계에 닿으면 흩어진다
+      if (!dead && q.owner === 'enemy' && !q.training && s.inShield && s.inShield(q.x, q.y)) {   // 🛡️ 적의 탄은 마을 · 사람 결계에 닿으면 흩어진다 (연구소 훈련 탄은 빼고 — game/Tutorial.js)
         dead = true; why = 'expire';
         this.fx.ring(q.x, q.y, 10 + q.r, 0xffe0a0, 240); this.fx.burst(q.x, q.y, [0xffe0a0, 0xffffff], 6, 70, { glow: true, life: .35 });
         if (q.boom) q.boom = null;   // 폭발탄도 결계 앞에선 터지지 않고 흩어진다
@@ -405,7 +406,7 @@ export class Combat {
         if (q.owner === 'player' && s.hitBreakables) s.hitBreakables({ x: q.x - q.r - 2, y: q.y - q.r - 2, w: q.r * 2 + 4, h: q.r * 2 + 4 });   // 투사체로도 금 간 벽을 깬다
       }
       if (!dead && q.owner === 'player') {
-        if (s.props) s.props.hitCircle(q.x, q.y, q.r, q.charge ? 'charge' : null);   // 차징 샷 탄은 연습용 나무 상자도 부순다
+        if (s.props) s.props.hitCircle(q.x, q.y, q.r, q.charge ? 'charge' : q.airShot ? 'air' : null);   // 차징 샷 탄은 연습용 나무 상자도 부순다 · 공중에서 쏜 탄은 훈련용 공중 표적도
         const hr = Math.max(q.r, HIT_R_MIN);   // 아주 가는 탄도 최소 판정 반지름 (염동 칼날 · 깃털 탄)
         for (const e of s.enemies) {
           if (!e.alive || q.hit.has(e) || !circRect(q.x, q.y, hr, e.bounds())) continue;
@@ -420,7 +421,8 @@ export class Combat {
         // ⚠️ 붉은 안광(패링 불가) 탄: 받아치지 못하고 가드 브레이크 · 피해 ×DANGER_MUL (Boss.dangerOn)
         if (q.danger || (q.src && q.src.danger)) {
           p.guardBreak(q.x, q.y);
-          if (p.takeHit(q.dmg * DANGER_MUL, q.type, q.x - q.vx * .1, Object.assign({}, q.status, { noParry: true }))) { dead = true; why = 'hit'; }
+          if (q.training) { if (!s.tutorial || s.tutorial.touch(q, 'guard')) { dead = true; why = 'hit'; } }   // 🎓 훈련 충격파: 가드 브레이크만 보여 주고 피해 없음
+          else if (p.takeHit(q.dmg * DANGER_MUL, q.type, q.x - q.vx * .1, Object.assign({}, q.status, { noParry: true }))) { dead = true; why = 'hit'; }
         } else {
         // 패링 자세(지상 ↓ + Z) → 반사: 아군 황금빛 탄이 되어 되돌아간다 (속도 2배 · 최대 900) · 250% 피해 × 연속 패링 점감
         //  쏜 적(없으면 가장 가까운 적)의 중심을 겨눠 날아가고, 그 적이 움직이면 초당 40° 까지 꺾어 따라간다 (q.seek)
@@ -434,6 +436,8 @@ export class Combat {
         q.color = PARRY_COL[i]; q.status = { kb: 0, parried: true, parryN: ch.n, parryDmg: ch.dmg, parryStag: ch.stag }; q.parried = true;   // 맞히면 무조건 약점 · 그로기 (damageEnemy)
         continue;
         }
+      } else if (!dead && q.owner === 'enemy' && q.training && circRect(q.x, q.y, q.r, p.bounds())) {   // 🎓 훈련 탄 (game/Tutorial.js): 맞아도 피해 0 · 대시로 뚫고 지나가면 회피 성공
+        if (!s.tutorial || s.tutorial.touch(q, 'body')) { dead = true; why = 'hit'; }
       } else if (!dead && q.owner === 'enemy' && circRect(q.x, q.y, q.r, p.bounds())) {
         const r = p.blockProjectile(q);
         if (r === 'reflect') { q.owner = 'player'; q.vx = -q.vx * 1.2; q.vy *= -.3; q.dmg = p.atk * 2; q.hit = new Set(); q.life = 1.2; q.homing = 0; q.type = p.sp.types[0]; q.tier = p.tierIdx; this.fx.ring(q.x, q.y, 14, 0xbfe6ff, 200); continue; }
