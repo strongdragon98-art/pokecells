@@ -69,6 +69,7 @@ import { shockwave, chromatic } from '../systems/PostFX.js';
 import { Sprites } from '../systems/SpriteLoader.js';
 import { Perf } from '../systems/Perf.js';
 import { Sfx } from '../systems/Audio.js';
+import { megaForm } from '../data/megaForms.js';
 import { Music } from '../systems/Music.js';
 import { Settings, keyLabel } from '../systems/Settings.js';
 import { Save } from '../systems/Save.js';
@@ -1020,7 +1021,7 @@ export default class GameScene extends Phaser.Scene {
   // ---------------- 지도(M) · 가방(I): 게임을 멈추고 UI 가 그린다 ----------------
   toggleOverlay(kind) {
     if (this.over || this.transitioning) return;
-    if ((this.overlay === 'tm' || this.overlay === 'upgrade' || this.overlay === 'taxi' || this.overlay === 'debug' || this.overlay === 'test' || this.overlay === 'shop') && kind !== this.overlay) return;   // 카드·공중날기·디버그·테스트 창이 열려 있으면 다른 창으로 넘어가지 않는다
+    if ((this.overlay === 'tm' || this.overlay === 'upgrade' || this.overlay === 'taxi' || this.overlay === 'debug' || this.overlay === 'test' || this.overlay === 'shop' || this.overlay === 'mega') && kind !== this.overlay) return;   // 🧬 메가 폼 선택 창도 확정 · 취소 전엔 다른 창으로 넘어가지 않는다   // 카드·공중날기·디버그·테스트 창이 열려 있으면 다른 창으로 넘어가지 않는다
     if (this.overlay === kind && kind === 'talk') this.talkClosedAt = this.time.now;
     if (this.overlay === kind) {
       this.overlay = null; this.setFrozen(false); this.consumeInput(); this.player.zBuf = 0; this.events.emit('overlay', null);
@@ -1042,6 +1043,57 @@ export default class GameScene extends Phaser.Scene {
     if (this.paused) return;
     this.overlay = kind; this.setFrozen(true); this.events.emit('overlay', kind);
     Sfx.play('select');
+  }
+  // 🧬 『메가진화 폼 선택』 창 (다중 메가 X · Y — data/megaForms.js · scenes/MegaPicker.js): 시간이 멈추고 화면 가운데 창이 열린다
+  //  ctx: { key 계열, sel 처음 골라 둘 카드, mode 'battle'(V 메가진화) · 'center'(포켓몬센터 폼 변경) · 'test'(테스트룸 모습 고르기), slot 테스트룸 자리 }
+  //  센터 · 테스트룸 창 위에서 열면 그 창 자리를 넘겨받고(멈춘 채), 취소하면 그 창으로 돌아간다
+  openMegaPick(ctx) {
+    if (this.over || this.transitioning || !SPECIES[ctx.key]) return false;
+    if (this.overlay && this.overlay !== 'mega') ctx.from = this.overlay;
+    else if (!this.overlay && this.paused) return false;
+    this.megaPickCtx = ctx;
+    if (this.overlay) { this.overlay = 'mega'; this.events.emit('overlay', 'mega'); }
+    else { this.overlay = 'mega'; this.setFrozen(true); this.events.emit('overlay', 'mega'); }
+    Sfx.play('mega_open');
+    return true;
+  }
+  // 확정 버튼 (UIScene.megaConfirm): 창을 닫고 시간이 다시 흐르며 그 폼으로
+  confirmMegaPick(idx) {
+    const ctx = this.megaPickCtx, p = this.player;
+    if (!ctx || this.overlay !== 'mega') return;
+    this.megaPickCtx = null;
+    this.toggleOverlay('mega');
+    const m = p.members.find(q => q.key === ctx.key);
+    if (ctx.mode === 'test') { this.testForm(ctx.slot ?? p.idx, ctx.key, 2, idx); this.megaFormFx(p); return; }
+    if (ctx.mode === 'center') {
+      if (m && p.changeMegaForm(m, idx)) {
+        const mg = m.sp.megas[idx];
+        const fm = megaForm(mg);
+        this.events.emit('banner', '메가 폼 변경!', `${p.formName(m)}${fm ? ' · ' + fm.role : ''}`);
+        if (m === p.m) this.megaFormFx(p); else Sfx.play('mega');
+        this.saveRun && this.saveRun(true, 'megaform');
+      }
+      return;
+    }
+    if (m && m === p.m && !p.mega.active) p.startMega(idx, { picked: true });
+  }
+  // 취소 (Esc · [취소]): 센터 · 테스트룸에서 열었으면 그 창으로 · 전투 중 V 였으면 그냥 닫는다 (메가진화하지 않는다)
+  cancelMegaPick() {
+    const ctx = this.megaPickCtx;
+    this.megaPickCtx = null;
+    if (this.overlay !== 'mega') return;
+    if (ctx && (ctx.from === 'center' || ctx.from === 'test')) { this.overlay = ctx.from; this.events.emit('overlay', ctx.from); return; }
+    this.toggleOverlay('mega');
+  }
+  // 메가 폼이 바뀐 순간 (테스트룸 · 센터): 오라 색 고리 · 무지개 파편 · 섬광
+  megaFormFx(p) {
+    const fm = megaForm(p.megaOf()), col = fm ? fm.aura : 0xff8ad0;
+    p.flash(300); p.squash(.6, 1.5); p.inv = Math.max(p.inv, .6);
+    this.cameras.main.flash(220, 255, 255, 255, true);
+    for (let k = 0; k < 4; k++) this.time.delayedCall(k * 90, () => this.fx.ring(p.x, p.y, 30 + k * 18, [col, 0xff8ad0, 0x9a7aff, 0xffffff][k], 380));
+    this.fx.burst(p.x, p.y, [col, 0xff8ad0, 0x9a7aff, 0x5ad0ff, 0xfff6c0], 36, 220, { glow: true });
+    shockwave(this, p.x, p.y, .04, 700);
+    Sfx.play('mega');
   }
   setFrozen(on) {
     this.paused = on;

@@ -114,7 +114,7 @@ export const LINES = [
     forms: [{ key: 'froakie', name: '개구마르', dex: 656 }, { key: 'frogadier', name: '개굴반장', dex: 657 }, { key: 'greninja', name: '개굴닌자', dex: 658, types: T('water', 'dark') }],
     megas: [{ key: 'greninja-ash', name: '지우개굴닌자', types: T('water', 'dark'), pokeapi: 10117, sc: '0001', bond: true },
             { key: 'greninja-mega', name: '메가개굴닌자', types: T('water', 'dark'), pokeapi: 10294, sc: '0002' }],
-    skills: { z: 'water_shuriken', x: 'dark_pulse', c: 'double_team' }, desc: '물수리검을 던지는 닌자. V 는 유대변화(거대 수리검), ↑+V 는 메가진화.', unlock: { start: true } },
+    skills: { z: 'water_shuriken', x: 'dark_pulse', c: 'double_team' }, desc: '물수리검을 던지는 닌자. V 를 누르면 유대변화(거대 수리검 원거리)와 메가진화(근접 암살) 중에서 고른다.', unlock: { start: true } },
 
   // ======================= 7세대 · 알로라 =======================
   { id: 'rowlet', cat: 'starter', gen: 7, ...STARTER, hp: 108, atk: 11, speed: 112, jumps: 3, types: T('grass', 'flying'),

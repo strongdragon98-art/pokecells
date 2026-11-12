@@ -10,6 +10,7 @@ import { typeColor } from '../data/types.js';
 import { Sfx } from '../systems/Audio.js';
 import { shockwave } from '../systems/PostFX.js';
 import { lineFx, zReach } from './skills.js';
+import { megaForm } from '../data/megaForms.js';
 
 const ADD = Phaser.BlendModes.ADD;
 const sz = p => p.mods.sizeMul * p.fxMul;
@@ -232,6 +233,8 @@ const RUN = { beam: megaBeam, meteor: meteorRain, pillars: lightningPillars, eru
 
 // 라인에 정의가 없으면 출전 포켓몬 첫 속성으로 만든다
 export function megaUltOf(p) {
+  const fm = p.m.mega && megaForm(p.megaOf());   // 🧬 다중 메가 폼: 폼마다 다른 필살기 (data/megaForms.js)
+  if (fm && fm.ult) return fm.ult;
   const def = MEGA_ULT[p.m.key];
   if (def) return def;
   const t = p.types[0];

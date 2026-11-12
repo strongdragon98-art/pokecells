@@ -32,6 +32,8 @@ import { CHARGE_SIG } from '../game/Signature.js';
 import { installGameMenu } from './GameMenu.js';
 import { installShopMenu } from './ShopMenu.js';
 import { installCenterMenu } from './CenterMenu.js';
+import { installMegaPicker } from './MegaPicker.js';
+import { multiMega } from '../data/megaForms.js';
 import { npcArt } from '../game/Npc.js';
 import { bossHome, TEST_LANDMARKS, landmarkCi } from '../game/TestRoom.js';
 // 🃏 카드 샌드박스 적용 단계 (0 명함 · 1~3 강화 — data/tm.js applyCard 를 그 단계까지 거듭한다)
@@ -353,6 +355,7 @@ export default class UIScene extends Phaser.Scene {
          kind === 'tm' ? (this.tmModal = this.gs.tmActive && this.gs.tmActive.sandbox ? { step: 'who', target: null, tip: null } : null, this.showTM())
         : kind === 'upgrade' ? this.showUpgrade()   // ✨ 오염 구역 정화 보상: 보유 카드 강화 (3장 앞면 · 누르면 바로 +1)   // 🃏 카드 샌드박스: 카드를 누른 순간 실전과 같은 포켓몬 지정 창
         : kind === 'center' ? this.showCenter(0)   // 🏥 포켓몬센터 서비스 메뉴 (scenes/CenterMenu.js)
+        : kind === 'mega' ? this.showMegaPick()   // 🧬 메가진화 폼 선택 (scenes/MegaPicker.js · 시간 정지)
         : kind === 'box' ? (this.boxPick = null, this.boxModal = null, this.showBox())   // 🔄 포켓몬 교체
         : kind === 'shop' ? (this.shopMoneyShown = null, this.shopQty = 1, this.shopConfirm = null, this.showShop())   // 포켓샵 (scenes/ShopMenu.js)
         : kind === 'taxi' ? this.showTaxi() : kind === 'talk' ? this.showTalk() : kind === 'debug' ? this.showDebug() : kind === 'test' ? this.showTest() : kind === 'settings' ? this.showSettings(0) : kind === 'join' ? this.showJoin() : this.clearOverlay(),
@@ -2066,6 +2069,7 @@ export default class UIScene extends Phaser.Scene {
     this.testFocus = key;
     if (this.testPanel) { this.testRTab = this.testPanel.tab; this.testGen = this.testPanel.gen; }
     const slot = this.testSlot ?? gs.player.idx;
+    if (mega >= 0 && multiMega(SPECIES[key])) { gs.openMegaPick({ key, sel: mega, mode: 'test', slot }); return; }   // 🧬 X · Y 폼: 비교 창에서 확정 (scenes/MegaPicker.js)
     gs.toggleOverlay('test');
     gs.testForm(slot, key, tier, mega);
     this.testSlot = gs.player.idx;   // 다음에 열면 지금 출전 중인 자리부터
@@ -2733,6 +2737,7 @@ export default class UIScene extends Phaser.Scene {
       return;
     }
     if (this.overlayMode === 'center') { this.centerKey(e); return; }   // 🏥 포켓몬센터 메뉴 (Esc 는 GameScene 이 닫는다)
+    if (this.overlayMode === 'mega') { this.megaKey(e); return; }       // 🧬 메가진화 폼 선택 (Esc 는 overlayBack → megaBack)
     if (this.overlayMode === 'box') { this.boxKey(e); return; }         // 🔄 포켓몬 교체 · ⚡ 경험치 전수 확인 창 (Esc 는 overlayBack 이 한 단계씩)
     if (this.overlayMode === 'shop') { this.shopKey(e); return; }   // 포켓샵 (scenes/ShopMenu.js · Esc 는 GameScene 이 닫는다)
     if (this.overlayMode === 'test') {   // 테스트룸 패널 (닫기 T · F3 · Esc 는 GameScene 이 받는다)
@@ -2836,3 +2841,4 @@ installGameMenu(UIScene);
 installShopMenu(UIScene);
 // 포켓몬센터 메뉴 · 포켓몬 교체 · 경험치 전수 — scenes/CenterMenu.js
 installCenterMenu(UIScene);
+installMegaPicker(UIScene);   // 🧬 메가진화 폼 선택 창 (scenes/MegaPicker.js)

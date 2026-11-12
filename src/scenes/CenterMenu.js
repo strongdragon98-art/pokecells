@@ -18,6 +18,7 @@ import { RosterPanel } from '../systems/RosterPanel.js';
 import { Save } from '../systems/Save.js';
 import { Sfx } from '../systems/Audio.js';
 import { inheritGain } from '../game/Player.js';
+import { multiMega } from '../data/megaForms.js';
 
 const ADD = Phaser.BlendModes.ADD;
 const SLOT_X = i => 92 + i * 56, SLOT_Y = 322;
@@ -31,7 +32,7 @@ export const CenterMenu = {
     const gs = this.gs, L = this.overlay.setVisible(true), g = this.gOver, it = gs.centerAt;
     this.centerFocus = focus;
     g.fillStyle(0x05040a, .55); g.fillRect(0, 0, GAME_W, GAME_H);
-    const W = 268, H = 160, X = 320 - W / 2, Y = 92;
+    const W = 268, H = 204, X = 320 - W / 2, Y = 74;
     glassPanel(g, X, Y, W, H, { r: 10, alpha: .95, border: 0xff8a8a, borderAlpha: .6 });
     g.fillStyle(0xe8484a, .9); g.fillRect(X + 10, Y + 27, W - 20, 1);
     const city = (it && it.room && (it.room.city || it.room.area)) || '';
@@ -39,19 +40,21 @@ export const CenterMenu = {
     if (city) L.add(hkText(this, X + W - 10, Y + 11, city, 7.5, HK.dim, { origin: [1, 0] }));
     const opts = [
       ['[ 💚 포켓몬 회복 (Heal Party) ]', '출전 포켓몬 체력 100% · 상처약 소지 한도까지 충전'],
-      ['[ 🔄 포켓몬 교체 (Switch Party) ]', '보관함 포켓몬과 맞바꾸기 · 경험치 70% 전수 가능']
+      ['[ 🔄 포켓몬 교체 (Switch Party) ]', '보관함 포켓몬과 맞바꾸기 · 경험치 70% 전수 가능'],
+      ['[ 🧬 메가 폼 변경 (Mega Form) ]', this.centerMegaNote()]
     ];
     opts.forEach(([label, desc], i) => {
       const by = Y + 38 + i * 44, on = i === focus;
       const b = glassButton(this, X + 18, by, W - 36, 24, label, () => this.centerPick(i), { size: 10, primary: on, ls: 0 });   // ls 0: 글자 간격을 주면 이모지가 깨진다
       for (const o of b.objs) L.add(o);
       b.objs[2].on('pointerover', () => { if (this.centerFocus !== i) this.showCenter(i); });
-      if (on) L.add(this.add.image(320, by + 12, 'glow').setBlendMode(ADD).setTint(i ? 0x8ad8ff : 0x8affb0).setScale(2.6, .5).setAlpha(.18));
-      L.add(hkText(this, 320, by + 27, desc, 7.5, on ? (i ? '#9ad8ff' : '#9affb8') : HK.dim, { origin: [.5, 0] }));
+      const tint = [0x8affb0, 0x8ad8ff, 0xff9ae0][i], tcol = ['#9affb8', '#9ad8ff', '#ffb0e8'][i];
+      if (on) L.add(this.add.image(320, by + 12, 'glow').setBlendMode(ADD).setTint(tint).setScale(2.6, .5).setAlpha(.18));
+      L.add(hkText(this, 320, by + 27, desc, 7.5, on ? tcol : HK.dim, { origin: [.5, 0] }));
     });
     const close = glassButton(this, 320 - 40, Y + H - 26, 80, 18, '닫기 (Esc)', () => this.gs.toggleOverlay('center'), { size: 8.5, ls: 0 });
     for (const o of close.objs) L.add(o);
-    L.add(hkText(this, 320, Y + H + 6, '↑↓ 고르기 · Enter / F / Space 결정 · 1 회복 · 2 교체 · Esc 닫기', 7.5, HK.faint, { origin: [.5, 0] }));
+    L.add(hkText(this, 320, Y + H + 6, '↑↓ 고르기 · Enter / F / Space 결정 · 1 회복 · 2 교체 · 3 메가 폼 · Esc 닫기', 7.5, HK.faint, { origin: [.5, 0] }));
     this.input.keyboard.on('keydown', this.onOverlayKey, this);
     this.overlayMode = 'center';
   },
@@ -59,14 +62,21 @@ export const CenterMenu = {
     const gs = this.gs;
     Sfx.play('select');
     if (i === 0) { gs.toggleOverlay('center'); gs.healAtCenter(gs.centerAt); return; }
+    if (i === 2) {   // 🧬 메가진화 중인 X · Y 포켓몬의 폼 바꾸기 (출전 포켓몬 먼저) — scenes/MegaPicker.js
+      const list = this.megaCenterList(), m = list.find(q => q === gs.player.m) || list[0];
+      if (!m) { Sfx.play('deny'); this.toast('🧬 메가진화 중인 X · Y 폼 포켓몬이 없다 — 처음 메가진화할 때(V) 고르고, 그 뒤 여기서 바꿀 수 있다'); return; }
+      gs.openMegaPick({ key: m.key, sel: m.megaPick || 0, mode: 'center' });
+      return;
+    }
     this.boxPick = null; this.boxModal = null;
     gs.overlay = 'box'; this.showBox();
   },
   centerKey(e) {
     const c = e.code;
-    if (c === 'ArrowUp' || c === 'ArrowDown') { Sfx.play('select'); this.showCenter(this.centerFocus ? 0 : 1); }
+    if (c === 'ArrowUp' || c === 'ArrowDown') { Sfx.play('select'); this.showCenter(((this.centerFocus || 0) + (c === 'ArrowDown' ? 1 : 2)) % 3); }
     else if (c === 'Digit1' || c === 'Numpad1') this.centerPick(0);
     else if (c === 'Digit2' || c === 'Numpad2') this.centerPick(1);
+    else if (c === 'Digit3' || c === 'Numpad3') this.centerPick(2);
     else if (['Enter', 'NumpadEnter', 'Space', 'KeyF', 'KeyZ'].includes(c)) this.centerPick(this.centerFocus || 0);
   },
 
@@ -232,7 +242,14 @@ export const CenterMenu = {
     if (this.boxPanel) this.boxPanel.key(e);
   },
   // Esc 한 단계 뒤로 (GameScene.togglePause 가 먼저 묻는다): 확인 창 → 체크 → (false 면 창 닫기)
+  // 센터 메뉴 [🧬 메가 폼 변경] 아래 안내: 바꿀 수 있는 포켓몬 · 없으면 이유
+  centerMegaNote() {
+    const p = this.gs.player, list = this.megaCenterList(), wait = p.members.filter(q => !q.mega && multiMega(q.sp));
+    if (list.length) return `${list.map(q => p.formName(q)).join(' · ')} — X · Y 폼 · 기술 세트 바꾸기`;
+    return wait.length ? `${wait.map(q => p.formName(q)).join(' · ')}: 메가진화(V)할 때 폼을 고른다` : '메가 폼이 둘 이상인 포켓몬이 파티에 없다';
+  },
   overlayBack() {
+    if (this.overlayMode === 'mega') return this.megaBack();   // 🧬 메가 폼 선택: 설명 창 → 취소
     if (this.overlayMode !== 'box') return false;
     if (this.boxModal) { this.boxModal = null; if (this.inheritL) { this.inheritL.destroy(); this.inheritL = null; } Sfx.play('select'); return true; }
     if (this.boxPick) { this.boxPick = null; Sfx.play('select'); this.drawBoxBar(); this.boxPanel.build(); return true; }

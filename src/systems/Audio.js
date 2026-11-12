@@ -163,6 +163,7 @@ class AudioSys {
       case 'clear': this.arp([523, 659, 784, 1047], .09, 'square', .06); break;
       case 'unlock': this.arp([784, 988, 1175, 1568, 1976], .08, 'square', .06); break;
       case 'mega': this.tone(160, 1.1, 'sawtooth', .07, 900); this.arp([523, 784, 1047, 1568], .12, 'square', .05); break;
+      case 'mega_open': this.tone(220, .55, 'sine', .05, 660); this.arp([659, 880, 1175, 1568, 2093], .07, 'triangle', .04); break;   // 🧬 메가진화 폼 선택 창이 열린다
       case 'boss': this.tone(70, 1.2, 'sawtooth', .12, -20); break;
       case 'eshot': this.tone(500, .09, 'square', .03, -200); break;
       case 'clash': this.hiss(.07, .14, 3600, 0, 2); this.tone(1250, .06, 'square', .03, -700); break;   // 투사체끼리 부딪힘

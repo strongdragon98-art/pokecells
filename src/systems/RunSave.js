@@ -105,7 +105,8 @@ function memberSnap(m) {
   return {
     key: m.key, hp: Math.round(m.hp), alive: m.alive, tier: m.tier, peakTier: Math.max(m.peakTier || 0, m.tier), exp: Math.round(m.exp * 100) / 100, xpv: 2, evoCi: m.evoCi ?? null, mega: m.mega, megaPick: m.megaPick || 0,
     items: { ...m.items }, perks: { ...(m.perks || {}) }, skills: { ...m.skills }, ups: [...m.ups], atkBonus: m.atkBonus, cdBonus: m.cdBonus, learned: [...m.learned], chargeType: m.chargeType || null, cardGrade: { ...(m.cardGrade || {}) }, cardLv: { ...(m.cardLv || {}) },
-    gear: { ...(m.gear || {}) }, boostCards: (m.boostCards || []).map(e => ({ ...e })), vit: { ...(m.vit || {}) }, mastery: m.mastery || 0   // mastery: 숙련 카드 수 (카드 점수)
+    gear: { ...(m.gear || {}) }, boostCards: (m.boostCards || []).map(e => ({ ...e })), vit: { ...(m.vit || {}) }, mastery: m.mastery || 0,   // mastery: 숙련 카드 수 (카드 점수)
+    megaBack: m.megaBack ? JSON.parse(JSON.stringify(m.megaBack)) : null   // 🧬 다중 메가 폼이 바꿔 단 기본 기술 (풀릴 때 되돌릴 원래 기술 · data/megaForms.js)
   };
 }
 // 예전 저장의 경험치 눈금(2단 30 · 3단 150)을 지금 눈금(100 · 750)으로 — 진화 단계 안에서의 진행 비율은 그대로
@@ -123,7 +124,8 @@ function applyMember(m, d) {
     atkBonus: d.atkBonus || 1, cdBonus: d.cdBonus || 1, learned: d.learned && d.learned.length ? [...d.learned] : m.learned, chargeType: d.chargeType || null,
     gear: { stone: (d.gear && d.gear.stone) || null, crystal: (d.gear && d.gear.crystal) || null },
     boostCards: (d.boostCards || []).map(e => ({ ...e })), cardLv: { ...(d.cardLv || {}) }, boost: boostTotals(d.boostCards, d.cardLv),   // 스킬 강화 카드
-    mastery: d.mastery || 0
+    mastery: d.mastery || 0,
+    megaBack: d.megaBack ? JSON.parse(JSON.stringify(d.megaBack)) : null
   });
 }
 
@@ -133,6 +135,7 @@ export function restorePlayer(p, s) {
     const m = p.members[i];
     if (!m || m.key !== d.key) return;
     applyMember(m, d);
+    if (m.mega && d.megaBack === undefined) p.megaSkillsOn(m);   // 🧬 폼별 기술 세트 이전의 저장: 메가진화 중이면 그 폼 기술 세트를 입힌다
   });
   p.stored = {};
   for (const d of s.stored || []) {

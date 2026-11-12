@@ -36,6 +36,7 @@ import { chargeSigOf } from './Signature.js';
 import { Cores } from './Cores.js';
 import { usesStone, stoneName, zTypeOf, crystalName } from '../data/gear.js';
 import { RES } from '../config.js';
+import { megaForm, megaStyle, multiMega } from '../data/megaForms.js';
 
 const SWAP_CD = 3;
 // 진화 단계별 보이는 크기 (1단 모습 기준): 2단 ×1.32 · 3단 ×1.72 · 메가는 3단의 ×1.1 (거다이맥스처럼 부풀지 않게)
@@ -181,7 +182,7 @@ export class Player extends Actor {
   get atk() {
     const md = this.mods, sl = this.action && this.action.slot, m = this.m;
     const slotMul = sl === 'z' ? md.bandMul : sl === 'x' || sl === 'c' ? md.specsMul : 1, rage = md.berserk && m.hp <= m.maxhp * .5 ? 1 + md.berserk : 1;
-    return this.sp.atk * (this.sp.dmgK || 1) * this.T.atk * (m.atkBonus || 1) * this.statOf('atk') * this.buffMul('atk') * md.atkMul * slotMul * rage * (1 + this.bloodK()) * ((this.action && this.action.boostDmg) || 1);   // 스킬 강화 카드: 위력 증폭 · 광전사의 혈투: 잃은 체력만큼
+    return this.sp.atk * (this.sp.dmgK || 1) * this.T.atk * (m.atkBonus || 1) * this.statOf('atk') * this.buffMul('atk') * md.atkMul * slotMul * rage * (1 + this.bloodK()) * ((this.action && this.action.boostDmg) || 1) * this.megaDmgK();   // 스킬 강화 카드: 위력 증폭 · 광전사의 혈투: 잃은 체력만큼 · 🧬 다중 메가 폼 스타일
   }
   // 고른 메가(리자몽·뮤츠 X/Y) · 모습별 타입 · 모습별 능력치 배율(잉어킹 → 갸라도스 10배)
   megaOf(m = this.m) { return m.sp.megas[m.megaPick || 0] || m.sp.mega; }
@@ -189,7 +190,47 @@ export class Player extends Actor {
   // 차징 샷·내려찍기 속성: 듀얼 타입이면 가방에서 고른 쪽 (모습이 바뀌어 그 속성이 없어지면 첫 속성)
   chargeType(m = this.m) { const t = this.typesOf(m); return t.includes(m.chargeType) ? m.chargeType : t[0]; }
   setChargeType(m, type) { if (!this.typesOf(m).includes(type)) return false; m.chargeType = type; return true; }
-  statOf(k, m = this.m) { const s = this.form(m).stat; return s && s[k] !== undefined ? s[k] : 1; }
+  statOf(k, m = this.m) { const s = this.form(m).stat, v = s && s[k] !== undefined ? s[k] : 1, st = k === 'speed' && this.megaStyleOf(m); return st && st.speed ? v * st.speed : v; }
+  // 🧬 다중 메가 폼 전투 스타일 (data/megaForms.js — 메가리자몽X 근접 · Y 원거리 …): 메가진화 중일 때만
+  megaStyleOf(m = this.m) { return m.mega ? megaStyle(this.megaOf(m)) : null; }
+  //  지금 행동의 공격력 배율: 기술 칸(z · x · c) · 차징 샷(chg) · 내려찍기(dive) — 행동 밖(지연 탄 · 장판)은 1
+  megaDmgK() { const st = this.megaStyleOf(), a = this.action; if (!st || !st.dmg || !a) return 1; return st.dmg[a.chg ? 'chg' : a.dive ? 'dive' : a.slot] || 1; }
+  // 메가 폼별 기본 기술 세트: 메가진화하면 지금 모습의 기본 기술 자리를 그 폼 기술로 (기술머신으로 바꿔 단 자리는 그대로) · 풀리면 되돌린다
+  //  m.megaBack = { sl: [원래 기술, 메가 기술] } · added: 메가 때문에 새로 배운 기술 (풀리면 배운 목록에서도 뺀다)
+  megaSkillsOn(m) {
+    const f = m.mega && megaForm(this.megaOf(m));
+    if (!f || !f.skills || m.megaBack) return;
+    const base = this.form(m).skills || m.sp.skills, back = {}, added = [];
+    for (const sl of ['z', 'x', 'c']) {
+      const id = f.skills[sl];
+      if (!id || !SKILLS[id] || (sl === 'z') !== !SKILLS[id].cd) continue;   // 연타 기술(쿨타임 0)은 Z 자리 전용
+      if (!m.learned.includes(id)) { m.learned.push(id); added.push(id); }
+      if (m.skills[sl] === base[sl] && base[sl] !== id) { back[sl] = [base[sl], id]; m.skills[sl] = id; }
+    }
+    m.megaBack = { back, added };
+    if (m === this.m && this.action && this.action.slot && back[this.action.slot]) this.endAction(true);
+  }
+  megaSkillsOff(m) {
+    const mb = m && m.megaBack;
+    if (!mb) return;
+    for (const sl of Object.keys(mb.back)) { const [orig, id] = mb.back[sl]; if (m.skills[sl] === id) m.skills[sl] = orig; }
+    for (const id of mb.added) {
+      const sl = Object.keys(m.skills).find(s => m.skills[s] === id);
+      if (sl) m.skills[sl] = (mb.back[sl] && mb.back[sl][0]) || (this.form(m).skills || m.sp.skills)[sl];   // 가방에서 다른 자리로 옮겨 단 메가 기술도 원래대로
+      m.learned = m.learned.filter(q => q !== id);
+    }
+    m.megaBack = null;
+    if (m === this.m && this.action && this.action.slot) this.endAction(true);
+  }
+  // 🏥 포켓몬센터 [🧬 메가 폼 변경]: 이미 메가진화한 포켓몬의 폼을 바꾼다 (X ↔ Y · 기술 세트 · 스타일 · 모습 · 필살기)
+  changeMegaForm(m, idx) {
+    if (!m || !m.mega || !m.sp.megas[idx] || (m.megaPick || 0) === idx) return false;
+    this.megaSkillsOff(m); m.megaPick = idx; this.megaSkillsOn(m);
+    m.maxhp = this.maxHpOf(m); m.hp = Math.min(m.hp, m.maxhp);
+    if (m === this.m) { if (this.action) this.endAction(true); this.combo = 0; this.applyVisual(); }
+    this.scene.events.emit('swap', this);
+    return true;
+  }
   // 일시 강화: 똬리틀기·용의춤 등 (atk·speed 배율, guard = 받는 피해 배율)
   addBuff(o) {
     this.buffs.push({ atk: o.atk || 1, speed: o.speed || 1, guard: o.guard || 1, t: o.t || 4 });
@@ -533,7 +574,7 @@ export class Player extends Actor {
       else if (inp.swapNext) target = this.nextAlive(1); else if (inp.swapPrev) target = this.nextAlive(-1);
       if (target >= 0 && target !== this.idx) this.swapTo(target);
     }
-    if (inp.mega) this.startMega(inp.up ? 1 : 0);   // ↑ + V : 두 번째 메가 (메가리자몽Y · 메가뮤츠Y)
+    if (inp.mega) this.startMega(inp.up ? 1 : 0);   // V : 메가진화 (X · Y 가 있으면 고르는 창 — ↑ + V 는 두 번째 폼 카드가 먼저 골라져 열린다)
     if (inp.zmoveP) this.useZMove();
     if (inp.ultP) this.useMegaUlt();
 
@@ -665,7 +706,7 @@ export class Player extends Actor {
   }
 
   // 공중 점프 포함 최대 점프 횟수: 모든 포켓몬 2단 기본 · 날개 달린 계열(jumps 3) · 비상의 깃털 카드(extraJumps)마다 +1 (3단 점프)
-  maxJumps() { return Math.max(2, this.sp.jumps || 2) + (this.mods.extraJumps || 0) + (this.flyer ? 1 : 0); }
+  maxJumps() { const st = this.megaStyleOf(); return Math.max(2, this.sp.jumps || 2) + (this.mods.extraJumps || 0) + (this.flyer ? 1 : 0) + ((st && st.jumps) || 0); }   // 🧬 원거리형 메가 폼: 공중 점프 +1
   // 비행 타입 (지금 모습 · 메가 포함): 날갯짓 +1 · 활공
   get flyer() { return this.types.includes('flying'); }
   jump(v, air) {
@@ -808,7 +849,7 @@ export class Player extends Actor {
     const kept = this.stored[key], old = this.members[i];
     const m = kept || this.makeMember(key);
     delete this.stored[key];
-    if (old) { if (this.mega.active && i === this.idx) old.mega = false; old.cd = { z: 0, x: 0, c: 0, r: 0 }; this.stored[old.key] = old; }
+    if (old) { if (this.mega.active && i === this.idx) { this.megaSkillsOff(old); old.mega = false; } old.cd = { z: 0, x: 0, c: 0, r: 0 }; this.stored[old.key] = old; }
     if (i >= this.members.length) { i = this.members.length; this.members.push(m); } else this.members[i] = m;
     m.maxhp = this.maxHpOf(m);
     m.hp = kept ? Math.max(1, Math.min(m.maxhp, m.hp || m.maxhp)) : m.maxhp; m.alive = true;
@@ -837,6 +878,7 @@ export class Player extends Actor {
   //  모습마다 기본 기술이 다른 라인(잉어킹 → 갸라도스)은 진화로 바뀐 기본 기술 자리를 1단 기본 기술로 (기술머신으로 바꿔 단 자리 · 배운 기술 목록은 그대로)
   resetGrowth(m) {
     if (!m) return;
+    this.megaSkillsOff(m);   // 🧬 메가 폼 기술 세트를 먼저 원래대로
     const cur = this.form(m).skills || m.sp.skills, base = m.sp.evo[0].skills || m.sp.skills;
     if (cur !== base) for (const sl of ['z', 'x', 'c']) { if (m.skills[sl] === cur[sl]) m.skills[sl] = base[sl]; if (!m.learned.includes(base[sl])) m.learned.push(base[sl]); }
     m.tier = 0; m.exp = 0; m.peakTier = 0; m.mega = false; m.megaPick = 0; m.evoCi = null;
@@ -853,7 +895,7 @@ export class Player extends Actor {
   //  처음 모습부터 다시 진화시켜 모습마다 기술이 다른 라인(잉어킹 → 갸라도스)도 진화할 때처럼 기본 기술 자리를 바꾼다
   setForm(m, tier, mega = -1) {
     if (mega >= 0) tier = EVO_EXP.length;   // 메가는 3단에서
-    m.mega = false; m.megaPick = 0; m.tier = 0; m.exp = 0;
+    m.mega = false; m.megaPick = 0; m.tier = 0; m.exp = 0; m.megaBack = null;
     m.skills = { ...(m.sp.evo[0].skills || m.sp.skills) }; m.learned = Object.values(m.skills);
     while (m.tier < Math.min(tier, EVO_EXP.length)) {
       const oldSet = this.form(m).skills || m.sp.skills;
@@ -864,7 +906,7 @@ export class Player extends Actor {
         if (m.skills[sl] === oldSet[sl]) m.skills[sl] = newSet[sl];
       }
     }
-    if (mega >= 0) { m.megaPick = m.sp.megas[mega] ? mega : 0; m.mega = true; }
+    if (mega >= 0) { m.megaPick = m.sp.megas[mega] ? mega : 0; m.mega = true; this.megaSkillsOn(m); }   // 🧬 다중 메가 폼: 그 폼의 기술 세트
     m.peakTier = m.tier;   // 테스트룸은 일부러 낮출 수 있다
     m.cd = { z: 0, x: 0, c: 0, r: 0 };
     m.maxhp = m.hp = this.maxHpOf(m); m.alive = true;
@@ -1038,7 +1080,7 @@ export class Player extends Actor {
     const on = this.mega.active && this.sprite.visible && this.sprite.alpha > .3, t = this.scene.time.now / 1000;
     this.megaSym.setVisible(on); this.megaEye.setVisible(on);
     if (!on) return;
-    const col = Phaser.Display.Color.HSVToRGB((t * .15) % 1, .55, 1).color, h = this.sprite.displayHeight;
+    const fm = megaForm(this.megaOf()), col = fm ? (Math.sin(t * 2.4) > -.3 ? fm.aura : 0xffffff) : Phaser.Display.Color.HSVToRGB((t * .15) % 1, .55, 1).color, h = this.sprite.displayHeight;   // 🧬 다중 메가 폼: 전용 오라 색 (메가리자몽X 푸른 화염 …)
     this.megaSym.setPosition(this.x, this.bottom - h * .5).setScale(Math.max(.35, h / 96) * (1 + Math.sin(t * 3) * .04)).setRotation(t * .6).setTint(col).setAlpha(.15 + Math.sin(t * 4) * .05);
     const e = (this.meta && this.meta.eye) || { dx: 4, dy: -16 };
     this.megaEye.setPosition(this.sprite.x + e.dx * this.face * this.sprite.scaleX, this.sprite.y + e.dy * this.sprite.scaleY).setScale(.16, .09).setTint(0xfff0ff).setAlpha(.7 + Math.sin(t * 9) * .3);
@@ -1348,7 +1390,7 @@ export class Player extends Actor {
       Sfx.play('ocrit');
     }
     this.startAction({
-      dur: lvl >= 3 ? .5 : .3, mm: rapid ? 1 : lvl >= 3 ? 0 : .25, anim: 'Shoot', inv: lvl >= 3 ? .3 : 0, boostDmg: critMul, ev: [[.03, () => {
+      dur: lvl >= 3 ? .5 : .3, mm: rapid ? 1 : lvl >= 3 ? 0 : .25, anim: 'Shoot', inv: lvl >= 3 ? .3 : 0, boostDmg: critMul, chg: true, ev: [[.03, () => {
         const f = this.face, x = this.x + f * 12, y = this.y - 3;
         sc.combat.chargeSpawn = true;   // 이 순간 만든 탄은 차징 탄 (연습용 나무 상자 · Combat.spawnProjectile)
         sc.combat.chargeCtx = { crit, shock: shockN ? (hx, hy) => this.chargeShockField(hx, hy, lvl, type, shockN) : null };
@@ -1519,7 +1561,9 @@ export class Player extends Actor {
 
   // ---------------- 메가진화 (3단 + 메가스톤, 영구) ----------------
   //  폼체인지(디아루가·펄기아·기라티나 오리진폼)는 메가스톤·진화 단계 대신 그 전설의 아이템만 있으면 된다
-  startMega(variant = 0) {
+  //  🧬 메가(특수) 폼이 둘 이상이면(리자몽 · 뮤츠 · 라이츄 X/Y · 개굴닌자 · 한카리아스) 조건을 다 갖춘 뒤 시간이 멈추고 『메가진화 폼 선택』 창 (GameScene.openMegaPick)
+  //   창의 [🧬 이 모습으로 메가진화!] 확정 버튼 → GameScene.confirmMegaPick → startMega(고른 폼, { picked: true })
+  startMega(variant = 0, o = {}) {
     const mg = this.mega, sc = this.scene, want = this.sp.megas[variant] || this.sp.megas[0];
     if (mg.active) return;
     if (want && want.item) {
@@ -1531,8 +1575,12 @@ export class Player extends Actor {
       }
       if (this.tier < 2) { sc.events.emit('toast', `${this.form().name}은(는) 3단 진화 후에 메가진화할 수 있다 (진화까지 ${this.expToNext()})`); Sfx.play('deny'); return; }
     }
+    if (multiMega(this.sp) && !o.picked) {   // 🧬 X · Y 분기: 고르는 창부터 (지난번에 고른 폼이 먼저 골라져 있다 · ↑+V 는 두 번째 폼)
+      if (sc.openMegaPick) { sc.openMegaPick({ key: this.m.key, sel: variant || this.m.megaPick || 0, mode: 'battle' }); return; }
+    }
     if (this.sp.megas[variant]) this.m.megaPick = variant;
     mg.active = true;   // 출전 중인 포켓몬만 (메가스톤은 파티 공용이라 다른 3단 포켓몬도 각자 메가진화할 수 있다)
+    this.megaSkillsOn(this.m);   // 🧬 다중 메가 폼: 그 폼의 Z · X · C 기술 세트
     this.recalcHp(.5, this.m);
     this.applyVisual();
     this.inv = Math.max(this.inv, 1);
@@ -1543,9 +1591,13 @@ export class Player extends Actor {
     sc.fx.shake(.012, 300);
     shockwave(sc, this.x, this.y, .04, 700);
     Sfx.play('mega');
-    const mgv = this.megaOf(), title = mgv.item ? '폼체인지!' : mgv.bond ? '유대변화!' : mgv.awaken ? '각성!' : '메가진화!';
-    const alt = this.sp.megas.length > 1 && !variant ? ` · ↑+V 는 ${this.sp.megas[1].name}` : '';
-    sc.events.emit('banner', title, `${this.form().name} → ${mgv.name} · 이 포켓몬은 이번 판 끝까지 유지${alt}`);
+    const mgv = this.megaOf(), title = mgv.item ? '폼체인지!' : mgv.bond ? '유대변화!' : mgv.awaken ? '각성!' : '메가진화!', fm = megaForm(mgv);
+    if (fm) {   // 🧬 고른 폼: 전용 오라 색 컷신 · 오라 고리 · 기술 세트 안내
+      cinematic(this, fm.aura, `🧬 ${title} ${mgv.name}`);
+      for (let k = 0; k < 3; k++) sc.time.delayedCall(160 + k * 120, () => sc.fx.ring(this.x, this.y, 40 + k * 22, fm.aura, 420));
+      sc.fx.burst(this.x, this.y, [fm.aura, 0xffffff], 30, 240, { glow: true });
+    }
+    sc.events.emit('banner', title, fm ? `${this.form().name} → ${mgv.name} · ${fm.role}` : `${this.form().name} → ${mgv.name} · 이 포켓몬은 이번 판 끝까지 유지`);
     sc.events.emit('swap', this);
   }
 
@@ -1590,7 +1642,7 @@ export class Player extends Actor {
     const m = type === 'none' ? 1 : typeMultiplier(type, this.types);
     const eff = effectiveness(m);
     const hurtK = this.mods.chargeHurt && this.charging ? 1 + this.mods.chargeHurt : 1;   // 과부하 차징 캐논(양날의 검): 모으는 중 받는 피해 +30%
-    const d = Math.max(1, Math.round(dmg * m * hurtK * (this.mega.active ? .8 : 1) * (this.pas.guard || 1) * this.buffMul('guard') * this.mods.guard * Cores.hurtMul(this)));
+    const d = Math.max(1, Math.round(dmg * m * hurtK * (this.mega.active ? .8 : 1) * ((this.megaStyleOf() || {}).guard || 1) * (this.pas.guard || 1) * this.buffMul('guard') * this.mods.guard * Cores.hurtMul(this)));
     // 기합의띠(특성 카드): 쓰러질 피해를 체력 1로 버티고 3초 무적 — 방마다 1번 (GameScene.updateRooms 가 되돌린다)
     const sash = this.mods.sturdy && !this.m.sturdyUsed && this.m.hp > 1 && d >= this.m.hp;
     this.m.hp = sash ? 1 : this.m.hp - d;
