@@ -7,7 +7,7 @@
 //   tags    기술 초상화 상세 창의 공격 형태 (z · x · c · r)
 //   pow     실측 위력: 테스트룸에서 이 폼 메가 상태(카드 · 아이템 없음)로 샌드백 옆에서 한 번 쓴 뒤 2.5초 동안의 총 피해 ÷ 공격력 (%)
 //           Z 는 3타 콤보 합계 · 화상 같은 지속 피해 · 폼 스타일 보정 포함 · 2회 평균을 10 단위로
-//           R 은 MEGA_ULT 설계값(범위 전체에 나눠 주는 합계 700%) + r1: 붙어 있는 대상 1마리에게 실제로 들어간 양 (낙뢰 · 칼날이 앞쪽 여러 칸에 흩어져 일부만 맞는다)
+//           R 은 설계값 700% + r1: 테스트룸 보스(뮤츠 · 떠 있음) 1마리에게 실제로 들어간 양 — 메가 필살기는 화면 안 보스를 조준한다 (game/Spectacle.js ultTargets)
 //   stag    그로기 유발 (약점 속성으로 맞힐 때만 쌓인다 — Boss.addStagger 는 한 대마다 준 피해에 비례 · 최소 0.8): 위 실측의 한 대씩 피해로
 //           어려움 뮤츠(체력 2588)에 쌓이는 양을 더해 높음(14 이상) · 보통(7 이상) · 낮음
 //   style   전투 스타일 보정 — dmg { z · x · c · chg(차징 샷) · dive(내려찍기) } 그 행동의 공격력 배율 · speed 이동 · jumps 공중 점프 + · guard 받는 피해 배율
@@ -22,7 +22,7 @@ export const MEGA_FORMS = {
     aura: 0x4aa8ff, pose: 'Strike', style: MELEE,
     skills: { z: 'scratch_ember', x: 'dragon_claw', c: 'flare_blitz' },
     tags: { z: '근접 할퀴기 · 3타 청염탄', x: '근접 X자 베기', c: '화염 돌진', r: '참격 난무 + 분화' },
-    pow: { z: 2160, x: 340, c: 410, r: 700, r1: 230 }, stag: { z: '높음', x: '낮음', c: '보통', r: '보통' },
+    pow: { z: 2160, x: 340, c: 410, r: 700, r1: 710 }, stag: { z: '높음', x: '낮음', c: '보통', r: '보통' },
     ult: { name: '블라스트번 : 청염 용격', type: 'fire', seq: [['blades', { n: 8 }], ['eruption', { n: 6 }]] }
   },
   'charizard-mega-y': {
@@ -30,7 +30,7 @@ export const MEGA_FORMS = {
     aura: 0xffa040, pose: 'Shoot', style: RANGED,
     skills: { z: 'flame_feather', x: 'heat_wave', c: 'solar_beam' },
     tags: { z: '원거리 깃털 연사 · 3타 부채꼴', x: '원거리 부채꼴 5갈래', c: '관통 광선', r: '광선 + 유성' },
-    pow: { z: 1540, x: 730, c: 820, r: 700, r1: 530 }, stag: { z: '높음', x: '보통', c: '보통', r: '보통' },
+    pow: { z: 1540, x: 730, c: 820, r: 700, r1: 700 }, stag: { z: '높음', x: '보통', c: '보통', r: '보통' },
     ult: { name: '솔라빔 : 일광 폭격', type: 'fire', seq: [['beam', { hh: 30 }], ['meteor', { n: 5 }]] }
   },
   // ---------------- 뮤츠 ----------------
@@ -39,7 +39,7 @@ export const MEGA_FORMS = {
     aura: 0x8a8aff, pose: 'Strike', style: MELEE,
     skills: { z: 'psycho_cut', x: 'close_combat', c: 'psystrike' },
     tags: { z: '근접 베기 · 격투 거대 베기', x: '제자리 12연타 난타', c: '화면 전체 염동 파동', r: '참격 난무 + 염동 폭발' },
-    pow: { z: 780, x: 700, c: 490, r: 700, r1: 420 }, stag: { z: '높음', x: '높음', c: '보통', r: '보통' },
+    pow: { z: 780, x: 700, c: 490, r: 700, r1: 700 }, stag: { z: '높음', x: '높음', c: '보통', r: '높음' },
     ult: { name: '사이코 인파이트 : 염동 난무', type: 'fighting', seq: [['blades', { n: 10 }], ['nova', { R: 150 }]] }
   },
   'mewtwo-mega-y': {
@@ -47,7 +47,7 @@ export const MEGA_FORMS = {
     aura: 0xff5a9a, pose: 'Shoot', style: RANGED,
     skills: { z: 'psycho_cut', x: 'psystrike', c: 'future_sight' },
     tags: { z: '유도 칼날 5장', x: '화면 전체 파동 5회', c: '표식 → 빛의 기둥', r: '염동 폭발 + 광선' },
-    pow: { z: 640, x: 490, c: 460, r: 700, r1: 700 }, stag: { z: '높음', x: '보통', c: '보통', r: '높음' },
+    pow: { z: 640, x: 490, c: 460, r: 700, r1: 730 }, stag: { z: '높음', x: '보통', c: '보통', r: '높음' },
     ult: { name: '사이코브레이크 : 염동 붕괴', type: 'psychic', seq: [['nova', { R: 160 }], ['beam', {}]] }
   },
   // ---------------- 라이츄 ----------------
@@ -56,7 +56,7 @@ export const MEGA_FORMS = {
     aura: 0xffd23a, pose: 'Strike', style: MELEE,
     skills: { z: 'thunder_fang', x: 'volt_tackle', c: 'wild_charge' },
     tags: { z: '근접 물기 연타', x: '전격 돌진', c: '돌진 · 연쇄 번개', r: '참격 난무 + 낙뢰' },
-    pow: { z: 1080, x: 280, c: 410, r: 700, r1: 150 }, stag: { z: '높음', x: '낮음', c: '낮음', r: '낮음' },
+    pow: { z: 1080, x: 280, c: 410, r: 700, r1: 760 }, stag: { z: '높음', x: '낮음', c: '낮음', r: '높음' },
     ult: { name: '와일드볼트 : 뇌격 돌파', type: 'electric', seq: [['blades', { n: 8 }], ['pillars', { n: 6 }]] }
   },
   'raichu-mega-y': {
@@ -64,7 +64,7 @@ export const MEGA_FORMS = {
     aura: 0x8ad8ff, pose: 'Shoot', style: RANGED,
     skills: { z: 'thundershock', x: 'thunderbolt', c: 'thunder' },
     tags: { z: '원거리 전기탄 연사', x: '자동 조준 낙뢰', c: '낙뢰 폭풍', r: '낙뢰 기둥 + 광선' },
-    pow: { z: 1360, x: 310, c: 370, r: 700, r1: 380 }, stag: { z: '높음', x: '낮음', c: '보통', r: '보통' },
+    pow: { z: 1360, x: 310, c: 370, r: 700, r1: 700 }, stag: { z: '높음', x: '낮음', c: '보통', r: '높음' },
     ult: { name: '10만볼트 : 천뢰 폭풍', type: 'electric', seq: [['pillars', { n: 10 }], ['beam', { hh: 24 }]] }
   },
   // ---------------- 개굴닌자 ----------------
@@ -73,7 +73,7 @@ export const MEGA_FORMS = {
     aura: 0x4ac8ff, pose: 'Shoot', style: RANGED,
     skills: { z: 'water_shuriken', x: 'dark_pulse', c: 'double_team' },
     tags: { z: '원거리 다연발 수리검', x: '관통 파동 3겹', c: '순간이동 · 분신 4개', r: '수리검 난무 + 물기둥' },
-    pow: { z: 1370, x: 380, c: 330, r: 700, r1: 140 }, stag: { z: '높음', x: '보통', c: '보통', r: '낮음' },
+    pow: { z: 1370, x: 380, c: 330, r: 700, r1: 730 }, stag: { z: '높음', x: '보통', c: '보통', r: '높음' },
     ult: { name: '물수리검 : 거대 수리검 난무', type: 'water', seq: [['blades', { n: 8 }], ['pillars', {}]] }
   },
   'greninja-mega': {
@@ -81,7 +81,7 @@ export const MEGA_FORMS = {
     aura: 0x7a5aff, pose: 'Strike', style: MELEE,
     skills: { z: 'razor_shell', x: 'night_slash', c: 'sucker_punch' },
     tags: { z: '근접 물칼날 연베기', x: '관통 돌진 베기', c: '등 뒤 순간이동 기습', r: '참격 난무 + 일식' },
-    pow: { z: 570, x: 460, c: 630, r: 700, r1: 420 }, stag: { z: '보통', x: '보통', c: '보통', r: '보통' },
+    pow: { z: 570, x: 460, c: 630, r: 700, r1: 720 }, stag: { z: '보통', x: '보통', c: '보통', r: '높음' },
     ult: { name: '깜짝베기 : 그림자 난도', type: 'dark', seq: [['blades', { n: 10 }], ['eclipse', {}]] }
   },
   // ---------------- 한카리아스 ----------------
@@ -90,7 +90,7 @@ export const MEGA_FORMS = {
     aura: 0x6a8aff, pose: 'Strike', style: { dmg: { z: 1.35, x: 1.15, c: 1.15, dive: 1.2 }, guard: .82, speed: .92 },
     skills: { z: 'dual_chop', x: 'dragon_rush', c: 'earthquake' },
     tags: { z: '근접 2연 베기 3연격', x: '도약 내려꽂기', c: '주변 지면 강타', r: '영역 폭발 + 유성' },
-    pow: { z: 690, x: 480, c: 370, r: 700, r1: 480 }, stag: { z: '보통', x: '보통', c: '낮음', r: '보통' },
+    pow: { z: 690, x: 480, c: 370, r: 700, r1: 740 }, stag: { z: '보통', x: '보통', c: '낮음', r: '높음' },
     ult: { name: '드래곤다이브 : 영역전개', type: 'dragon', seq: [['nova', { R: 150 }], ['meteor', { n: 5 }]] }
   },
   'garchomp-mega-z': {
@@ -98,7 +98,7 @@ export const MEGA_FORMS = {
     aura: 0x5ad0ff, pose: 'Attack', style: { dmg: { z: 1.15, x: 1.15, c: 1.15, chg: 1.15 }, speed: 1.15, jumps: 1 },
     skills: { z: 'dragon_tail', x: 'dragon_claw', c: 'outrage' },
     tags: { z: '근접 꼬리 휘두르기', x: '근접 X자 베기', c: '2초 난동 + 번개', r: '참격 난무 + 유성' },
-    pow: { z: 830, x: 310, c: 570, r: 700, r1: 170 }, stag: { z: '높음', x: '낮음', c: '보통', r: '낮음' },
+    pow: { z: 830, x: 310, c: 570, r: 700, r1: 700 }, stag: { z: '높음', x: '낮음', c: '보통', r: '높음' },
     ult: { name: '역린 : 음속 난무', type: 'dragon', seq: [['blades', { n: 10 }], ['meteor', { n: 5 }]] }
   }
 };

@@ -59,8 +59,21 @@ export function magicCircle(p, color) {
 }
 
 // ---------------- 초대형 레이저 ----------------
+// 🎯 메가 필살기 조준 (megaUltAction 이 o.focus 로 켠다 — 전설 카드 마무리 연출 legendFinisher 는 그대로 앞쪽에 흩뿌린다)
+//  화면 안의 보스부터(가까운 순) · 보스가 없으면 가까운 적 최대 4마리 — 흩어지던 검기 · 낙뢰 · 분출 · 운석이 그 대상 위에 떨어지고
+//  광선은 대상 쪽 · 높이로, 대폭발 · 검은 태양은 대상 자리에서 터진다 → 보스 한 마리에게도 설계 위력(총 배율)이 다 들어간다 (판정 범위는 그대로라 주변 적도 함께 맞는다)
+//  예전엔 하위 타격이 플레이어 앞 26 ~ 46px 간격으로 늘어서 붙어 있는 보스에게 설계값의 20 ~ 60% 만 들어갔다
+export function ultTargets(p) {
+  const sc = p.scene, v = sc.cameras.main.worldView, M = 24;
+  const es = (sc.enemies || []).filter(e => e.alive && !e.intangible && !e.gone && e.x > v.x - M && e.x < v.right + M && e.y > v.y - M && e.y < v.bottom + M);
+  const bosses = es.filter(e => e.boss), pool = bosses.length ? bosses : es, d = e => Math.hypot(e.x - p.x, e.y - p.y);
+  return pool.sort((a, b) => d(a) - d(b)).slice(0, 4);
+}
+const focusAt = (p, o, k = 0) => { if (!o.focus) return null; const ts = ultTargets(p); return ts.length ? ts[k % ts.length] : null; };
+
 export function megaBeam(p, o = {}) {
-  const sc = p.scene, col = o.color ?? typeColor(o.type), f = p.face, v = sc.cameras.main.worldView, x0 = p.x + f * 12, y = p.y - 4;
+  const tg = focusAt(p, o), sc = p.scene, col = o.color ?? typeColor(o.type), f = tg ? Math.sign(tg.x - p.x) || p.face : p.face, v = sc.cameras.main.worldView, x0 = p.x + f * 12;
+  const y = tg ? Phaser.Math.Clamp(tg.y, p.y - 130, p.y + 70) : p.y - 4;   // 🎯 대상 높이로 (떠 있는 보스)
   const len = Math.max(260, v.width * .9), hh = (o.hh ?? 26) * Math.max(1, sz(p) * .8), L = f > 0 ? x0 : x0 - len;
   const g = sc.add.graphics().setDepth(43).setBlendMode(ADD), set = new Set(), st = { t: 0 };
   const T = o.dur ?? .7;
@@ -84,10 +97,12 @@ export function megaBeam(p, o = {}) {
 export function meteorRain(p, o = {}) {
   const sc = p.scene, col = o.color ?? typeColor(o.type), v = sc.cameras.main.worldView, n = o.n ?? 5;
   for (let k = 0; k < n; k++) {
-    const x = p.x + p.face * (40 + k * 46) + (Math.random() - .5) * 30, gy = sc.groundBelow(x, p.y - 30), r = 14 + Math.random() * 6;
-    sc.fx.glow(x, gy - 2, 20, col, 400, .6);
+    const x0 = p.x + p.face * (40 + k * 46) + (Math.random() - .5) * 30, r = 14 + Math.random() * 6;
+    if (!o.focus) sc.fx.glow(x0, sc.groundBelow(x0, p.y - 30) - 2, 20, col, 400, .6);
     sc.time.delayedCall(180 + k * 130, () => {
       if (!p.scene) return;
+      const tg = focusAt(p, o, k), x = tg ? tg.x + (Math.random() - .5) * 16 : x0, gy = sc.groundBelow(x, p.y - 30);   // 🎯 대상 머리 위로
+      if (tg) sc.fx.glow(x, tg.y, 22, col, 300, .7);
       sc.combat.spawnProjectile({ owner: 'player', x: x - p.face * 60, y: v.y - 20, vx: p.face * 120, vy: 560, r, mul: (o.mul ?? 2) / n, type: o.type, kind: 'rock', color: col, life: 2, ghost: true, muzzle: false, tier: 3, pow: 2.2, light: true,
         boom: { r: 46, mul: (o.mul ?? 2) / n, kb: 220 }, status: Object.assign({ proc: o.proc }, o.status || {}),
         update: q => { sc.fx.burst(q.x, q.y - q.r, [col, 0xffd07a, 0x4a3020], 2, 40, { angle: -Math.PI / 2, spread: .5, grav: 0, bounce: false, glow: true, life: .35, size: 2 }); if (q.y >= gy - 8) q.kill = 'wall'; } });
@@ -102,7 +117,7 @@ export function lightningPillars(p, o = {}) {
   const sc = p.scene, col = o.color ?? typeColor(o.type), v = sc.cameras.main.worldView, n = o.n ?? 6, water = o.type === 'water';
   for (let k = 0; k < n; k++) sc.time.delayedCall(80 + k * 90, () => {
     if (!p.scene) return;
-    const x = p.x + p.face * (30 + k * 38), gy = sc.groundBelow(x, p.y - 30), top = water ? gy - 150 : v.y - 10, w = 22;
+    const tg = focusAt(p, o, k), x = tg ? tg.x + ((k % 3) - 1) * 6 : p.x + p.face * (30 + k * 38), gy = sc.groundBelow(x, p.y - 30), top = water ? Math.min(gy - 150, tg ? tg.bounds().y - 16 : gy) : v.y - 10, w = 22;   // 🎯 대상 자리에 내리꽂는다
     sc.combat.hitRect({ x: x - w / 2, y: top, w, h: gy - top }, (o.mul ?? 2) / n, o.type, Object.assign({ kbx: 40, kby: -260, hs: 35, fromX: x, proc: o.proc }, o.status || {}));
     const g = sc.add.graphics().setDepth(42).setBlendMode(ADD);
     for (const [lw, c, a] of [[w * 1.4, col, .3], [w * .8, col, .85], [w * .3, 0xffffff, 1]]) { g.fillStyle(c, a); g.fillRect(x - lw / 2, top, lw, gy - top); }
@@ -118,11 +133,13 @@ export function lightningPillars(p, o = {}) {
 export function magmaEruption(p, o = {}) {
   const sc = p.scene, col = o.color ?? typeColor(o.type), n = o.n ?? 7, magma = o.type === 'fire' || o.type === 'ground';
   const hot = magma ? [0xff3a1a, 0xff9a2a, 0xffe08a] : [col, 0xffffff, col];
-  for (const d of o.both ? [-1, 1] : [p.face]) for (let k = 0; k < n; k++) sc.time.delayedCall(60 + k * 75, () => {
+  const sides = o.both ? [-1, 1] : [p.face], per = (o.mul ?? 2) / n / (o.focus ? sides.length : 1);   // 🎯 조준하면 양쪽 분출이 모두 대상에게 모이니 한 번 몫을 나눈다 (총 배율 그대로)
+  sides.forEach((d, si) => { for (let k = 0; k < n; k++) sc.time.delayedCall(60 + k * 75 + (o.focus ? si * 35 : 0), () => {
     if (!p.scene) return;
-    const x = p.x + d * (26 + k * 30), gy = sc.groundBelow(x, p.y - 30), h = 70 + k * 8, w = 20;
+    const tg = focusAt(p, o, k * sides.length + si), x = tg ? tg.x + ((k + si) % 3 - 1) * 8 : p.x + d * (26 + k * 30), gy = sc.groundBelow(x, p.y - 30), w = 20;
+    const h = tg ? Phaser.Math.Clamp(gy - tg.bounds().y + 8, 70 + k * 8, 300) : 70 + k * 8;   // 떠 있는 대상까지 솟는다
     lineFx(sc, x - 14, gy - 1, x + 14, gy - 1, hot[0], { seg: 5, jag: 4, w: 2, ms: 300 });   // 지면 균열
-    sc.combat.hitRect({ x: x - w / 2, y: gy - h, w, h }, (o.mul ?? 2) / n, o.type, Object.assign({ kbx: 30, kby: -320, hs: 30, fromX: x, proc: o.proc }, magma ? { burn: 3 } : {}, o.status || {}));
+    sc.combat.hitRect({ x: x - w / 2, y: gy - h, w, h }, per, o.type, Object.assign({ kbx: 30, kby: -320, hs: 30, fromX: x, proc: o.proc }, magma ? { burn: 3 } : {}, o.status || {}));
     const g = sc.add.graphics().setDepth(42).setBlendMode(ADD).setPosition(x, gy);
     g.fillStyle(hot[0], .5); g.fillTriangle(-w, 0, w, 0, 0, -h * 1.1);
     g.fillStyle(hot[1], .9); g.fillTriangle(-w * .6, 0, w * .6, 0, 0, -h);
@@ -132,7 +149,7 @@ export function magmaEruption(p, o = {}) {
     sc.tweens.add({ targets: g, alpha: 0, scaleY: .3, delay: 240, duration: 260, onComplete: () => g.destroy() });
     sc.fx.burst(x, gy - 4, hot, 14, 200, { angle: -Math.PI / 2, spread: .8, up: 220, grav: 500, life: .7, size: 2 });
     sc.fx.shake(.009, 100, 'hit'); Sfx.play(magma ? 'fire' : 'boom');
-  });
+  }); });
 }
 
 // ---------------- 검기 난무 ----------------
@@ -140,8 +157,9 @@ export function bladeStorm(p, o = {}) {
   const sc = p.scene, col = o.color ?? typeColor(o.type), s = sz(p), n = o.n ?? 6;
   for (let k = 0; k < n; k++) sc.time.delayedCall(k * 70, () => {
     if (!p.scene) return;
-    const cx = p.x + p.face * (40 + k * 26) * Math.max(1, s * .7), cy = p.y - 6 + (k % 2 ? -10 : 10), r = 34 * Math.max(1, s * .8);
-    sc.fx.slash(cx, cy, r, p.face, col, { thick: 9, flipV: k % 2 === 1 });
+    const tg = focusAt(p, o, k), f = tg ? Math.sign(tg.x - p.x) || p.face : p.face, r = 34 * Math.max(1, s * .8);   // 🎯 대상을 겹겹이 베어 가른다
+    const cx = tg ? tg.x + f * ((k % 3) - 1) * 10 : p.x + p.face * (40 + k * 26) * Math.max(1, s * .7), cy = (tg ? tg.y : p.y - 6) + (k % 2 ? -10 : 10);
+    sc.fx.slash(cx, cy, r, f, col, { thick: 9, flipV: k % 2 === 1 });
     sc.combat.hitRect({ x: cx - r, y: cy - r, w: r * 2, h: r * 2 }, (o.mul ?? 2) / n, o.type, Object.assign({ kbx: 120, kby: -80, hs: 25, proc: o.proc }, o.status || {}));
     Sfx.play('swing');
   });
@@ -150,7 +168,7 @@ export function bladeStorm(p, o = {}) {
 
 // ---------------- 검은 태양 ----------------
 export function eclipse(p, o = {}) {
-  const sc = p.scene, col = o.color ?? typeColor(o.type), x = p.x + p.face * 90, y = p.y - 30, R = 80;
+  const tg = focusAt(p, o), sc = p.scene, col = o.color ?? typeColor(o.type), x = tg ? tg.x : p.x + p.face * 90, y = tg ? tg.y : p.y - 30, R = 80;   // 🎯 대상 자리에 검은 태양
   const core = sc.add.image(x, y, 'glow').setTint(0x05000a).setScale(.2).setDepth(41), rim = sc.add.image(x, y, 'glow').setBlendMode(ADD).setTint(col).setScale(.3).setDepth(40.9);
   sc.tweens.add({ targets: core, scale: 2.4, duration: 600, ease: 'Cubic.easeOut' });
   sc.tweens.add({ targets: rim, scale: 3.6, duration: 600, ease: 'Cubic.easeOut' });
@@ -174,13 +192,17 @@ export function eclipse(p, o = {}) {
 // ---------------- 별빛 대폭발 ----------------
 export function nova(p, o = {}) {
   const sc = p.scene, col = o.color ?? typeColor(o.type), R = (o.R ?? 120) * Math.max(1, sz(p) * .7);
+  const tg = focusAt(p, o), far = tg && Math.hypot(tg.x - p.x, tg.y - p.y) > R * .4;   // 🎯 첫 고리에 닿지 않는 대상이면 그 자리에서 터진다
+  const at = () => (far && tg.alive ? [tg.x, tg.y] : [p.x, p.y]);
   for (let k = 0; k < 4; k++) sc.time.delayedCall(k * 110, () => {
     if (!p.scene) return;
-    sc.combat.hitCircle(p.x, p.y, R * (.45 + k * .2), (o.mul ?? 2) / 4, o.type, Object.assign({ kbx: 240, kby: -220, hs: 40, proc: o.proc }, o.status || {}));
-    sc.fx.ring(p.x, p.y, R * (.5 + k * .25), k % 2 ? 0xffffff : col, 380);
-    sc.fx.burst(p.x, p.y, [col, 0xffffff, 0xffd0f0], 20, 260, { glow: true, grav: 0, bounce: false, life: .6 });
+    const [cx, cy] = at();
+    sc.combat.hitCircle(cx, cy, R * (.45 + k * .2), (o.mul ?? 2) / 4, o.type, Object.assign({ kbx: 240, kby: -220, hs: 40, proc: o.proc }, o.status || {}));
+    sc.fx.ring(cx, cy, R * (.5 + k * .25), k % 2 ? 0xffffff : col, 380);
+    sc.fx.burst(cx, cy, [col, 0xffffff, 0xffd0f0], 20, 260, { glow: true, grav: 0, bounce: false, life: .6 });
   });
-  shockwave(sc, p.x, p.y, .045, 750); sc.fx.shake(.02, 520, 'hit'); Sfx.play('boom');
+  const [sx, sy] = at();
+  shockwave(sc, sx, sy, .045, 750); sc.fx.shake(.02, 520, 'hit'); Sfx.play('boom');
 }
 
 // ---------------- 전설 등급 기술 카드: 기술 형태·속성으로 마무리 대연출 고르기 ----------------
@@ -245,7 +267,7 @@ export function megaUltOf(p) {
 export function megaUltAction(p) {
   const def = megaUltOf(p), sc = p.scene, col = typeColor(def.type), total = 7, each = total / def.seq.length;
   const ev = [[0, () => cinematic(p, col, `${p.formName()} · ${def.name}`)]];
-  def.seq.forEach(([kind, o], i) => ev.push([.22 + i * .5, () => RUN[kind](p, Object.assign({ type: def.type, mul: each }, o))]));
+  def.seq.forEach(([kind, o], i) => ev.push([.22 + i * .5, () => RUN[kind](p, Object.assign({ type: def.type, mul: each, focus: true }, o))]));   // 🎯 focus: 보스(없으면 가까운 적)에게 모은다
   return { dur: .3 + def.seq.length * .5, mm: 0, anim: 'Shoot', inv: .4 + def.seq.length * .5, lockFace: true, ev };
 }
 

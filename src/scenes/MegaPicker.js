@@ -233,7 +233,7 @@ export const MegaPicker = {
     if (sl === 'r') {
       const u = fm.ult || MEGA_ULT[sp.id] || { name: `${C.mg.name} 각성 필살기`, type: C.mg.types[0] };
       return { id: null, name: u.name, type: u.type, tag: (fm.tags && fm.tags.r) || '대연출', pow: (fm.pow && fm.pow.r) || 700, pow1: fm.pow && fm.pow.r1, cd: MEGA_ULT_CD, stag: (fm.stag && fm.stag.r) || '—',
-        desc: '메가진화 중에만 쓰는 전용 필살기. 컷인과 함께 대연출이 차례로 터지고, 시전 중에는 무적이다.', changed: !!fm.ult, slotMul: 1 };
+        desc: '메가진화 중에만 쓰는 전용 필살기. 컷인과 함께 대연출이 화면 안의 보스(없으면 가까운 적)에게 차례로 쏟아지고, 시전 중에는 무적이다.', changed: !!fm.ult, slotMul: 1 };
     }
     // 이 폼으로 메가진화했을 때 그 자리에 올 기술: 지금 단 기술이 기본 기술이면 폼 기술로 (기술머신으로 바꿔 단 자리는 그대로)
     const base = (sp.evo[sp.evo.length - 1].skills || sp.skills)[sl], have = m && m.skills ? m.skills[sl] : base;
@@ -261,7 +261,7 @@ export const MegaPicker = {
     T.add(fit(hkText(this, bx + 10, by + 6, `[${kl} ${sl === 'r' ? '필살기' : '스킬'}] ${info.name}`, 10.5, HK.gold, { bold: true }), bw - 70));
     T.add(hkText(this, bx + bw - 8, by + 8, u.tip.pin ? '📌 고정 · 다시 누르면 닫기' : '', 6.5, HK.faint, { origin: [1, 0] }));
     T.add(fit(hkText(this, bx + 10, by + 25, `(${typeName(info.type)} / ${info.tag})`, 8, hexOf(lighten(col, 35)), { bold: true }), bw - 20));
-    const pow = info.pow1 ? `${info.pow}% (범위 합계 · 보스 1마리 실측 ${info.pow1}%)` : info.pow ? `${info.pow}%${sl === 'z' ? ' (3타 합계)' : ''}${info.slotMul !== 1 ? ` · 폼 보정 ${info.slotMul > 1 ? '+' : ''}${Math.round((info.slotMul - 1) * 100)}% 포함` : ''}` : '—';
+    const pow = info.pow1 ? `${info.pow}% (보스 1마리 실측 ${info.pow1}%)` : info.pow ? `${info.pow}%${sl === 'z' ? ' (3타 합계)' : ''}${info.slotMul !== 1 ? ` · 폼 보정 ${info.slotMul > 1 ? '+' : ''}${Math.round((info.slotMul - 1) * 100)}% 포함` : ''}` : '—';
     T.add(fit(hkText(this, bx + 10, by + 38, `위력: ${pow}  |  쿨타임: ${info.cd ? info.cd.toFixed(1) + '초' : '없음 (연타)'}  |  그로기 유발: ${info.stag || '—'}`, 7.5, HK.ivory, { bold: true }), bw - 20));
     T.add(hkText(this, bx + 10, by + 51, info.desc, 7, '#c8c0b0', { style: { wordWrap: { width: bw - 20, useAdvancedWrap: true }, lineSpacing: 1, maxLines: 3 } }));
     T.setAlpha(0); this.tweens.add({ targets: T, alpha: 1, duration: 110 });
