@@ -55,6 +55,10 @@ const TELEPORT = 78;                    // 순간이동 거리
 // Z 홀드 차징 샷: CHG_SHOW 초부터 기운이 모이고, 단계별 시각(초)에 1·2·3단 (2단은 '초고압 차징 코어' 1장 · 3단은 2장 — 고속 축전 코일이면 더 빨리)
 const CHG_SHOW = .22, CHG_AT = [.72, 1.45, 2.25];
 const DASH_INV_CAP = .6;   // 대시 무적 상한 (도박사의 외줄타기 스텝 2배 · 합성)
+// ⚡ 저스트 회피 (Just Dodge): 대시 무적(대시 중 · 그 뒤 무적 시간) 동안 적의 공격 판정(탄 · 폭발 · 장판 · 광선 · 몸통 박치기)이 몸에 닿으면
+//  → 푸른 잔상 + 「⚡ JUST DODGE!」 · 대시 재사용 대기 100% 초기화 (공중이면 공중 대시도 다시) — 빠른 2 · 3연타를 연속 대시로 흘려보낼 수 있다
+//  같은 공격(탄 하나 · 장판 하나)으로는 한 번만 — 계속 닿아 있는 장판에서 대시를 연타해 무적을 이어 가지 못하게 · 보스 몸통은 JD_BODY_GAP 초마다 · 출처를 모르는 공격은 JD_ANON_GAP 초마다
+export const JD_BODY_GAP = .8, JD_ANON_GAP = 1;
 export { CHG_SHOW, CHG_AT };   // UIScene 스킬 바: Z 칸의 차징 게이지
 // 속성 → 차징 탄 그림 (systems/ProjectileRenderer.js 의 kind)
 const CHARGE_KIND = { fire: 'fire', water: 'water', ice: 'bubble', grass: 'leaf', bug: 'leaf', electric: 'bolt', ghost: 'shadow', dark: 'shadow', poison: 'bubble', psychic: 'psyorb',
@@ -1622,7 +1626,11 @@ export class Player extends Actor {
 
   takeHit(dmg, type, srcX, o = {}) {
     const sc = this.scene, a = this.action;
-    if (!o.force && (this.inv > 0 || this.intangible || this.dash)) { if (this.evadeReady && (this.dash || this.dashEvadeT > 0)) this.dashReload(); return false; }
+    if (!o.force && (this.inv > 0 || this.intangible || this.dash)) {
+      if (this.evadeReady && (this.dash || this.dashEvadeT > 0)) this.dashReload();
+      if (this.dash || this.dashEvadeT > 0) this.justDodge(o.jdSrc, srcX);   // ⚡ 대시 무적으로 스쳐 피했다
+      return false;
+    }
     if (sc.testGod) return false;   // 테스트룸: 무적 (보스 패턴 구경)
     dmg *= diff().dmg;   // 🎚️ 난이도: 적에게 받는 모든 피해 (보통 ×0.8 · 매우 어려움 ×1.35)
     // 패링 자세(지상 ↓ + Z): 몸 둘레 70px 안에서 들어온 근접 공격을 받아친다 (투사체는 Combat 이 먼저 반사)
@@ -1670,6 +1678,30 @@ export class Player extends Actor {
     return true;
   }
 
+  // ⚡ 저스트 회피: 대시 재사용 대기 초기화 (출처마다 한 번 — 위 JD_* 규칙)
+  justDodge(src, srcX) {
+    const sc = this.scene, now = sc.time.now / 1000, seen = this.jdSeen || (this.jdSeen = new WeakMap());
+    if (src && typeof src === 'object') {
+      const at = seen.get(src);
+      if (at !== undefined && !(src.b && now - at >= JD_BODY_GAP)) return false;   // 이 탄 · 장판으로는 이미 받았다 (보스 · 적 몸통은 잠시 뒤 다시)
+      seen.set(src, now);
+    } else {
+      if (now - (this.jdAnonAt ?? -9) < JD_ANON_GAP) return false;
+      this.jdAnonAt = now;
+    }
+    this.dashCd = 0;   // 100% 초기화
+    if (!this.onGround) this.airDash = true;
+    this.jdN = (this.jdN || 0) + 1; this.jdAt = now;
+    const col = 0x5ac8ff, s = this.sprite;
+    for (let k = 0; k < 3; k++) sc.time.delayedCall(k * 45, () => { if (s.active) sc.fx.ghost(s, k ? 0x9ae8ff : col, .75 - k * .15, 320); });
+    sc.fx.ring(this.x, this.y, 22, col, 260); sc.fx.ring(this.x, this.y, 36, 0xffffff, 200);
+    sc.fx.burst(this.x - (Math.sign(this.x - (srcX ?? this.x)) || 1) * 4, this.y, [col, 0xffffff, 0x2a7aff], 10, 120, { glow: true, grav: 0, bounce: false, life: .35, size: 2 });
+    sc.fx.floatText(this.x, this.b.y - 24, '⚡ JUST DODGE!', '#7ad8ff', 12);
+    sc.fx.hitStop(40);
+    Sfx.play('ting');
+    if (!sc.jdTold) { sc.jdTold = true; sc.events.emit('toast', '⚡ 저스트 회피! 대시 무적으로 공격을 스쳐 피하면 대시를 바로 다시 쓸 수 있다 — 연속 공격은 대시를 이어서'); }
+    return true;
+  }
   // 전술 재장전 스텝 카드: 대시 무적으로 공격을 피했다 → 쿨타임 중인 기술(Z · X · C)의 남은 쿨타임 -0.8초 (대시 한 번에 한 번)
   dashReload() {
     const m = this.m, cut = .8 * (this.mods.dashReload || 1), sc = this.scene;

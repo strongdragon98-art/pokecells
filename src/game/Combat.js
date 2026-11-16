@@ -247,6 +247,10 @@ export class Combat {
     if (this.s.hitBreakables) this.s.hitBreakables({ x: cx - r, y: cy - r, w: r * 2, h: r * 2 });
     return n;
   }
+  // 🔒 패턴 중첩 방지 (Boss.update 의 붉은 안광 멈칫): 플레이어 R px 안에서 다가오는 패링 가능한 보스 탄이 있나
+  parryableNear(p, R = 220) {
+    return this.projs.some(q => !q.dead && q.owner === 'enemy' && q.boss && !q.danger && !(q.src && q.src.danger) && Math.hypot(q.x - p.x, q.y - p.y) < R && (q.vx * (p.x - q.x) + q.vy * (p.y - q.y)) > 0);
+  }
   enemiesIn(rect) { return this.s.enemies.filter(e => e.alive && overlap(rect, e.bounds())); }
   // 반사탄이 노릴 적: 그 탄을 쏜 적(살아 있고 맞을 수 있으면) · 아니면 탄에서 가장 가까운 적
   reflectTarget(q) {
@@ -423,7 +427,7 @@ export class Combat {
         if (q.danger || (q.src && q.src.danger)) {
           p.guardBreak(q.x, q.y);
           if (q.training) { if (!s.tutorial || s.tutorial.touch(q, 'guard')) { dead = true; why = 'hit'; } }   // 🎓 훈련 충격파: 가드 브레이크만 보여 주고 피해 없음
-          else if (p.takeHit(q.dmg * DANGER_MUL, q.type, q.x - q.vx * .1, Object.assign({}, q.status, { noParry: true }))) { dead = true; why = 'hit'; }
+          else if (p.takeHit(q.dmg * DANGER_MUL, q.type, q.x - q.vx * .1, Object.assign({}, q.status, { noParry: true, jdSrc: q }))) { dead = true; why = 'hit'; }
         } else {
         // 패링 자세(지상 ↓ + Z) → 반사: 아군 황금빛 탄이 되어 되돌아간다 (속도 2배 · 최대 900) · 250% 피해 × 연속 패링 점감
         //  쏜 적(없으면 가장 가까운 적)의 중심을 겨눠 날아가고, 그 적이 움직이면 초당 40° 까지 꺾어 따라간다 (q.seek)
@@ -443,7 +447,7 @@ export class Combat {
         const r = p.blockProjectile(q);
         if (r === 'reflect') { q.owner = 'player'; q.vx = -q.vx * 1.2; q.vy *= -.3; q.dmg = p.atk * 2; q.hit = new Set(); q.life = 1.2; q.homing = 0; q.type = p.sp.types[0]; q.tier = p.tierIdx; this.fx.ring(q.x, q.y, 14, 0xbfe6ff, 200); continue; }
         if (r === 'block') { dead = true; why = 'wall'; }
-        else if (p.takeHit(q.dmg, q.type, q.x - q.vx * .1, Object.assign({ noParry: true }, q.status))) { dead = true; why = 'hit'; }
+        else if (p.takeHit(q.dmg, q.type, q.x - q.vx * .1, Object.assign({ noParry: true, jdSrc: q }, q.status))) { dead = true; why = 'hit'; }
       }
       if (dead) {
         if (q.boom) { this.explode(q); this.pr.impact(q, 'hit'); }
@@ -513,7 +517,7 @@ export class Combat {
   explode(q) {
     const b = q.boom;
     if (q.owner === 'player') this.hitCircle(q.x, q.y, b.r, b.mul, q.type, Object.assign({ kbx: b.kb ?? 200, kby: -200, src: q.charge ? 'charge' : undefined }, q.status));
-    else if (Phaser.Math.Distance.Between(q.x, q.y, this.p.x, this.p.y) < b.r && !(this.s.inShield && this.s.inShield(this.p.x, this.p.y))) this.p.takeHit(q.dmg, q.type, q.x, { danger: !!q.danger });   // 붉은 안광 폭발탄은 패링 불가 · 🛡️ 결계 안은 폭풍이 닿지 않는다
+    else if (Phaser.Math.Distance.Between(q.x, q.y, this.p.x, this.p.y) < b.r && !(this.s.inShield && this.s.inShield(this.p.x, this.p.y))) this.p.takeHit(q.dmg, q.type, q.x, { danger: !!q.danger, jdSrc: q });   // 붉은 안광 폭발탄은 패링 불가 · 🛡️ 결계 안은 폭풍이 닿지 않는다
     this.fx.ring(q.x, q.y, b.r, q.color, 280); this.fx.glow(q.x, q.y, b.r, q.color, 260, .9);
     this.fx.burst(q.x, q.y, [q.color, 0xffffff], 22, b.r * 3, { up: 80, glow: true });
     this.fx.shake(b.r > 50 ? .012 : .006, 200, q.owner === 'player' ? 'hit' : 'world'); Sfx.play('boom');
@@ -563,7 +567,7 @@ export class Combat {
       const live = z.t >= z.delay;
       if (live && !z.popped && z.owner === 'enemy') { z.popped = true; this.zonePop(z); }   // 예고가 끝나 실제로 터지는 순간: 파편 · 고리 · 빛
       if (live && z.tt <= 0 && z.onTick) { z.tt = z.tick; z.onTick(z); }
-      if (live && z.owner === 'enemy' && z.dmg && !z.done && overlap(z, p.bounds()) && !(this.s.inShield && this.s.inShield(p.x, p.y))) { if (p.takeHit(z.dmg, z.type, z.x + z.w / 2, z.status || {})) z.done = !z.multi; }
+      if (live && z.owner === 'enemy' && z.dmg && !z.done && overlap(z, p.bounds()) && !(this.s.inShield && this.s.inShield(p.x, p.y))) { if (p.takeHit(z.dmg, z.type, z.x + z.w / 2, Object.assign({ jdSrc: z }, z.status))) z.done = !z.multi; }   // jdSrc: 저스트 회피는 장판 하나에 한 번
       // 그리기
       const col = z.color ?? typeColor(z.type), k = Math.min(1, z.t * 6, (z.life - z.t) * 4);
       if (!live && z.round) {   // 둥근 경고: 테두리가 깜빡이고 안쪽이 차오른다 (미래예지)

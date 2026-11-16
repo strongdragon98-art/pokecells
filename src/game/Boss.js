@@ -37,6 +37,17 @@ export const MAX_CAST_SHOTS = 5;
 const DANGER_P = .5, DANGER_RAGE_P = .7, DANGER_HOLD = .42, DANGER_BOOM_R = 40, DANGER_ZONE_W = 70, DANGER_COL = 0xff1a2a, DANGER_MAX_T = 3.5;
 // 🔥 광폭화: 체력 RAGE_HP 이하 — 패턴 시계(예비 동작 · 후딜레이 · 쿨타임)와 몸놀림이 RAGE 배 빨라지고, 패턴이 끝난 뒤 쉬는 시간이 RAGE_CD 배로 한 번 더 준다
 export const RAGE_HP = .4, RAGE = 1.25;
+// 🛡️ 최소 회피 보장 간격 (Minimum Dodge Window): 예고 상태(TELE_STATES — 기를 모으는 wind · 조준 aim · 급강하 대기 …)는
+//  🎚️ 매우 어려움(실행 ×1.2) · 광폭화(×1.25)가 겹쳐도 실제 시간이 min(원래 예고, MIN_DODGE_WINDOW 초) 아래로 줄지 않는다
+//  (원래 0.5초보다 짧은 예고는 어려움 기준 그대로 · 긴 예고는 0.5초까지만 줄어든다) — 실행 · 이동 · 후딜레이는 그대로 빨라진다
+export const MIN_DODGE_WINDOW = .5;
+const TELE_STATES = new Set(['wind', 'charge', 'serpentAim', 'diveWait', 'dashAim', 'fbAim', 'jetAim', 'hopAim', 'warpAim', 'aim', 'punchwind', 'rise', 'clawGap']);
+// 🛡️ AI 멈춤 감시 (워치독): 그로기 · 등장 · 숨 고르기 · 연출이 아닌데 같은 상태가 STALL_T 초 넘게 이어지며 그동안 STALL_MOVE px 도 못 움직였거나,
+//  같은 상태가 STALL_MAX 초를 넘으면 → resetBossAIState (정상 패턴의 가장 긴 상태는 3.2초 — 레쿠쟈 파괴광선 2페이즈)
+const STALL_T = 3.5, STALL_MOVE = 24, STALL_MAX = 8;
+// 🔒 패턴 중첩 방지 락: 붉은 안광 돌진은 플레이어 가까이 다가오는 패링 가능한 탄이 다 지나간 뒤에 출발 (최대 OVERLAP_WAIT 초 더 멈칫)
+//  · 붉은 안광이 켜진 동안 다른 보스(짝 보스)의 일반 탄 · 장판은 나오지 않는다 → '대시하면 탄, 패링하면 붉은 공격' 이지선다가 생기지 않는다
+const OVERLAP_WAIT = .6, OVERLAP_R = 220;
 const RAGE_CD = .8;
 const bossSpeed = (sp, e) => Math.max(sp * ENEMY_FAST * ((e && (e.shotK || e.def.shotMul)) || 1), BOSS_MIN_SPEED) * BOSS_SHOT_K * diff().shot;   // 전체 5% 하향 (Combat 과 같은 비율) · 🎚️ 난이도 탄속
 
@@ -69,7 +80,10 @@ export class Boss extends Enemy {
 
   get striking() { return !(this.dangerHold > 0) && (STRIKE.has(this.state) || (this.state === 'leap' && this.diving)); }   // 몸으로 부딪혀도 피해를 주는 상태 (붉은 안광 멈칫 동안은 아니다)
 
+  // 다른 보스가 붉은 안광 시전 중이면 이 보스의 일반 탄 · 장판은 잠깐 막힌다 (🔒 패턴 중첩 방지)
+  overlapLocked() { const d = this.scene.dangerBoss; return !!(d && d !== this && d.danger && d.alive && !d.gone && !this.danger); }
   zone(c) {   // 큰 폭발 장판(burst)은 붉은 안광 · 붉은 안광 시전의 장판은 모두 패링 불가 (status.danger → Player.takeHit)
+    if ((c.dmg ?? this.dmg) > 0 && this.overlapLocked()) c = Object.assign({}, c, { dmg: 0 });   // 🔒 그림은 그대로 · 피해만 없앤다 (패턴 진행 타이머로 쓰는 장판도 있다)
     const big = c.draw === 'burst' && (c.w || 0) >= DANGER_ZONE_W && (c.dmg ?? this.dmg) > 0;
     if (big && !this.danger) this.dangerOn(false);
     if (this.danger) c = Object.assign({}, c, { status: Object.assign({}, c.status, { danger: true }) });
@@ -77,7 +91,7 @@ export class Boss extends Enemy {
   }
   // 보스 투사체: 최종 진화형(3단, 메가진화 후엔 메가)으로 맞대결한다. 연발 탄막은 연속 투사체, 폭발하는 큰 탄(boom)은 단발
   shot(c) {   // fast: 탄속 ×1.42(보스는 하한 BOSS_MIN_SPEED) + 0.2초 예비 동작 (Combat) · 이번 시전의 탄을 다 썼으면 쏘지 않는다 (빈 껍데기)
-    if ((this.castShots || 0) >= MAX_CAST_SHOTS) return { dead: true, x: c.x, y: c.y, vx: 0, vy: 0, r: c.r || 4, hit: new Set(), status: {}, life: 0 };
+    if ((this.castShots || 0) >= MAX_CAST_SHOTS || this.overlapLocked()) return { dead: true, x: c.x, y: c.y, vx: 0, vy: 0, r: c.r || 4, hit: new Set(), status: {}, life: 0 };   // 🔒 다른 보스의 붉은 안광 중엔 일반 탄을 쏘지 않는다
     this.castShots = (this.castShots || 0) + 1;
     const big = c.boom && c.boom.r >= DANGER_BOOM_R && (c.dmg ?? this.dmg) > 0;   // 큰 폭발탄: 붉은 안광 (패링 불가)
     if (big && !this.danger) this.dangerOn(false);
@@ -130,6 +144,44 @@ export class Boss extends Enemy {
     }
     return false;
   }
+  // 🛡️ AI 멈춤 감시: 같은 상태로 오래 · 거의 안 움직인 채 꼬였으면 초기화 (STALL_* — 맨 위)
+  stallWatch(dt) {
+    const sc = this.scene;
+    if (!this.alive || this.gone || this.state === 'intro' || this.state === 'rest' || this.state === 'groggy' || this.groggyT > 0 || this.recenterT > 0 || sc.cinema || sc.altarRite || this.resting || this.leaving) { this.wdState = null; return; }
+    if (this.state !== this.wdState) { this.wdState = this.state; this.wdT = 0; this.wdPath = 0; }
+    else { this.wdT += dt; this.wdPath += Math.hypot(this.x - (this.wdX ?? this.x), this.y - (this.wdY ?? this.y)); }
+    this.wdX = this.x; this.wdY = this.y;
+    if (this.wdT > STALL_T && this.wdPath < STALL_MOVE) this.resetBossAIState(`'${this.state}' 상태로 ${this.wdT.toFixed(1)}초 · ${Math.round(this.wdPath)}px 만 움직임`);
+    else if (this.wdT > STALL_MAX) this.resetBossAIState(`'${this.state}' 상태가 ${this.wdT.toFixed(1)}초째`);
+  }
+  // 꼬인 상태 강제 초기화: 예고 · 무적 · 붉은 안광 · 그림자 웅덩이를 풀고 맵 가운데 쪽으로 잠깐 옮긴 뒤 idle 에서 다음 공격 패턴
+  resetBossAIState(why) {
+    const r = this.room;
+    this.guardLog(`AI 멈춤 — ${why} · 상태 초기화`);
+    this.dangerOff(); this.dangerFxOff(); this.telegraph(false);
+    this.intangible = false; this.sprite.setAlpha(1); if (this.glowImg) this.glowImg.setAlpha(.35);
+    if (this.puddle && this.puddle.active) this.puddle.clear();
+    if (this.b) { this.b.enable = true; this.b.setAllowGravity(!this.flying); this.b.setVelocity(0, 0); }
+    this.state = 'idle'; this.cd = .5; this.timer = 0; this.back = false; this.forced = null; this.teleK = 0; this.wdState = null;
+    this.stallN = (this.stallN || 0) + 1;
+    if (r && !FREE_FLYERS.has(this.bossKey)) { const cx = r.cx ?? (r.left + r.right) / 2; this.recenter(cx, this.flying ? Math.max(r.top + 60, (r.top + r.bottom) / 2 - 60) : null, .7); }
+  }
+  // 맵 가운데 쪽으로 부드럽게 옮긴다 (recenterT 초 동안 AI 대신) · fx: 용의 춤 회오리 (레쿠쟈 구석 끼임)
+  recenter(x, y, t, fx = null) {
+    this.recenterT = t; this.recenterTo = { x, y }; this.recenterFx = fx;
+    this.dangerOff(); this.telegraph(false);
+    if (fx) fx(this, true);
+  }
+  updateRecenter(dt) {
+    const b = this.b, to = this.recenterTo;
+    this.recenterT -= dt;
+    const vx = Phaser.Math.Clamp((to.x - this.x) * 4, -460, 460), vy = to.y != null ? Phaser.Math.Clamp((to.y - this.y) * 4, -460, 460) : b.velocity.y;
+    b.setVelocity(vx, vy);
+    if (this.recenterFx) this.recenterFx(this, false, dt);
+    if (this.recenterT <= 0 || (Math.abs(to.x - this.x) < 10 && (to.y == null || Math.abs(to.y - this.y) < 10))) {
+      this.recenterT = 0; b.setVelocity(0, 0); this.state = 'idle'; this.cd = Math.min(this.cd || .5, .5); this.wdState = null;
+    }
+  }
   guardLog(reason) {
     const k = `${this.bossKey}:${reason}`;
     if ((this.guardSeen || (this.guardSeen = new Set())).has(k)) return;
@@ -139,6 +191,7 @@ export class Boss extends Enemy {
   update(dt, p) {
     const sc = this.scene, st = this.status;
     if (this.watchdog(dt)) return;   // 🛡️ 고장 난 보스는 바로잡는다 (처치했으면 이번 프레임은 끝)
+    this.stallWatch(dt);             // 🛡️ AI 멈춤 감시
     if (this.tempoV) { this.b.velocity.x /= this.tempoV; this.b.velocity.y /= this.tempoV; this.tempoV = 0; }   // 광폭화 · 🎚️ 난이도: 지난 물리 단계 동안만 키운 몸놀림을 되돌린다 (끝에서 다시)
     if (this.danger && (this.dangerT -= dt) <= 0) this.dangerOff();   // 시전이 idle 로 돌아오지 않는 패턴이어도 붉은 안광은 DANGER_MAX_T 초면 꺼진다
     this.t += dt;
@@ -171,7 +224,10 @@ export class Boss extends Enemy {
     } else if (this.dangerHold > 0) {   // ⚠️ 붉은 안광: 튀어 나가기 직전 멈칫 — 다 되면 막아 둔 돌진 속도 그대로 (dangerOn)
       this.dangerHold -= dt;
       this.b.setVelocity(0, 0);
-      if (this.dangerHold <= 0) { this.b.setAllowGravity(this.dangerG); this.b.setVelocity(this.dangerV.x, this.dangerV.y); }
+      if (this.dangerHold <= 0 && (this.lockWait || 0) < OVERLAP_WAIT && sc.combat.parryableNear(p, OVERLAP_R)) { this.lockWait = (this.lockWait || 0) + dt; this.dangerHold = .0001; }   // 🔒 다가오는 일반 탄이 지나갈 때까지
+      if (this.dangerHold <= 0) { this.lockWait = 0; this.b.setAllowGravity(this.dangerG); this.b.setVelocity(this.dangerV.x, this.dangerV.y); }
+    } else if (this.recenterT > 0) {   // 🛡️ 워치독 · 구석 끼임: 맵 가운데 쪽으로 부드럽게 옮긴 뒤 idle 에서 다음 패턴
+      this.updateRecenter(dt);
     } else {
       if (this.phase === 1 && this.hp < this.maxhp * .5) this.enterPhase2();
       if (!this.rage && this.hp <= this.maxhp * RAGE_HP) this.enterRage();
@@ -179,7 +235,10 @@ export class Boss extends Enemy {
       if (!this.flying && this.room && this.room.arenaStyle) sc.arenaStep(this, 2, false, this.room);   // 결전장 단상 · 계단 턱을 걸어 오른다 (game/Arenas.js)
       // 패턴 시계: 광폭화 RAGE 배 × 🎚️ 난이도 — 쉬는 상태(idle 쿨타임 · recover 후딜레이)는 1/cd 배 (대기 시간 cd 배) · 그 밖(예비 동작 · 공격 모션)은 act 배
       const D = diff(), rest = this.state === 'idle' || this.state === 'recover';
-      (BOSS_AI[this.def.ai] || BOSS_AI.legend)(this, dt * (this.rage ? RAGE : 1) * (rest ? 1 / D.cd : D.act), p);
+      let clock = (this.rage ? RAGE : 1) * (rest ? 1 / D.cd : D.act);
+      if (this.teleK && TELE_STATES.has(this.state)) clock = Math.min(clock, this.teleK);   // 🛡️ 최소 회피 보장 간격: 예고는 MIN_DODGE_WINDOW 초 아래로 줄지 않는다
+      (BOSS_AI[this.def.ai] || BOSS_AI.legend)(this, dt * clock, p);
+      if (this.state !== prev) this.teleK = TELE_STATES.has(this.state) && this.timer > 0 ? Math.max(1, this.timer / MIN_DODGE_WINDOW) : 0;   // 예고에 들어선 순간의 길이로 시계 상한을 정한다
       this.lastVx = this.b.velocity.x;
       if (prev === 'idle' && this.state !== 'idle') this.castShots = (this.castShots || 0) - s0;   // 새 시전: 이번 프레임에 쏜 탄부터 다시 센다
       if (prev === 'wind' && this.state !== 'wind') { this.bigN = (this.bigN || 0) + 1; if (this.state !== 'idle' && this.state !== 'recover') this.castFlare(); }   // 큰 기술 하나를 썼다 · 내지르는 순간 연출
@@ -194,7 +253,7 @@ export class Boss extends Enemy {
       this.maybeRest();
       this.hoverCap();
     }
-    if (this.striking && !this.intangible && overlap(this.bounds(), p.bounds())) p.takeHit(this.dmg, this.def.atkType || this.types[0], this.x, { danger: !!this.danger });
+    if (this.striking && !this.intangible && overlap(this.bounds(), p.bounds())) p.takeHit(this.dmg, this.def.atkType || this.types[0], this.x, { danger: !!this.danger, jdSrc: this });
     // 아레나 밖으로 나가지 않게 (날아다니는 보스는 위아래도)
     if (this.room) {
       const minX = this.room.left + 20, maxX = this.room.right - 20;
@@ -234,7 +293,7 @@ export class Boss extends Enemy {
   //  시전이 끝나 idle 로 돌아오면 꺼진다 (그로기 · 숨 고르기도) — 그동안의 탄(shot) · 장판(zone) · 몸통 박치기는 모두 패링 불가
   dangerOn(hold) {
     const sc = this.scene, b = this.b;
-    this.danger = true; this.dangerT = DANGER_MAX_T;
+    this.danger = true; this.dangerT = DANGER_MAX_T; sc.dangerBoss = this; this.lockWait = 0;   // 🔒 이 시전 동안 다른 보스의 일반 탄 · 장판 잠금
     if (hold) {
       this.dangerHold = DANGER_HOLD; this.dangerV = { x: b.velocity.x, y: b.velocity.y }; this.dangerG = b.allowGravity;
       b.setAllowGravity(false); b.setVelocity(0, 0);
@@ -612,7 +671,7 @@ const BOSS_AI = {
           e.telegraph(false);
           const box = { x: e.face > 0 ? e.x : e.x - 50, y: e.y - 22, w: 50, h: 44 };
           sc.fx.slash(e.x + e.face * 22, e.y, 26, e.face, 0xb06aff, { thick: 9 });
-          if (overlap(box, p.bounds())) p.takeHit(e.dmg * 1.3, 'ghost', e.x, {});
+          if (overlap(box, p.bounds())) p.takeHit(e.dmg * 1.3, 'ghost', e.x, { jdSrc: e });
           Sfx.play('punch'); e.state = 'fire'; e.timer = .8;
         }
         break;
@@ -1034,17 +1093,18 @@ function psyRing(e, x, y, o = {}) {
   let R = 14, hit = false;
   e.zone({ x: 0, y: 0, w: 0, h: 0, dmg: 0, life: max / speed, draw: 'none',
     onUpdate: (z, dt) => {
-      R += speed * dt;
+      R += speed * dt; z.psyR = R; z.psyC = { x, y };   // 지금 고리 반지름 (테스트 봇 · 디버그)
       const a = Math.max(0, 1 - R / max);
       g.clear();
       g.lineStyle(th * 2 + 8, col, .16 * a); g.strokeCircle(x, y, R);
       g.lineStyle(th * 2, col, .45 * a); g.strokeCircle(x, y, R);
       g.lineStyle(4, 0xffffff, .9 * a); g.strokeCircle(x, y, R);
       const p = sc.player;
-      if (!hit && live(e) && Math.abs(Math.hypot(p.x - x, p.y - y) - R) < th + 6 && p.takeHit(e.dmg * 1.5, 'psychic', x, {})) hit = true;
+      if (!hit && live(e) && Math.abs(Math.hypot(p.x - x, p.y - y) - R) < th + 6 && p.takeHit(e.dmg * 1.5, 'psychic', x, { jdSrc: z })) hit = true;
     },
     dispose: () => g.destroy() });
 }
+const PSY_GAP = .65;   // 🔮 사이코브레이크 2연타 간격 (초)
 function mewBlink(e) {
   const sc = e.scene, col = e.def.color || 0xb06aff;
   sc.fx.ghost(e.sprite, col, .55, 300); sc.fx.ring(e.x, e.y, 26, col, 220);
@@ -1096,8 +1156,11 @@ BOSS_AI.mewtwo = function (e, dt, p) {
       if (e.timer > 0) break;
       e.telegraph(false);
       sc.cameras.main.flash(160, 255, 220, 255, true); sc.fx.shake(.018, 450); Sfx.play('boom'); Sfx.play('beam');
-      psyRing(e, e.x, e.y, { color: col });
-      if (ph2) sc.time.delayedCall(520, () => { if (live(e)) { psyRing(e, e.x, e.y, { color: 0xff7ad0, speed: 270 }); Sfx.play('beam'); } });
+      const cx = e.x, cy = e.y;   // 고리 중심은 기를 모은 자리에 고정 (2타도 — 뮤츠가 그사이 내려와도 플레이어 코앞에서 터지지 않게)
+      psyRing(e, cx, cy, { color: col });
+      // 폭주 2타: 1타와 같은 중심 · 같은 속도로 PSY_GAP 초 뒤 — 어느 거리에서든 두 고리가 닿는 간격이 PSY_GAP 초로 같다 (대시 재사용 0.55초보다 길게)
+      //  예전: 0.52초 뒤 270 속도 · 그 순간 뮤츠 자리에서 → 150px 에서 0.46초 간격이라 1타를 대시로 피하면 2타를 반드시 맞았고, 내려온 뮤츠 곁이면 거의 바로 닿았다
+      if (ph2) sc.time.delayedCall(PSY_GAP * 1000, () => { if (live(e)) { psyRing(e, cx, cy, { color: 0xff7ad0 }); Sfx.play('beam'); } });
       e.state = 'fire'; e.timer = ph2 ? 1.5 : 1.2;
       break;
     }
@@ -1177,7 +1240,7 @@ function lineHazard(e, seg, o) {
       g.lineStyle(w, col, .6 * fade); g.lineBetween(s.x1, s.y1, s.x2, s.y2);
       g.lineStyle(Math.max(2, w * .3), 0xffffff, .9 * fade); g.lineBetween(s.x1, s.y1, s.x2, s.y2);
       const p = sc.player;
-      if (live(e) && segDist(p.x, p.y, s) < w / 2 + 8) p.takeHit(o.dmg ?? e.dmg, o.type ?? e.types[0], s.x1, o.status || {});
+      if (live(e) && segDist(p.x, p.y, s) < w / 2 + 8) p.takeHit(o.dmg ?? e.dmg, o.type ?? e.types[0], s.x1, Object.assign({ jdSrc: z }, o.status));
       if (o.onTick) o.onTick(s, k, dt);
     },
     dispose: () => g.destroy() });
@@ -1406,10 +1469,30 @@ function startRebirth(e) {
   sc.events.emit('toast', '칠색조가 불꽃에 휩싸인다…');
 }
 // 부활 직후: 천장 전체에서 불꽃비(빈틈 두 곳) + 몸에서 사방으로 불꽃 고리 두 번
+// 🛡️ 칠색조 공정성: 성스러운 불꽃 바닥 장판은 결전장 너비의 HOOH_FLOOR_MAX(65%) 까지만 동시에 · 깃털 · 불꽃 탄 부채는 플레이어 자리에서 탄 사이가 몸 높이의 HOOH_GAP(1.8)배 이상
+const HOOH_FLOOR_MAX = .65, HOOH_GAP = 1.8;
+function hoohFloorOk(e, x0, x1, life) {
+  const now = e.t, room = e.room, W = room.right - room.left;
+  e.fireFloor = (e.fireFloor || []).filter(f => f.until > now);
+  const segs = [...e.fireFloor.map(f => [f.x0, f.x1]), [x0, x1]].sort((a, b) => a[0] - b[0]);
+  let cover = 0, cx0 = -Infinity, cx1 = -Infinity;
+  for (const [a, b] of segs) { if (a > cx1) { if (cx1 > cx0) cover += cx1 - cx0; cx0 = a; cx1 = b; } else cx1 = Math.max(cx1, b); }
+  if (cx1 > cx0) cover += cx1 - cx0;
+  if (cover > W * HOOH_FLOOR_MAX) return false;
+  e.fireFloor.push({ x0, x1, until: now + life });
+  return true;
+}
+const hoohBurning = e => (e.fireFloor || []).some(f => f.until > e.t);
+// 부채꼴 탄 사이 각도: 플레이어까지 거리에서 탄 사이 빈 곳이 몸 높이 × HOOH_GAP 이상이 되게 (기본 각도보다 좁히지는 않는다)
+function hoohGap(e, p, base, r) { const d = Math.max(60, Math.hypot(p.x - e.x, p.y - e.y)); return Math.max(base, (p.b.height * HOOH_GAP + r * 2) / d); }
 function inferno(e) {
-  const sc = e.scene, room = e.room, W = room.right - room.left, n = Math.floor(W / 34), gaps = [Math.floor(Math.random() * n), Math.floor(Math.random() * n)];
+  const sc = e.scene, room = e.room, W = room.right - room.left, n = Math.floor(W / 34), cw = W / n, pw = Math.max(14, sc.player ? sc.player.b.width : 16);
+  // 빈틈 둘: 한 곳은 반드시 플레이어 몸 HOOH_GAP 배 이상 (기둥 사이 빈 너비) · 두 빈틈은 결전장 너비 1/3 이상 떨어진다
+  const half = Math.max(1, Math.ceil((pw * HOOH_GAP + 16) / cw / 2)), g0 = Math.floor(Math.random() * n);
+  let g1 = Math.floor(Math.random() * n); for (let t = 0; t < 20 && Math.abs(g1 - g0) < n / 3; t++) g1 = Math.floor(Math.random() * n);
+  const gaps = [g0, g1];
   for (let k = 0; k < n; k++) {
-    if (gaps.some(g => Math.abs(g - k) <= 1)) continue;   // 빈틈 (세 칸씩)
+    if (gaps.some(g => Math.abs(g - k) <= half)) continue;   // 빈틈
     const x = room.left + (k + .5) * (W / n), gy = sc.groundBelow(x, room.top + 8), d = .6 + (k % 3) * .25; e.zone({ x: x - 8, y: room.top, w: 16, h: gy - room.top, delay: d, life: d + .35, dmg: e.dmg, type: 'fire', draw: 'pillar', color: HOOH_DARK });   // 불꽃비는 천장에서 쏟아지는 불기둥 장판 (탄이 아니다 — 시전당 보스 탄 5발)
   }
   for (let r = 0; r < 1; r++) sc.time.delayedCall(400 + r * 700, () => {
@@ -1447,7 +1530,7 @@ BOSS_AI.hooh = function (e, dt, p) {
       if (e.shotT <= 0) {
         e.shotT = (e.room.right - e.room.left) / ((ph2 ? 300 : 250) * MAX_CAST_SHOTS);
         e.shot({ x: e.x, y: e.y + 10, vx: e.runDir * 40, vy: 60, grav: 520, r: 7, kind: 'fire', type: 'fire', color: HOOH_DARK, life: 3, muzzle: false,
-          onExpire: q => { if (!live(e)) return; const gy = sc.groundBelow(q.x, q.y - 12); e.zone({ x: q.x - 18, y: gy - 14, w: 36, h: 14, delay: 0, life: ph2 ? 3 : 2.4, multi: true, dmg: e.dmg * .5, type: 'fire', draw: 'fire', color: HOOH_DARK }); } });
+          onExpire: q => { if (!live(e)) return; const gy = sc.groundBelow(q.x, q.y - 12); if (!hoohFloorOk(e, q.x - 18, q.x + 18, ph2 ? 3 : 2.4)) { sc.fx.burst(q.x, gy - 4, [HOOH_DARK, 0xff8a3a], 8, 90, { up: 60, life: .4 }); return; } e.zone({ x: q.x - 18, y: gy - 14, w: 36, h: 14, delay: 0, life: ph2 ? 3 : 2.4, multi: true, dmg: e.dmg * .5, type: 'fire', draw: 'fire', color: HOOH_DARK }); } });
       }
       if (Math.random() < .5) sc.fx.embers(e.x, e.y, [col, 0xffd04a, HOOH_DARK], 1, { speed: 40 });
       if ((e.runDir > 0 && e.x >= room.right - 50) || (e.runDir < 0 && e.x <= room.left + 50)) { b.setVelocity(0, 0); e.state = 'recover'; e.timer = .8; }
@@ -1464,16 +1547,16 @@ BOSS_AI.hooh = function (e, dt, p) {
           const v = sc.cameras.main.worldView;
           for (let k = 0; k < 2; k++) sc.fx.burst(dir > 0 ? v.x + Math.random() * 40 : v.right - Math.random() * 40, v.y + Math.random() * v.height, [0xffffff, 0xffd8b0], 1, 420, { angle: dir > 0 ? 0 : Math.PI, spread: .08, up: 0, grav: 0, bounce: false, life: .5, drag: 1 });
         } });
-        const n = ph2 ? 5 : 3, base = Math.atan2(p.y - e.y, p.x - e.x);
-        for (let k = 0; k < n; k++) { const a = base + (k - (n - 1) / 2) * .2; e.shot({ x: e.x, y: e.y, vx: Math.cos(a) * 260, vy: Math.sin(a) * 260, r: 4, kind: 'bolt', type: 'flying', color: 0xffb04a, life: 1.8 }); }   // 불꽃 깃털 칼날 (예전엔 잎날 그림)
+        const n = ph2 ? 5 : 3, base = Math.atan2(p.y - e.y, p.x - e.x), da = hoohGap(e, p, .2, 4);   // 🛡️ 깃털 사이 안전 구멍 (플레이어 몸 1.8배 이상)
+        for (let k = 0; k < n; k++) { const a = base + (k - (n - 1) / 2) * da; e.shot({ x: e.x, y: e.y, vx: Math.cos(a) * 260, vy: Math.sin(a) * 260, r: 4, kind: 'bolt', type: 'flying', color: 0xffb04a, life: 1.8 }); }   // 불꽃 깃털 칼날 (예전엔 잎날 그림)
         sc.fx.shake(.01, 500); Sfx.play('swing'); e.state = 'fire'; e.timer = 1.4;
         if (!e.gustTold) { e.gustTold = true; sc.events.emit('toast', '폭풍 날개짓 — 바람을 거슬러 버티자'); }
       } else {   // 불꽃 깃털 연사 (조금 따라온다) — 3 · 2발 (폭주하면 1 · 2 · 2발) · 모두 5발
         const rounds = ph2 ? [[0], [-.18, .18], [-.34, .34]] : [[-.22, 0, .22], [-.32, .32]], n = rounds.length;
         rounds.forEach((das, r) => sc.time.delayedCall(r * 240, () => {
           if (!live(e)) return;
-          const base = Math.atan2(p.y - e.y, p.x - e.x);
-          for (const da of das) e.shot({ x: e.x, y: e.y, vx: Math.cos(base + da) * 200, vy: Math.sin(base + da) * 200, r: 6, kind: 'fire', type: 'fire', color: col, life: 2.2, homing: .5 });
+          const base = Math.atan2(p.y - e.y, p.x - e.x), burning = hoohBurning(e), k = hoohGap(e, p, .18, 6) / .18;   // 🛡️ 탄 사이 안전 구멍 · 바닥이 타는 동안은 덜 따라온다
+          for (const da of das) e.shot({ x: e.x, y: e.y, vx: Math.cos(base + da * k) * 200, vy: Math.sin(base + da * k) * 200, r: 6, kind: 'fire', type: 'fire', color: col, life: 2.2, homing: burning ? .25 : .5 });
           Sfx.play('fire');
         }));
         e.state = 'fire'; e.timer = .5 + n * .24;
@@ -1658,7 +1741,7 @@ function serpentBody(e) {
   const sc = e.scene, g = sc.add.graphics().setDepth(18), keep = .55;
   e.bodyOn = true;
   e.zone({ x: 0, y: 0, w: 0, h: 0, dmg: 0, life: 4, draw: 'none',
-    onUpdate: () => {
+    onUpdate: z => {
       const path = e.path, now = e.t;
       while (path.length && now - path[0].t > keep) path.shift();
       g.clear();
@@ -1669,16 +1752,38 @@ function serpentBody(e) {
         if (i % 8 === 0) { g.fillStyle(0xffd84a, 1); g.fillCircle(q.x, q.y - r * .5, Math.max(1.5, r * .22)); }   // 노란 고리 무늬
       }
       const p = sc.player;
-      if (live(e) && path.some(q => Math.hypot(p.x - q.x, p.y - q.y) < 14)) p.takeHit(e.dmg, 'dragon', p.x - (e.sdir || 1) * 10, {});
+      if (live(e) && path.some(q => Math.hypot(p.x - q.x, p.y - q.y) < 14)) p.takeHit(e.dmg, 'dragon', p.x - (e.sdir || 1) * 10, { jdSrc: z });
     },
     dispose: () => { g.destroy(); e.bodyOn = false; } });
 }
+// 🛡️ 레쿠쟈 멈춤 버그 (테스터 제보: 오른쪽 구석에서 아무것도 안 하고 멈춘다) — 원인: 몸체 돌진(serpent)은 시간 제한 없이 '벽에서 30px 안쪽'에 닿아야 끝났는데,
+//  몸 반폭이 32px 라 벽에 막힌 중심이 판정선에 2px 못 미쳐 영원히 벽을 밀었다 (왼쪽 9280 > 9278 · 오른쪽 10176 < 10178 — 실제 보스방 재현)
+//  ① 모든 이동 · 돌진 목표 x 를 [왼쪽 벽 + RAY_EDGE, 오른쪽 벽 - RAY_EDGE] 로 · 이동 상태는 RAY_MOVE_MAX 초가 지나거나 벽에 닿거나 막히면 바로 다음 상태로
+//  ② 구석(벽에서 RAY_CORNER px 안)에 쉬는 상태로 RAY_CORNER_T 초 넘게 있으면 용의 춤 회오리와 함께 아레나 가운데 상공으로 (Boss.recenter)
+//  ③ 전 보스 공통 워치독 (Boss.stallWatch)
+const RAY_EDGE = 120, RAY_MOVE_MAX = 2.2, RAY_CORNER = 150, RAY_CORNER_T = 1.5;
+function dragonDance(e, start, dt = 0) {   // 용의 춤 회오리: 초록 · 노란 비늘이 몸 둘레를 휘감는다
+  const sc = e.scene, col = e.def.color || 0x4aff8a;
+  if (start) { sc.fx.ring(e.x, e.y, 40, col, 360); sc.fx.ring(e.x, e.y, 62, 0xffd84a, 420); Sfx.play('wave'); return; }
+  e.danceA = (e.danceA || 0) + dt * 14;
+  for (let k = 0; k < 2; k++) { const a = e.danceA + k * Math.PI; sc.fx.burst(e.x + Math.cos(a) * 34, e.y + Math.sin(a) * 18, [col, 0xffd84a, 0xffffff], 1, 30, { angle: a + Math.PI / 2, spread: .3, up: 0, grav: 0, bounce: false, glow: true, life: .45, size: 2 }); }
+}
 BOSS_AI.rayquaza = function (e, dt, p) {
   const sc = e.scene, ph2 = e.phase === 2, b = e.b, col = e.def.color || 0x4aff8a, room = e.room;
+  const minX = room.left + RAY_EDGE, maxX = room.right - RAY_EDGE;
+  if (e.state !== e.rayState) { e.rayState = e.state; e.moveT = 0; } else e.moveT += dt;
+  // ② 구석 끼임: 쉬는 상태(idle · 후딜레이)로 구석에 오래 있으면 가운데 상공으로
+  const corner = e.x < room.left + RAY_CORNER || e.x > room.right - RAY_CORNER;
+  e.cornerT = corner && (e.state === 'idle' || e.state === 'recover' || e.state === 'fire') ? (e.cornerT || 0) + dt : 0;
+  if (e.cornerT > RAY_CORNER_T) {
+    e.cornerT = 0; b.setVelocity(0, 0);
+    e.recenter(room.cx ?? (room.left + room.right) / 2, Math.max(room.top + 60, (room.top + room.bottom) / 2 - 120), .9, dragonDance);
+    return;
+  }
   switch (e.state) {
     case 'idle': {
       e.facePlayer(p);
-      const tx = p.x - Math.sign(p.x - e.x || 1) * 130, ty = p.y - 80 + Math.sin(e.t * 2) * 18, far = Math.abs(p.x - e.x) > 240 ? 220 : 120;
+      const tx = Phaser.Math.Clamp(p.x - Math.sign(p.x - e.x || 1) * 130, minX, maxX), ty = p.y - 80 + Math.sin(e.t * 2) * 18, far = Math.abs(p.x - e.x) > 240 ? 220 : 120;
       b.setVelocity(Phaser.Math.Clamp((tx - e.x) * 1.6, -far, far), Phaser.Math.Clamp((ty - e.y) * 1.6, -130, 130));
       e.cd -= dt;
       if (e.cd > 0) break;
@@ -1691,9 +1796,9 @@ BOSS_AI.rayquaza = function (e, dt, p) {
     }
     case 'toPerch': {   // 파괴광선 준비: 플레이어 반대편 위 구석으로
       e.timer -= dt;
-      const tx = e.sdir > 0 ? room.left + 60 : room.right - 60, ty = room.top + 50;
+      const tx = e.sdir > 0 ? minX : maxX, ty = room.top + 50;
       b.setVelocity(Phaser.Math.Clamp((tx - e.x) * 4, -460, 460), Phaser.Math.Clamp((ty - e.y) * 4, -460, 460));
-      if (Math.hypot(tx - e.x, ty - e.y) < 14 || e.timer <= 0) {
+      if (Math.hypot(tx - e.x, ty - e.y) < 14 || e.timer <= 0 || e.moveT > RAY_MOVE_MAX) {
         b.setVelocity(0, 0); e.face = e.sdir; e.refacing();
         e.state = 'wind'; e.timer = ph2 ? .7 : .9;
         sc.fx.glow(e.x, e.y, 60, col, e.timer * 1000, .9); Sfx.play('mega');
@@ -1702,11 +1807,11 @@ BOSS_AI.rayquaza = function (e, dt, p) {
     }
     case 'toSide': {   // 몸체 돌진 준비: 플레이어 반대편 끝, 플레이어 높이로
       e.timer -= dt;
-      const tx = e.sdir > 0 ? room.left + 30 : room.right - 30, ty = Phaser.Math.Clamp(p.y - 6, room.top + 24, room.bottom - 20);
+      const tx = e.sdir > 0 ? minX : maxX, ty = Phaser.Math.Clamp(p.y - 6, room.top + 24, room.bottom - 20);
       b.setVelocity(Phaser.Math.Clamp((tx - e.x) * 4, -480, 480), Phaser.Math.Clamp((ty - e.y) * 4, -480, 480));
-      if (Math.hypot(tx - e.x, ty - e.y) < 14 || e.timer <= 0) {
+      if (Math.hypot(tx - e.x, ty - e.y) < 14 || e.timer <= 0 || e.moveT > RAY_MOVE_MAX) {
         b.setVelocity(0, 0); e.state = 'serpentAim'; e.timer = ph2 ? .5 : .65; e.face = e.sdir; e.refacing();
-        e.zone({ x: room.left, y: e.y - 18, w: room.right - room.left, h: 36, delay: e.timer, life: e.timer + .01, dmg: 0, color: col });   // 예고 띠
+        e.zone({ x: minX - 40, y: e.y - 18, w: maxX - minX + 80, h: 36, delay: e.timer, life: e.timer + .01, dmg: 0, color: col });   // 예고 띠 (머리가 지나갈 구간)
         Sfx.play('boss');
       }
       break;
@@ -1724,10 +1829,12 @@ BOSS_AI.rayquaza = function (e, dt, p) {
       b.setVelocity(e.sdir * (ph2 ? 700 : 620), Math.sin(e.t * 9) * 90);
       e.path.push({ x: e.x, y: e.y, t: e.t });
       if (Math.random() < .4) sc.fx.burst(e.x, e.y, [col, 0xffd84a, 0xffffff], 1, 40, { up: 0, grav: 0, bounce: false, glow: true, life: .3 });
-      if ((e.sdir > 0 && e.x >= room.right - 30) || (e.sdir < 0 && e.x <= room.left + 30)) {
+      // 끝: 목표 x 에 닿았거나 · 그쪽 벽(오른쪽 벽 - 130 · 왼쪽 벽 + 130)에 닿았거나 · 막혔거나 · RAY_MOVE_MAX 초 (예전엔 벽에 막혀 영원히 밀었다)
+      const done = e.sdir > 0 ? (e.x >= maxX - 10 || b.blocked.right) : (e.x <= minX + 10 || b.blocked.left);
+      if (done || e.moveT > RAY_MOVE_MAX) {
         if (ph2 && !e.back) {   // 2페이즈: 되돌아 한 번 더
-          e.back = true; e.sdir *= -1; e.face = e.sdir; e.refacing(); e.state = 'serpentAim'; e.timer = .4;
-          e.zone({ x: room.left, y: e.y - 18, w: room.right - room.left, h: 36, delay: .4, life: .41, dmg: 0, color: col });
+          e.back = true; e.sdir *= -1; e.face = e.sdir; e.refacing(); e.state = 'serpentAim'; e.timer = .4; b.setVelocity(0, 0);
+          e.zone({ x: minX - 40, y: e.y - 18, w: maxX - minX + 80, h: 36, delay: .4, life: .41, dmg: 0, color: col });
         } else { e.back = false; b.setVelocity(0, 0); e.state = 'recover'; e.timer = .9; }
       }
       break;
@@ -1737,7 +1844,7 @@ BOSS_AI.rayquaza = function (e, dt, p) {
       e.sprite.setAlpha(Math.max(0, e.timer / .8));
       if (e.timer <= 0) {
         e.intangible = true; e.sprite.setAlpha(0); e.glowImg.setAlpha(0);
-        e.diveX = Phaser.Math.Clamp(p.x, room.left + 30, room.right - 30);
+        e.diveX = Phaser.Math.Clamp(p.x, minX, maxX);   // 화룡점정 낙하 지점: 예고 기둥이 뜨는 순간 고정 (예고는 최소 회피 보장 간격 0.5초 이상 — diveWait)
         const gy = floorY(e, e.diveX), w = ph2 ? .7 : .9;
         e.zone({ x: e.diveX - 26, y: room.top, w: 52, h: gy - room.top, delay: w, life: w + .25, dmg: e.dmg * 1.5, type: 'dragon', draw: 'pillar', color: col });
         e.state = 'diveWait'; e.timer = w; Sfx.play('boss');
@@ -1758,7 +1865,7 @@ BOSS_AI.rayquaza = function (e, dt, p) {
         const gy = floorY(e, e.x);
         sc.fx.shake(.025, 600); Sfx.play('boom'); sc.cameras.main.flash(200, 200, 255, 220, true);
         sc.fx.ring(e.x, gy - 4, 120, col, 500); sc.fx.ring(e.x, gy - 4, 70, 0xffffff, 300);
-        for (const s of [-1, 1]) for (let k = 0; k < 2; k++) e.shot({ x: e.x + s * 20, y: gy - 8, vx: s * (260 + k * 90), vy: 0, r: 8, kind: 'wave', type: 'dragon', color: col, life: 1.4 });
+        for (const s of [-1, 1]) for (let k = 0; k < 2; k++) e.shot({ x: e.x + s * 20, y: gy - 7, vx: s * (260 + k * 90), vy: 0, r: 7, kind: 'wave', type: 'dragon', color: col, life: 1.4 });   // 바닥을 기는 낮은 충격파 (높이 14px — 1단 점프로도 넘는다)
         sc.fx.burst(e.x, gy - 2, [0x8a7a62, 0x4a4036, col, 0xffffff], 40, 260, { angle: -Math.PI / 2, spread: 1.4, up: 200, grav: 700, bounce: true, size: 2 });
         e.state = 'recover'; e.timer = 1;
       }
@@ -1902,7 +2009,7 @@ BOSS_AI.garchomp = function (e, dt, p) {
       b.setVelocityX(0);
       const box = { x: e.face > 0 ? e.x : e.x - 64, y: e.y - 30, w: 64, h: 52 };
       sc.fx.slash(e.x + e.face * 28, e.y - 4, 34, e.face, col, { thick: 10, flipV: e.swipes === 1 });
-      if (overlap(box, p.bounds())) p.takeHit(e.dmg * 1.1, 'dragon', e.x, {});
+      if (overlap(box, p.bounds())) p.takeHit(e.dmg * 1.1, 'dragon', e.x, { jdSrc: e });
       Sfx.play('swing');
       e.swipes--;
       if (e.swipes > 0) { e.state = 'clawGap'; e.timer = .2; } else { e.state = 'recover'; e.timer = .55; }
@@ -2188,11 +2295,11 @@ BOSS_AI.giratina = function (e, dt, p) {
       g.fillStyle(0x12020a, .85); g.fillEllipse(e.puddleX, gy - 1, 56, 10);
       g.fillStyle(0x6a0a2a, .6); g.fillEllipse(e.puddleX, gy - 1, 34, 6);
       if (Math.random() < .5) sc.fx.burst(e.puddleX + (Math.random() - .5) * 40, gy - 2, [0x12061c, 0x6a0a2a, col], 1, 30, { angle: -Math.PI / 2, spread: .6, up: 30, grav: -20, bounce: false, life: .5, size: 2 });
-      if (e.timer <= 0) {   // 플레이어 등 뒤 자리에 붉은 금
+      if (e.timer <= 0) {   // 플레이어 등 뒤 자리에 붉은 차원 균열 — 이 순간 덮칠 방향을 고정한다 (추적 멈춤 · 대시 · 이동으로 빠져나갈 수 있다)
         const bx = Phaser.Math.Clamp(p.x - (p.face || 1) * 70, room.left + 30, room.right - 30), by = Phaser.Math.Clamp(p.y - 10, room.top + 24, room.bottom - 20);
-        e.riseAt = { x: bx, y: by };
-        sc.fx.glow(bx, by, 30, col, 320, .9); sc.fx.ring(bx, by, 24, col, 320);
-        g.clear(); e.state = 'rise'; e.timer = .32; Sfx.play('ghost');
+        e.riseAt = { x: bx, y: by }; e.riseAim = { x: p.x, y: p.y };
+        g.clear(); e.state = 'rise'; e.timer = GIRA_RISE; Sfx.play('ghost');
+        giraRift(e, bx, by, e.riseAim);
       }
       break;
     }
@@ -2200,7 +2307,7 @@ BOSS_AI.giratina = function (e, dt, p) {
       e.timer -= dt;
       if (e.timer <= 0) {
         appear(e, p, e.riseAt);
-        const a = Math.atan2(p.y - e.y, p.x - e.x);
+        const aim = e.riseAim || p, a = Math.atan2(aim.y - e.y, aim.x - e.x);   // 예고 때 고정한 자리로 (지금 플레이어 자리를 다시 겨누지 않는다)
         b.setVelocity(Math.cos(a) * 460, Math.sin(a) * 460);
         e.state = 'lunge'; e.timer = .45; sc.fx.sonicBoom(e.x, e.y, Math.sign(Math.cos(a)) || 1, 1.8);
       }
@@ -2220,6 +2327,22 @@ BOSS_AI.giratina = function (e, dt, p) {
       break;
   }
 };
+// 🌀 섀도다이브 출현 예고: 균열이 벌어지는 GIRA_RISE 초 동안 그 자리 · 덮칠 방향(깜빡이는 선)을 보여 준다 (예전 0.32초 · 매우 어려움 + 광폭화면 0.21초)
+const GIRA_RISE = .42;
+function giraRift(e, x, y, aim) {
+  const sc = e.scene, col = e.def.color || 0xff3a5a, T = GIRA_RISE, g = own(e, sc.add.graphics().setDepth(33).setBlendMode(ADDB));
+  warnLine(e, x, y, x + (aim.x - x) * 1.6, y + (aim.y - y) * 1.6, T, col);
+  e.zone({ x: 0, y: 0, w: 0, h: 0, dmg: 0, life: T, draw: 'none',
+    onUpdate: z => {
+      const k = Math.min(1, z.t / T), w = 6 + k * 18, h = 34 + k * 22;
+      g.clear();
+      g.fillStyle(0x12020a, .85); g.fillEllipse(x, y, w * 1.6, h);          // 그림자 균열
+      g.lineStyle(2, col, .5 + .5 * Math.abs(Math.sin(z.t * 30))); g.strokeEllipse(x, y, w * 1.6, h);
+      g.lineStyle(1, 0xffffff, .7); g.lineBetween(x, y - h / 2, x, y + h / 2);
+    },
+    dispose: () => g.destroy() });
+  sc.fx.glow(x, y, 34, col, T * 1000, .9); sc.fx.ring(x, y, 26, col, T * 1000);
+}
 function giraSink(e) {
   const sc = e.scene;
   sc.fx.burst(e.x, e.y, [0x12061c, 0x6a0a2a, 0xff3a5a], 18, 90, { up: 10, grav: -30, bounce: false, life: .6, size: 2 });
