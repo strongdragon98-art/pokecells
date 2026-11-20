@@ -5,6 +5,7 @@ import LobbyScene from './scenes/LobbyScene.js';
 import CutsceneScene from './scenes/CutsceneScene.js';
 import GameScene from './scenes/GameScene.js';
 import UIScene from './scenes/UIScene.js';
+import EndingScene from './scenes/EndingScene.js';
 import { GAME_W, GAME_H, RES } from './config.js';
 import { setupMobile } from './systems/Mobile.js';
 import { installKeyFix } from './systems/KeyFix.js';
@@ -41,7 +42,7 @@ export async function startGame() {
     physics: { default: 'arcade', arcade: { gravity: { y: 900 }, fps: 60, debug: false, tileBias: 20 } },
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },   // 16:9 를 화면(안전 영역)에 꽉 맞추고 가운데로 — 회전·주소창 변화는 setupMobile 이 즉시 재계산
     input: { keyboard: true, mouse: true, touch: true, activePointers: 4 },   // 멀티터치: 이동하면서 점프·스킬·대시 동시에
-    scene: [BootScene, TitleScene, LobbyScene, CutsceneScene, GameScene, UIScene]
+    scene: [BootScene, TitleScene, LobbyScene, CutsceneScene, GameScene, UIScene, EndingScene]
   });
   window.__game = game;   // 개발 중 콘솔 확인용
   installKeyFix(game);    // 한글 입력 모드에서도 키가 먹히게 (systems/KeyFix.js)

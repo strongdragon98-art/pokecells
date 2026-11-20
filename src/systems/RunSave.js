@@ -6,6 +6,7 @@
 import { computeMods, MAX_EQUIP } from '../data/items.js';
 import { boostTotals } from '../data/tm.js';
 import { START_MONEY } from '../data/shop.js';
+import { Save } from './Save.js';
 
 const KEY = 'pokecells.run.v2';   // v2: 튜토리얼 기술머신·엘리트 굴·회복기 보장으로 지형 생성이 바뀌었다 (v1 저장은 다른 지형이 되어 쓰지 않는다)
 
@@ -97,7 +98,8 @@ export function snapshotPlayer(p) {
     money: p.money, orbs: { ...(p.orbs || {}) }, nuggets: { ...p.nuggets }, uses: { ...p.uses }, shopLog: JSON.parse(JSON.stringify(p.shopLog || {})), shopStats: { ...p.shopStats },   // 포켓샵 경제 (data/shop.js)
     keyStone: !!p.keyStone, zRing: !!p.zRing, megaStones: [...p.stones], crystals: { ...p.crystals }, quests: { ...(p.quests || {}) },   // 메가스톤 · Z크리스탈 (data/gear.js) · 이야기 진행
     members: p.members.map(memberSnap),
-    stored: Object.values(p.stored || {}).map(memberSnap)   // 포켓몬센터 보관함에 맡긴 포켓몬 (진화 · 아이템 · 기술 그대로)
+    stored: Object.values(p.stored || {}).map(memberSnap),   // 포켓몬센터 보관함에 맡긴 포켓몬 (진화 · 아이템 · 기술 그대로)
+    essence: p.essence ? { id: p.essence.id, lv: p.essence.lv } : null   // 💠 2회차 보스 정수 (data/essence.js)
   };
 }
 // 포켓몬 한 마리의 진행 (진화 단계 · 최고 단계 · 경험치 · 장착 아이템 · 기술머신 특성 · 기술 · 카드 등급)
@@ -131,6 +133,7 @@ function applyMember(m, d) {
 
 // 새로 만든 Player(저장된 파티 키로 만든 것)에 저장해 둔 진행을 덮어쓴다
 export function restorePlayer(p, s) {
+  p.essence = s.essence ? { id: s.essence.id, lv: Math.max(s.essence.lv || 0, Save.essenceLv(s.essence.id)) } : null;   // 💠 정수 강화는 영구 — 저장 뒤에 강화됐으면 그 단계로
   s.members.forEach((d, i) => {
     const m = p.members[i];
     if (!m || m.key !== d.key) return;

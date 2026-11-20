@@ -11,7 +11,7 @@ import { css, shade } from '../systems/Textures.js';
 import { drawDetailedPixelTree, drawVine } from '../systems/TreeArt.js';
 import { Sfx } from '../systems/Audio.js';
 import { roomAt, roomAtCell } from './World.js';
-import { makeTrainerArt } from './Trainer.js';
+import { makeTrainerArt, TRAINERS } from './Trainer.js';
 import { windLiftArt } from '../systems/ArenaBackdrop.js';
 
 const ADD = Phaser.BlendModes.ADD;
@@ -2470,7 +2470,9 @@ export class Props {
     makeTrainerArt(s, 'red');
     const halo = this.add(s.add.image(x, Y - 90, 'glow').setBlendMode(ADD).setTint(0xff1a3a).setScale(4, 6).setAlpha(.3).setDepth(3.48));
     const back = this.add(s.add.image(x, Y + 2, redCrystalArt(s, false)).setOrigin(.5, 1).setDepth(3.5));
-    const red = this.add(s.add.image(x, feet, 'trainer:red:sleep').setOrigin(.5, 1).setScale(2).setDepth(3.52).setTint(0xb8b0c8).setAlpha(.92));
+    const RD = TRAINERS.red, red = this.add(s.add.image(x, feet, 'trainer:red:sleep').setOrigin(.5, 1).setScale(RD.scale).setDepth(3.52).setTint(0xb8b0c8).setAlpha(.92));
+    const at = (px, py) => ({ x: x + (px - RD.w / 2) * RD.scale, y: feet - (RD.h - py) * RD.scale });   // 도트 좌표 → 월드 (손목 · 발목에 사슬)
+    const wl = at(...RD.hand), wr = at(...RD.hand2), al = at(15, 70), ar = at(24, 70);
     const chains = this.add(s.add.graphics().setDepth(3.54));
     // 사슬: 결정 안쪽 모서리 → 두 손목 · 두 발목 (고리 무늬)
     const link = (x0, y0, x1, y1) => {
@@ -2478,8 +2480,8 @@ export class Props {
       chains.lineStyle(2, 0x2a2026, 1); chains.lineBetween(x0, y0, x1, y1);
       for (let k = 0; k <= n; k++) { const t = k / n, cx = x0 + (x1 - x0) * t, cy = y0 + (y1 - y0) * t; chains.fillStyle(k % 2 ? 0x6a5a64 : 0x4a3e46, 1); chains.fillRect(cx - 1.5, cy - 1.5, 3, 3); }
     };
-    link(x - 40, feet - 110, x - 16, feet - 42); link(x + 40, feet - 110, x + 14, feet - 38);
-    link(x - 38, feet + 10, x - 8, feet - 4); link(x + 38, feet + 10, x + 8, feet - 4);
+    link(x - 40, feet - 110, wl.x, wl.y); link(x + 40, feet - 110, wr.x, wr.y);
+    link(x - 38, feet + 10, al.x, al.y); link(x + 38, feet + 10, ar.x, ar.y);
     const front = this.add(s.add.image(x, Y + 2, redCrystalArt(s, true)).setOrigin(.5, 1).setDepth(3.56));
     const core = this.add(s.add.image(x, feet - 50, 'glow').setBlendMode(ADD).setTint(0xff5a7a).setScale(1.4, 2.2).setAlpha(.3).setDepth(3.57));
     this.pulses.push({ o: halo, base: .26, amp: .1, sp: 1.1 }, { o: core, base: .26, amp: .12, sp: 1.1 });

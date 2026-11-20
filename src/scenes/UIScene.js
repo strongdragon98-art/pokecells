@@ -34,6 +34,7 @@ import { installShopMenu } from './ShopMenu.js';
 import { installCenterMenu } from './CenterMenu.js';
 import { installMegaPicker } from './MegaPicker.js';
 import { multiMega } from '../data/megaForms.js';
+import { ESSENCES } from '../data/essence.js';
 import { npcArt } from '../game/Npc.js';
 import { bossHome, TEST_LANDMARKS, landmarkCi } from '../game/TestRoom.js';
 // 🃏 카드 샌드박스 적용 단계 (0 명함 · 1~3 강화 — data/tm.js applyCard 를 그 단계까지 거듭한다)
@@ -143,6 +144,7 @@ export default class UIScene extends Phaser.Scene {
     uiCamera(this);
     this.gs = this.scene.get('Game');
     this.leaving = false; this.overlayMode = null; this.showItemTip = false; this.menu = null;   // 씬 인스턴스는 재사용되므로 매 판 초기화
+    this.dbgBar = null; this.dbgDiffT = null; this.megaUI = null;   // 테스트룸 → 본편으로 넘어와도 지난 판의 테스트 바 · 메가 창 참조가 남지 않게 (지워진 글자를 고치다 오류)
     this.g = this.add.graphics();                       // 꼬리 선·체력 고리·막대·알림 띠
     this.gMid = this.add.graphics().setDepth(2);        // 그릇 속 액체·교대 쿨타임
     this.gTop = this.add.graphics().setDepth(2.5);      // 스킬 쿨타임
@@ -227,6 +229,7 @@ export default class UIScene extends Phaser.Scene {
     this.gDiff = this.add.graphics().setDepth(3);
     this.tDiff = hkText(this, 19, 134, '', 7.5, '#ffb070', { bold: true }).setDepth(3.1).setInteractive({ useHandCursor: true });
     this.tDiff.on('pointerdown', () => { const gs = this.gs; if (gs && gs.player && !gs.overlay && !gs.over) { Sfx.play('select'); gs.togglePause(); } });
+    this.tEss = hkText(this, 19, 150, '', 7.5, '#d8b0ff', { bold: true }).setDepth(3.1);   // 💠 2회차 보스 정수 (data/essence.js)
     this.tMastery = hkText(this, B.x, B.y + 4, '', 8, '#ffe8a8', { origin: [.5, 0] }).setDepth(3);
     this.tSideRoom = hkText(this, B.x, B.y + 21, '', 7, '#ff9ab8', { origin: [.5, 0] }).setDepth(3).setVisible(false);   // 지금 선 샛길 구역: 남은 침식 포켓몬 · 정화 완료
     this.tOrbs = hkText(this, B.x, B.y + 21, '', 8, '#ffe8c0', { origin: [.5, 0] }).setDepth(3).setVisible(false);   // 성도: 성수의 구슬 현황 (drawOrbs)
@@ -558,13 +561,21 @@ export default class UIScene extends Phaser.Scene {
   drawDiffBadge(delta) {
     const d = diff(), t = this.tDiff, g = this.gDiff, show = !!(this.gs && this.gs.player);
     this.diffPulse = Math.max(0, (this.diffPulse || 0) - delta / 900);
-    g.clear(); t.setVisible(show);
+    g.clear(); t.setVisible(show); if (this.tEss) this.tEss.setVisible(false);
     if (!show) return;
     t.setText(diffBadge(d)).setColor(d.hex);
     const w = t.width + 10, x = t.x - 5, y = t.y - 2, k = this.diffPulse;
     g.fillStyle(0x07050c, .62); g.fillRoundedRect(x, y, w, 13, 5);
     g.lineStyle(1, d.color, .45 + .5 * k); g.strokeRoundedRect(x, y, w, 13, 5);
     if (k > 0) { g.fillStyle(d.color, .25 * k); g.fillRoundedRect(x - 2, y - 2, w + 4, 17, 6); }
+    // 💠 2회차 보스 정수 배지: 난이도 배지 아래 (강화 단계 별)
+    const ess = this.gs.player.essence, E = ess && ESSENCES[ess.id], te = this.tEss;
+    te.setVisible(!!E);
+    if (!E) return;
+    te.setText(`${E.icon} ${E.name.replace(/의 /, ' ').replace(/ 정수$/, '')} +${ess.lv}${'★'.repeat(ess.lv)}`).setColor(Phaser.Display.Color.ValueToColor(E.color).lighten(25).rgba);
+    const ew = te.width + 10;
+    g.fillStyle(0x07050c, .62); g.fillRoundedRect(te.x - 5, te.y - 2, ew, 13, 5);
+    g.lineStyle(1, E.color, .55); g.strokeRoundedRect(te.x - 5, te.y - 2, ew, 13, 5);
   }
   // 일시정지 메뉴의 난이도 줄: [◀] 🔥 어려움 (HARD) · 기준 [▶] + 한 줄 요약
   drawPauseDiff() {

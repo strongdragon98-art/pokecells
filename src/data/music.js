@@ -99,6 +99,26 @@ export const TRACKS = {
     drums: { k: 'x.x...x.x.x...x.', s: '....x.......x...', h: 'x.xxx.xxx.xxx.xx' }
   },
   // 하나 · 천계 필드 — 천계의 피리 공명로, 맑고 경건하게 (하프처럼 오르내리는 분산화음)
+  // 🏆 전당등록 (scenes/EndingScene.js) — 자작 팡파르: 밝은 다장조 · 옥타브 베이스 · 스네어로 행진하듯
+  halloffame: {
+    bpm: 108, bass: 'octave', arp: 'stab', inst: { lead: 'p50', arp: 'p25' },
+    chords: ['C', 'G', 'Am', 'F', 'C', 'G', 'F', 'G', 'C', 'Em', 'F', 'G', 'Am', 'F', 'G', 'C'],
+    lead: 'G5 - G5 C6 - - E6 - | D6 - - - B5 - G5 - | A5 - C6 - E6 - - - | F5 - A5 - C6 - A5 - |' +
+          'G5 - C6 - E6 - G6 - | F6 - E6 - D6 - B5 - | C6 - A5 - F5 - A5 - | B5 - - - D6 - - - |' +
+          'E6 - - - G6 - E6 - | D6 - B5 - G5 - B5 - | C6 - - - A5 - F5 - | G5 - B5 - D6 - F6 - |' +
+          'E6 - C6 - A5 - C6 - | F6 - E6 - C6 - A5 - | B5 - D6 - G6 - F6 - | E6 - - - C6 - - -',
+    drums: { k: 'x...x...x...x...', s: '....x.......x...', h: 'x.x.x.x.x.x.x.x.' }
+  },
+  // 🎬 엔딩 크레딧 — 자작곡: 느린 바장조 · 삼각파 선율 · 잔잔한 펼침화음
+  credits: {
+    bpm: 70, bass: 'drone', arp: 'updown8', inst: { lead: 'tri', arp: 'p12' },
+    chords: ['F', 'C', 'Dm', 'Bb', 'F', 'C', 'Bb', 'C', 'Dm', 'Am', 'Bb', 'F', 'Gm', 'C', 'F', 'C'],
+    lead: 'A5 - - - C6 - A5 - | G5 - - - E5 - - - | F5 - A5 - D6 - - - | D6 - C6 - Bb5 - - - |' +
+          'A5 - - - F5 - A5 - | G5 - - - C6 - - - | D6 - - - Bb5 - G5 - | C6 - - - - - . . |' +
+          'F6 - - - E6 - D6 - | C6 - - - E6 - - - | D6 - - - F6 - D6 - | C6 - - - A5 - - - |' +
+          'Bb5 - - - D6 - G5 - | C6 - - - E6 - G6 - | F6 - - - C6 - A5 - | G5 - - - - - . .',
+    drums: { k: 'x...............', h: '........x.......' }
+  },
   celestial: {
     bpm: 76, bass: 'drone', arp: 'updown8', inst: { lead: 'tri', arp: 'p12' },
     chords: ['D', 'A', 'Bm', 'G', 'D', 'Em7', 'G', 'A', 'G', 'A', 'F#m', 'Bm', 'Em7', 'A', 'G', 'A7'],

@@ -37,6 +37,7 @@ import { Cores } from './Cores.js';
 import { usesStone, stoneName, zTypeOf, crystalName } from '../data/gear.js';
 import { RES } from '../config.js';
 import { megaForm, megaStyle, multiMega } from '../data/megaForms.js';
+import { essenceMods } from '../data/essence.js';
 
 const SWAP_CD = 3;
 // 진화 단계별 보이는 크기 (1단 모습 기준): 2단 ×1.32 · 3단 ×1.72 · 메가는 3단의 ×1.1 (거다이맥스처럼 부풀지 않게)
@@ -510,7 +511,12 @@ export class Player extends Actor {
   }
 
   // 장착 아이템 + 특성 카드가 바뀌면 보정치를 다시 계산 (최대 체력 배율도 바로 반영)
-  refreshMods(m) { m.mods = computeMods(m.items, m.perks, m.vit); this.recalcHp(0, m); }
+  refreshMods(m) { m.mods = essenceMods(computeMods(m.items, m.perks, m.vit), this.essence); this.recalcHp(0, m); }   // 💠 2회차 보스 정수 (data/essence.js — 파티 공용)
+  // 💠 2회차 보스 정수를 쥐었다 · 강화됐다: 파티 · 보관함 모두 다시 계산
+  setEssence(ess) {
+    this.essence = ess ? { id: ess.id, lv: ess.lv || 0 } : null;
+    for (const m of [...this.members, ...Object.values(this.stored || {})]) this.refreshMods(m);
+  }
 
   // ---------------- 가방 소모품 (포켓샵에서 산 회복약 · 기력의조각 · 영양제) ----------------
   //  반환: { ok, msg } — 못 쓰면 ok 거짓과 까닭

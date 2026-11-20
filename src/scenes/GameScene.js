@@ -53,7 +53,7 @@ import { HoohAltar, BEAST_ORBS, ORB_KEYS, orbTexture, orbCount } from '../game/H
 import { Player } from '../game/Player.js';
 import { Enemy } from '../game/Enemy.js';
 import { Boss } from '../game/Boss.js';
-import { Trainer, makeTrainerArt } from '../game/Trainer.js';
+import { Trainer, makeTrainerArt, TRAINERS } from '../game/Trainer.js';
 import { Npcs } from '../game/Npc.js';
 import { Wanderer } from '../game/Wanderer.js';
 import { CLV_COLOR } from '../game/Enemy.js';
@@ -71,6 +71,7 @@ import { Perf } from '../systems/Perf.js';
 import { Sfx } from '../systems/Audio.js';
 import { megaForm } from '../data/megaForms.js';
 import { Music } from '../systems/Music.js';
+import { ESSENCES, ESSENCE_OF_BOSS, ESSENCE_MAX, essenceNext } from '../data/essence.js';
 import { Settings, keyLabel } from '../systems/Settings.js';
 import { Save } from '../systems/Save.js';
 import { RunSave, seeded, newSeed, snapshotWorld, applyWorld, snapshotPlayer, restorePlayer } from '../systems/RunSave.js';
@@ -288,6 +289,7 @@ export default class GameScene extends Phaser.Scene {
     this.webgl = this.renderer.type === Phaser.WEBGL;
     this.enemies = []; this.pickups = []; this.chests = []; this.worldObjs = []; this.wanderers = [];
     this.inp = {}; this.paused = false; this.transitioning = false; this.over = false; this.cleaned = false;
+    this.endingActive = false; this.endingGuard = null; this.critTalk = null; this.blizzard = null; this.essenceAt = null;   // 씬 인스턴스는 재사용된다 — 지난 판의 엔딩 · 대화 감시 · 눈보라 상태를 비운다
     this.dynLights = 0;
     this.keys = this.input.keyboard.addKeys('ONE,TWO,THREE,ESC,P,F2,F3,F4,N' + (this.test ? ',T,F1' : ''));   // 바꿀 수 없는 키 (나머지는 설정 → 키 설정, bindKeys) · 테스트룸은 T 패널 · F1 카드 샌드박스
     this.bindKeys();
@@ -317,6 +319,16 @@ export default class GameScene extends Phaser.Scene {
       if (rs.player && rs.player.quests && rs.player.quests.tut == null) this.player.quests.tut = TUT_DONE;   // 예전 진행 저장: 강제 실습 튜토리얼은 이미 지난 것으로
       if (rs.drops && rs.drops.ci === this.stageIdx) for (const d of rs.drops.list || []) this.spawnPickup(d.kind, d.x, d.y - 4, d.id, true);   // 줍지 않고 저장했던 드랍을 그 자리에
     }
+    if (!rs && !this.test) {   // 💠 2회차(New Game+): 로비에서 고른 보스 정수 (systems/EssencePicker.js → registry 'ngStart')
+      const ng = this.registry.get('ngStart');
+      this.registry.set('ngStart', null);
+      if (ng && ESSENCES[ng.essence]) {
+        this.player.setEssence({ id: ng.essence, lv: Save.essenceLv(ng.essence) });
+        const E = ESSENCES[ng.essence], lv = this.player.essence.lv;
+        this.time.delayedCall(2200, () => { if (this.player && !this.over) this.events.emit('banner', `💠 2회차 — ${E.name} +${lv}`, lv ? `강화 ${lv}단계 · 보스를 정화할 때마다 혼을 흡수해 강해진다` : '미완성 파편 (수치 30%) · 지방 최종 보스를 정화할 때마다 +1 (최대 +3)'); });
+      }
+    }
+    if (rs) { /* 이어하기: 정수는 restorePlayer 가 */ }
     else if (!this.test && Save.data.bondFlame) this.time.delayedCall(1500, () => {   // 진 엔딩을 본 뒤의 새 여정: 레드의 유대의 불꽃을 처음부터 지닌다
       if (!this.player || this.over) return;
       this.player.addItem('core_red_bond');
@@ -1021,7 +1033,8 @@ export default class GameScene extends Phaser.Scene {
   // ---------------- 지도(M) · 가방(I): 게임을 멈추고 UI 가 그린다 ----------------
   toggleOverlay(kind) {
     if (this.over || this.transitioning) return;
-    if ((this.overlay === 'tm' || this.overlay === 'upgrade' || this.overlay === 'taxi' || this.overlay === 'debug' || this.overlay === 'test' || this.overlay === 'shop' || this.overlay === 'mega') && kind !== this.overlay) return;   // 🧬 메가 폼 선택 창도 확정 · 취소 전엔 다른 창으로 넘어가지 않는다   // 카드·공중날기·디버그·테스트 창이 열려 있으면 다른 창으로 넘어가지 않는다
+    if ((this.overlay === 'tm' || this.overlay === 'upgrade' || this.overlay === 'taxi' || this.overlay === 'debug' || this.overlay === 'test' || this.overlay === 'shop' || this.overlay === 'mega' || this.overlay === 'talk' || this.overlay === 'join') && kind !== this.overlay) return;   // 🧬 메가 폼 선택 창도 확정 · 취소 전엔 다른 창으로 넘어가지 않는다
+    // 🛡️ 대화창(talk) · 정화 쇼케이스(join)도: 예전엔 대화 중 M · I · O 를 누르면 지도 · 가방으로 '바로 전환'되며 대화 닫힘(onEnd)이 영영 불리지 않아 — 레드의 대화가 끊기면 진 최종전 · 엔딩으로 넘어가지 못했다 (쇼케이스는 게임 타이머가 멈춘 채 남았다)   // 카드·공중날기·디버그·테스트 창이 열려 있으면 다른 창으로 넘어가지 않는다
     if (this.overlay === kind && kind === 'talk') this.talkClosedAt = this.time.now;
     if (this.overlay === kind) {
       this.overlay = null; this.setFrozen(false); this.consumeInput(); this.player.zBuf = 0; this.events.emit('overlay', null);
@@ -1414,7 +1427,24 @@ export default class GameScene extends Phaser.Scene {
     if (this.over) return;
     if (this.overlay || this.paused || this.transitioning) { this.time.delayedCall(400, () => this.openStory(talk)); return; }
     this.talk = Object.assign({ page: 0, id: 'story' }, talk, { lines: talk.lines.flatMap(l => pagesOf(l)) });
+    if (talk.critical && talk.onEnd) {   // 꼭 이어져야 하는 이야기 (레드 · 진 엔딩): onEnd 는 한 번만 · 어떤 식으로 닫혀도 DialogWatchdog 가 대신 부른다
+      const f = talk.onEnd; let fired = false;
+      this.talk.onEnd = why => { if (fired) return; fired = true; if (this.critTalk && this.critTalk.talk === T) this.critTalk = null; f(why); };
+      const T = this.talk;
+      this.critTalk = { talk: T, fire: this.talk.onEnd, seen: false, gone: 0, wait: 0 };
+    }
     this.toggleOverlay('talk');
+  }
+  // 🛡️ DialogWatchdog: 꼭 이어져야 하는 대화(critical)가 열렸다가 — 마지막 쪽 · Esc · 연타 · 창 전환 · 장면 정리 등 어떤 식으로든 — 닫혔는데
+  //  onEnd(대화창 닫힘 콜백)가 0.25초 안에 불리지 않았으면 대신 부른다 · 열리지도 못하고 20초가 지나도 부른다 (update 맨 앞 — 일시정지 · 창이 떠 있어도 돈다)
+  dialogWatchdog() {
+    const c = this.critTalk;
+    if (!c) return;
+    if (this.overlay === 'talk' && this.talk === c.talk) { c.seen = true; c.gone = 0; return; }
+    if (!c.seen) { if ((c.wait += 1) < 1200) return; }
+    else if ((c.gone += 1) < 15) return;
+    this.critTalk = null;
+    c.fire('watchdog');
   }
 
   // ---------------- 대화: 마을 사람 · 오박사 (data/npcs.js) ----------------
@@ -1665,7 +1695,10 @@ export default class GameScene extends Phaser.Scene {
     if (!this.player || !this.layers || !this.layers.length) return;
     const dt = Math.min(delta, 50) / 1000;
     this.readInput();
+    this.dialogWatchdog();   // 🛡️ 이야기 대화 닫힘 감시 (일시정지 · 창이 떠 있어도)
+    if (this.endingGuard && !this.endingActive && this.game.loop.time - this.endingGuard > 1500) this.triggerEndingCinematic('guard');
     if (this.paused || this.over) return;
+    if (this.blizzard) this.updateBlizzard(dt);   // ❄️ 레드의 눈보라
     if (this.fx.updateHitStop()) return;
     if (this.zFreezeT > 0) {   // Z파워 공명: 적 · 투사체 · 물리가 멈춘다 (연출 트윈 · 파티클은 그대로)
       this.zFreezeT -= dt;
@@ -2907,6 +2940,7 @@ export default class GameScene extends Phaser.Scene {
     const first = BOSSES[list[0]], tk = first.trainer;
     if (tk) {   // 세뇌된 트레이너: 단상에 서서 한마디 → 몬스터볼을 던져 첫 포켓몬을 내보낸다
       this.trainer = new Trainer(this, tk, room, room.cx + 100);   // 아레나 가운데 조금 오른쪽 단상 (왼쪽 입구에서 들어서자마자 화면에 보이게)
+      if (tk === 'red') this.redBlizzard(room);   // ❄️ 레드가 나타나면 소리 없는 눈보라
       this.trainer.say(TRAINER_LINES[tk].intro);
       const sx = room.cx;
       this.time.delayedCall(1100, () => { if (this.arenaRoom === room && this.arenaRun === run && this.trainer) this.trainer.throwBall(sx, this.floorAt(sx, room) - 20, () => this.beginBoss(list[0], room, sx)); });
@@ -3235,6 +3269,8 @@ export default class GameScene extends Phaser.Scene {
     const gate = this.gateOf(room);
     if (gate && !gate.late) this.time.delayedCall(1500, here(() => this.chapterGate(room, true)));   // 🌀 조력자 · 다음 지방 포털 (100% · 자동 이동은 없다)
     Save.data.bestStage = Math.max(Save.data.bestStage, this.stageIdx + 1); Save.write();
+    if (ESSENCE_OF_BOSS[boss.bossKey]) Save.markBoss(boss.bossKey);   // 💠 정수를 고를 수 있는 보스 (data/essence.js)
+    if (final || ESSENCE_OF_BOSS[boss.bossKey]) this.time.delayedCall(2400, here(() => this.absorbEssence(boss)));   // 💠 2회차: 보스의 혼을 흡수해 정수 강화
     if (final) {   // 지방 최종 보스 정화 = 그 지방 클리어 → 클리어로 합류하는 특수 포켓몬 (가디안·마기라스·망나뇽)
       Save.data.cleared = Math.max(Save.data.cleared || 0, this.stageIdx + 1);
       if (!last) this.time.delayedCall(2600, here(() => this.purifyRegion()));   // 지방 전체의 침식이 걷힌다 · 방이 평화롭고 밝게
@@ -3381,7 +3417,8 @@ export default class GameScene extends Phaser.Scene {
     this.cinema = true; p.inv = 999; p.b.setVelocityX(0); Music.stop();
     this.combat.clearAll();   // 남은 탄 · 장판(무한다이맥스의 붉은 하늘 등)을 걷는다
     makeTrainerArt(this, 'red');
-    const red = core ? core.red : this.add.image(cx, gy - 22, 'trainer:red:sleep').setOrigin(.5, 1).setScale(2).setDepth(3.52).setTint(0xb8b0c8);
+    const RD = TRAINERS.red, RH = RD.h * RD.scale;   // 레드 도트 높이 (40×76 · 1배)
+    const red = core ? core.red : this.add.image(cx, gy - 22, 'trainer:red:sleep').setOrigin(.5, 1).setScale(RD.scale).setDepth(3.52).setTint(0xb8b0c8);
     if (!core) this.worldObjs.push(red);
     this.redAlly = { img: red, aura: [] };
     const ghosts = [];
@@ -3398,8 +3435,8 @@ export default class GameScene extends Phaser.Scene {
       this.fx.shatter(cx, my, 90, 170, { n: 60, speed: 260, up: 140, scale: 2, depth: 46 });
       this.fx.burst(cx, my, [0xff2a4a, 0xffa0b8, 0xffffff], 50, 260, { glow: true, life: .9 });
       cam.flash(300, 255, 120, 150, true); this.fx.shake(.024, 600); shockwave(this, cx, my, .04, 900); Sfx.play('shatter'); Sfx.play('boom');
-      red.setOrigin(.5, .5).setPosition(red.x, red.y - 48);
-      this.tweens.add({ targets: red, y: gy - 14, angle: -90, duration: 650, ease: 'Bounce.easeOut' });   // 쓰러져 미동도 없다 (누우면 몸통 옆선이 도트 가운데에서 10px — 몸통이 바닥에 닿게)
+      red.setOrigin(.5, .5).setPosition(red.x, red.y - RH / 2);
+      this.tweens.add({ targets: red, y: gy - 8 * RD.scale, angle: -90, duration: 650, ease: 'Bounce.easeOut' });   // 누우면 몸통 옆선(도트 가운데에서 8px)이 바닥에   // 쓰러져 미동도 없다 (누우면 몸통 옆선이 도트 가운데에서 10px — 몸통이 바닥에 닿게)
     });
     // ② 유대의 불꽃이 돌아간다
     later(3300, () => {
@@ -3433,16 +3470,16 @@ export default class GameScene extends Phaser.Scene {
       this.fx.burst(red.x, red.y, [BOND_CRIMSON, BOND_GOLD, 0xffffff], 60, 300, { glow: true, up: 100, life: 1 });
       Sfx.play('mega'); Sfx.play('purify_world');
       red.clearTint();
-      this.tweens.add({ targets: red, angle: 0, y: gy - 48, duration: 600, ease: 'Back.easeOut', onComplete: () => red.setOrigin(.5, 1).setPosition(red.x, gy) });
-      this.redAlly.aura = [BOND_CRIMSON, BOND_GOLD].map((c, i) => { const a = this.add.image(red.x, gy - 48, 'glow').setBlendMode(ADD).setTint(c).setScale(i ? 1.6 : 2.4, i ? 2.4 : 3.2).setAlpha(0).setDepth(3.5); this.tweens.add({ targets: a, alpha: i ? .3 : .4, duration: 600 }); this.worldObjs.push(a); return a; });
+      this.tweens.add({ targets: red, angle: 0, y: gy - RH / 2, duration: 600, ease: 'Back.easeOut', onComplete: () => red.setOrigin(.5, 1).setPosition(red.x, gy) });
+      this.redAlly.aura = [BOND_CRIMSON, BOND_GOLD].map((c, i) => { const a = this.add.image(red.x, gy - RH / 2, 'glow').setBlendMode(ADD).setTint(c).setScale(i ? 1.6 : 2.4, i ? 2.4 : 3.2).setAlpha(0).setDepth(3.5); this.tweens.add({ targets: a, alpha: i ? .3 : .4, duration: 600 }); this.worldObjs.push(a); return a; });
     });
-    later(8700, () => { red.setTexture('trainer:red:free'); this.fx.floatText(red.x, gy - 104, '……!', '#ffe8b0', 11); });   // 눈을 뜬다
+    later(8700, () => { red.setTexture('trainer:red:free'); this.fx.floatText(red.x, gy - RH - 8, '……!', '#ffe8b0', 11); });   // 눈을 뜬다
     later(9500, () => { red.setTexture('trainer:red:cap'); Sfx.play('select'); });   // 모자를 고쳐 쓴다
     later(10200, () => red.setTexture('trainer:red:free'));
     // ④ 무한다이노의 몸을 찢고 아비스 네크로즈마가
     later(10600, () => this.abyssEmerge(room, prev));
     // ⑤ 레드의 한마디 → 진 최종전
-    later(13600, () => this.openStory({ name: '레드', look: 'red', lines: [RED_LINE], onEnd: () => { this.cinema = false; done(); } }));
+    later(13600, () => this.openStory({ name: '레드', look: 'red', lines: [RED_LINE], critical: true, onEnd: () => { this.cinema = false; done(); } }));   // critical: 대화를 어떻게 끊어도 진 최종전으로 (DialogWatchdog)
   }
   // 무한다이노의 몸을 찢고 아비스 네크로즈마가 빠져나와 하늘을 가른다 (아직 싸우지 않는다 — 검은 프리즘 실루엣이 찢어진 하늘 앞에 머문다)
   abyssEmerge(room, prev) {
@@ -3509,7 +3546,7 @@ export default class GameScene extends Phaser.Scene {
     if (!od) return;
     const t = this.time.now / 1000, ra = this.redAlly;
     if (ra && od.red && od.red.scene) {
-      ra.aura.forEach((a, i) => { if (a.scene) a.setPosition(od.red.x, od.gy - 48).setAlpha((i ? .26 : .34) + Math.sin(t * 4 + i) * .08); });
+      ra.aura.forEach((a, i) => { if (a.scene) a.setPosition(od.red.x, od.gy - TRAINERS.red.h * TRAINERS.red.scale / 2).setAlpha((i ? .26 : .34) + Math.sin(t * 4 + i) * .08); });
       if (Math.random() < .3) this.fx.burst(od.red.x + (Math.random() - .5) * 30, od.gy - Math.random() * 90, [BOND_GOLD, BOND_CRIMSON], 1, 20, { angle: -Math.PI / 2, spread: .6, up: 40, grav: -30, bounce: false, glow: true, life: .7 });
     }
     const boss = this.boss;
@@ -3521,7 +3558,7 @@ export default class GameScene extends Phaser.Scene {
   // 레드 · 리자몽 · 피카츄 합동 공격: 블래스트번(리자몽에서 보스까지 굵은 화염 줄기 · 보스 자리 화염 폭발) → 볼트태클(피카츄가 번개를 두르고 보스에게 돌진했다 돌아온다)
   jointAttack(od, boss) {
     const p = this.player, ADD = Phaser.BlendModes.ADD, alive = () => boss.alive && this.boss === boss && this.combat;
-    if (od.red && od.red.scene) this.fx.floatText(od.red.x, od.gy - 104, '리자몽, 블래스트번! 피카츄, 볼트태클!', '#ffe8b0', 9);
+    if (od.red && od.red.scene) this.fx.floatText(od.red.x, od.gy - TRAINERS.red.h * TRAINERS.red.scale - 8, '리자몽, 블래스트번! 피카츄, 볼트태클!', '#ffe8b0', 9);
     Sfx.play('select');
     const zx = od.zard && od.zard.scene ? od.zard.x : od.rx + 46, zy = od.zard && od.zard.scene ? od.zard.y - 16 : od.gy - 70;
     this.time.delayedCall(250, () => {
@@ -3558,6 +3595,98 @@ export default class GameScene extends Phaser.Scene {
     if (od) for (const s of [od.zard, od.pika]) if (s && s.scene) { this.tweens.killTweensOf(s); this.tweens.add({ targets: s, alpha: 0, duration: 600, onComplete: () => s.destroy() }); }
     if (!keepRed && this.redAlly) { for (const o of [this.redAlly.img, ...this.redAlly.aura]) if (o && o.scene) { this.tweens.killTweensOf(o); o.destroy(); } this.redAlly = null; }
   }
+  // ❄️ 레드의 눈보라: 은빛산 정상의 바람을 몰고 온 듯 — 레드가 단상에 나타나면 소리 없이(효과음 없음) 눈발이 결전장을 오른쪽에서 왼쪽으로 가로지른다
+  //  뒤(배경 쪽) · 앞(화면 쪽) 두 겹 도트 눈송이 + 옅은 눈안개 · 레드의 포켓몬과 싸우는 동안 이어지고, 레드가 정신을 차리거나 다음 보스로 넘어가면 잦아든다
+  redBlizzard(room) {
+    if (this.blizzard) return;
+    const parts = [], H = room.bottom - room.top, W = room.right - room.left;
+    const haze = this.add.rectangle(room.left, room.top, W, H, 0xe8f0ff, 0).setOrigin(0).setDepth(29.5);
+    this.worldObjs.push(haze);
+    for (let i = 0; i < 120; i++) {
+      const front = i % 3 === 0, s = this.add.image(room.left + Math.random() * W, room.top + Math.random() * H, 'px').setTint(front ? 0xffffff : 0xd8e4ff).setDepth(front ? 31 : 7.5);
+      const sz = front ? 2 + Math.random() * 1.6 : 1 + Math.random();
+      s.setDisplaySize(sz, sz).setAlpha(0);
+      this.worldObjs.push(s);
+      parts.push({ o: s, vx: -(front ? 110 : 60) - Math.random() * 70, vy: (front ? 40 : 22) + Math.random() * 30, ph: Math.random() * 6, a: front ? 1 : .65 });
+    }
+    this.blizzard = { parts, haze, room, k: 0 };
+  }
+  updateBlizzard(dt) {
+    const B = this.blizzard, r = B.room, tr = this.trainer, b = this.boss;
+    const on = this.arenaRoom === r && tr && tr.kind === 'red' && !tr.freed && (!b || !b.alive || (BOSSES[b.bossKey] && BOSSES[b.bossKey].trainer === 'red'));
+    B.k = Phaser.Math.Clamp(B.k + (on ? dt / 1.6 : -dt / 2.2), 0, 1);
+    if (!B.haze.scene || (!on && B.k <= 0)) { for (const p of B.parts) if (p.o.scene) p.o.destroy(); if (B.haze.scene) B.haze.destroy(); this.blizzard = null; return; }
+    B.haze.setAlpha(.1 * B.k);
+    const t = this.time.now / 1000, W = r.right - r.left, H = r.bottom - r.top;
+    for (const p of B.parts) {
+      const o = p.o;
+      o.x += (p.vx + Math.sin(t * 1.7 + p.ph) * 18) * dt; o.y += (p.vy + Math.cos(t * 2.3 + p.ph) * 10) * dt;
+      if (o.x < r.left) o.x += W; if (o.y > r.bottom) { o.y = r.top; o.x = r.left + Math.random() * W; }
+      o.setAlpha(p.a * B.k * (.7 + Math.sin(t * 3 + p.ph) * .3));
+    }
+  }
+
+  // 💠 2회차 보스 정수 강화: 지방 최종 보스(또는 정수의 주인 보스)를 정화하면 보스의 혼을 흡수해 +1 (최대 +3 · 영구 — Save.essence)
+  absorbEssence(boss) {
+    const p = this.player, ess = p && p.essence;
+    if (!ess || this.test || this.over || ess.lv >= ESSENCE_MAX) return;
+    if (this.essenceAt === boss) return;
+    this.essenceAt = boss;
+    const E = ESSENCES[ess.id], lv = ess.lv + 1, next = essenceNext(ess.id, ess.lv);
+    Save.setEssenceLv(ess.id, lv);
+    p.setEssence({ id: ess.id, lv });
+    const col = E.color;
+    for (let k = 0; k < 4; k++) this.time.delayedCall(k * 140, () => { if (this.player) this.fx.ring(p.x, p.y, 24 + k * 16, k % 2 ? 0xffffff : col, 420); });
+    this.fx.burst(p.x, p.y, [col, 0xffffff, 0xffe8a0], 30, 200, { glow: true, up: 90, life: .8 });
+    this.cameras.main.flash(220, 255, 240, 220, true); Sfx.play('mega');
+    void next;
+    this.events.emit('banner', `💠 ${E.name} +${lv}강!`, `${boss.name}의 혼을 흡수했다 · ${['', '수치 100% 복구', '초월 Ⅰ 보스 코어 효과', '초월 Ⅱ 한계 돌파 (MAX)'][lv]}`);
+  }
+
+  // 🏆 진 엔딩 컷신 (isEndingActive): 레드의 마지막 대화가 닫히면 — 마지막 쪽 · Esc · 연타 · 창 전환 무엇이든 (onEnd · DialogWatchdog · endingGuard) — 반드시 여기로
+  //  조작 잠금(cinema · storyWait = isInputLocked) · 창 · 일시정지 · 게임 타이머 멈춤을 먼저 모두 풀고 → 전당등록 기록 · 판 기록 → 하얗게 페이드 → scenes/EndingScene.js
+  triggerEndingCinematic(why = 'red') {
+    if (this.endingActive || this.test) return;
+    this.endingActive = true;   // isEndingActive
+    this.endingGuard = null;
+    this.cinema = false; this.storyWait = false; this.critTalk = null; this.portalGoing = false;   // isInputLocked = false
+    if (this.overlay) { this.overlay = null; this.events.emit('overlay', null); }
+    if (this.paused) { this.paused = false; this.events.emit('pause', false); }
+    this.time.paused = false;
+    if (this.physics && this.physics.world) this.physics.world.resume();
+    this.anims.resumeAll(); this.tweens.resumeAll();
+    const data = this.endingData(why);
+    Save.recordHof(data.members);
+    Save.recordRun(this.stageIdx + 1, true);
+    RunSave.clear();
+    this.over = true;
+    Music.stop();
+    const cam = this.cameras.main;
+    cam.fadeOut(1400, 255, 255, 255);
+    cam.once('camerafadeoutcomplete', () => { this.cleanup(); this.scene.stop('UI'); this.scene.start('Ending', data); });
+  }
+  // 전당등록 화면에 넘길 기록: 출전 파티 3마리(모습 · 진화 단계 · 경험치 · 기술 · 카드 · 도구) · 유대의 불꽃 · 모험 시간 · 구한 포켓몬 · 샛길 정화율
+  endingData(why) {
+    const p = this.player, meta = this.registry.get('spriteMeta') || {};
+    const members = p.members.slice(0, 3).map(m => {
+      const mk = m.mega && p.megaOf(m).sprite, visual = mk && meta[mk] && meta[mk].hasSprite ? mk : p.formKey(m);
+      return {
+        key: m.key, name: p.formName(m), visual, portrait: p.portraitKey(m), tier: p.tierOf(m), tierName: TIERS[p.tierOf(m)].name, mega: !!m.mega,
+        exp: Math.floor(m.exp || 0), types: p.typesOf(m), skills: ['z', 'x', 'c'].map(sl => m.skills[sl]),
+        learned: m.learned.slice(), ups: [...(m.ups || [])], perks: Object.keys(m.perks || {}), boosts: (m.boostCards || []).map(b => b.id || b.key || b.name).filter(Boolean),
+        items: Object.keys(m.items || {}).filter(k => m.items[k] > 0)
+      };
+    });
+    let side = 0, sideAll = 0;
+    for (const W of this.worlds) if (W && W.level && !W.level.test) { const list = this.sideRoomsOf(W.level); sideAll += list.length; side += list.filter(r => r.isPurified).length; }
+    return {
+      why, members, bond: this.bondStage, essence: p.essence ? { ...p.essence } : null,
+      time: Math.max(0, (this.time.now - this.runStats.start) / 1000), kills: this.runStats.kills,
+      joined: (Save.data.joined || []).length, sideRate: sideAll ? side / sideAll : 0, sideN: side, sideAll,
+      bosses: Object.keys(Save.data.beaten || {}), party: p.members.map(m => m.key)
+    };
+  }
+
   // 진 엔딩: 아비스 네크로즈마 정화 → 오버드라이브가 잦아들고 황금빛 새벽 → 레드의 인사 → 유대의 불꽃 영구 획득 → 포털 (들어가면 진 엔딩 화면)
   trueEnding(boss, room) {
     if (this.over) return;
@@ -3567,11 +3696,12 @@ export default class GameScene extends Phaser.Scene {
     Save.data.bondFlame = true; Save.write();
     const red = this.redAlly && this.redAlly.img;
     if (red && red.scene) { this.tweens.add({ targets: red, x: Math.min(room.right - 160, Math.max(room.left + 90, this.player.x + 70)), duration: 1400, ease: 'Sine.easeInOut' }); red.setFlipX(false); }
-    this.time.delayedCall(3600, () => this.openStory({ name: '레드', look: 'red', lines: RED_THANKS, onEnd: () => {
+    // 레드의 마지막 대화 → (닫히는 즉시 · 어떤 식으로 끊어도) 🏆 전당등록 · 엔딩 크레딧 (triggerEndingCinematic · DialogWatchdog)
+    this.time.delayedCall(3600, () => this.openStory({ name: '레드', look: 'red', lines: RED_THANKS, critical: true, onEnd: () => {
       if (this.over || !this.level) return;
       this.events.emit('toast', '🔥 레드의 유대의 불꽃을 얻었다 — 다음 여정부터 처음부터 지니고 시작한다', 'core_red_bond');
-      const x = Math.min(room.right - 40, room.cx + 170);
-      this.spawnPortal(x, this.groundBelow(x, room.top + 8), '포털로 들어가 여정을 마치자 — 진 엔딩');
+      this.time.delayedCall(900, () => this.triggerEndingCinematic('red'));
+      this.endingGuard = this.game.loop.time;   // 혹시 위 타이머가 끊겨도(게임 타이머가 멈춰도) update 가 1.5초 뒤 대신 부른다
     } }));
   }
 
@@ -4422,6 +4552,7 @@ export default class GameScene extends Phaser.Scene {
     if (!won && !quit) { this.respawn(); return; }   // 전멸해도 끝이 아니다: 마지막 포켓몬센터에서 다시 일어난다
     if (this.over) return;
     if (this.test) { this.over = true; this.backToLobby('테스트룸에서 나왔어요'); return; }   // 테스트룸은 기록 없이 바로 도감으로
+    if (won) { this.triggerEndingCinematic('portal'); return; }   // 🏆 끝까지 깼다 → 전당등록 · 엔딩 크레딧 (예전 결과 창 대신)
     this.over = true;
     Music.stop();
     Save.recordRun(this.stageIdx + 1, won);

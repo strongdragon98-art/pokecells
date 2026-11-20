@@ -32,6 +32,55 @@ function face(s, L, key, x, y, scale, locked) {
   L.add(img);
 }
 
+// 🏆 전당등록(진 엔딩) 포켓몬 카드: 16비트 금장 테두리 — 입체 명암 금테 · 네 귀퉁이 루비 · 사파이어 · 위 왕관 · 아래 [ CLEAR ] 리본 (44×52 도트, 1:1)
+//  둘레에 금빛 반짝이(hof:spark)가 사르르 피었다 진다 · 뒤에서 금빛이 숨 쉬듯 (RosterPanel.build)
+const PIX = { C: ['111', '100', '100', '100', '111'], L: ['100', '100', '100', '100', '111'], E: ['111', '100', '110', '100', '111'], A: ['010', '101', '111', '101', '101'], R: ['110', '101', '110', '101', '101'] };
+function hofFrame(s) {
+  const key = 'hof:frame';
+  if (s.textures.exists(key)) return key;
+  const W = 44, H = 52, t = s.textures.createCanvas(key, W, H), c = t.getContext();
+  const F = (x, y, w, h, col) => { c.fillStyle = col; c.fillRect(x, y, w, h); };
+  const X0 = 4, Y0 = 7, S = 36;   // 금테 바깥 사각 (36×36)
+  // 금테: 바깥 어두운 테 → 몸통 금 → 위 · 왼쪽 밝은 결 · 아래 · 오른쪽 그늘 → 안쪽 어두운 테
+  F(X0 + 2, Y0, S - 4, S, '#4a3006'); F(X0, Y0 + 2, S, S - 4, '#4a3006'); F(X0 + 1, Y0 + 1, S - 2, S - 2, '#4a3006');
+  F(X0 + 2, Y0 + 1, S - 4, S - 2, '#d89a24'); F(X0 + 1, Y0 + 2, S - 2, S - 4, '#d89a24');
+  F(X0 + 2, Y0 + 1, S - 4, 1, '#fff0a8'); F(X0 + 1, Y0 + 2, 1, S - 4, '#fff0a8'); F(X0 + 3, Y0 + 2, S - 6, 1, '#ffd25a'); F(X0 + 2, Y0 + 3, 1, S - 6, '#ffd25a');
+  F(X0 + 2, Y0 + S - 2, S - 4, 1, '#9a6410'); F(X0 + S - 2, Y0 + 2, 1, S - 4, '#9a6410'); F(X0 + 3, Y0 + S - 3, S - 6, 1, '#b8801c'); F(X0 + S - 3, Y0 + 3, 1, S - 6, '#b8801c');
+  // 안쪽: 둥근 초상화 자리 (반지름 14.5 원을 비우고 둘레에 어두운 홈 · 그 바깥 귀퉁이는 금 장식판)
+  F(X0 + 4, Y0 + 4, S - 8, S - 8, '#c88a1c'); F(X0 + 4, Y0 + 4, S - 8, 1, '#e8b840'); F(X0 + 4, Y0 + 4, 1, S - 8, '#e8b840');
+  for (let y = Y0 + 3; y < Y0 + S - 3; y++) for (let x = X0 + 3; x < X0 + S - 3; x++) {
+    const d = Math.hypot(x + .5 - 22, y + .5 - 25);
+    if (d <= 14.5) c.clearRect(x, y, 1, 1); else if (d <= 15.6) F(x, y, 1, 1, d < 15.1 ? '#3a2404' : '#ffe27a');
+  }
+  // 금테 위 홈 무늬 (점선 각인)
+  for (let k = 6; k < S - 6; k += 4) { F(X0 + k, Y0 + 3, 1, 1, '#a87418'); F(X0 + k, Y0 + S - 4, 1, 1, '#a87418'); F(X0 + 3, Y0 + k, 1, 1, '#a87418'); F(X0 + S - 4, Y0 + k, 1, 1, '#a87418'); }
+  // 귀퉁이 보석: 왼쪽 위 · 오른쪽 아래 루비 / 오른쪽 위 · 왼쪽 아래 사파이어 (마름모 5×5 + 반짝 점)
+  const gem = (x, y, a, b, hi) => { F(x + 2, y, 1, 1, b); F(x + 1, y + 1, 3, 1, a); F(x, y + 2, 5, 1, a); F(x + 1, y + 3, 3, 1, b); F(x + 2, y + 4, 1, 1, b); F(x + 1, y + 1, 1, 1, hi); F(x, y + 2, 1, 1, '#2a1404'); F(x + 4, y + 2, 1, 1, '#2a1404'); };
+  gem(X0 - 1, Y0 - 1, '#e8283a', '#8a0a18', '#ffb0b8'); gem(X0 + S - 4, Y0 + S - 4, '#e8283a', '#8a0a18', '#ffb0b8');
+  gem(X0 + S - 4, Y0 - 1, '#2a6aff', '#0a2a8a', '#b0d0ff'); gem(X0 - 1, Y0 + S - 4, '#2a6aff', '#0a2a8a', '#b0d0ff');
+  // 왕관 (위 가운데): 세 봉우리 + 가운데 루비
+  const cx = 22;
+  F(cx - 7, 4, 14, 4, '#4a3006'); F(cx - 6, 4, 12, 3, '#ffc83a'); F(cx - 6, 6, 12, 1, '#c88a18');
+  for (const [dx, h] of [[-6, 4], [-1, 5], [4, 4]]) { F(cx + dx - 1, 4 - h, 4, h, '#4a3006'); F(cx + dx, 4 - h + 1, 2, h, '#ffd84a'); F(cx + dx, 4 - h + 1, 1, 1, '#fff6c0'); }
+  F(cx - 1, 0, 2, 1, '#ff4a5a'); F(cx - 1, 4, 2, 2, '#e8283a'); F(cx - 1, 4, 1, 1, '#ffb0b8');
+  // [ CLEAR ] 리본 (아래): 접힌 꼬리 + 붉은 띠 + 금빛 글자
+  const ry = 41;
+  F(2, ry + 2, 6, 6, '#7a0a14'); F(36, ry + 2, 6, 6, '#7a0a14'); F(1, ry + 7, 3, 2, '#7a0a14'); F(40, ry + 7, 3, 2, '#7a0a14');   // 꼬리
+  F(6, ry, 32, 9, '#4a0608'); F(7, ry + 1, 30, 7, '#d0283a'); F(7, ry + 1, 30, 1, '#ff7a84'); F(7, ry + 7, 30, 1, '#8a0a18');
+  let tx = 12;
+  for (const ch of 'CLEAR') { PIX[ch].forEach((row, yy) => [...row].forEach((b, xx) => { if (b === '1') { F(tx + xx, ry + 2 + yy, 1, 1, '#fff0b0'); } })); tx += 4; }
+  t.refresh();
+  return key;
+}
+function hofSpark(s) {
+  const key = 'hof:spark';
+  if (s.textures.exists(key)) return key;
+  const t = s.textures.createCanvas(key, 7, 7), c = t.getContext();
+  c.fillStyle = '#fff6c0'; c.fillRect(3, 0, 1, 7); c.fillRect(0, 3, 7, 1); c.fillStyle = '#ffffff'; c.fillRect(2, 2, 3, 3); c.fillStyle = '#ffd25a'; c.fillRect(3, 3, 1, 1);
+  t.refresh();
+  return key;
+}
+
 const tabOf = cat => CATS.find(c => c.cats.includes(cat)).id;
 const tabCats = tab => CATS.find(c => c.id === tab).cats;
 
@@ -59,6 +108,7 @@ export class RosterPanel {
 
   build() {
     const s = this.s, o = this.o, L = this.L;
+    s.tweens.killTweensOf(L.list);   // 🏆 반짝이 · 금빛 숨결 트윈
     L.removeAll(true);
     const g = s.add.graphics(); L.add(g);
     // ── 카테고리 탭
@@ -93,9 +143,22 @@ export class RosterPanel {
       const checked = !!(o.checked && o.checked() === key);
       if (checked) L.add(s.add.image(cx, cy, 'glow').setBlendMode(ADD).setTint(0x7dff9a).setScale(1.25 * k).setAlpha(.55));   // ✔ 교체 대기: 초록 빛무리
       else if (focused) L.add(s.add.image(cx, cy, 'glow').setBlendMode(ADD).setTint(0xefeae0).setScale(.9 * k).setAlpha(.28));
+      const hof = unlocked && Save.hofOf(key);
+      if (hof) {   // 🏆 전당등록: 뒤에서 숨 쉬는 금빛
+        const gl = s.add.image(cx, cy, 'glow').setBlendMode(ADD).setTint(0xffc83a).setScale(1.05 * k).setAlpha(.3); L.add(gl);
+        s.tweens.add({ targets: gl, alpha: .55, scale: 1.2 * k, duration: 1100 + (i % 5) * 90, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      }
       face(s, L, SPECIES[key].evo[0].key, cx, cy, sc, !unlocked);
       L.add(hiImage(s, cx, cy, 'gloss').setScale(sc / RES));
-      L.add(hiImage(s, cx, cy, pi >= 0 ? 'slot3d-gold' : 'slot3d').setScale(sc / RES).setAlpha(focused || pi >= 0 ? 1 : .55));
+      if (hof) {   // 🏆 금장 테두리 (slot3d 대신) + 금빛 반짝이 셋
+        L.add(s.add.image(cx, cy + k, hofFrame(s)).setScale(k));   // 금테 원 중심(도트 22, 25)이 초상화 가운데에 · 도트가 뭉개지지 않게 고른 카드도 1배
+        for (let n = 0; n < 3; n++) {
+          const sp = s.add.image(cx, cy, hofSpark(s)).setBlendMode(ADD).setAlpha(0).setScale(.5); L.add(sp);
+          const place = () => { const a = Math.random() * Math.PI * 2, r = (15 + Math.random() * 7) * k; sp.setPosition(cx + Math.cos(a) * r, cy + Math.sin(a) * r * .95); };
+          place();
+          s.tweens.add({ targets: sp, alpha: { from: 0, to: 1 }, scale: { from: .3, to: .9 }, y: '-=4', duration: 520, yoyo: true, repeat: -1, repeatDelay: 700 + Math.random() * 1400, delay: n * 520 + Math.random() * 600, onRepeat: place });
+        }
+      } else L.add(hiImage(s, cx, cy, pi >= 0 ? 'slot3d-gold' : 'slot3d').setScale(sc / RES).setAlpha(focused || pi >= 0 ? 1 : .55));
       if (pi >= 0) L.add(hkText(s, cx + 13 * k, cy - 14 * k, String(pi + 1), 9, HK.gold, { bold: true, origin: .5 }));
       if (checked) {   // ✔ 체크 배지 (오른쪽 위) + 금빛 하이라이트 테두리
         g.lineStyle(2, 0xffd860, 1); g.strokeCircle(cx, cy, 18 * k);
@@ -135,6 +198,8 @@ export class RosterPanel {
     if (megaN) badges.push([megaN > 1 ? `메가진화 ×${megaN}` : '메가진화', '#ff9ad8']);
     if (!sp.megas.length && !sp.legend) badges.push(['각성 (오라)', HK.dim]);
     if (sp.legend) badges.push(['전설', HK.gold]);
+    const hofInfo = unlocked && Save.hofOf(key);
+    if (hofInfo) badges.unshift([`🏆 전당등록 ×${hofInfo.n}`, '#ffd860']);   // 진 엔딩을 함께 본 포켓몬
     for (const [b, c] of legendLocked ? [] : badges) {
       const t = hkText(s, tx + 6, Y + 29, b, 7.5, c, { bold: true }); L.add(t);
       g.lineStyle(1, Phaser.Display.Color.HexStringToColor(c).color, .6); g.strokeRoundedRect(tx + 1, Y + 27, t.width + 10, 13, 6);

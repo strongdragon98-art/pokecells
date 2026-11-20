@@ -87,6 +87,27 @@ export const Save = {
     this.write();
   },
   setParty(list) { this.data.party = list.slice(0, 3); this.write(); },
+  // ---------------- 🏆 전당등록 (진 엔딩) · 💠 2회차 보스 정수 ----------------
+  //  hof: { 계열 key: { n 전당등록 횟수, first · last 날짜, form 마지막 모습 이름 } } — 로비 포켓몬 카드에 금장 테두리 (systems/RosterPanel.js)
+  //  essence: { 정수 id: 강화 단계 0 ~ 3 } (영구 · data/essence.js) · beaten: { 보스 key: 정화 횟수 } (정수를 고를 수 있는 보스)
+  hofOf(k) { return (this.data.hof || {})[k] || null; },
+  get hofAny() { return Object.keys(this.data.hof || {}).length > 0; },
+  recordHof(members) {
+    const hof = this.data.hof || (this.data.hof = {}), today = new Date().toISOString().slice(0, 10);
+    for (const m of members) { const h = hof[m.key] || (hof[m.key] = { n: 0, first: today }); h.n++; h.last = today; h.form = m.name; }
+    this.data.clears = (this.data.clears || 0) + 1;
+    this.write();
+  },
+  markBoss(key) { const b = this.data.beaten || (this.data.beaten = {}); b[key] = (b[key] || 0) + 1; this.write(); },
+  // 정수를 고를 수 있는 보스: 정화 기록 + 예전 저장(기록 전)은 클리어한 지방 수로 짐작
+  beatenBosses() {
+    const b = { ...(this.data.beaten || {}) }, order = ['mewtwo', 'ho-oh', 'rayquaza', 'giratina', 'reshiram', 'eternatus'];
+    for (let i = 0; i < Math.min(order.length, this.data.cleared || 0); i++) b[order[i]] = Math.max(1, b[order[i]] || 0);
+    if ((this.data.cleared || 0) >= 5) b.arceus = Math.max(1, b.arceus || 0);
+    return b;
+  },
+  essenceLv(id) { return Math.max(0, Math.min(3, ((this.data.essence || {})[id]) || 0)); },
+  setEssenceLv(id, lv) { (this.data.essence || (this.data.essence = {}))[id] = Math.max(0, Math.min(3, lv)); this.write(); },
   recordRun(stageReached, won) {
     this.data.runs++;
     if (won) this.data.wins++;

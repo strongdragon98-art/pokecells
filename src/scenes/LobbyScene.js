@@ -13,6 +13,7 @@ import { RosterPanel } from '../systems/RosterPanel.js';
 import { Sprites } from '../systems/SpriteLoader.js';
 import { RES, uiCamera } from '../config.js';
 import { DifficultyPicker } from '../systems/DifficultyPicker.js';
+import { EssencePicker } from '../systems/EssencePicker.js';
 import { Settings } from '../systems/Settings.js';
 
 const ADD = Phaser.BlendModes.ADD;
@@ -25,7 +26,7 @@ export default class LobbyScene extends Phaser.Scene {
   create(data) {
     uiCamera(this);
     this.meta = this.registry.get('spriteMeta');
-    this.leaving = false; this.diffPicker = null;   // 씬 인스턴스는 재사용된다
+    this.leaving = false; this.diffPicker = null; this.essPicker = null;   // 씬 인스턴스는 재사용된다
     this.party = Save.data.party.filter(k => Save.isUnlocked(k)).slice(0, 3);
     this.message = (data && data.message) || '';
     const cam = this.cameras.main;
@@ -44,6 +45,7 @@ export default class LobbyScene extends Phaser.Scene {
     // 키보드: 보관함(←→↑↓ · Q/E · 0~9 · Enter) · Space 던전 입장 · F1/F3 디버그 전체 해금
     this.input.keyboard.on('keydown', e => {
       Sfx.unlock();
+      if (this.essPicker) { this.essPicker.key(e); return; }    // 💠 2회차 보스 정수 선택 창
       if (this.diffPicker) { this.diffPicker.key(e); return; }   // 🎚️ 난이도 선택 창이 떠 있으면 그쪽으로
       if (e.code === 'F1' || e.code === 'F3') this.debugUnlockAll();
       else if (e.code === 'Space') this.enter();
@@ -174,12 +176,24 @@ export default class LobbyScene extends Phaser.Scene {
   // [던전 입장] → 🎚️ 난이도 선택 창 (systems/DifficultyPicker.js) → 고르면 인트로 컷신 · 새 모험
   enter() {
     if (!this.party.length) { Sfx.play('deny'); this.message = '파티에 한 마리 이상 넣어 주세요'; this.buildBar(); return; }
-    if (this.diffPicker || this.leaving) return;
+    if (this.diffPicker || this.essPicker || this.leaving) return;
     Sfx.unlock(); Sfx.play('select');
     this.diffPicker = new DifficultyPicker(this, {
-      onPick: id => { this.diffPicker = null; Settings.set('difficulty', id); this.startNew(); },
+      onPick: id => { this.diffPicker = null; Settings.set('difficulty', id); this.afterDifficulty(); },
       onCancel: () => { this.diffPicker = null; }
     });
+  }
+  // 💠 2회차(New Game+): 전당등록(진 엔딩)을 본 포켓몬이 파티에 있고 고를 수 있는 정수가 있으면 → 보스 정수 선택 창 (systems/EssencePicker.js)
+  afterDifficulty() {
+    const ng = this.party.some(k => Save.hofOf(k));
+    this.registry.set('ngStart', null);
+    if (!ng) { this.startNew(); return; }
+    const ep = new EssencePicker(this, {
+      onPick: id => { this.essPicker = null; this.registry.set('ngStart', { essence: id }); this.startNew(); },
+      onCancel: () => { this.essPicker = null; this.enter(); }   // 뒤로 → 난이도 선택
+    });
+    if (!ep.any) { ep.destroy(); this.startNew(); return; }   // 정화한 지방 최종 보스가 아직 없다
+    this.essPicker = ep;
   }
   startNew() {
     if (this.leaving) return;
